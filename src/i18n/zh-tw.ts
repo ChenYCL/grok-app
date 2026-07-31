@@ -3648,7 +3648,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.agentsJsonClear": "清除",
   "settings.configTomlEdit": "Agent config.toml（分區編輯）",
   "settings.configTomlEditDesc":
-    "獨立 agent-home 下安全分區寫入：僅 [ui] permission_mode / yolo、[subagents] enabled、[memory] enabled。不會整檔改寫金鑰。儲存後 soft-respawn Agent。",
+    "獨立 agent-home 下安全分區寫入：[ui] permission_mode / yolo、[subagents]/[memory]/[workflows] enabled，以及 [features] auto_wake / two_pass_compaction / lsp_tools / codebase_indexing / remote_fetch。不會整檔改寫金鑰。儲存後 soft-respawn Agent。共用模式唯讀。",
   "settings.configTomlEdit.path": "設定：{path}",
   "settings.configTomlEdit.loading": "正在載入 agent-home 設定…",
   "settings.configTomlEdit.error": "無法更新 agent config.toml",
@@ -3673,6 +3673,24 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.configTomlEdit.memory": "[memory] enabled",
   "settings.configTomlEdit.memoryDesc":
     "agent-home 中的實驗性跨工作階段記憶開關。會同步到應用程式設定。",
+  "settings.configTomlEdit.workflows": "workflows_enabled",
+  "settings.configTomlEdit.workflowsDesc":
+    "背景工作流（workflow 工具、.rhai 腳本、/deep-research）。寫入 [workflows].enabled 與頂層 workflows_enabled。同時選擇 /goal 驅動。Grok Build 預設開啟。",
+  "settings.configTomlEdit.autoWake": "auto_wake_enabled",
+  "settings.configTomlEdit.autoWakeDesc":
+    "開啟後，背景 bash/monitor/子代理任務完成時 Agent 可自動喚醒繼續。寫入頂層 auto_wake_enabled 與 [features].auto_wake。",
+  "settings.configTomlEdit.twoPass": "two_pass_compaction_enabled",
+  "settings.configTomlEdit.twoPassDesc":
+    "可選的兩遍預壓縮（預設關閉）。寫入 [features].two_pass_compaction 與頂層 two_pass_compaction_enabled。與應用內 compaction-mode 啟動參數獨立。",
+  "settings.configTomlEdit.lspTools": "[features] lsp_tools",
+  "settings.configTomlEdit.lspToolsDesc":
+    "向 Agent 暴露 lsp 工具（預設關閉）。",
+  "settings.configTomlEdit.codebaseIndexing": "[features] codebase_indexing",
+  "settings.configTomlEdit.codebaseIndexingDesc":
+    "程式碼圖索引以供檢索（預設開啟）。隔離/極簡環境可關閉。",
+  "settings.configTomlEdit.remoteFetch": "[features] remote_fetch",
+  "settings.configTomlEdit.remoteFetchDesc":
+    "允許可選的線上模型目錄拉取（預設開啟）。防火牆環境可關閉。",
   "settings.configTomlEdit.permissionMode.unset": "未設定 / 缺失",
   "settings.configTomlEdit.permissionMode.default": "default（詢問）",
   "settings.configTomlEdit.permissionMode.acceptEdits": "acceptEdits",

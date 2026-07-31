@@ -3623,6 +3623,18 @@ export type AgentConfigEditSnapshot = {
   yolo?: boolean | null;
   subagentsEnabled?: boolean | null;
   memoryEnabled?: boolean | null;
+  /** `[workflows].enabled` — background workflows / goal driver. */
+  workflowsEnabled?: boolean | null;
+  /** `[features].auto_wake` — wake after background tasks. */
+  autoWakeEnabled?: boolean | null;
+  /** `[features].two_pass_compaction` — opt-in prefire two-pass. */
+  twoPassCompactionEnabled?: boolean | null;
+  /** `[features].lsp_tools`. */
+  lspToolsEnabled?: boolean | null;
+  /** `[features].codebase_indexing`. */
+  codebaseIndexing?: boolean | null;
+  /** `[features].remote_fetch` — online model-catalog fetches. */
+  remoteFetch?: boolean | null;
   redactedPreview: string;
 };
 
@@ -3631,6 +3643,12 @@ export type AgentConfigEditPatch = {
   yolo?: boolean | null;
   subagentsEnabled?: boolean | null;
   memoryEnabled?: boolean | null;
+  workflowsEnabled?: boolean | null;
+  autoWakeEnabled?: boolean | null;
+  twoPassCompactionEnabled?: boolean | null;
+  lspToolsEnabled?: boolean | null;
+  codebaseIndexing?: boolean | null;
+  remoteFetch?: boolean | null;
 };
 
 export async function agentConfigEditGet(): Promise<AgentConfigEditSnapshot> {
@@ -3645,6 +3663,12 @@ export async function agentConfigEditSet(
     yolo: patch.yolo ?? null,
     subagentsEnabled: patch.subagentsEnabled ?? null,
     memoryEnabled: patch.memoryEnabled ?? null,
+    workflowsEnabled: patch.workflowsEnabled ?? null,
+    autoWakeEnabled: patch.autoWakeEnabled ?? null,
+    twoPassCompactionEnabled: patch.twoPassCompactionEnabled ?? null,
+    lspToolsEnabled: patch.lspToolsEnabled ?? null,
+    codebaseIndexing: patch.codebaseIndexing ?? null,
+    remoteFetch: patch.remoteFetch ?? null,
   });
 }
 

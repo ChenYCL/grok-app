@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Agent / memory
+- **Config workbench allowlist expand** (Settings → General → Agent → Agent config.toml sections): more safe bool keys under independent agent-home — `[workflows] enabled`, `[features] auto_wake` / `two_pass_compaction` / `lsp_tools` / `codebase_indexing` / `remote_fetch` (plus existing `[ui]` permission_mode / yolo, `[subagents]` / `[memory]` enabled). Shared mode remains read-only; never rewrites secrets or invents AppSettings for the new feature keys; soft-respawn on save; en/zh/zh-TW + pure helper tests
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 
 #### Runtime / connection

@@ -8,8 +8,15 @@
 //! - `[ui]` → `permission_mode` (string), `yolo` (bool)
 //! - `[subagents]` → `enabled` (bool)
 //! - `[memory]` → `enabled` (bool)
+//! - `[workflows]` → `enabled` (bool) — background workflows / `/goal` driver
+//! - top-level `workflows_enabled` / `auto_wake_enabled` /
+//!   `two_pass_compaction_enabled` (bool; App agent-home + remote-style keys)
+//! - `[features]` → `two_pass_compaction`, `auto_wake`, `lsp_tools`,
+//!   `codebase_indexing`, `remote_fetch` (bool; user-guide nested form)
 //!
-//! Reads redact secret-looking assignments before returning preview text.
+//! Reads accept nested **or** top-level aliases. Writes prefer nested table
+//! form for section keys (CLI user-guide) and top-level for `auto_wake_enabled`
+//! (matches dedicated App sync helpers). Never invents secrets sections.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -52,6 +59,18 @@ pub struct AgentConfigEditSnapshot {
     pub subagents_enabled: Option<bool>,
     /// `[memory].enabled` when present.
     pub memory_enabled: Option<bool>,
+    /// Workflows master switch (`[workflows].enabled` or top-level `workflows_enabled`).
+    pub workflows_enabled: Option<bool>,
+    /// Auto-wake after background tasks (`auto_wake_enabled` / `[features].auto_wake`).
+    pub auto_wake_enabled: Option<bool>,
+    /// Prefire two-pass compaction (`two_pass_compaction_enabled` / `[features].two_pass_compaction`).
+    pub two_pass_compaction_enabled: Option<bool>,
+    /// `[features].lsp_tools` when present.
+    pub lsp_tools_enabled: Option<bool>,
+    /// `[features].codebase_indexing` when present.
+    pub codebase_indexing: Option<bool>,
+    /// `[features].remote_fetch` when present (online model-catalog fetches).
+    pub remote_fetch: Option<bool>,
     /// Redacted text of allowlisted sections only (for preview; never raw secrets).
     pub redacted_preview: String,
 }
@@ -64,6 +83,42 @@ pub struct AgentConfigEditPatch {
     pub yolo: Option<bool>,
     pub subagents_enabled: Option<bool>,
     pub memory_enabled: Option<bool>,
+    pub workflows_enabled: Option<bool>,
+    pub auto_wake_enabled: Option<bool>,
+    pub two_pass_compaction_enabled: Option<bool>,
+    pub lsp_tools_enabled: Option<bool>,
+    pub codebase_indexing: Option<bool>,
+    pub remote_fetch: Option<bool>,
+}
+
+impl AgentConfigEditPatch {
+    pub fn is_empty(&self) -> bool {
+        self.permission_mode.is_none()
+            && self.yolo.is_none()
+            && self.subagents_enabled.is_none()
+            && self.memory_enabled.is_none()
+            && self.workflows_enabled.is_none()
+            && self.auto_wake_enabled.is_none()
+            && self.two_pass_compaction_enabled.is_none()
+            && self.lsp_tools_enabled.is_none()
+            && self.codebase_indexing.is_none()
+            && self.remote_fetch.is_none()
+    }
+}
+
+/// Parsed allowlisted flags (all optional — soft-fail missing).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AllowlistedFlags {
+    pub permission_mode: Option<String>,
+    pub yolo: Option<bool>,
+    pub subagents_enabled: Option<bool>,
+    pub memory_enabled: Option<bool>,
+    pub workflows_enabled: Option<bool>,
+    pub auto_wake_enabled: Option<bool>,
+    pub two_pass_compaction_enabled: Option<bool>,
+    pub lsp_tools_enabled: Option<bool>,
+    pub codebase_indexing: Option<bool>,
+    pub remote_fetch: Option<bool>,
 }
 
 /// Normalize session_data_mode to `independent` | `shared`.
@@ -170,16 +225,12 @@ pub fn parse_toml_scalar(raw: &str) -> String {
 }
 
 /// Extract allowlisted keys from full config text.
-pub fn parse_allowlisted(text: &str) -> (
-    Option<String>,
-    Option<bool>,
-    Option<bool>,
-    Option<bool>,
-) {
-    let mut permission_mode = None;
-    let mut yolo = None;
-    let mut subagents_enabled = None;
-    let mut memory_enabled = None;
+///
+/// Accepts nested user-guide form **and** top-level App/remote-style aliases
+/// (`workflows_enabled`, `auto_wake_enabled`, `two_pass_compaction_enabled`).
+/// When both are present, the last occurrence in document order wins.
+pub fn parse_allowlisted(text: &str) -> AllowlistedFlags {
+    let mut flags = AllowlistedFlags::default();
     let mut table = String::new();
 
     for line in text.lines() {
@@ -196,33 +247,133 @@ pub fn parse_allowlisted(text: &str) -> (
         };
         let key = trimmed[..eq].trim();
         let val = trimmed[eq + 1..].trim();
+
+        // Top-level (outside any table) aliases used by App agent-home sync helpers.
+        if table.is_empty() {
+            match key {
+                "workflows_enabled" => {
+                    if let Some(b) = parse_toml_bool(val) {
+                        flags.workflows_enabled = Some(b);
+                    }
+                }
+                "auto_wake_enabled" => {
+                    if let Some(b) = parse_toml_bool(val) {
+                        flags.auto_wake_enabled = Some(b);
+                    }
+                }
+                "two_pass_compaction_enabled" => {
+                    if let Some(b) = parse_toml_bool(val) {
+                        flags.two_pass_compaction_enabled = Some(b);
+                    }
+                }
+                _ => {}
+            }
+        }
+
         match (table.as_str(), key) {
             ("ui", "permission_mode") => {
                 let s = parse_toml_scalar(val);
                 if !s.is_empty() {
-                    permission_mode = Some(s);
+                    flags.permission_mode = Some(s);
                 }
             }
             ("ui", "yolo") => {
                 if let Some(b) = parse_toml_bool(val) {
-                    yolo = Some(b);
+                    flags.yolo = Some(b);
                 }
             }
             ("subagents", "enabled") => {
                 if let Some(b) = parse_toml_bool(val) {
-                    subagents_enabled = Some(b);
+                    flags.subagents_enabled = Some(b);
                 }
             }
             ("memory", "enabled") => {
                 if let Some(b) = parse_toml_bool(val) {
-                    memory_enabled = Some(b);
+                    flags.memory_enabled = Some(b);
+                }
+            }
+            ("workflows", "enabled") => {
+                if let Some(b) = parse_toml_bool(val) {
+                    flags.workflows_enabled = Some(b);
+                }
+            }
+            ("features", "auto_wake") => {
+                if let Some(b) = parse_toml_bool(val) {
+                    flags.auto_wake_enabled = Some(b);
+                }
+            }
+            ("features", "two_pass_compaction") => {
+                if let Some(b) = parse_toml_bool(val) {
+                    flags.two_pass_compaction_enabled = Some(b);
+                }
+            }
+            ("features", "lsp_tools") => {
+                if let Some(b) = parse_toml_bool(val) {
+                    flags.lsp_tools_enabled = Some(b);
+                }
+            }
+            ("features", "codebase_indexing") => {
+                if let Some(b) = parse_toml_bool(val) {
+                    flags.codebase_indexing = Some(b);
+                }
+            }
+            ("features", "remote_fetch") => {
+                if let Some(b) = parse_toml_bool(val) {
+                    flags.remote_fetch = Some(b);
                 }
             }
             _ => {}
         }
     }
 
-    (permission_mode, yolo, subagents_enabled, memory_enabled)
+    flags
+}
+
+fn bool_lit(v: bool) -> &'static str {
+    if v {
+        "true"
+    } else {
+        "false"
+    }
+}
+
+/// Upsert a bare top-level `key = value` assignment (not inside a `[table]`).
+pub fn set_top_level_assignment(text: &str, key: &str, value: &str) -> String {
+    let line_val = format!("{key} = {value}");
+    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
+    let mut in_table = false;
+    let mut first_table_idx: Option<usize> = None;
+
+    for i in 0..lines.len() {
+        let trimmed = lines[i].trim().to_string();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            if first_table_idx.is_none() {
+                first_table_idx = Some(i);
+            }
+            in_table = true;
+            continue;
+        }
+        if in_table {
+            continue;
+        }
+        let key_part = trimmed.split('=').next().map(str::trim).unwrap_or("");
+        if key_part == key {
+            lines[i] = line_val;
+            return finish_join(text, &lines);
+        }
+    }
+
+    if let Some(idx) = first_table_idx {
+        lines.insert(idx, line_val);
+        return finish_join(text, &lines);
+    }
+
+    let base = text.trim_end();
+    if base.is_empty() {
+        format!("{line_val}\n")
+    } else {
+        format!("{base}\n{line_val}\n")
+    }
 }
 
 /// Upsert `key = value` under `[table]` without touching other sections/keys.
@@ -282,6 +433,14 @@ fn finish_join(original: &str, lines: &[String]) -> String {
 }
 
 /// Apply an allowlisted patch onto TOML text (pure).
+///
+/// Write policy:
+/// - Section keys (`[ui]` / `[subagents]` / `[memory]` / `[workflows]` / `[features]`)
+///   use nested form matching Grok Build user-guide.
+/// - `auto_wake_enabled` is written top-level (App agent-home sync convention).
+/// - `workflows_enabled` / `two_pass_compaction_enabled` are written both as
+///   nested user-guide form **and** top-level aliases so App helpers and CLI
+///   nested readers stay consistent (no secrets rewritten).
 pub fn apply_patch_to_toml(text: &str, patch: &AgentConfigEditPatch) -> Result<String, String> {
     let mut next = text.to_string();
     if let Some(ref mode) = patch.permission_mode {
@@ -289,39 +448,87 @@ pub fn apply_patch_to_toml(text: &str, patch: &AgentConfigEditPatch) -> Result<S
         next = set_table_key(&next, "ui", "permission_mode", m, true);
     }
     if let Some(yolo) = patch.yolo {
-        next = set_table_key(&next, "ui", "yolo", if yolo { "true" } else { "false" }, false);
+        next = set_table_key(&next, "ui", "yolo", bool_lit(yolo), false);
     }
     if let Some(en) = patch.subagents_enabled {
-        next = set_table_key(
-            &next,
-            "subagents",
-            "enabled",
-            if en { "true" } else { "false" },
-            false,
-        );
+        next = set_table_key(&next, "subagents", "enabled", bool_lit(en), false);
     }
     if let Some(en) = patch.memory_enabled {
+        next = set_table_key(&next, "memory", "enabled", bool_lit(en), false);
+    }
+    if let Some(en) = patch.workflows_enabled {
+        // Nested (CLI user-guide) + top-level alias (App agent-home helpers).
+        next = set_table_key(&next, "workflows", "enabled", bool_lit(en), false);
+        next = set_top_level_assignment(&next, "workflows_enabled", bool_lit(en));
+    }
+    if let Some(en) = patch.auto_wake_enabled {
+        // Top-level App convention; also nested features alias for catalog readers.
+        next = set_top_level_assignment(&next, "auto_wake_enabled", bool_lit(en));
+        next = set_table_key(&next, "features", "auto_wake", bool_lit(en), false);
+    }
+    if let Some(en) = patch.two_pass_compaction_enabled {
         next = set_table_key(
             &next,
-            "memory",
-            "enabled",
-            if en { "true" } else { "false" },
+            "features",
+            "two_pass_compaction",
+            bool_lit(en),
             false,
         );
+        next = set_top_level_assignment(&next, "two_pass_compaction_enabled", bool_lit(en));
+    }
+    if let Some(en) = patch.lsp_tools_enabled {
+        next = set_table_key(&next, "features", "lsp_tools", bool_lit(en), false);
+    }
+    if let Some(en) = patch.codebase_indexing {
+        next = set_table_key(&next, "features", "codebase_indexing", bool_lit(en), false);
+    }
+    if let Some(en) = patch.remote_fetch {
+        next = set_table_key(&next, "features", "remote_fetch", bool_lit(en), false);
     }
     Ok(next)
 }
 
-/// Extract only allowlisted tables for preview (document order).
+/// Extract only allowlisted tables + top-level allowlisted keys for preview.
 pub fn extract_allowlisted_sections(text: &str) -> String {
     let mut out = String::new();
     let mut keep = false;
     let mut any = false;
+    let mut in_table = false;
+
+    // First pass: top-level allowlisted assignments (before any table).
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_table = true;
+            break;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let key = trimmed.split('=').next().map(str::trim).unwrap_or("");
+        if matches!(
+            key,
+            "workflows_enabled" | "auto_wake_enabled" | "two_pass_compaction_enabled"
+        ) {
+            if any {
+                // keep single block
+            }
+            any = true;
+            out.push_str(trimmed);
+            out.push('\n');
+        }
+    }
+    let _ = in_table;
+
     for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
             let name = trimmed.trim_start_matches('[').trim_end_matches(']');
-            keep = matches!(name, "ui" | "subagents" | "memory");
+            // Exact table names only (never `[model.x]` / nested secret tables).
+            keep = matches!(
+                name,
+                "ui" | "subagents" | "memory" | "workflows" | "features"
+            );
             if keep {
                 if any {
                     out.push('\n');
@@ -437,7 +644,7 @@ pub fn load_agent_config_edit() -> Result<AgentConfigEditSnapshot, String> {
     let path = agent_config_toml();
     let home = agent_home_dir();
     let (raw, exists) = read_config_text(&path);
-    let (permission_mode, yolo, subagents_enabled, memory_enabled) = parse_allowlisted(&raw);
+    let flags = parse_allowlisted(&raw);
     let preview = redact_config_text(&extract_allowlisted_sections(&raw));
 
     Ok(AgentConfigEditSnapshot {
@@ -446,10 +653,16 @@ pub fn load_agent_config_edit() -> Result<AgentConfigEditSnapshot, String> {
         mode: mode.to_string(),
         writable: mode == "independent",
         file_exists: exists,
-        permission_mode,
-        yolo,
-        subagents_enabled,
-        memory_enabled,
+        permission_mode: flags.permission_mode,
+        yolo: flags.yolo,
+        subagents_enabled: flags.subagents_enabled,
+        memory_enabled: flags.memory_enabled,
+        workflows_enabled: flags.workflows_enabled,
+        auto_wake_enabled: flags.auto_wake_enabled,
+        two_pass_compaction_enabled: flags.two_pass_compaction_enabled,
+        lsp_tools_enabled: flags.lsp_tools_enabled,
+        codebase_indexing: flags.codebase_indexing,
+        remote_fetch: flags.remote_fetch,
         redacted_preview: preview,
     })
 }
@@ -457,6 +670,7 @@ pub fn load_agent_config_edit() -> Result<AgentConfigEditSnapshot, String> {
 /// Apply allowlisted patch to agent-home config.toml. Shared mode is refused.
 ///
 /// Also mirrors matching App settings fields so spawn flags stay consistent.
+/// New feature/workflow keys are config.toml-only (no invented AppSettings).
 pub fn save_agent_config_edit(patch: &AgentConfigEditPatch) -> Result<AgentConfigEditSnapshot, String> {
     let settings = store::load_settings();
     let mode = normalize_mode(&settings.session_data_mode);
@@ -468,11 +682,7 @@ pub fn save_agent_config_edit(patch: &AgentConfigEditPatch) -> Result<AgentConfi
     }
 
     // Empty patch is a no-op read.
-    let has_change = patch.permission_mode.is_some()
-        || patch.yolo.is_some()
-        || patch.subagents_enabled.is_some()
-        || patch.memory_enabled.is_some();
-    if !has_change {
+    if patch.is_empty() {
         return load_agent_config_edit();
     }
 
@@ -499,6 +709,7 @@ pub fn save_agent_config_edit(patch: &AgentConfigEditPatch) -> Result<AgentConfi
     fs::write(&path, &next).map_err(|e| format!("write config: {e}"))?;
 
     // Mirror App settings so spawn flags / UI toggles stay aligned.
+    // Only the original four keys have AppSettings counterparts.
     let mut s = settings;
     let mut settings_dirty = false;
     if let Some(ref m) = patch.permission_mode {
@@ -537,6 +748,9 @@ pub fn save_agent_config_edit(patch: &AgentConfigEditPatch) -> Result<AgentConfi
         yolo = ?patch.yolo,
         subagents = ?patch.subagents_enabled,
         memory = ?patch.memory_enabled,
+        workflows = ?patch.workflows_enabled,
+        auto_wake = ?patch.auto_wake_enabled,
+        two_pass = ?patch.two_pass_compaction_enabled,
         "agent_config_edit: saved allowlisted keys"
     );
 
@@ -596,14 +810,36 @@ enabled = true
 [memory]
 enabled = false
 
+workflows_enabled = true
+auto_wake_enabled = true
+two_pass_compaction_enabled = false
+
+[workflows]
+enabled = false
+
+[features]
+telemetry = false
+auto_wake = false
+two_pass_compaction = true
+lsp_tools = true
+codebase_indexing = false
+remote_fetch = true
+
 [model.x]
 api_key = "sk-abcdefghijklmnopqrstuvwxyz"
 "#;
-        let (pm, yolo, sub, mem) = parse_allowlisted(text);
-        assert_eq!(pm.as_deref(), Some("acceptEdits"));
-        assert_eq!(yolo, Some(false));
-        assert_eq!(sub, Some(true));
-        assert_eq!(mem, Some(false));
+        let flags = parse_allowlisted(text);
+        assert_eq!(flags.permission_mode.as_deref(), Some("acceptEdits"));
+        assert_eq!(flags.yolo, Some(false));
+        assert_eq!(flags.subagents_enabled, Some(true));
+        assert_eq!(flags.memory_enabled, Some(false));
+        // Last occurrence wins: nested tables after top-level.
+        assert_eq!(flags.workflows_enabled, Some(false));
+        assert_eq!(flags.auto_wake_enabled, Some(false));
+        assert_eq!(flags.two_pass_compaction_enabled, Some(true));
+        assert_eq!(flags.lsp_tools_enabled, Some(true));
+        assert_eq!(flags.codebase_indexing, Some(false));
+        assert_eq!(flags.remote_fetch, Some(true));
     }
 
     #[test]
@@ -616,6 +852,9 @@ default = "grok"
 theme = "dark"
 permission_mode = "default"
 
+[features]
+telemetry = false
+
 [model.relay]
 api_key = "sk-abcdefghijklmnopqrstuvwxyz0123"
 base_url = "https://example.com/v1"
@@ -627,6 +866,12 @@ base_url = "https://example.com/v1"
                 yolo: Some(false),
                 subagents_enabled: Some(false),
                 memory_enabled: Some(true),
+                workflows_enabled: Some(false),
+                auto_wake_enabled: Some(true),
+                two_pass_compaction_enabled: Some(true),
+                lsp_tools_enabled: Some(false),
+                codebase_indexing: Some(true),
+                remote_fetch: Some(false),
             },
         )
         .unwrap();
@@ -636,9 +881,18 @@ base_url = "https://example.com/v1"
         assert!(next.contains("permission_mode = \"dontAsk\""), "{next}");
         assert!(next.contains("yolo = false"), "{next}");
         assert!(next.contains("[subagents]"), "{next}");
-        assert!(next.contains("enabled = false"), "{next}");
         assert!(next.contains("[memory]"), "{next}");
-        assert!(next.contains("enabled = true"), "{next}");
+        assert!(next.contains("[workflows]"), "{next}");
+        assert!(next.contains("workflows_enabled = false"), "{next}");
+        assert!(next.contains("auto_wake_enabled = true"), "{next}");
+        assert!(next.contains("auto_wake = true"), "{next}");
+        assert!(next.contains("two_pass_compaction = true"), "{next}");
+        assert!(next.contains("two_pass_compaction_enabled = true"), "{next}");
+        assert!(next.contains("lsp_tools = false"), "{next}");
+        assert!(next.contains("codebase_indexing = true"), "{next}");
+        assert!(next.contains("remote_fetch = false"), "{next}");
+        // Existing features key preserved.
+        assert!(next.contains("telemetry = false"), "{next}");
         // Secrets untouched.
         assert!(
             next.contains("sk-abcdefghijklmnopqrstuvwxyz0123"),
@@ -660,10 +914,18 @@ api_key = "sk-abcdefghijklmnopqrstuvwxyz0123"
 
 [subagents]
 enabled = true
+
+[workflows]
+enabled = false
+
+[features]
+two_pass_compaction = true
 "#;
         let preview = extract_allowlisted_sections(text);
         assert!(preview.contains("[ui]"));
         assert!(preview.contains("[subagents]"));
+        assert!(preview.contains("[workflows]"));
+        assert!(preview.contains("[features]"));
         assert!(!preview.contains("[model.x]"));
         let red = redact_config_text(&preview);
         assert!(red.contains("[REDACTED]") || !red.contains("should-not-show"), "{red}");
@@ -701,18 +963,35 @@ enabled = true
             yolo: Some(false),
             subagents_enabled: Some(true),
             memory_enabled: Some(false),
+            workflows_enabled: Some(true),
+            auto_wake_enabled: Some(false),
+            two_pass_compaction_enabled: Some(true),
+            lsp_tools_enabled: Some(true),
+            codebase_indexing: Some(false),
+            remote_fetch: Some(true),
         })
         .unwrap();
         assert_eq!(saved.permission_mode.as_deref(), Some("acceptEdits"));
         assert_eq!(saved.yolo, Some(false));
         assert_eq!(saved.subagents_enabled, Some(true));
         assert_eq!(saved.memory_enabled, Some(false));
+        assert_eq!(saved.workflows_enabled, Some(true));
+        assert_eq!(saved.auto_wake_enabled, Some(false));
+        assert_eq!(saved.two_pass_compaction_enabled, Some(true));
+        assert_eq!(saved.lsp_tools_enabled, Some(true));
+        assert_eq!(saved.codebase_indexing, Some(false));
+        assert_eq!(saved.remote_fetch, Some(true));
         assert!(saved.file_exists);
 
         let disk = fs::read_to_string(agent_config_toml()).unwrap();
         assert!(disk.contains("permission_mode = \"acceptEdits\""));
         assert!(disk.contains("[subagents]"));
         assert!(disk.contains("[memory]"));
+        assert!(disk.contains("[workflows]"));
+        assert!(disk.contains("workflows_enabled = true"));
+        assert!(disk.contains("auto_wake_enabled = false"));
+        assert!(disk.contains("two_pass_compaction = true")
+            || disk.contains("two_pass_compaction_enabled = true"));
         assert!(!disk.contains("[REDACTED]"));
 
         match prev {
