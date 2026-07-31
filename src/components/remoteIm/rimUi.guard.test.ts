@@ -92,7 +92,8 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("data-qq-guide");
     expect(src).toContain("data-qq-risk");
     expect(src).toContain('channelId === "qq"');
-    expect(src).toContain("validateQqConfig");
+    // Schema-driven bind validation (channel packs live under lib/remoteIm/*Config)
+    expect(src).toContain("validateBindFields");
     expect(src).not.toMatch(/window\.confirm/);
   });
 
@@ -100,7 +101,9 @@ describe("Remote IM UI chrome guard", () => {
     const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
     expect(src).toContain("data-matrix-guide");
     expect(src).toContain('channelId === "matrix"');
-    expect(src).toContain("accessTokenValue");
+    // Matrix secrets go through RimSecretField + schema secret keys (not a local accessTokenValue)
+    expect(src).toContain("RimSecretField");
+    expect(src).toContain("secretFormValue");
     expect(src).not.toMatch(/window\.confirm/);
   });
 
