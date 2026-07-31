@@ -19145,6 +19145,7 @@ export default function App() {
                         heuristicNote: tr("context.heuristicNote"),
                         auto: tr("context.triggerAuto"),
                         manual: tr("context.triggerManual"),
+                        breakdownSection: tr("context.breakdownSection"),
                         breakdownUser: tr("context.breakdownUser"),
                         breakdownAssistant: tr("context.breakdownAssistant"),
                         breakdownThought: tr("context.breakdownThought"),
@@ -19154,6 +19155,9 @@ export default function App() {
                         breakdownEstimatedNote: tr(
                           "context.breakdownEstimatedNote",
                         ),
+                        breakdownEmpty: tr("context.breakdownEmpty"),
+                        softFailUnknownNote: tr("context.softFailUnknownNote"),
+                        partialAgentNote: tr("context.partialAgentNote"),
                         knownInput: tr("context.knownInput"),
                         knownOutput: tr("context.knownOutput"),
                         knownTotal: tr("context.knownTotal"),
@@ -19525,6 +19529,15 @@ export default function App() {
               sourceKnown: tr("context.sourceKnown"),
               sourceEstimated: tr("context.sourceEstimated"),
               sourceUnknown: tr("context.sourceUnknown"),
+              breakdownSection: tr("context.breakdownSection"),
+              breakdownUser: tr("context.breakdownUser"),
+              breakdownAssistant: tr("context.breakdownAssistant"),
+              breakdownThought: tr("context.breakdownThought"),
+              breakdownSystem: tr("context.breakdownSystem"),
+              breakdownTools: tr("context.breakdownTools"),
+              breakdownHistory: tr("context.breakdownHistory"),
+              breakdownEmpty: tr("context.breakdownEmpty"),
+              softFailUnknownNote: tr("context.softFailUnknownNote"),
               back: tr("phone.toolsBack"),
             }}
             activeProject={activeProject}

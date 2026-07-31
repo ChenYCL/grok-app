@@ -10885,6 +10885,23 @@ html[data-composer-min-rows="8"] .composer__input {
   color: var(--text-tertiary);
 }
 
+.ctx-chip__note--empty {
+  color: var(--text-secondary);
+}
+
+.phone-sheet__note {
+  margin: 0;
+  padding: 4px 16px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.phone-sheet__nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
 .ctx-chip__action {
   display: inline-flex;
   align-items: center;

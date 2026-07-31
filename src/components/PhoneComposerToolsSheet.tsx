@@ -40,8 +40,11 @@ import {
 import { composerModelChipLabel } from "@/lib/effectiveModel";
 import type { ContextUsageDisplay } from "@/lib/contextUsage";
 import {
+  buildContextBreakdownRows,
   formatTokenCount,
   hasContextUsageData,
+  resolveContextUsageEmptyState,
+  type ContextBreakdownRowId,
 } from "@/lib/contextUsage";
 
 export type PhoneToolsPanel =
@@ -99,6 +102,16 @@ export type PhoneComposerToolsSheetProps = {
     sourceKnown: string;
     sourceEstimated: string;
     sourceUnknown: string;
+    /** Breakdown section + row labels (CONTEXT-USAGE-PRO). */
+    breakdownSection?: string;
+    breakdownUser?: string;
+    breakdownAssistant?: string;
+    breakdownThought?: string;
+    breakdownSystem?: string;
+    breakdownTools?: string;
+    breakdownHistory?: string;
+    breakdownEmpty?: string;
+    softFailUnknownNote?: string;
     back: string;
   };
   activeProject: PhoneProjectOption | null;
@@ -602,7 +615,68 @@ export function PhoneComposerToolsSheet({
                         : labels.sourceUnknown}
                   </span>
                 </div>
+                {(() => {
+                  const empty = resolveContextUsageEmptyState(contextDisplay);
+                  if (
+                    empty.kind === "unknown_after_compact" &&
+                    labels.softFailUnknownNote
+                  ) {
+                    return (
+                      <p className="phone-sheet__note" role="status">
+                        {labels.softFailUnknownNote}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
+              {labels.breakdownSection ? (
+                <div className="phone-sheet__section">
+                  {labels.breakdownSection}
+                </div>
+              ) : null}
+              {(() => {
+                const empty = resolveContextUsageEmptyState(contextDisplay);
+                const rows = buildContextBreakdownRows(contextDisplay.breakdown);
+                const labelFor = (id: ContextBreakdownRowId): string | undefined => {
+                  switch (id) {
+                    case "system":
+                      return labels.breakdownSystem;
+                    case "tools":
+                      return labels.breakdownTools;
+                    case "history":
+                      return labels.breakdownHistory;
+                    case "user":
+                      return labels.breakdownUser;
+                    case "assistant":
+                      return labels.breakdownAssistant;
+                    case "thought":
+                      return labels.breakdownThought;
+                  }
+                };
+                if (
+                  empty.kind === "no_breakdown" &&
+                  labels.breakdownEmpty &&
+                  !contextDisplay.breakdown
+                ) {
+                  return (
+                    <p className="phone-sheet__note" role="status">
+                      {labels.breakdownEmpty}
+                    </p>
+                  );
+                }
+                if (!labels.breakdownUser) return null;
+                return rows.map((row) => {
+                  const lab = labelFor(row.id);
+                  if (!lab) return null;
+                  return (
+                    <div key={row.id} className="phone-sheet__info-row">
+                      <span>{lab}</span>
+                      <strong className="phone-sheet__nums">{row.value}</strong>
+                    </div>
+                  );
+                });
+              })()}
               <SheetRow
                 icon={<IconActivity size={20} />}
                 label={labels.contextCompact}
