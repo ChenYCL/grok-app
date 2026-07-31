@@ -4,6 +4,9 @@
  * Appended on successful user send. Entries: { text, sessionId, at },
  * newest first, max 50. Consecutive identical text is deduped (no re-append).
  * Text is truncated for storage size; no secret redaction beyond that.
+ *
+ * COMPOSER-HISTORY-PRO: clear-all + remove-at (in-app confirm in UI; no
+ * `window.confirm`).
  */
 
 export type RecentPromptEntry = {
@@ -174,18 +177,7 @@ export function recordRecentPrompt(
     max,
   );
   saveRecentPromptHistory(next, storage, max);
-  if (
-    typeof window !== "undefined" &&
-    typeof window.dispatchEvent === "function"
-  ) {
-    try {
-      window.dispatchEvent(
-        new CustomEvent(RECENT_PROMPT_HISTORY_CHANGE_EVENT, { detail: next }),
-      );
-    } catch {
-      /* ignore */
-    }
-  }
+  notifyRecentPromptHistoryChange(next);
   return next;
 }
 
@@ -217,4 +209,69 @@ export function filterRecentPromptHistory(
     });
   }
   return out;
+}
+
+/**
+ * Remove one entry by unfiltered index. Returns the updated list.
+ * Out-of-range index is a no-op (returns cleaned existing).
+ */
+export function removeRecentPromptAt(
+  existing: readonly RecentPromptEntry[],
+  index: number,
+  max = RECENT_PROMPT_HISTORY_MAX,
+): RecentPromptEntry[] {
+  const cleaned = parseRecentPromptHistory(existing, max);
+  if (!Number.isFinite(index)) return cleaned;
+  const i = Math.trunc(index);
+  if (i < 0 || i >= cleaned.length) return cleaned;
+  return [...cleaned.slice(0, i), ...cleaned.slice(i + 1)];
+}
+
+/**
+ * Persist removal of one entry (by unfiltered index) and notify listeners.
+ * Returns the updated list.
+ */
+export function removeRecentPrompt(
+  index: number,
+  storage: RecentPromptStorage = defaultStorage(),
+  max = RECENT_PROMPT_HISTORY_MAX,
+): RecentPromptEntry[] {
+  const next = removeRecentPromptAt(
+    loadRecentPromptHistory(storage, max),
+    index,
+    max,
+  );
+  saveRecentPromptHistory(next, storage, max);
+  notifyRecentPromptHistoryChange(next);
+  return next;
+}
+
+/**
+ * Wipe the cross-session recent ring (empty list + notify).
+ * Returns the empty list. Safe no-op on storage failure.
+ * Session ("This chat") history is message-derived and is not cleared here.
+ */
+export function clearRecentPromptHistory(
+  storage: RecentPromptStorage = defaultStorage(),
+): RecentPromptEntry[] {
+  saveRecentPromptHistory([], storage);
+  notifyRecentPromptHistoryChange([]);
+  return [];
+}
+
+function notifyRecentPromptHistoryChange(
+  next: readonly RecentPromptEntry[],
+): void {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(RECENT_PROMPT_HISTORY_CHANGE_EVENT, { detail: next }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
 }

@@ -26,6 +26,7 @@ See `docs/llm-wiki/release.md`.
 - **Streaming ACP NDJSON diagnostics** (Settings → Runtime → Tools; CLI **0.2.117+**): pure parser for headless `--output-format streaming-json` as agent-native ACP session-update NDJSON (not `streaming-messages-json`); import/paste or soft-gated headless probe; event type counts + copy summary
 
 #### Composer & chat
+- **Composer prompt history pro** (`/history` + empty ↑): Home/End/Page list navigation; recent rows show relative time; clear cross-session recent via in-app GlassModal (no `window.confirm`) + remove-one; clear-filter empty affordance; pure helpers + tests
 - **Live Voice delegate status** (VOX-DELEG): overlay shows listening / thinking / speaking from host `voice://` events, **Stop**, honest empty transcript (no fake STT), delegated session chips, and optional **Send transcript to active session** when a chat is open
 - **Send queue** edit / reorder · **composer min height** · **cross-session recent prompts**
 - **Chat width** · **chat / code font** · **tool auto-collapse** · **transcript filter** (hide tool steps)

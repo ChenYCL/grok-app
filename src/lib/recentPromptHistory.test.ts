@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   RECENT_PROMPT_HISTORY_MAX,
   RECENT_PROMPT_TEXT_MAX,
+  clearRecentPromptHistory,
   filterRecentPromptHistory,
   loadRecentPromptHistory,
   parseRecentPromptEntry,
   parseRecentPromptHistory,
   pushRecentPrompt,
   recordRecentPrompt,
+  removeRecentPrompt,
+  removeRecentPromptAt,
   saveRecentPromptHistory,
   type RecentPromptEntry,
   type RecentPromptStorage,
@@ -217,5 +220,37 @@ describe("filterRecentPromptHistory", () => {
 
   it("returns empty when nothing matches", () => {
     expect(filterRecentPromptHistory(history, "xyz")).toEqual([]);
+  });
+});
+
+describe("removeRecentPromptAt / removeRecentPrompt", () => {
+  it("removes by index and ignores OOB", () => {
+    const history = [sample(1), sample(2), sample(3)];
+    expect(removeRecentPromptAt(history, 1).map((e) => e.sessionId)).toEqual([
+      "sess-1",
+      "sess-3",
+    ]);
+    expect(removeRecentPromptAt(history, -1)).toEqual(history);
+    expect(removeRecentPromptAt(history, 99)).toEqual(history);
+  });
+
+  it("persists removal via storage", () => {
+    const storage = memStorage();
+    saveRecentPromptHistory([sample(1), sample(2), sample(3)], storage);
+    const next = removeRecentPrompt(0, storage);
+    expect(next.map((e) => e.sessionId)).toEqual(["sess-2", "sess-3"]);
+    expect(loadRecentPromptHistory(storage).map((e) => e.sessionId)).toEqual([
+      "sess-2",
+      "sess-3",
+    ]);
+  });
+});
+
+describe("clearRecentPromptHistory", () => {
+  it("wipes storage to empty list", () => {
+    const storage = memStorage();
+    saveRecentPromptHistory([sample(1), sample(2)], storage);
+    expect(clearRecentPromptHistory(storage)).toEqual([]);
+    expect(loadRecentPromptHistory(storage)).toEqual([]);
   });
 });

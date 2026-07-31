@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  clampPromptHistoryActive,
   collectUserPromptHistory,
   filterPromptHistory,
   nextPromptHistoryIndex,
+  promptHistoryEmptyMessageKey,
+  promptHistoryListNavFromKey,
   promptHistoryListPreview,
+  resolvePromptHistoryEmptyState,
   shouldHandlePromptHistoryKey,
   stepPromptHistory,
+  stepPromptHistoryListIndex,
 } from "./composerPromptHistory";
 
 describe("collectUserPromptHistory", () => {
@@ -197,5 +202,113 @@ describe("shouldHandlePromptHistoryKey", () => {
         historyLength: 0,
       }),
     ).toBe(false);
+  });
+});
+
+describe("clampPromptHistoryActive", () => {
+  it("clamps into range and handles empty", () => {
+    expect(clampPromptHistoryActive(0, 0)).toBe(0);
+    expect(clampPromptHistoryActive(5, 3)).toBe(2);
+    expect(clampPromptHistoryActive(-1, 3)).toBe(0);
+    expect(clampPromptHistoryActive(1.9, 3)).toBe(1);
+    expect(clampPromptHistoryActive(Number.NaN, 3)).toBe(0);
+  });
+});
+
+describe("stepPromptHistoryListIndex", () => {
+  it("walks up/down without wrapping", () => {
+    expect(stepPromptHistoryListIndex(0, 4, "up")).toBe(1);
+    expect(stepPromptHistoryListIndex(3, 4, "up")).toBe(3);
+    expect(stepPromptHistoryListIndex(2, 4, "down")).toBe(1);
+    expect(stepPromptHistoryListIndex(0, 4, "down")).toBe(0);
+  });
+
+  it("home/end and page jumps", () => {
+    expect(stepPromptHistoryListIndex(2, 10, "home")).toBe(0);
+    expect(stepPromptHistoryListIndex(2, 10, "end")).toBe(9);
+    expect(stepPromptHistoryListIndex(1, 10, "pageUp", 5)).toBe(6);
+    expect(stepPromptHistoryListIndex(8, 10, "pageDown", 5)).toBe(3);
+    // Invalid page size falls back to default (5) → 2+5=7
+    expect(stepPromptHistoryListIndex(2, 10, "pageUp", 0)).toBe(7);
+  });
+
+  it("returns 0 for empty list", () => {
+    expect(stepPromptHistoryListIndex(3, 0, "end")).toBe(0);
+  });
+});
+
+describe("promptHistoryListNavFromKey", () => {
+  it("maps known keys", () => {
+    expect(promptHistoryListNavFromKey("ArrowUp")).toBe("up");
+    expect(promptHistoryListNavFromKey("ArrowDown")).toBe("down");
+    expect(promptHistoryListNavFromKey("Home")).toBe("home");
+    expect(promptHistoryListNavFromKey("End")).toBe("end");
+    expect(promptHistoryListNavFromKey("PageUp")).toBe("pageUp");
+    expect(promptHistoryListNavFromKey("PageDown")).toBe("pageDown");
+    expect(promptHistoryListNavFromKey("Enter")).toBeNull();
+  });
+});
+
+describe("resolvePromptHistoryEmptyState", () => {
+  it("returns null when rows exist", () => {
+    expect(
+      resolvePromptHistoryEmptyState({
+        scope: "session",
+        query: "",
+        filteredCount: 2,
+        unfilteredCount: 2,
+      }),
+    ).toBeNull();
+  });
+
+  it("session empty vs filter", () => {
+    expect(
+      resolvePromptHistoryEmptyState({
+        scope: "session",
+        query: "",
+        filteredCount: 0,
+        unfilteredCount: 0,
+      }),
+    ).toEqual({ kind: "session", showClearFilter: false });
+    expect(
+      resolvePromptHistoryEmptyState({
+        scope: "session",
+        query: "xyz",
+        filteredCount: 0,
+        unfilteredCount: 4,
+      }),
+    ).toEqual({ kind: "sessionFilter", showClearFilter: true });
+  });
+
+  it("recent empty vs filter", () => {
+    expect(
+      resolvePromptHistoryEmptyState({
+        scope: "recent",
+        query: "  ",
+        filteredCount: 0,
+        unfilteredCount: 0,
+      }),
+    ).toEqual({ kind: "recent", showClearFilter: false });
+    expect(
+      resolvePromptHistoryEmptyState({
+        scope: "recent",
+        query: "nope",
+        filteredCount: 0,
+        unfilteredCount: 1,
+      }),
+    ).toEqual({ kind: "recentFilter", showClearFilter: true });
+  });
+
+  it("maps kinds to message keys", () => {
+    expect(promptHistoryEmptyMessageKey("session")).toBe("promptHistory.empty");
+    expect(promptHistoryEmptyMessageKey("sessionFilter")).toBe(
+      "promptHistory.emptyFilter",
+    );
+    expect(promptHistoryEmptyMessageKey("recent")).toBe(
+      "promptHistory.emptyRecent",
+    );
+    expect(promptHistoryEmptyMessageKey("recentFilter")).toBe(
+      "promptHistory.emptyRecentFilter",
+    );
   });
 });

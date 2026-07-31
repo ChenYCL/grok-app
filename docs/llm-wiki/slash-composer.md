@@ -46,10 +46,14 @@ Two scopes in one picker:
 |-------|----------|
 | `/history` | Opens picker above composer; filter focuses; newest-first list (defaults to **This chat**, falls back to **Recent** if empty) |
 | Empty composer **↑** | Opens the same picker on **This chat** and fills the newest session prompt; further **↑/↓** step (older / newer); **↓** past newest closes and clears |
+| List nav | **↑/↓** · **Home/End** · **PageUp/PageDown** move highlight; Enter/Tab apply; Esc close |
 | Select | Click / Enter / Tab drops the prompt into the composer (keeps `[[skill:…]]` tokens) |
 | Successful send | Appends display text + session id to the recent ring |
+| Clear recent | Recent tab only — **Clear** uses in-app `GlassModal` (never `window.confirm`); does not alter this chat’s messages |
+| Remove one | Recent rows can remove a single ring entry (persists to localStorage) |
+| Empty filter | When a query hides every row, offer **Clear filter** |
 
-Helpers: `src/lib/composerPromptHistory.ts` (session), `src/lib/recentPromptHistory.ts` (cross-session). UI: `PromptHistoryPanel`.
+Helpers: `src/lib/composerPromptHistory.ts` (session + list nav/empty), `src/lib/recentPromptHistory.ts` (cross-session clear/remove). UI: `PromptHistoryPanel`.
 
 ## Doctor
 

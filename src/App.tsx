@@ -537,14 +537,18 @@ import {
 import {
   collectUserPromptHistory,
   filterPromptHistory,
+  promptHistoryListNavFromKey,
   shouldHandlePromptHistoryKey,
   stepPromptHistory,
+  stepPromptHistoryListIndex,
   type PromptHistoryEntry,
 } from "@/lib/composerPromptHistory";
 import {
+  clearRecentPromptHistory,
   filterRecentPromptHistory,
   loadRecentPromptHistory,
   recordRecentPrompt,
+  removeRecentPrompt,
   RECENT_PROMPT_HISTORY_CHANGE_EVENT,
   RECENT_PROMPT_HISTORY_STORAGE_KEY,
   type RecentPromptEntry,
@@ -1347,6 +1351,8 @@ export default function App() {
   >(() =>
     typeof localStorage !== "undefined" ? loadRecentPromptHistory() : [],
   );
+  /** Clear recent prompts — App-level GlassModal (avoids floating-menu dismiss). */
+  const [promptHistoryClearOpen, setPromptHistoryClearOpen] = useState(false);
   const promptHistoryPanelRef = useRef<HTMLDivElement>(null);
   const promptHistoryOpenRef = useRef(false);
   promptHistoryOpenRef.current = promptHistoryOpen;
@@ -8877,7 +8883,12 @@ export default function App() {
   const recentPromptHistoryEntries = useMemo(
     () =>
       filterRecentPromptHistory(recentPromptHistory, promptHistoryFilter).map(
-        (e) => ({ historyIndex: e.historyIndex, text: e.text }),
+        (e) => ({
+          historyIndex: e.historyIndex,
+          text: e.text,
+          sessionId: e.sessionId,
+          at: e.at,
+        }),
       ),
     [recentPromptHistory, promptHistoryFilter],
   );
@@ -8885,6 +8896,16 @@ export default function App() {
     promptHistoryScope === "recent"
       ? recentPromptHistoryEntries
       : sessionPromptHistoryEntries;
+  const promptHistoryUnfilteredCount =
+    promptHistoryScope === "recent"
+      ? recentPromptHistory.length
+      : sessionPromptHistory.length;
+  const promptHistoryEntryMeta = useMemo(() => {
+    if (promptHistoryScope !== "recent") return undefined;
+    return recentPromptHistoryEntries.map((e) =>
+      e.at ? formatRelativeTime(e.at, locale) : "",
+    );
+  }, [promptHistoryScope, recentPromptHistoryEntries, locale]);
 
   const closePromptHistory = useCallback(() => {
     setPromptHistoryOpen(false);
@@ -8892,6 +8913,7 @@ export default function App() {
     setPromptHistoryActive(0);
     setPromptHistoryFocusFilter(false);
     setPromptHistoryScope("session");
+    setPromptHistoryClearOpen(false);
   }, []);
 
   const applyPromptHistoryEntry = useCallback(
@@ -8923,12 +8945,18 @@ export default function App() {
     [closePromptHistory],
   );
 
+  const closePromptHistoryUnlessClearing = useCallback(() => {
+    // Keep picker open while App-level clear GlassModal is up (portaled outside roots).
+    if (promptHistoryClearOpen) return;
+    closePromptHistory();
+  }, [closePromptHistory, promptHistoryClearOpen]);
+
   const { pos: promptHistoryPos, style: promptHistoryStyle } = useFloatingMenu({
     open: promptHistoryOpen,
     triggerRef: composerShellRef,
     panelRef: promptHistoryPanelRef,
     roots: [composerShellRef, composerInputRef, promptHistoryPanelRef],
-    onClose: closePromptHistory,
+    onClose: closePromptHistoryUnlessClearing,
     placement: "up",
     fitContent: false,
     matchTriggerWidth: true,
@@ -17416,9 +17444,11 @@ export default function App() {
                       }
                     }}
                     entries={promptHistoryEntries}
+                    unfilteredCount={promptHistoryUnfilteredCount}
                     query={promptHistoryFilter}
                     activeIndex={promptHistoryActive}
                     focusFilter={promptHistoryFocusFilter}
+                    entryMeta={promptHistoryEntryMeta}
                     labels={{
                       tabSession: tr("promptHistory.tabSession"),
                       tabRecent: tr("promptHistory.tabRecent"),
@@ -17428,6 +17458,9 @@ export default function App() {
                       emptyRecent: tr("promptHistory.emptyRecent"),
                       emptyRecentFilter: tr("promptHistory.emptyRecentFilter"),
                       aria: tr("promptHistory.aria"),
+                      clearFilter: tr("promptHistory.clearFilter"),
+                      clearRecent: tr("promptHistory.clearRecent"),
+                      removeRecent: tr("promptHistory.removeRecent"),
                     }}
                     onQueryChange={setPromptHistoryFilter}
                     onActiveIndexChange={(i) => {
@@ -17451,6 +17484,11 @@ export default function App() {
                         scope: promptHistoryScope,
                       })
                     }
+                    onRequestClearRecent={() => setPromptHistoryClearOpen(true)}
+                    onRemoveRecent={(historyIndex) => {
+                      setRecentPromptHistory(removeRecentPrompt(historyIndex));
+                      setPromptHistoryActive((i) => Math.max(0, i));
+                    }}
                     onClose={closePromptHistory}
                     style={{
                       ...promptHistoryStyle,
@@ -17554,8 +17592,8 @@ export default function App() {
                       return;
                     }
                   }
-                  // Prompt history picker open: ↑/↓ move selection; Enter/Tab apply;
-                  // Esc closes (Build `/history` + empty-↑).
+                  // Prompt history picker open: ↑/↓/Home/End/Page move selection;
+                  // Enter/Tab apply; Esc closes (Build `/history` + empty-↑).
                   if (promptHistoryOpenRef.current && !composerMenuOpen) {
                     if (e.key === "Escape") {
                       e.preventDefault();
@@ -17572,42 +17610,30 @@ export default function App() {
                         return;
                       }
                     }
-                    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                    const listNav = promptHistoryListNavFromKey(e.key);
+                    if (listNav) {
                       e.preventDefault();
                       if (promptHistoryEntries.length === 0) return;
                       const liveSeed =
                         !promptHistoryFocusFilter &&
                         promptHistoryScope === "session";
-                      if (e.key === "ArrowUp") {
-                        const next = Math.min(
-                          promptHistoryActive + 1,
-                          promptHistoryEntries.length - 1,
-                        );
-                        setPromptHistoryActive(next);
-                        const entry = promptHistoryEntries[next];
-                        if (entry && liveSeed) {
-                          applyPromptHistoryEntry(entry, {
-                            close: false,
-                            listIndex: next,
-                            scope: "session",
-                          });
-                        }
+                      // ArrowDown past newest on live session browse: clear + close.
+                      if (
+                        listNav === "down" &&
+                        promptHistoryActive <= 0 &&
+                        liveSeed
+                      ) {
+                        promptHistoryIndexRef.current = null;
+                        setPromptHistoryIndex(null);
+                        setDraft("");
+                        closePromptHistory();
                         return;
                       }
-                      // ArrowDown: newer; past newest closes like Build (session browse).
-                      if (promptHistoryActive <= 0) {
-                        if (liveSeed) {
-                          promptHistoryIndexRef.current = null;
-                          setPromptHistoryIndex(null);
-                          setDraft("");
-                          closePromptHistory();
-                        } else {
-                          // Recent / filter mode: stay on newest row.
-                          setPromptHistoryActive(0);
-                        }
-                        return;
-                      }
-                      const next = promptHistoryActive - 1;
+                      const next = stepPromptHistoryListIndex(
+                        promptHistoryActive,
+                        promptHistoryEntries.length,
+                        listNav,
+                      );
                       setPromptHistoryActive(next);
                       const entry = promptHistoryEntries[next];
                       if (entry && liveSeed) {
@@ -18360,6 +18386,41 @@ export default function App() {
         projectName={projectRulesTarget?.name ?? null}
         locale={locale}
       />
+      <GlassModal
+        open={promptHistoryClearOpen}
+        onClose={() => setPromptHistoryClearOpen(false)}
+        title={tr("promptHistory.clearRecentConfirmTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setPromptHistoryClearOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              data-testid="prompt-history-clear-confirm"
+              onClick={() => {
+                setRecentPromptHistory(clearRecentPromptHistory());
+                setPromptHistoryActive(0);
+                setPromptHistoryClearOpen(false);
+                showToast(tr("promptHistory.clearedToast"), 2000);
+              }}
+            >
+              {tr("promptHistory.clearRecentConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+          {tr("promptHistory.clearRecentConfirmBody")}
+        </p>
+      </GlassModal>
       <GlassModal
         open={worktreeCreateOpen}
         onClose={() => {
