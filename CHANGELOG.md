@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Fixed
 
 - **Long chat virtualizer (PERF-A11Y-PACK / perf)**: history browse no longer expands the continuous window to the tail just because idle force-mount lists the last user/assistant (that mounted hundreds of rows mid-scroll). Force expand is nearby-only while escaped; pin still expands for blank-pin defense. Adaptive viewport-scaled overscan, binary-search range find, rAF-coalesced scroll recompute, and cached cumulative offsets keep long transcripts snappy. Pure helpers + tests in `chatVirtualList`.
+- **Custom provider save stuck on “Saving…” / requires restart** (#376): `providers_upsert` / activate / remove / set-default run file I/O on a blocking pool and recycle warm agents (`provider_route`) so the next message reloads `config.toml` + auth without a full app restart. Settings save uses a wall-clock timeout, always clears busy in `finally`, shows success / soft-fail apply toasts (en/zh/zh-TW), and no longer parks live agents via `sessionDisconnect` (which kept stale OIDC in memory). Pure `providerSave` helpers + tests.
 
 ### Added
 

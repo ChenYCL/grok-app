@@ -69,16 +69,19 @@ Host must rebind both sides on every switch and before each ACP spawn (`prepare_
 
 | Command | Role |
 |---------|------|
-| `providers_list` | Providers + default (no raw keys) |
-| `providers_upsert` | Create/update; empty key keeps previous |
-| `providers_remove` | Delete section |
-| `providers_set_default` | Set default model id |
+| `providers_list` | Providers + default (no raw keys); blocking pool |
+| `providers_upsert` | Create/update; empty key keeps previous; recycles warm agents when default/active route changes (`provider_route`) so next send applies without app restart |
+| `providers_remove` | Delete section; recycles warm agents |
+| `providers_set_default` | Set default model id; recycles warm agents |
+| `providers_activate` | Switch official/custom route + rebind auth; recycles warm agents |
 | `providers_ping` | `GET {base}/models` RTT |
 | `providers_list_models` | Fetch remote model ids |
 | `providers_cc_switch_scan` | Read-only scan of local **CC Switch** Grok Build providers |
 | `providers_cc_switch_import` | Import selected CC Switch rows into custom providers |
 | `editors_list` | Detected local IDEs |
 | `open_in_editor` | Open path in chosen editor |
+
+**Live apply (#376):** Do **not** only park the live agent (`session_disconnect`) after provider edits — parked processes keep old OIDC/`config.toml` in memory. Host `recycle_all_agents(..., "provider_route")` after route-affecting writes. Settings UI always clears “Saving…” in `finally` and soft-fails apply errors with a toast (config is already on disk).
 
 ## Import from CC Switch (#167)
 

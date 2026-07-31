@@ -698,6 +698,26 @@ pub fn activate_provider(
     }
 }
 
+/// Whether a provider mutation should recycle warm ACP processes so the next
+/// send reloads `config.toml` / auth material without a full app restart.
+///
+/// - `set_as_default` → active route or default model changed
+/// - Mutated id is the active custom route → key / base_url / backend edit
+pub fn provider_mutation_needs_agent_reload(
+    set_as_default: bool,
+    mutated_id: &str,
+    result: &ProvidersListResult,
+) -> bool {
+    if set_as_default {
+        return true;
+    }
+    let id = mutated_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    result.active_source == "custom" && result.active_provider_id.as_deref() == Some(id)
+}
+
 pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersListResult, String> {
     let id = sanitize_id(&input.id)?;
     let model = {
@@ -982,6 +1002,39 @@ mod tests {
             normalize_openai_base_url("https://api.yunyi.ai/v1/", "chat_completions"),
             "https://api.yunyi.ai/v1"
         );
+    }
+
+    #[test]
+    fn mutation_reload_when_default_or_active() {
+        let active = ProvidersListResult {
+            providers: vec![CustomProvider {
+                id: "relay".into(),
+                model: "m".into(),
+                base_url: "https://ex/v1".into(),
+                name: "Relay".into(),
+                has_api_key: true,
+                api_backend: "responses".into(),
+                is_default: true,
+            }],
+            default_model: Some("relay".into()),
+            active_source: "custom".into(),
+            active_provider_id: Some("relay".into()),
+            config_path: String::new(),
+            agent_home: String::new(),
+        };
+        assert!(provider_mutation_needs_agent_reload(true, "other", &active));
+        assert!(provider_mutation_needs_agent_reload(false, "relay", &active));
+        assert!(!provider_mutation_needs_agent_reload(
+            false, "other", &active
+        ));
+        let official = ProvidersListResult {
+            active_source: "official".into(),
+            active_provider_id: None,
+            ..active.clone()
+        };
+        assert!(!provider_mutation_needs_agent_reload(
+            false, "relay", &official
+        ));
     }
 
     #[test]
