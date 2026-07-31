@@ -1315,7 +1315,16 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.disallowedTools.clear": "全部清除",
   "settings.disallowedTools.webCovered":
     "web_search / web_fetch 也受上方「停用網頁搜尋」約束",
-    "settings.section.agent": "Agent",
+  "settings.backgroundWaitPolicy": "背景等待（無頭）",
+  "settings.backgroundWaitPolicyDesc":
+    "無頭首輪結束後（`grok -p`、遠端 IM、類自動化路徑）是否繼續等待背景 bash/monitor 與背景子代理（CLI 0.2.117+）。預設等待（CLI 預設）。CLI 足夠新時 ACP 啟動也會傳入頂層 flag；更舊 CLI soft-fail（省略 flag）。",
+  "settings.backgroundWait.wait": "等待（預設）",
+  "settings.backgroundWait.noWait": "不等待 — 首輪結束即退出",
+  "settings.backgroundWait.timeout": "限時等待…",
+  "settings.backgroundWaitTimeout": "背景等待逾時（秒）",
+  "settings.backgroundWaitTimeoutDesc":
+    "傳入 `grok --background-wait-timeout N`（1–3600）。僅在策略為「限時等待」時使用。變更後 soft-respawn。",
+  "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "允許子代理",
   "settings.subagentsEnabledDesc": "關閉時啟動加上 --no-subagents，無法拉起巢狀 Agent / 任務。變更後 soft-respawn。",
   "settings.planEnabled": "允許計畫模式",

@@ -248,6 +248,17 @@ pub struct AppSettings {
     /// `None` or `0` = omit the flag (CLI default / unlimited).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_agent_turns: Option<u32>,
+    /// Headless background-wait policy after the first agent turn
+    /// (`wait` | `no_wait` | `timeout`). CLI 0.2.117+; default `wait`
+    /// (omit flags). Affects headless `-p` / automations-like paths;
+    /// top-level flags are also passed on ACP spawn when the CLI is new
+    /// enough (soft-fail older builds).
+    #[serde(default = "default_background_wait_policy")]
+    pub background_wait_policy: String,
+    /// Seconds for `--background-wait-timeout` when policy is `timeout`.
+    /// Clamped 1–3600; default 600 (CLI default when waiting).
+    #[serde(default = "default_background_wait_timeout_sec")]
+    pub background_wait_timeout_sec: u32,
     /// When true, spawn agents with top-level `--disable-web-search` so
     /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
     #[serde(default)]
@@ -405,6 +416,14 @@ fn default_plan_enabled() -> bool {
     true
 }
 
+fn default_background_wait_policy() -> String {
+    "wait".into()
+}
+
+fn default_background_wait_timeout_sec() -> u32 {
+    crate::acp_client::DEFAULT_BACKGROUND_WAIT_TIMEOUT_SEC
+}
+
 fn default_voice_id() -> String {
     "eve".into()
 }
@@ -445,6 +464,8 @@ impl Default for AppSettings {
             sandbox_profile: default_sandbox_profile(),
             experimental_memory: false,
             max_agent_turns: None,
+            background_wait_policy: default_background_wait_policy(),
+            background_wait_timeout_sec: default_background_wait_timeout_sec(),
             disable_web_search: false,
             no_ask_user: false,
             disallowed_tools: Vec::new(),
@@ -2242,6 +2263,8 @@ mod tests {
         assert_eq!(s.sandbox_profile, "off");
         assert!(!s.experimental_memory);
         assert_eq!(s.max_agent_turns, None);
+        assert_eq!(s.background_wait_policy, "wait");
+        assert_eq!(s.background_wait_timeout_sec, 600);
         assert!(!s.disable_web_search);
         assert!(!s.no_ask_user);
         assert!(s.disallowed_tools.is_empty());

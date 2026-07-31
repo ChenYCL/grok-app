@@ -613,6 +613,16 @@ pub fn grok_turn_cli_args(
     session_id: Option<&str>,
     always_approve: bool,
 ) -> Vec<String> {
+    grok_turn_cli_args_with_bg_wait(prompt, session_id, always_approve, &[])
+}
+
+/// Headless `-p` argv builder with optional background-wait flags (CLI 0.2.117+).
+pub fn grok_turn_cli_args_with_bg_wait(
+    prompt: &str,
+    session_id: Option<&str>,
+    always_approve: bool,
+    bg_wait_flags: &[String],
+) -> Vec<String> {
     let mut args = vec!["-p".into(), prompt.to_string()];
     if always_approve {
         args.push("--always-approve".into());
@@ -623,6 +633,10 @@ pub fn grok_turn_cli_args(
     if let Some(sid) = session_id.map(|s| s.trim()).filter(|s| !s.is_empty()) {
         args.push("--resume".into());
         args.push(sid.to_string());
+    }
+    // Top-level headless flags: wait for background bash/monitor/subagents.
+    for f in bg_wait_flags {
+        args.push(f.clone());
     }
     args
 }

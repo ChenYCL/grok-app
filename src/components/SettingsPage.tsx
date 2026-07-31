@@ -439,6 +439,15 @@ export interface SettingsPageProps {
   /** Cap agent turns per process (`grok --max-turns`). 0/undefined = unlimited. */
   maxAgentTurns?: number;
   onMaxAgentTurns?: (v: number) => void;
+  /**
+   * Headless background-wait policy (CLI 0.2.117+): wait | no_wait | timeout.
+   * Affects headless `-p` / Remote IM; top-level flags also soft-gated on ACP.
+   */
+  backgroundWaitPolicy?: string;
+  onBackgroundWaitPolicy?: (v: string) => void;
+  /** Seconds for timeout policy (1–3600). */
+  backgroundWaitTimeoutSec?: number;
+  onBackgroundWaitTimeoutSec?: (v: number) => void;
   /** Preferred agent definition name for spawn (`""` = CLI default). */
   preferredAgent?: string;
   onPreferredAgent?: (v: string) => void;
@@ -1104,6 +1113,10 @@ export function SettingsPage({
   onSandboxProfile,
   maxAgentTurns = 0,
   onMaxAgentTurns,
+  backgroundWaitPolicy = "wait",
+  onBackgroundWaitPolicy,
+  backgroundWaitTimeoutSec = 600,
+  onBackgroundWaitTimeoutSec,
   preferredAgent = "",
   onPreferredAgent,
   agentProfilePath = "",
@@ -2535,6 +2548,82 @@ export function SettingsPage({
                       onMaxAgentTurns(Math.min(200, Math.max(0, Math.round(n))));
                     }}
                   />
+                </div>
+              ) : null}
+              {onBackgroundWaitPolicy ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-backgroundWait")
+                  }
+                  id="settings-anchor-backgroundWait"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.backgroundWaitPolicy")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.backgroundWaitPolicyDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={
+                      backgroundWaitPolicy === "no_wait" ||
+                      backgroundWaitPolicy === "timeout"
+                        ? backgroundWaitPolicy
+                        : "wait"
+                    }
+                    onChange={(v) => onBackgroundWaitPolicy(v)}
+                    options={[
+                      {
+                        value: "wait",
+                        label: t("settings.backgroundWait.wait"),
+                      },
+                      {
+                        value: "no_wait",
+                        label: t("settings.backgroundWait.noWait"),
+                      },
+                      {
+                        value: "timeout",
+                        label: t("settings.backgroundWait.timeout"),
+                      },
+                    ]}
+                    aria-label={t("settings.backgroundWaitPolicy")}
+                  />
+                  {backgroundWaitPolicy === "timeout" &&
+                  onBackgroundWaitTimeoutSec ? (
+                    <>
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("settings.backgroundWaitTimeout")}
+                        </div>
+                        <div className="settings-row__desc">
+                          {t("settings.backgroundWaitTimeoutDesc")}
+                        </div>
+                      </div>
+                      <input
+                        className="settings-input"
+                        type="number"
+                        min={1}
+                        max={3600}
+                        step={1}
+                        value={
+                          backgroundWaitTimeoutSec > 0
+                            ? backgroundWaitTimeoutSec
+                            : 600
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          const n = Number(raw);
+                          if (!Number.isFinite(n)) return;
+                          onBackgroundWaitTimeoutSec(
+                            Math.min(3600, Math.max(1, Math.round(n))),
+                          );
+                        }}
+                        aria-label={t("settings.backgroundWaitTimeout")}
+                      />
+                    </>
+                  ) : null}
                 </div>
               ) : null}
               {onPreferredAgent ? (
