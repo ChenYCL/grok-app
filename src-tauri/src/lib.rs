@@ -17,6 +17,7 @@ mod agent_todo_gate;
 mod agent_subagent_wt_snap;
 mod agent_auto_wake;
 mod agent_workflows;
+mod agent_two_pass_compaction;
 mod extensions;
 mod hooks;
 mod supergrok_quota;

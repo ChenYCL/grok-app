@@ -1230,6 +1230,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.compactionDetail.verbose": "詳細",
   "settings.compactionDetail.help":
     "僅在壓縮模式為「分段」時生效。CLI 預設為「詳細」。",
+  "settings.twoPassCompaction": "雙遍預熱壓縮",
+  "settings.twoPassCompactionDesc":
+    "開啟後，Grok Build 可在主壓縮前預熱層次化雙遍 compact（CLI 0.2.117+ 設定 two_pass_compaction_enabled 與 GROK_TWO_PASS_COMPACTION）。預設關閉。獨立模式寫入 agent-home config.toml；共享模式僅保留 App 設定（不改寫 ~/.grok）。變更後 soft-respawn；舊版 CLI soft-fail（省略 env）。",
   "settings.clearWorkspaceMemory": "清除工作區記憶",
   "settings.clearWorkspaceMemoryDesc":
     "對目前專案執行 grok memory clear（MEMORY.md、工作階段摘要、索引）。不會刪除應用程式內聊天紀錄。",

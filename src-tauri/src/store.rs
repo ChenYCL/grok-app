@@ -254,6 +254,12 @@ pub struct AppSettings {
     /// `GROK_COMPACTION_DETAIL`. Default `verbose` (CLI default). Soft-respawns on change.
     #[serde(default = "default_compaction_detail")]
     pub compaction_detail: String,
+    /// Prefire two-pass compaction (CLI **0.2.117+** config
+    /// `two_pass_compaction_enabled` + env `GROK_TWO_PASS_COMPACTION`).
+    /// Default **false** (opt-in). Independent mode writes the top-level agent-home
+    /// key; spawn sets env (soft-fail when CLI is known older). Soft-respawns.
+    #[serde(default)]
+    pub two_pass_compaction_enabled: bool,
     /// Cap agent turns per process via top-level `grok --max-turns N`.
     /// `None` or `0` = omit the flag (CLI default / unlimited).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -525,6 +531,7 @@ impl Default for AppSettings {
             experimental_memory: false,
             compaction_mode: default_compaction_mode(),
             compaction_detail: default_compaction_detail(),
+            two_pass_compaction_enabled: false,
             max_agent_turns: None,
             background_wait_policy: default_background_wait_policy(),
             background_wait_timeout_sec: default_background_wait_timeout_sec(),
@@ -2332,6 +2339,7 @@ mod tests {
         assert!(!s.experimental_memory);
         assert_eq!(s.compaction_mode, "summary");
         assert_eq!(s.compaction_detail, "verbose");
+        assert!(!s.two_pass_compaction_enabled);
         assert_eq!(s.max_agent_turns, None);
         assert_eq!(s.background_wait_policy, "wait");
         assert_eq!(s.background_wait_timeout_sec, 600);
@@ -2567,6 +2575,13 @@ mod tests {
         let d = AppSettings::default();
         assert_eq!(d.compaction_mode, "summary");
         assert_eq!(d.compaction_detail, "verbose");
+    }
+
+    #[test]
+    fn two_pass_compaction_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.two_pass_compaction_enabled);
+        assert!(!AppSettings::default().two_pass_compaction_enabled);
     }
 
     #[test]
