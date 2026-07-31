@@ -9334,3 +9334,17 @@ pub async fn wallpaper_library_list(
         .map_err(|e| format!("wallpaper_library_list: {e}"))?
 }
 
+/// Headless probe: `grok -p … --output-format streaming-messages-json` (CLI 0.2.117+).
+/// Soft-fails older CLIs without spawning. Raw NDJSON returned to UI only — never logged.
+#[tauri::command]
+pub async fn streaming_messages_json_probe(
+    include_partial: Option<bool>,
+) -> Result<crate::streaming_messages_json::StreamingMessagesJsonProbeResult, String> {
+    let include_partial = include_partial.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::streaming_messages_json::probe_streaming_messages_json(include_partial)
+    })
+    .await
+    .map_err(|e| format!("streaming_messages_json_probe: {e}"))
+}
+
