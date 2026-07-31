@@ -39,6 +39,10 @@ pub struct VoiceSessionState {
     pub thinking: bool,
     /// In-flight Build tool name when a host tool is running (honest loop status).
     pub active_tool: Option<String>,
+    /// Tool-loop status token: tool_running | permission_pending | completed | soft_fail | error.
+    pub tool_status: Option<String>,
+    /// When true (default), ending voice does not stop delegated Build agents.
+    pub keep_agents_on_end: bool,
     pub error: Option<String>,
     pub delegated_session_ids: Vec<String>,
 }
@@ -56,6 +60,8 @@ impl Default for VoiceSessionState {
             speaking: false,
             thinking: false,
             active_tool: None,
+            tool_status: None,
+            keep_agents_on_end: true,
             error: None,
             delegated_session_ids: vec![],
         }
@@ -67,6 +73,8 @@ struct LiveVoiceInner {
     /// Outbound PCM base64 chunks from the frontend mic.
     audio_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
     stop: Arc<AtomicBool>,
+    /// Bumped on each tool start and on voice stop so late finishes soft-fail.
+    tool_generation: u64,
 }
 
 pub struct VoiceHost {
@@ -86,6 +94,7 @@ impl VoiceHost {
                 state: VoiceSessionState::default(),
                 audio_tx: None,
                 stop: Arc::new(AtomicBool::new(false)),
+                tool_generation: 0,
             }),
         }
     }
@@ -107,8 +116,9 @@ impl VoiceHost {
         project_path: Option<String>,
         project_id: Option<String>,
         project_name: Option<String>,
+        keep_agents_on_end: bool,
     ) -> Result<VoiceSessionState, String> {
-        self.stop_internal(false).await;
+        self.stop_internal(&app, None, false).await;
 
         let mock = Self::is_mock_env();
         let settings = store::load_settings();
@@ -125,6 +135,7 @@ impl VoiceHost {
             let mut g = self.inner.lock();
             g.stop = stop.clone();
             g.audio_tx = Some(audio_tx);
+            g.tool_generation = 0;
             g.state = VoiceSessionState {
                 active: true,
                 mode: if mock { "mock".into() } else { "live".into() },
@@ -136,6 +147,8 @@ impl VoiceHost {
                 speaking: false,
                 thinking: false,
                 active_tool: None,
+                tool_status: None,
+                keep_agents_on_end,
                 error: None,
                 delegated_session_ids: vec![],
             };
@@ -196,28 +209,83 @@ impl VoiceHost {
         Ok(self.snapshot())
     }
 
-    pub async fn stop(&self, app: &AppHandle) -> VoiceSessionState {
-        self.stop_internal(true).await;
+    pub async fn stop(
+        &self,
+        app: &AppHandle,
+        mgr: &Arc<SessionManager>,
+    ) -> VoiceSessionState {
+        self.stop_internal(app, Some(mgr), true).await;
         self.emit_state(app);
         self.snapshot()
     }
 
-    async fn stop_internal(&self, clear_audio: bool) {
-        let stop_flag = {
+    /// Stop voice: cancel in-flight host tools (soft_fail/cancelled); optionally
+    /// stop delegated Build agents when `keep_agents_on_end` is false.
+    async fn stop_internal(
+        &self,
+        app: &AppHandle,
+        mgr: Option<&Arc<SessionManager>>,
+        clear_audio: bool,
+    ) {
+        let (stop_flag, active_tool, delegated, keep_agents) = {
             let mut g = self.inner.lock();
             g.stop.store(true, Ordering::SeqCst);
+            // Invalidate any in-flight execute_tool so late finishes soft-fail.
+            g.tool_generation = g.tool_generation.wrapping_add(1);
             if clear_audio {
                 g.audio_tx = None;
             }
+            let tool = g.state.active_tool.clone();
+            let delegated = g.state.delegated_session_ids.clone();
+            let keep = g.state.keep_agents_on_end;
             g.state.active = false;
             g.state.listening = false;
             g.state.speaking = false;
             g.state.thinking = false;
             g.state.active_tool = None;
+            g.state.tool_status = None;
             g.state.mode = "idle".into();
-            g.stop.clone()
+            (g.stop.clone(), tool, delegated, keep)
         };
         stop_flag.store(true, Ordering::SeqCst);
+
+        // Honest cancel of the host tool currently running (if any).
+        if let Some(name) = active_tool {
+            let out = voice_tools::soft_fail_result(
+                "cancelled",
+                "voice stopped — in-flight Build tool cancelled",
+            );
+            emit_tool_event(
+                app,
+                json!({
+                    "name": name,
+                    "status": "soft_fail",
+                    "reason": "cancelled",
+                    "errorClass": "cancelled",
+                    "message": "voice stopped — in-flight Build tool cancelled",
+                    "result": out,
+                }),
+            );
+            let _ = app.emit(
+                "voice://tool_result",
+                json!({
+                    "name": name,
+                    "status": "soft_fail",
+                    "reason": "cancelled",
+                    "result": out,
+                }),
+            );
+        }
+
+        // Optional: cancel delegated agent turns when user opted out of keep.
+        if voice_tools::should_cancel_delegated_agents_on_voice_stop(keep_agents) {
+            if let Some(mgr) = mgr {
+                for sid in delegated {
+                    let _ = mgr.stop(app.clone(), Some(sid)).await;
+                }
+            }
+        }
+
         // tiny yield so tasks notice
         tokio::task::yield_now().await;
     }
@@ -275,14 +343,16 @@ fn set_thinking(host: &VoiceHost, app: &AppHandle, thinking: bool) {
     } else if st.active && !st.speaking {
         st.listening = true;
         st.active_tool = None;
+        st.tool_status = None;
     }
     host.inner.lock().state = st;
     host.emit_state(app);
 }
 
-fn set_active_tool(host: &VoiceHost, app: &AppHandle, tool: Option<&str>) {
+fn set_active_tool(host: &VoiceHost, app: &AppHandle, tool: Option<&str>, status: Option<&str>) {
     let mut st = host.snapshot();
     st.active_tool = tool.map(|s| s.to_string());
+    st.tool_status = status.map(|s| s.to_string());
     if tool.is_some() {
         st.thinking = true;
         st.listening = false;
@@ -290,6 +360,22 @@ fn set_active_tool(host: &VoiceHost, app: &AppHandle, tool: Option<&str>) {
     }
     host.inner.lock().state = st;
     host.emit_state(app);
+}
+
+fn begin_tool(host: &VoiceHost, app: &AppHandle, name: &str) -> u64 {
+    let gen = {
+        let mut g = host.inner.lock();
+        g.tool_generation = g.tool_generation.wrapping_add(1);
+        g.tool_generation
+    };
+    set_thinking(host, app, true);
+    set_active_tool(host, app, Some(name), Some("tool_running"));
+    gen
+}
+
+fn tool_still_current(host: &VoiceHost, gen: u64) -> bool {
+    let g = host.inner.lock();
+    g.tool_generation == gen && !g.stop.load(Ordering::SeqCst)
 }
 
 fn emit_tool_event(app: &AppHandle, payload: Value) {
@@ -304,26 +390,82 @@ async fn execute_tool(
     name: &str,
     args_json: &str,
 ) -> Result<Value, String> {
-    set_thinking(host, app, true);
-    set_active_tool(host, app, Some(name));
+    let gen = begin_tool(host, app, name);
     emit_tool_event(
         app,
         json!({
             "name": name,
-            "status": "running",
+            "status": "tool_running",
             "args": args_json,
         }),
     );
 
+    // Bail early if voice already stopped before we run the tool body.
+    if !tool_still_current(host, gen) {
+        let out = voice_tools::soft_fail_result(
+            "cancelled",
+            "voice stopped — Build tool cancelled before start",
+        );
+        set_active_tool(host, app, None, None);
+        set_thinking(host, app, false);
+        emit_tool_event(
+            app,
+            json!({
+                "name": name,
+                "status": "soft_fail",
+                "reason": "cancelled",
+                "errorClass": "cancelled",
+                "result": out,
+            }),
+        );
+        return Ok(out);
+    }
+
     let result = execute_tool_inner(app, mgr, host, snap, name, args_json).await;
 
-    set_active_tool(host, app, None);
+    // Voice stop (or a newer tool) invalidated this generation — soft-fail cancel.
+    if !tool_still_current(host, gen) {
+        let out = voice_tools::soft_fail_result(
+            "cancelled",
+            "voice stopped — in-flight Build tool cancelled",
+        );
+        set_active_tool(host, app, None, None);
+        set_thinking(host, app, false);
+        emit_tool_event(
+            app,
+            json!({
+                "name": name,
+                "status": "soft_fail",
+                "reason": "cancelled",
+                "errorClass": "cancelled",
+                "message": "voice stopped — in-flight Build tool cancelled",
+                "result": out,
+            }),
+        );
+        let _ = app.emit(
+            "voice://tool_result",
+            json!({
+                "name": name,
+                "status": "soft_fail",
+                "reason": "cancelled",
+                "result": out,
+            }),
+        );
+        return Ok(out);
+    }
+
+    set_active_tool(host, app, None, None);
     set_thinking(host, app, false);
 
     match result {
         Ok(out) => {
             let soft = voice_tools::soft_fail_reason(&out);
-            let status = if soft.is_some() { "soft_fail" } else { "ok" };
+            // VOX-BUILD-FULL: completed | soft_fail (not legacy ok).
+            let status = if soft.is_some() {
+                "soft_fail"
+            } else {
+                "completed"
+            };
             let mut payload = json!({
                 "name": name,
                 "status": status,
@@ -344,12 +486,23 @@ async fn execute_tool(
                     .as_object_mut()
                     .map(|o| o.insert("sessionId".into(), json!(sid)));
             }
-            emit_tool_event(app, payload);
+            // Surface permission wait honestly when agent reports awaiting_permission.
+            if out
+                .get("awaiting_permission")
+                .and_then(|x| x.as_bool())
+                == Some(true)
+            {
+                payload.as_object_mut().map(|o| {
+                    o.insert("status".into(), json!("permission_pending"));
+                });
+                set_active_tool(host, app, Some(name), Some("permission_pending"));
+            }
+            emit_tool_event(app, payload.clone());
             let _ = app.emit(
                 "voice://tool_result",
                 json!({
                     "name": name,
-                    "status": status,
+                    "status": payload.get("status").cloned().unwrap_or(json!(status)),
                     "result": out,
                 }),
             );
@@ -357,8 +510,8 @@ async fn execute_tool(
         }
         Err(e) => {
             let class = voice_tools::classify_tool_error(&e);
-            // Soft-fail CLI missing (and similar): return structured result so
-            // the voice model can narrate honestly without killing the session.
+            // Soft-fail CLI missing / permission deny / cancel: return structured
+            // result so the voice model can narrate without killing the session.
             if voice_tools::is_soft_tool_error(class) {
                 let out = voice_tools::soft_fail_result(class, &e);
                 emit_tool_event(
@@ -518,12 +671,20 @@ async fn execute_tool_inner(
                     .await;
             }
             let live = mgr.snapshot();
+            let state_str = format!("{:?}", live.state).to_lowercase();
+            // Prefer serde snake_case via json round-trip for honesty.
+            let state_json = serde_json::to_value(&live.state)
+                .ok()
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .unwrap_or(state_str);
+            let awaiting_permission = state_json == "awaiting_permission";
             json!({
                 "session_id": live.session_id,
                 "state": live.state,
                 "title": live.title,
                 "backend": live.backend,
                 "lastError": live.last_error,
+                "awaiting_permission": awaiting_permission,
             })
         }
         voice_tools::VoiceToolName::CancelAgent => {
@@ -800,6 +961,7 @@ pub async fn voice_start(
     project_path: Option<String>,
     project_id: Option<String>,
     project_name: Option<String>,
+    keep_agents_on_end: Option<bool>,
 ) -> Result<VoiceSessionState, String> {
     host.start(
         app,
@@ -807,6 +969,7 @@ pub async fn voice_start(
         project_path,
         project_id,
         project_name,
+        keep_agents_on_end.unwrap_or(true),
     )
     .await
 }
@@ -815,8 +978,9 @@ pub async fn voice_start(
 pub async fn voice_stop(
     app: AppHandle,
     host: State<'_, Arc<VoiceHost>>,
+    mgr: State<'_, Arc<SessionManager>>,
 ) -> Result<VoiceSessionState, String> {
-    Ok(host.stop(&app).await)
+    Ok(host.stop(&app, mgr.inner()).await)
 }
 
 #[tauri::command]
@@ -870,5 +1034,21 @@ mod tests {
         let h = VoiceHost::new();
         assert!(!h.snapshot().active);
         assert!(h.snapshot().active_tool.is_none());
+        assert!(h.snapshot().keep_agents_on_end);
+        assert!(h.snapshot().tool_status.is_none());
+    }
+
+    #[test]
+    fn tool_generation_invalidates_on_begin() {
+        let h = VoiceHost::new();
+        // Simulated: begin bumps gen so prior gen is stale.
+        {
+            let mut g = h.inner.lock();
+            g.tool_generation = 1;
+        }
+        assert!(!tool_still_current(&h, 0));
+        assert!(tool_still_current(&h, 1));
+        h.inner.lock().stop.store(true, Ordering::SeqCst);
+        assert!(!tool_still_current(&h, 1));
     }
 }

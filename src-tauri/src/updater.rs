@@ -121,7 +121,8 @@ pub async fn prepare_for_app_update(
     info!(target: "grok_app::updater", "stopping managed processes before app relaunch");
 
     // Voice realtime session first (network + tool delegation).
-    let _ = voice.stop(&app).await;
+    // Pass SessionManager so keep_agents_on_end=false can cancel delegated turns.
+    let _ = voice.stop(&app, mgr.inner()).await;
 
     // Remote IM connectors (Feishu / Weixin / …).
     // Hold `inner` only while stop_async runs; stop_async does not re-enter `inner`.

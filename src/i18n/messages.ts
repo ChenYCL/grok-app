@@ -4825,12 +4825,19 @@ const en = {
   "voice.toolSoftFail":
     "Build tool soft-failed ({name}): {reason}. Voice stays open — fix CLI/mic and retry.",
   "voice.toolFailed": "Build tool failed: {name}",
+  "voice.permissionPending":
+    "Permission needed for Build tool ({title}). Allow or deny below.",
+  "voice.permissionAllowed": "Permission allowed for {name}. Agent continues.",
   "voice.err.mic_denied":
     "Microphone permission denied. Live Voice can still play audio and run Build tools without capture.",
   "voice.err.mic_missing":
     "No microphone found. Live Voice can still play audio and run Build tools without capture.",
   "voice.err.cli_missing":
     "Grok Build CLI not found. Install Grok Build or set the path under Settings \u2192 Runtime.",
+  "voice.err.permission_denied":
+    "Build tool permission denied. Voice stays open — allow next time or adjust permission mode.",
+  "voice.err.cancelled":
+    "Build tool cancelled because Live Voice stopped. Voice stays closed; agents follow Keep coding sessions setting.",
   "voice.err.auth":
     "Voice auth failed. Sign in with Grok CLI (`grok login`) or add an official API key under Account.",
   "voice.err.network":
@@ -9958,12 +9965,19 @@ const zh: Record<MessageKey, string> = {
   "voice.toolSoftFail":
     "Build 工具软失败（{name}）：{reason}。语音会话保持开启 — 请修复 CLI/麦克风后重试。",
   "voice.toolFailed": "Build 工具失败：{name}",
+  "voice.permissionPending":
+    "Build 工具需要授权（{title}）。请在下方允许或拒绝。",
+  "voice.permissionAllowed": "已允许 {name}。Agent 继续执行。",
   "voice.err.mic_denied":
     "麦克风权限被拒绝。实时语音仍可播放音频并运行 Build 工具（无采集）。",
   "voice.err.mic_missing":
     "未检测到麦克风。实时语音仍可播放音频并运行 Build 工具（无采集）。",
   "voice.err.cli_missing":
     "未找到 Grok Build CLI。请安装 Grok Build，或在 设置 → 运行时 中配置路径。",
+  "voice.err.permission_denied":
+    "Build 工具权限被拒绝。语音保持开启 — 下次允许或调整权限模式。",
+  "voice.err.cancelled":
+    "因结束实时语音，Build 工具已取消。是否停止委派会话取决于「结束后保留编码会话」设置。",
   "voice.err.auth":
     "语音鉴权失败。请用 Grok CLI 登录（`grok login`），或在账户中添加官方 API key。",
   "voice.err.network": "无法连接语音服务，请检查网络后重试。",

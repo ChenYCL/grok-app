@@ -4087,6 +4087,13 @@ export interface VoiceSessionState {
   thinking?: boolean;
   /** Host: in-flight Build tool name while voice → agent loop runs. */
   activeTool?: string | null;
+  /**
+   * Host tool-loop status token:
+   * tool_running | permission_pending | completed | soft_fail | error.
+   */
+  toolStatus?: string | null;
+  /** When true (default), ending voice does not stop delegated Build agents. */
+  keepAgentsOnEnd?: boolean;
 }
 
 export async function voiceState(): Promise<VoiceSessionState> {
