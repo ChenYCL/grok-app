@@ -511,6 +511,36 @@ export const zhTW: Record<MessageKey, string> = {
   "changes.needProject": "請先選擇專案以接受或拒絕變更",
   "changes.hunks": "變更區塊",
   "changes.hunkLabel": "第 {n} 塊",
+  "changes.batchGroup": "批量操作",
+  "changes.acceptAllRemaining": "接受全部剩餘",
+  "changes.acceptAllRemainingShort": "全部接受",
+  "changes.acceptAllRemainingTip":
+    "接受工作階段中所有剩餘檔案（略過衝突與已接受）",
+  "changes.rejectAllRemaining": "拒絕全部剩餘",
+  "changes.rejectAllRemainingShort": "全部拒絕",
+  "changes.rejectAllRemainingTip":
+    "拒絕工作階段中所有剩餘檔案（略過衝突；刪除未追蹤前需確認）",
+  "changes.acceptAllHunks": "接受全部剩餘區塊",
+  "changes.acceptAllHunksTip": "將此檔案中全部剩餘 hunk 套用到磁碟",
+  "changes.rejectAllHunks": "拒絕全部剩餘區塊",
+  "changes.rejectAllHunksTip": "撤銷此檔案中全部剩餘 hunk",
+  "changes.batchNothingRemaining": "沒有可處理的剩餘變更",
+  "changes.batchProgress": "{action}… {current}/{total}",
+  "changes.batchAcceptSummary":
+    "批量接受：{ok} 成功 · {fail} 失敗 · {skipped} 略過（共 {total}）",
+  "changes.batchRejectSummary":
+    "批量拒絕：{ok} 成功 · {fail} 失敗 · {skipped} 略過（共 {total}）",
+  "changes.batchRejectConfirmTitle": "拒絕全部剩餘變更？",
+  "changes.batchRejectConfirmBody":
+    "會將 {n} 個檔案還原為 HEAD（或修改前快照）。若仍保留快照，之後可按「還原」。",
+  "changes.batchRejectConfirmUntrackedTitle": "拒絕剩餘（含未追蹤檔案）？",
+  "changes.batchRejectConfirmUntrackedBody":
+    "將拒絕 {n} 個檔案，其中 {u} 個未追蹤/新增檔案會從磁碟刪除。僅當仍有快照時可「還原」。",
+  "changes.batchHunksRejectConfirmTitle": "拒絕全部剩餘區塊？",
+  "changes.batchHunksRejectConfirmBody":
+    "撤銷「{name}」中的 {n} 個 hunk，將寫入不含這些區塊的內容。",
+  "changes.batchHunksAcceptDone": "已接受 {n} 個區塊",
+  "changes.batchHunksRejectDone": "已拒絕 {n} 個區塊",
 
   "rules.title": "規則",
   "rules.modalTitleNamed": "專案規則 · {name}",

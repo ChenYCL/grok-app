@@ -14692,6 +14692,18 @@ textarea::-webkit-scrollbar-thumb:active,
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.rp__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent, #6c8cff) 10%, transparent);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
 /* ── Single chrome: tabs + open/tree/close (no second title row) ───────────
    Strict lock to --titlebar-height so the bottom border lines up with .main__top
    (padding vertical 0; height includes border via border-box — same as main). */
@@ -15804,6 +15816,42 @@ textarea::-webkit-scrollbar-thumb:active,
   gap: 6px;
   padding: 4px 10px 6px;
   min-height: 22px;
+  flex-wrap: wrap;
+}
+
+.rp-changes-section__batch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.rp-changes-batch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 6px !important;
+  min-height: 22px;
+  white-space: nowrap;
+}
+
+.rp-changes-batch-btn span {
+  line-height: 1;
+}
+
+.rp-changes-batch-progress {
+  padding: 2px 12px 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.rp-diff-hunks__batch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
 }
 
 .rp-changes-section__title {

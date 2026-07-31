@@ -424,3 +424,344 @@ export function planFileRestore(opts: {
   }
   return { mode: "unavailable", reason: "no after snapshot to restore" };
 }
+
+// ─── Batch accept / reject (session or file scope) ─────────────────────────
+
+export type BatchDiffAction = "accept" | "reject";
+export type BatchDiffScope = "session" | "file" | "hunks";
+
+export type BatchFileSkipReason =
+  | "already_decided"
+  | "conflict"
+  | "unavailable"
+  | "empty_path"
+  | "no_remaining";
+
+/** One file considered by a batch plan (pure; no I/O). */
+export type BatchFileInput = {
+  path: string;
+  name?: string;
+  kind?: string | null;
+  after?: string | null;
+  before?: string | null;
+  /** Prior accept/reject badge for this path in the Changes UI. */
+  decision?: "accepted" | "rejected" | null;
+  /** Disk presence; false → skip untracked wipe. Default assumed true. */
+  fileExists?: boolean;
+};
+
+export type BatchFileRunAction =
+  | { action: "accept"; plan: AcceptPlan }
+  | { action: "reject"; plan: RejectPlan; needsUntrackedConfirm: boolean };
+
+export type BatchFilePlanEntry = {
+  path: string;
+  name: string;
+  kind: string | null;
+  outcome:
+    | { kind: "run"; run: BatchFileRunAction }
+    | { kind: "skip"; reason: BatchFileSkipReason; detail?: string };
+};
+
+export type BatchDiffPlan = {
+  action: BatchDiffAction;
+  scope: BatchDiffScope;
+  entries: BatchFilePlanEntry[];
+  /** Files the host should process (includes those needing untracked confirm). */
+  run: BatchFilePlanEntry[];
+  skipped: BatchFilePlanEntry[];
+  /** Subset of `run` that still need wipe confirm before delete/checkout. */
+  needsUntrackedConfirm: BatchFilePlanEntry[];
+  runCount: number;
+  skipCount: number;
+  untrackedConfirmCount: number;
+  canRun: boolean;
+};
+
+export type BatchResultStatus = "ok" | "soft_fail" | "skipped" | "error";
+
+export type BatchDiffResultItem = {
+  path: string;
+  name: string;
+  status: BatchResultStatus;
+  reason?: string;
+};
+
+export type BatchDiffSummary = {
+  action: BatchDiffAction;
+  ok: number;
+  softFail: number;
+  skipped: number;
+  error: number;
+  total: number;
+  items: BatchDiffResultItem[];
+};
+
+/** True when kind is a merge conflict — batch skips these (soft). */
+export function isConflictKind(kind?: string | null): boolean {
+  return (kind || "").toLowerCase().trim() === "conflict";
+}
+
+/** Skip when the UI already recorded the same decision for this path. */
+export function isAlreadyDecided(
+  decision: "accepted" | "rejected" | null | undefined,
+  action: BatchDiffAction,
+): boolean {
+  if (!decision) return false;
+  return (
+    (action === "accept" && decision === "accepted") ||
+    (action === "reject" && decision === "rejected")
+  );
+}
+
+function entryName(item: BatchFileInput): string {
+  const n = (item.name || "").trim();
+  if (n) return n;
+  const p = (item.path || "").replace(/\\/g, "/");
+  const parts = p.split("/").filter(Boolean);
+  return parts[parts.length - 1] || p || "?";
+}
+
+/**
+ * Indices of hunks not yet resolved (for file-scoped “accept/reject all remaining”).
+ * When `resolvedIndices` is empty, every hunk is remaining.
+ */
+export function remainingHunkIndices(
+  totalHunks: number,
+  resolvedIndices: readonly number[] = [],
+): number[] {
+  const n = Math.max(0, Math.floor(totalHunks));
+  if (n === 0) return [];
+  const done = new Set(
+    resolvedIndices.filter((i) => Number.isInteger(i) && i >= 0 && i < n),
+  );
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (!done.has(i)) out.push(i);
+  }
+  return out;
+}
+
+function skipEntry(
+  item: BatchFileInput,
+  reason: BatchFileSkipReason,
+  detail?: string,
+): BatchFilePlanEntry {
+  return {
+    path: item.path || "",
+    name: entryName(item),
+    kind: item.kind ?? null,
+    outcome: { kind: "skip", reason, detail },
+  };
+}
+
+/** Plan one file for batch accept (skip conflict / already accepted). */
+export function planBatchFileAccept(item: BatchFileInput): BatchFilePlanEntry {
+  const path = (item.path || "").trim();
+  if (!path) return skipEntry(item, "empty_path");
+  if (isConflictKind(item.kind)) {
+    return skipEntry(item, "conflict", "merge conflict");
+  }
+  if (isAlreadyDecided(item.decision, "accept")) {
+    return skipEntry(item, "already_decided");
+  }
+  const plan = planFileAccept({ after: item.after });
+  if (plan.mode === "unavailable") {
+    return skipEntry(item, "unavailable", plan.reason);
+  }
+  return {
+    path,
+    name: entryName(item),
+    kind: item.kind ?? null,
+    outcome: {
+      kind: "run",
+      run: { action: "accept", plan },
+    },
+  };
+}
+
+/** Plan one file for batch reject (skip conflict / already rejected; flag wipe). */
+export function planBatchFileReject(
+  item: BatchFileInput,
+  opts?: { hasGitRepo?: boolean },
+): BatchFilePlanEntry {
+  const path = (item.path || "").trim();
+  if (!path) return skipEntry(item, "empty_path");
+  if (isConflictKind(item.kind)) {
+    return skipEntry(item, "conflict", "merge conflict");
+  }
+  if (isAlreadyDecided(item.decision, "reject")) {
+    return skipEntry(item, "already_decided");
+  }
+  const plan = planFileReject({
+    hasGitRepo: !!opts?.hasGitRepo,
+    kind: item.kind,
+    before: item.before,
+    fileExists: item.fileExists,
+  });
+  if (plan.mode === "unavailable") {
+    return skipEntry(item, "unavailable", plan.reason);
+  }
+  const needsUntrackedConfirm =
+    (plan.mode === "git" && plan.confirmUntracked) ||
+    (plan.mode === "delete" && plan.confirmUntracked) ||
+    needsUntrackedWipeConfirm(item.kind);
+  return {
+    path,
+    name: entryName(item),
+    kind: item.kind ?? null,
+    outcome: {
+      kind: "run",
+      run: { action: "reject", plan, needsUntrackedConfirm },
+    },
+  };
+}
+
+function assembleBatchPlan(
+  action: BatchDiffAction,
+  scope: BatchDiffScope,
+  entries: BatchFilePlanEntry[],
+): BatchDiffPlan {
+  const run = entries.filter((e) => e.outcome.kind === "run");
+  const skipped = entries.filter((e) => e.outcome.kind === "skip");
+  const needsUntrackedConfirm = run.filter(
+    (e) =>
+      e.outcome.kind === "run" &&
+      e.outcome.run.action === "reject" &&
+      e.outcome.run.needsUntrackedConfirm,
+  );
+  return {
+    action,
+    scope,
+    entries,
+    run,
+    skipped,
+    needsUntrackedConfirm,
+    runCount: run.length,
+    skipCount: skipped.length,
+    untrackedConfirmCount: needsUntrackedConfirm.length,
+    canRun: run.length > 0,
+  };
+}
+
+/** Build a session- or file-scoped batch accept plan. */
+export function planBatchAccept(
+  files: readonly BatchFileInput[],
+  opts?: { scope?: BatchDiffScope },
+): BatchDiffPlan {
+  const entries = files.map((f) => planBatchFileAccept(f));
+  return assembleBatchPlan("accept", opts?.scope ?? "session", entries);
+}
+
+/** Build a session- or file-scoped batch reject plan. */
+export function planBatchReject(
+  files: readonly BatchFileInput[],
+  opts?: { hasGitRepo?: boolean; scope?: BatchDiffScope },
+): BatchDiffPlan {
+  const entries = files.map((f) =>
+    planBatchFileReject(f, { hasGitRepo: opts?.hasGitRepo }),
+  );
+  return assembleBatchPlan("reject", opts?.scope ?? "session", entries);
+}
+
+/**
+ * File-scoped remaining-hunks plan. When no indices remain, returns canRun false.
+ * Accept = apply selected hunks onto before; reject = reverse them from after.
+ */
+export type BatchHunksPlan =
+  | {
+      ok: true;
+      action: BatchDiffAction;
+      indices: number[];
+      /** Content to write when apply succeeds. */
+      content: string;
+    }
+  | {
+      ok: false;
+      reason: BatchFileSkipReason | "apply_failed";
+      detail?: string;
+    };
+
+export function planBatchRemainingHunks(opts: {
+  action: BatchDiffAction;
+  hunks: readonly UnifiedHunk[];
+  /** Already resolved hunk indices (empty → all remaining). */
+  resolvedIndices?: readonly number[];
+  before?: string | null;
+  after?: string | null;
+}): BatchHunksPlan {
+  const indices = remainingHunkIndices(
+    opts.hunks.length,
+    opts.resolvedIndices ?? [],
+  );
+  if (indices.length === 0) {
+    return { ok: false, reason: "no_remaining" };
+  }
+  if (opts.action === "accept") {
+    if (typeof opts.before !== "string") {
+      return {
+        ok: false,
+        reason: "unavailable",
+        detail: "hunk accept needs before snapshot",
+      };
+    }
+    const r = applySelectedHunks(opts.before, opts.hunks, indices);
+    if (!r.ok) {
+      return { ok: false, reason: "apply_failed", detail: r.error };
+    }
+    return { ok: true, action: "accept", indices, content: r.content };
+  }
+  if (typeof opts.after !== "string") {
+    return {
+      ok: false,
+      reason: "unavailable",
+      detail: "hunk reject needs after snapshot",
+    };
+  }
+  const r = rejectSelectedHunks(opts.after, opts.hunks, indices);
+  if (!r.ok) {
+    return { ok: false, reason: "apply_failed", detail: r.error };
+  }
+  return { ok: true, action: "reject", indices, content: r.content };
+}
+
+/** Aggregate host results into a soft-fail summary. */
+export function summarizeBatchResults(
+  action: BatchDiffAction,
+  items: readonly BatchDiffResultItem[],
+): BatchDiffSummary {
+  let ok = 0;
+  let softFail = 0;
+  let skipped = 0;
+  let error = 0;
+  for (const it of items) {
+    if (it.status === "ok") ok++;
+    else if (it.status === "soft_fail") softFail++;
+    else if (it.status === "skipped") skipped++;
+    else error++;
+  }
+  return {
+    action,
+    ok,
+    softFail,
+    skipped,
+    error,
+    total: items.length,
+    items: items.slice(),
+  };
+}
+
+/** Vars for i18n summary strings: ok / fail / skipped / total. */
+export function batchSummaryVars(summary: BatchDiffSummary): {
+  ok: string;
+  fail: string;
+  skipped: string;
+  total: string;
+} {
+  return {
+    ok: String(summary.ok),
+    fail: String(summary.softFail + summary.error),
+    skipped: String(summary.skipped),
+    total: String(summary.total),
+  };
+}

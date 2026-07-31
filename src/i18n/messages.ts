@@ -549,6 +549,36 @@ const en = {
   "changes.needProject": "Select a project to accept or reject changes",
   "changes.hunks": "Hunks",
   "changes.hunkLabel": "Hunk {n}",
+  "changes.batchGroup": "Batch actions",
+  "changes.acceptAllRemaining": "Accept all remaining",
+  "changes.acceptAllRemainingShort": "Accept all",
+  "changes.acceptAllRemainingTip":
+    "Accept every remaining session file (skips conflicts and already accepted)",
+  "changes.rejectAllRemaining": "Reject all remaining",
+  "changes.rejectAllRemainingShort": "Reject all",
+  "changes.rejectAllRemainingTip":
+    "Reject every remaining session file (skips conflicts; confirms untracked deletes)",
+  "changes.acceptAllHunks": "Accept all remaining hunks",
+  "changes.acceptAllHunksTip": "Apply every remaining hunk in this file",
+  "changes.rejectAllHunks": "Reject all remaining hunks",
+  "changes.rejectAllHunksTip": "Undo every remaining hunk in this file",
+  "changes.batchNothingRemaining": "No remaining changes to process",
+  "changes.batchProgress": "{action}… {current}/{total}",
+  "changes.batchAcceptSummary":
+    "Accept batch: {ok} ok · {fail} failed · {skipped} skipped (of {total})",
+  "changes.batchRejectSummary":
+    "Reject batch: {ok} ok · {fail} failed · {skipped} skipped (of {total})",
+  "changes.batchRejectConfirmTitle": "Reject all remaining changes?",
+  "changes.batchRejectConfirmBody":
+    "This restores {n} file(s) to HEAD (or before snapshot). You can Restore afterward if snapshots are kept.",
+  "changes.batchRejectConfirmUntrackedTitle": "Reject remaining (includes untracked)?",
+  "changes.batchRejectConfirmUntrackedBody":
+    "This rejects {n} file(s), including {u} untracked/added that will be deleted from disk. Restore only works when a snapshot was kept.",
+  "changes.batchHunksRejectConfirmTitle": "Reject all remaining hunks?",
+  "changes.batchHunksRejectConfirmBody":
+    "Undo {n} hunk(s) in “{name}”. This writes the file without those hunks.",
+  "changes.batchHunksAcceptDone": "Accepted {n} hunk(s)",
+  "changes.batchHunksRejectDone": "Rejected {n} hunk(s)",
 
   // Project rules (AGENTS.md / CLAUDE.md / .grok rules) — project menu modal
   "rules.title": "Rules",
@@ -5912,6 +5942,36 @@ const zh: Record<MessageKey, string> = {
   "changes.needProject": "请先选择项目以接受或拒绝变更",
   "changes.hunks": "变更块",
   "changes.hunkLabel": "第 {n} 块",
+  "changes.batchGroup": "批量操作",
+  "changes.acceptAllRemaining": "接受全部剩余",
+  "changes.acceptAllRemainingShort": "全部接受",
+  "changes.acceptAllRemainingTip":
+    "接受会话中所有剩余文件（跳过冲突与已接受）",
+  "changes.rejectAllRemaining": "拒绝全部剩余",
+  "changes.rejectAllRemainingShort": "全部拒绝",
+  "changes.rejectAllRemainingTip":
+    "拒绝会话中所有剩余文件（跳过冲突；删除未跟踪前需确认）",
+  "changes.acceptAllHunks": "接受全部剩余块",
+  "changes.acceptAllHunksTip": "将此文件中全部剩余 hunk 应用到磁盘",
+  "changes.rejectAllHunks": "拒绝全部剩余块",
+  "changes.rejectAllHunksTip": "撤销此文件中全部剩余 hunk",
+  "changes.batchNothingRemaining": "没有可处理的剩余变更",
+  "changes.batchProgress": "{action}… {current}/{total}",
+  "changes.batchAcceptSummary":
+    "批量接受：{ok} 成功 · {fail} 失败 · {skipped} 跳过（共 {total}）",
+  "changes.batchRejectSummary":
+    "批量拒绝：{ok} 成功 · {fail} 失败 · {skipped} 跳过（共 {total}）",
+  "changes.batchRejectConfirmTitle": "拒绝全部剩余变更？",
+  "changes.batchRejectConfirmBody":
+    "将把 {n} 个文件恢复为 HEAD（或修改前快照）。若仍保留快照，之后可点「还原」。",
+  "changes.batchRejectConfirmUntrackedTitle": "拒绝剩余（含未跟踪文件）？",
+  "changes.batchRejectConfirmUntrackedBody":
+    "将拒绝 {n} 个文件，其中 {u} 个未跟踪/新增文件会从磁盘删除。仅当仍有快照时可「还原」。",
+  "changes.batchHunksRejectConfirmTitle": "拒绝全部剩余块？",
+  "changes.batchHunksRejectConfirmBody":
+    "撤销「{name}」中的 {n} 个 hunk，将写入不含这些块的内容。",
+  "changes.batchHunksAcceptDone": "已接受 {n} 个块",
+  "changes.batchHunksRejectDone": "已拒绝 {n} 个块",
 
   "rules.title": "规则",
   "rules.modalTitleNamed": "项目规则 · {name}",
