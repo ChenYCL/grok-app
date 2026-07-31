@@ -1285,13 +1285,23 @@ const en = {
   "settings.shortcuts.cancelRecord": "Cancel",
   "settings.shortcuts.reset": "Reset",
   "settings.shortcuts.resetAll": "Reset all",
+  "settings.shortcuts.customCount": "({n})",
+  "settings.shortcuts.resetAllTitle": "Reset all custom shortcuts?",
+  "settings.shortcuts.resetAllMsg":
+    "This clears {n} custom binding(s) and restores catalog defaults. Fixed keys (Send, Esc, dictation) stay unchanged.",
+  "settings.shortcuts.resetAllConfirm": "Reset all",
   "settings.shortcuts.pressKeys": "Press keys…",
   "settings.shortcuts.recordingHint":
     "Press a new shortcut (include ⌘/Ctrl). Escape cancels.",
   "settings.shortcuts.conflict": "That chord is already used by “{action}”. Choose another chord or cancel.",
   "settings.shortcuts.conflictsTitle": "Conflicts",
+  "settings.shortcuts.conflictsSummary":
+    "{groups} chords · {actions} actions",
   "settings.shortcuts.conflictsDesc":
     "These chords are bound to more than one action. Only one binding can win at runtime — reset or re-record the extras.",
+  "settings.shortcuts.conflictsRemappedHint":
+    "{n} custom binding(s) participate and can be reset below.",
+  "settings.shortcuts.conflictsGroupMeta": "{n} actions",
   "settings.shortcuts.conflictsReset": "Reset conflicting to default",
   "settings.shortcuts.customBadge": "Custom binding",
   "settings.shortcuts.fixed": "Fixed",
@@ -6340,13 +6350,23 @@ const zh: Record<MessageKey, string> = {
   "settings.shortcuts.cancelRecord": "取消",
   "settings.shortcuts.reset": "重置",
   "settings.shortcuts.resetAll": "全部重置",
+  "settings.shortcuts.customCount": "({n})",
+  "settings.shortcuts.resetAllTitle": "重置全部自定义快捷键？",
+  "settings.shortcuts.resetAllMsg":
+    "将清除 {n} 个自定义绑定并恢复目录默认键位。固定键（发送、Esc、语音输入）不受影响。",
+  "settings.shortcuts.resetAllConfirm": "全部重置",
   "settings.shortcuts.pressKeys": "请按键…",
   "settings.shortcuts.recordingHint":
     "按下新的快捷键（需包含 ⌘/Ctrl）。Esc 取消录制。",
   "settings.shortcuts.conflict": "该组合键已被「{action}」占用。请换一组键，或取消录制。",
   "settings.shortcuts.conflictsTitle": "冲突",
+  "settings.shortcuts.conflictsSummary":
+    "{groups} 组组合键 · {actions} 个操作",
   "settings.shortcuts.conflictsDesc":
     "以下组合键绑定了多个操作。运行时只会生效其中一个——请重置或重新录制多余的绑定。",
+  "settings.shortcuts.conflictsRemappedHint":
+    "其中 {n} 个自定义绑定可在下方重置。",
+  "settings.shortcuts.conflictsGroupMeta": "{n} 个操作",
   "settings.shortcuts.conflictsReset": "将冲突项重置为默认",
   "settings.shortcuts.customBadge": "自定义绑定",
   "settings.shortcuts.fixed": "固定",

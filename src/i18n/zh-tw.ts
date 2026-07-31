@@ -1222,13 +1222,23 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.shortcuts.cancelRecord": "取消",
   "settings.shortcuts.reset": "重設",
   "settings.shortcuts.resetAll": "全部重設",
+  "settings.shortcuts.customCount": "({n})",
+  "settings.shortcuts.resetAllTitle": "重設全部自訂快捷鍵？",
+  "settings.shortcuts.resetAllMsg":
+    "將清除 {n} 個自訂綁定並恢復目錄預設鍵位。固定鍵（傳送、Esc、語音輸入）不受影響。",
+  "settings.shortcuts.resetAllConfirm": "全部重設",
   "settings.shortcuts.pressKeys": "請按鍵…",
   "settings.shortcuts.recordingHint":
     "按下新的快捷鍵（需包含 ⌘/Ctrl）。Esc 取消錄製。",
   "settings.shortcuts.conflict": "該組合鍵已被「{action}」占用。請換一組鍵，或取消錄製。",
   "settings.shortcuts.conflictsTitle": "衝突",
+  "settings.shortcuts.conflictsSummary":
+    "{groups} 組組合鍵 · {actions} 個操作",
   "settings.shortcuts.conflictsDesc":
     "以下組合鍵綁定了多個操作。執行時只會生效其中一個——請重設或重新錄製多餘的綁定。",
+  "settings.shortcuts.conflictsRemappedHint":
+    "其中 {n} 個自訂綁定可在下方重設。",
+  "settings.shortcuts.conflictsGroupMeta": "{n} 個操作",
   "settings.shortcuts.conflictsReset": "將衝突項重設為預設",
   "settings.shortcuts.customBadge": "自訂綁定",
   "settings.shortcuts.fixed": "固定",

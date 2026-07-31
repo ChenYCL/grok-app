@@ -710,3 +710,81 @@ export function hasAnyShortcutRemaps(
   const map = remaps ?? loadShortcutRemaps();
   return Object.keys(map).length > 0;
 }
+
+/** Counts / ids for pure “Reset all remaps” planning (no storage writes). */
+export type ResetAllRemapsPlan = {
+  /** Sorted remappable ids that currently have a custom chord. */
+  ids: ShortcutId[];
+  /** `ids.length` — convenient for i18n `{n}`. */
+  count: number;
+  /** True when at least one custom remap would be cleared. */
+  hasAny: boolean;
+};
+
+/**
+ * Plan what Settings → Keyboard → **Reset all** would clear.
+ * Pure: does not read or write storage. Pass the live remap map from UI state.
+ */
+export function planResetAllShortcutRemaps(
+  remaps?: ShortcutRemapMap | null,
+): ResetAllRemapsPlan {
+  const map = remaps ?? {};
+  const ids = (Object.keys(map) as ShortcutId[])
+    .filter((id) => isRemappableShortcutId(id) && !!map[id])
+    .sort((a, b) => a.localeCompare(b));
+  return {
+    ids,
+    count: ids.length,
+    hasAny: ids.length > 0,
+  };
+}
+
+/** Aggregate counts for the Settings conflict panel header. */
+export type ChordConflictSummary = {
+  /** Number of conflict groups (shared-chord buckets). */
+  groupCount: number;
+  /** Unique chords involved (usually equals {@link groupCount}). */
+  chordCount: number;
+  /** Unique shortcut ids involved in any conflict. */
+  idCount: number;
+  /** Sum of group sizes (ids listed across groups). */
+  bindingCount: number;
+  /**
+   * How many of the conflicting ids currently have a custom remap.
+   * Useful for “Reset conflicting” affordance honesty.
+   */
+  remappedCount: number;
+};
+
+/**
+ * Summarize {@link findChordConflicts} groups for Settings badges / copy.
+ * Pure — optional `remaps` only affects {@link ChordConflictSummary.remappedCount}.
+ */
+export function summarizeChordConflicts(
+  groups: readonly ChordConflictGroup[],
+  remaps?: ShortcutRemapMap | null,
+): ChordConflictSummary {
+  const chords = new Set<string>();
+  const ids = new Set<ShortcutId>();
+  let bindingCount = 0;
+  for (const g of groups) {
+    if (g.chord) chords.add(g.chord);
+    for (const id of g.ids) {
+      ids.add(id);
+      bindingCount += 1;
+    }
+  }
+  let remappedCount = 0;
+  if (remaps) {
+    for (const id of ids) {
+      if (remaps[id]) remappedCount += 1;
+    }
+  }
+  return {
+    groupCount: groups.length,
+    chordCount: chords.size,
+    idCount: ids.size,
+    bindingCount,
+    remappedCount,
+  };
+}

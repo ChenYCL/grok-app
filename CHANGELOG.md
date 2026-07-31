@@ -18,6 +18,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Settings / keyboard
+- **Keyboard shortcuts pro** (Settings → Keyboard): catalog search/filter by label · id · chord with empty-filter honesty; pure helpers for scope grouping, conflict summary counts, and reset-all remap planning; conflict panel shows chord/action badges + per-group meta; **Reset all** uses in-app GlassModal confirm (no `window.confirm`) with custom-binding count; en/zh/zh-TW + `settingsCatalog` keywords; tests
+
 #### Runtime / workflows
 - **Sandbox profile pro** (Settings → General → Permissions): polish OS sandbox presets (`off` / `workspace` / `read-only` / `strict` / `devbox`) with pure `sandboxProfile` helpers (spawn args/env, project resolve, danger confirm keys), **honest soft-fail** when CLI is missing/too old for `--sandbox` (flag omitted) or when the platform has no kernel enforcement (Windows honesty; Linux-only child-network note on macOS), Settings banners + recommended-workspace tip; Host soft-gates spawn flags on known-old CLI; i18n en/zh/zh-TW; `settingsCatalog`; tests
 - **Grok Build workflows** (Settings → Runtime → Tools): opt-in `workflowsEnabled` AppSettings toggle writes top-level `workflows_enabled` into independent agent-home `config.toml` (shared mode never rewrites `~/.grok`); honest copy that workflows run via CLI / Rhai (`workflow` tool, `/workflow`, `/workflows`) — **no in-app runner/editor**; read-only soft-fail discovery of `~/.grok/workflows` + project `.grok/workflows` names; command palette **Open workflows docs** / jump to settings; pure helpers + tests; `settingsCatalog` + en/zh/zh-TW

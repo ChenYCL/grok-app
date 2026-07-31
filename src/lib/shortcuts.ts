@@ -324,6 +324,9 @@ export const SHORTCUT_GROUP_ORDER: ShortcutGroup[] = [
   "input",
 ];
 
+/** Scope order for Settings / help when grouping by {@link ShortcutScope}. */
+export const SHORTCUT_SCOPE_ORDER: ShortcutScope[] = ["global", "chat-focus"];
+
 /** Display keys for the Send catalog row from the composer send-key preference. */
 export function sendShortcutDisplay(pref: ComposerSendKeyPref): {
   mac: string;
@@ -453,6 +456,20 @@ export function shortcutsByGroup(
       withEffectiveBindings(s, { sendPref, remaps: map, voiceHotkeyEnabled }),
     ),
   }));
+}
+
+/**
+ * Group catalog rows by {@link ShortcutScope} (global vs chat-focus).
+ * Preserves {@link SHORTCUT_SCOPE_ORDER}; drops empty scopes.
+ * Does not apply remaps / send pref — pass pre-bound rows when needed.
+ */
+export function shortcutsByScope(
+  rows: readonly ShortcutRow[] = SHORTCUTS,
+): Array<{ scope: ShortcutScope; rows: ShortcutRow[] }> {
+  return SHORTCUT_SCOPE_ORDER.map((scope) => ({
+    scope,
+    rows: rows.filter((s) => s.scope === scope),
+  })).filter((g) => g.rows.length > 0);
 }
 
 /** Re-export remap types/helpers used by Settings / App. */

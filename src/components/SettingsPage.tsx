@@ -104,10 +104,12 @@ import {
   isRemappableShortcutId,
   loadIgnoreCrossScopeConflicts,
   loadShortcutRemaps,
+  planResetAllShortcutRemaps,
   resetConflictingShortcutRemaps,
   saveIgnoreCrossScopeConflicts,
   setShortcutRecordingActive,
   setShortcutRemap,
+  summarizeChordConflicts,
   type ChordConflictOpts,
   type ShortcutRemapMap,
 } from "@/lib/shortcutRemap";
@@ -6971,6 +6973,8 @@ function ShortcutsSettingsPanel({
   );
   const [recordingId, setRecordingId] = useState<ShortcutId | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  /** GlassModal confirm for Reset all remaps (never window.confirm). */
+  const [resetAllOpen, setResetAllOpen] = useState(false);
 
   const conflictOpts = useMemo<ChordConflictOpts>(
     () => ({
@@ -7089,6 +7093,10 @@ function ShortcutsSettingsPanel({
     () => findChordConflicts(remaps, undefined, conflictOpts),
     [remaps, conflictOpts],
   );
+  const conflictSummary = useMemo(
+    () => summarizeChordConflicts(conflictGroups, remaps),
+    [conflictGroups, remaps],
+  );
   const conflictIdSet = useMemo(() => {
     const s = new Set<ShortcutId>();
     for (const g of conflictGroups) {
@@ -7096,6 +7104,11 @@ function ShortcutsSettingsPanel({
     }
     return s;
   }, [conflictGroups]);
+
+  const resetAllPlan = useMemo(
+    () => planResetAllShortcutRemaps(remaps),
+    [remaps],
+  );
 
   const shortcutLabel = (id: ShortcutId): string => {
     const row = SHORTCUTS.find((s) => s.id === id);
@@ -7110,7 +7123,7 @@ function ShortcutsSettingsPanel({
   const groupLabel = (g: ShortcutGroup) =>
     t(`settings.shortcuts.group.${g}` as MessageKey);
 
-  const canResetAll = hasAnyShortcutRemaps(remaps);
+  const canResetAll = hasAnyShortcutRemaps(remaps) && resetAllPlan.hasAny;
 
   const startRecord = (id: ShortcutId) => {
     if (!isRemappableShortcutId(id)) return;
@@ -7125,10 +7138,11 @@ function ShortcutsSettingsPanel({
     setRecordError(null);
   };
 
-  const resetAll = () => {
+  const confirmResetAll = () => {
     setRemaps(clearAllShortcutRemaps());
     setRecordingId(null);
     setRecordError(null);
+    setResetAllOpen(false);
   };
 
   const resetConflicting = () => {
@@ -7160,10 +7174,17 @@ function ShortcutsSettingsPanel({
           <button
             type="button"
             className="btn btn--ghost"
-            disabled={!canResetAll}
-            onClick={() => resetAll()}
+            disabled={!canResetAll || !!recordingId}
+            onClick={() => setResetAllOpen(true)}
           >
             {t("settings.shortcuts.resetAll")}
+            {canResetAll ? (
+              <span className="settings-shortcuts-reset-count">
+                {t("settings.shortcuts.customCount", {
+                  n: resetAllPlan.count,
+                })}
+              </span>
+            ) : null}
           </button>
         </div>
       </div>
@@ -7207,15 +7228,26 @@ function ShortcutsSettingsPanel({
             <div className="settings-shortcuts-conflicts__text">
               <div className="settings-shortcuts-conflicts__title">
                 {t("settings.shortcuts.conflictsTitle")}
+                <span className="settings-shortcuts-conflicts__badge">
+                  {t("settings.shortcuts.conflictsSummary", {
+                    groups: conflictSummary.groupCount,
+                    actions: conflictSummary.idCount,
+                  })}
+                </span>
               </div>
               <div className="settings-shortcuts-conflicts__desc">
                 {t("settings.shortcuts.conflictsDesc")}
+                {conflictSummary.remappedCount > 0
+                  ? ` ${t("settings.shortcuts.conflictsRemappedHint", {
+                      n: conflictSummary.remappedCount,
+                    })}`
+                  : null}
               </div>
             </div>
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              disabled={!!recordingId}
+              disabled={!!recordingId || conflictSummary.remappedCount === 0}
               onClick={() => resetConflicting()}
             >
               {t("settings.shortcuts.conflictsReset")}
@@ -7227,7 +7259,7 @@ function ShortcutsSettingsPanel({
                 key={`${group.chord}:${group.ids.join(",")}`}
                 className="settings-shortcuts-conflicts__item"
               >
-                <kbd className="settings-shortcuts-kbd">
+                <kbd className="settings-shortcuts-kbd is-conflict">
                   {formatChordDisplay(
                     group.chord,
                     platform === "mac" ? "mac" : "win",
@@ -7235,6 +7267,11 @@ function ShortcutsSettingsPanel({
                 </kbd>
                 <span className="settings-shortcuts-conflicts__actions">
                   {group.ids.map((id) => shortcutLabel(id)).join(" · ")}
+                </span>
+                <span className="settings-shortcuts-conflicts__meta">
+                  {t("settings.shortcuts.conflictsGroupMeta", {
+                    n: group.ids.length,
+                  })}
                 </span>
               </li>
             ))}
@@ -7402,6 +7439,37 @@ function ShortcutsSettingsPanel({
         ))
       )}
       <p className="settings-shortcuts-note">{t("settings.shortcuts.note")}</p>
+
+      <GlassModal
+        open={resetAllOpen}
+        onClose={() => setResetAllOpen(false)}
+        title={t("settings.shortcuts.resetAllTitle")}
+        size="sm"
+        closeLabel={t("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setResetAllOpen(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={!resetAllPlan.hasAny}
+              onClick={() => confirmResetAll()}
+            >
+              {t("settings.shortcuts.resetAllConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="settings-row__desc" style={{ margin: 0 }}>
+          {t("settings.shortcuts.resetAllMsg", { n: resetAllPlan.count })}
+        </p>
+      </GlassModal>
     </div>
   );
 }
