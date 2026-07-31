@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   buildSlashCatalog,
   builtinSlashItems,
+  countSlashByKind,
   filterPickerSkills,
   filterSlashItems,
+  filterSlashItemsByKind,
+  flattenFilteredCatalog,
+  hasActiveSlashFilters,
+  resolveSlashMenuEmptyState,
   skillsToSlashItems,
+  slashKindLabelKey,
   type SkillInfo,
   type SlashItem,
 } from "./slashCatalog";
@@ -261,5 +267,222 @@ describe("buildSlashCatalog", () => {
     expect(cat.commands).toEqual(builtinSlashItems());
     expect(cat.skills).toHaveLength(1);
     expect(cat.skills[0]!.name).toBe("s1");
+  });
+});
+
+describe("filterSlashItems kind chip", () => {
+  const items: SlashItem[] = [
+    { id: "goal", kind: "mode", name: "goal", mode: "goal" },
+    { id: "doctor", kind: "action", name: "doctor", action: "doctor" },
+    {
+      id: "skill:aihot",
+      kind: "skill",
+      name: "aihot",
+      displayTitle: "aihot",
+    },
+    {
+      id: "help",
+      kind: "prompt",
+      name: "help",
+      displayTitle: "help",
+    },
+  ];
+
+  it("filters by kind via options object", () => {
+    expect(
+      filterSlashItems(items, { kind: "mode" }).map((i) => i.name),
+    ).toEqual(["goal"]);
+    expect(
+      filterSlashItems(items, { kind: "action" }).map((i) => i.name),
+    ).toEqual(["doctor"]);
+    expect(
+      filterSlashItems(items, { kind: "skill" }).map((i) => i.name),
+    ).toEqual(["aihot"]);
+    expect(
+      filterSlashItems(items, { kind: "prompt" }).map((i) => i.name),
+    ).toEqual(["help"]);
+    expect(filterSlashItems(items, { kind: "all" })).toHaveLength(4);
+  });
+
+  it("AND-combines kind + query", () => {
+    expect(
+      filterSlashItems(items, { kind: "mode", query: "go" }).map((i) => i.name),
+    ).toEqual(["goal"]);
+    expect(
+      filterSlashItems(items, { kind: "skill", query: "go" }),
+    ).toHaveLength(0);
+    expect(
+      filterSlashItems(items, { kind: "action", query: "doc" }).map(
+        (i) => i.name,
+      ),
+    ).toEqual(["doctor"]);
+  });
+
+  it("keeps string query backward compatible", () => {
+    expect(filterSlashItems(items, "goal").map((i) => i.name)).toEqual([
+      "goal",
+    ]);
+  });
+});
+
+describe("filterSlashItemsByKind + countSlashByKind", () => {
+  const items: SlashItem[] = [
+    { id: "goal", kind: "mode", name: "goal" },
+    { id: "plan", kind: "mode", name: "plan" },
+    { id: "doctor", kind: "action", name: "doctor" },
+    { id: "skill:x", kind: "skill", name: "x" },
+  ];
+
+  it("filters by kind", () => {
+    expect(filterSlashItemsByKind(items, "mode").map((i) => i.name)).toEqual([
+      "goal",
+      "plan",
+    ]);
+    expect(filterSlashItemsByKind(items, "all")).toBe(items);
+  });
+
+  it("counts per kind", () => {
+    expect(countSlashByKind(items)).toEqual({
+      all: 4,
+      mode: 2,
+      action: 1,
+      skill: 1,
+      prompt: 0,
+    });
+  });
+});
+
+describe("hasActiveSlashFilters + slashKindLabelKey", () => {
+  it("detects active filters", () => {
+    expect(hasActiveSlashFilters({})).toBe(false);
+    expect(hasActiveSlashFilters({ query: "  " })).toBe(false);
+    expect(hasActiveSlashFilters({ kind: "all" })).toBe(false);
+    expect(hasActiveSlashFilters({ query: "go" })).toBe(true);
+    expect(hasActiveSlashFilters({ kind: "skill" })).toBe(true);
+  });
+
+  it("maps kind chips to i18n keys", () => {
+    expect(slashKindLabelKey("all")).toBe("slash.kind.all");
+    expect(slashKindLabelKey("mode")).toBe("slash.kind.mode");
+    expect(slashKindLabelKey("action")).toBe("slash.kind.action");
+    expect(slashKindLabelKey("prompt")).toBe("slash.kind.prompt");
+    expect(slashKindLabelKey("skill")).toBe("slash.kind.skill");
+  });
+});
+
+describe("flattenFilteredCatalog with kind", () => {
+  it("applies kind to commands and skills", () => {
+    const cat = buildSlashCatalog([{ name: "aihot", description: "tips" }]);
+    const modes = flattenFilteredCatalog(cat, { kind: "mode" });
+    expect(modes.skills).toHaveLength(0);
+    expect(modes.commands.every((c) => c.kind === "mode")).toBe(true);
+    expect(modes.flat.length).toBeGreaterThan(0);
+
+    const skillsOnly = flattenFilteredCatalog(cat, { kind: "skill" });
+    expect(skillsOnly.commands).toHaveLength(0);
+    expect(skillsOnly.skills.map((s) => s.name)).toEqual(["aihot"]);
+  });
+});
+
+describe("resolveSlashMenuEmptyState", () => {
+  it("returns null when filtered rows exist", () => {
+    expect(
+      resolveSlashMenuEmptyState({
+        catalogCount: 5,
+        filteredCount: 2,
+        query: "go",
+      }),
+    ).toBeNull();
+  });
+
+  it("loading when catalog empty", () => {
+    expect(
+      resolveSlashMenuEmptyState({
+        loading: true,
+        catalogCount: 0,
+        filteredCount: 0,
+      }),
+    ).toMatchObject({
+      kind: "loading",
+      titleKey: "slash.loading",
+      showClearFilters: false,
+    });
+  });
+
+  it("empty catalog (no query)", () => {
+    expect(
+      resolveSlashMenuEmptyState({
+        catalogCount: 0,
+        filteredCount: 0,
+        query: "",
+      }),
+    ).toMatchObject({
+      kind: "empty_catalog",
+      titleKey: "slash.emptyCatalog",
+      hintKey: "slash.emptyCatalogHint",
+      showClearFilters: false,
+    });
+  });
+
+  it("no matches for query", () => {
+    expect(
+      resolveSlashMenuEmptyState({
+        catalogCount: 10,
+        filteredCount: 0,
+        query: "zzzz",
+        kind: "all",
+      }),
+    ).toMatchObject({
+      kind: "no_matches",
+      titleKey: "slash.noMatches",
+      hintKey: "slash.noMatchesHint",
+      showClearFilters: true,
+    });
+  });
+
+  it("filtered empty by kind chip", () => {
+    expect(
+      resolveSlashMenuEmptyState({
+        catalogCount: 10,
+        filteredCount: 0,
+        query: "",
+        kind: "prompt",
+      }),
+    ).toMatchObject({
+      kind: "filtered",
+      titleKey: "slash.filteredEmpty",
+      hintKey: "slash.filteredEmptyHint",
+      showClearFilters: true,
+    });
+  });
+
+  it("filtered empty with kind + query uses query hint", () => {
+    expect(
+      resolveSlashMenuEmptyState({
+        catalogCount: 10,
+        filteredCount: 0,
+        query: "xyz",
+        kind: "skill",
+      }),
+    ).toMatchObject({
+      kind: "filtered",
+      hintKey: "slash.filteredEmptyHintQuery",
+      showClearFilters: true,
+    });
+  });
+
+  it("no-query defensive empty when catalog has items but none visible", () => {
+    expect(
+      resolveSlashMenuEmptyState({
+        catalogCount: 3,
+        filteredCount: 0,
+        query: "",
+        kind: "all",
+      }),
+    ).toMatchObject({
+      kind: "no_query",
+      titleKey: "slash.noQueryEmpty",
+      showClearFilters: false,
+    });
   });
 });

@@ -700,8 +700,10 @@ import {
 } from "@/hooks/useSendQueue";
 import {
   buildSlashCatalog,
+  countSlashByKind,
   flattenFilteredCatalog,
   type SlashItem,
+  type SlashKindFilter,
   type SkillInfo,
 } from "@/lib/slashCatalog";
 import type { MessageKey } from "@/i18n";
@@ -1568,6 +1570,9 @@ export default function App() {
   const slashDismissedSigRef = useRef<string | null>(null);
   const showComposerPlusRef = useRef(false);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  /** Kind chip for slash / + palette (`all` | mode | action | prompt | skill). */
+  const [slashKindFilter, setSlashKindFilter] =
+    useState<SlashKindFilter>("all");
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMcpModal, setShowMcpModal] = useState(false);
   const [showCompactModal, setShowCompactModal] = useState(false);
@@ -8999,9 +9004,24 @@ export default function App() {
     }
     setShowComposerPlus(false);
     setSlashQuery(null);
+    setSlashKindFilter("all");
     const cleared = { present: false, query: "", start: 0, end: 0 };
     setLiveSlash(cleared);
     liveSlashRef.current = cleared;
+  }, []);
+
+  /**
+   * Clear kind chip + typed slash query (keeps bare `/` so the palette stays
+   * open). Never uses window.confirm.
+   */
+  const clearSlashFilters = useCallback(() => {
+    setSlashKindFilter("all");
+    const live = liveSlashRef.current;
+    if (live.present && live.query) {
+      // Keep `/` at live.start; drop the query so filter shows full catalog.
+      setDraft((d) => d.slice(0, live.start + 1) + d.slice(live.end));
+    }
+    setSlashActiveIndex(0);
   }, []);
 
   /** Stable slash-query setter: skip no-op updates so filter effects don't thrash. */
@@ -9414,35 +9434,53 @@ export default function App() {
   /** Filter query from live editor poll only. */
   const slashFilterQuery = liveSlash.present ? liveSlash.query : "";
 
-  /** Shared filter for + menu and `/` slash — empty query = full catalog. */
+  /** Shared filter for + menu and `/` slash — empty query + all kind = full catalog. */
   const slashFiltered = useMemo(
     () =>
-      flattenFilteredCatalog(slashCatalog, slashFilterQuery, (item) => ({
-        title: resolveSlashTitle(item),
-        description: resolveSlashDescription(item),
-      })),
+      flattenFilteredCatalog(
+        slashCatalog,
+        { query: slashFilterQuery, kind: slashKindFilter },
+        (item) => ({
+          title: resolveSlashTitle(item),
+          description: resolveSlashDescription(item),
+        }),
+      ),
     [
       slashCatalog,
       slashFilterQuery,
+      slashKindFilter,
       resolveSlashTitle,
       resolveSlashDescription,
     ],
   );
+  const slashCatalogCount =
+    slashCatalog.commands.length + slashCatalog.skills.length;
+  const slashKindCounts = useMemo(
+    () =>
+      countSlashByKind([
+        ...slashCatalog.commands,
+        ...slashCatalog.skills,
+      ]),
+    [slashCatalog],
+  );
+  // Upload / JSON Schema live under the Add section — only when kind is All.
   const showUploadInMenu = useMemo(
     () =>
+      slashKindFilter === "all" &&
       uploadMatchesQuery(slashFilterQuery, {
         title: tr("composer.addFiles"),
         hint: tr("composer.addFilesHint"),
       }),
-    [slashFilterQuery, tr],
+    [slashFilterQuery, slashKindFilter, tr],
   );
   const showJsonSchemaInMenu = useMemo(
     () =>
+      slashKindFilter === "all" &&
       jsonSchemaMatchesQuery(slashFilterQuery, {
         title: tr("composer.jsonSchema"),
         hint: tr("composer.jsonSchemaHint"),
       }),
-    [slashFilterQuery, tr],
+    [slashFilterQuery, slashKindFilter, tr],
   );
   const composerMenuEntries = useMemo(
     () =>
@@ -19271,6 +19309,13 @@ export default function App() {
                     filterQuery={
                       liveSlash.present ? slashFilterQuery : undefined
                     }
+                    kindFilter={slashKindFilter}
+                    onKindFilterChange={(k) => {
+                      setSlashKindFilter(k);
+                      setSlashActiveIndex(0);
+                    }}
+                    catalogCount={slashCatalogCount}
+                    kindCounts={slashKindCounts}
                     skillsLoading={skillsLoading}
                     skillsError={skillsLoadError}
                     skillCount={slashCatalog.skills.length}
@@ -19285,6 +19330,7 @@ export default function App() {
                       setShowJsonSchemaModal(true);
                     }}
                     onSelectSlash={applySlashItem}
+                    onClearFilters={clearSlashFilters}
                     resolveTitle={resolveSlashTitle}
                     resolveDescription={resolveSlashDescription}
                     style={{

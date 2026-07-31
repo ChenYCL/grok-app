@@ -7,14 +7,23 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
   type CSSProperties,
   type ReactNode,
   type Ref,
 } from "react";
-import type { Locale } from "@/i18n";
+import type { Locale, MessageKey } from "@/i18n";
 import { createT } from "@/i18n";
-import type { SlashItem } from "@/lib/slashCatalog";
+import {
+  countSlashByKind,
+  resolveSlashMenuEmptyState,
+  SLASH_KIND_FILTERS,
+  slashKindLabelKey,
+  type SlashItem,
+  type SlashKindFilter,
+  type SlashMenuEmptyPresentation,
+} from "@/lib/slashCatalog";
 import {
   IconActivity,
   IconArrowsMinimize,
@@ -206,6 +215,10 @@ export function ComposerPlusPanel({
   panelRef,
   entries,
   filterQuery,
+  kindFilter = "all",
+  onKindFilterChange,
+  catalogCount,
+  kindCounts,
   skillsLoading,
   skillsError,
   skillCount,
@@ -214,6 +227,7 @@ export function ComposerPlusPanel({
   onSelectUpload,
   onSelectJsonSchema,
   onSelectSlash,
+  onClearFilters,
   resolveTitle,
   resolveDescription,
 }: {
@@ -225,6 +239,20 @@ export function ComposerPlusPanel({
   entries: ComposerPlusEntry[];
   /** Live filter string (shown in header when non-empty). */
   filterQuery?: string;
+  /** Active kind chip (`all` when browsing full catalog). */
+  kindFilter?: SlashKindFilter;
+  /** Kind chip change — host refilters entries. */
+  onKindFilterChange?: (kind: SlashKindFilter) => void;
+  /**
+   * Pre-filter slash catalog size (commands + skills).
+   * Used for empty honesty; defaults to slash entries currently visible.
+   */
+  catalogCount?: number;
+  /**
+   * Pre-filter per-kind counts for chips. When omitted, derived from
+   * visible slash entries (less accurate while filtering).
+   */
+  kindCounts?: ReturnType<typeof countSlashByKind>;
   skillsLoading?: boolean;
   /** Host skills_list error (CLI missing / inspect fail). */
   skillsError?: string | null;
@@ -236,6 +264,8 @@ export function ComposerPlusPanel({
   /** Optional: open structured JSON Schema modal. */
   onSelectJsonSchema?: () => void;
   onSelectSlash: (item: SlashItem) => void;
+  /** Clear query (dismiss slash token) and/or reset kind chip. */
+  onClearFilters?: () => void;
   resolveTitle: (item: SlashItem) => string;
   resolveDescription: (item: SlashItem) => string;
 }) {
@@ -255,6 +285,43 @@ export function ComposerPlusPanel({
     commands: tr("slash.section.commands"),
     skills: tr("composer.skills"),
   });
+
+  const slashEntries = useMemo(
+    () => entries.filter((e): e is Extract<ComposerPlusEntry, { kind: "slash" }> => e.kind === "slash"),
+    [entries],
+  );
+
+  const resolvedCatalogCount =
+    catalogCount ??
+    // Fallback: when host omits pre-filter size, use visible slash rows.
+    slashEntries.length;
+
+  const chipCounts = useMemo(() => {
+    if (kindCounts) return kindCounts;
+    return countSlashByKind(slashEntries.map((e) => e.item));
+  }, [kindCounts, slashEntries]);
+
+  const emptyState: SlashMenuEmptyPresentation | null = useMemo(
+    () =>
+      resolveSlashMenuEmptyState({
+        loading: Boolean(skillsLoading) && resolvedCatalogCount === 0,
+        catalogCount: resolvedCatalogCount,
+        filteredCount: slashEntries.length,
+        query: filterQuery ?? "",
+        kind: kindFilter,
+      }),
+    [
+      skillsLoading,
+      resolvedCatalogCount,
+      slashEntries.length,
+      filterQuery,
+      kindFilter,
+    ],
+  );
+
+  // Full empty: no selectable rows (including upload) and empty honesty applies.
+  const listEmpty =
+    entries.length === 0 && !skillsLoading && emptyState != null;
 
   useEffect(() => {
     if (!open) return;
@@ -285,7 +352,7 @@ export function ComposerPlusPanel({
   if (!open) return null;
 
   const q = (filterQuery ?? "").trim();
-  const empty = entries.length === 0 && !skillsLoading;
+  const showChips = Boolean(onKindFilterChange);
 
   return (
     <div
@@ -296,6 +363,7 @@ export function ComposerPlusPanel({
         entries[activeIndex] ? `plus-opt-${activeIndex}` : undefined
       }
       data-filter-query={q}
+      data-kind-filter={kindFilter}
       style={style}
     >
       {q ? (
@@ -305,6 +373,41 @@ export function ComposerPlusPanel({
           <span className="composer-plus__filter-count">
             {entries.length}
           </span>
+        </div>
+      ) : null}
+
+      {showChips ? (
+        <div
+          className="composer-plus__chips"
+          role="toolbar"
+          aria-label={tr("slash.kindFilters")}
+        >
+          {SLASH_KIND_FILTERS.map((id) => {
+            const n = chipCounts[id];
+            // Hide zero-count chips except "all" and the active selection.
+            if (id !== "all" && n === 0 && kindFilter !== id) return null;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={
+                  "composer-plus__chip" +
+                  (kindFilter === id ? " is-active" : "")
+                }
+                aria-pressed={kindFilter === id}
+                onClick={() => onKindFilterChange?.(id)}
+              >
+                <span>{tr(slashKindLabelKey(id) as MessageKey)}</span>
+                {id !== "all" ? (
+                  <span className="composer-plus__chip-count">{n}</span>
+                ) : (
+                  <span className="composer-plus__chip-count">
+                    {chipCounts.all}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
@@ -422,34 +525,50 @@ export function ComposerPlusPanel({
         );
       })}
 
-      {empty && (
-        <div className="composer-plus__item composer-plus__item--muted">
+      {listEmpty && emptyState ? (
+        <div
+          className="composer-plus__empty"
+          role="status"
+          data-empty-kind={emptyState.kind}
+        >
           <span className="composer-plus__title">
-            {q
-              ? tr("slash.empty")
-              : skillsError
-                ? tr("composer.skillsLoadError")
-                : tr("slash.empty")}
+            {tr(emptyState.titleKey as MessageKey)}
           </span>
-          {!q && skillsError ? (
+          {emptyState.hintKey ? (
+            <span className="composer-plus__desc">
+              {tr(emptyState.hintKey as MessageKey)}
+            </span>
+          ) : null}
+          {emptyState.kind === "empty_catalog" && skillsError ? (
             <span className="composer-plus__desc" title={skillsError}>
               {skillsError}
             </span>
           ) : null}
+          {emptyState.showClearFilters && onClearFilters ? (
+            <button
+              type="button"
+              className="composer-plus__clear-filters"
+              onClick={onClearFilters}
+            >
+              {tr("slash.clearFilters")}
+            </button>
+          ) : null}
         </div>
-      )}
+      ) : null}
 
       {/* Skills section empty hint when commands exist but no invocable skills */}
-      {!empty &&
+      {!listEmpty &&
       !skillsLoading &&
       !q &&
+      kindFilter === "all" &&
       (skillCount ?? 0) === 0 &&
       !entries.some((e) => e.kind === "slash" && e.item.kind === "skill") ? (
         <div className="composer-plus__section">{tr("composer.skills")}</div>
       ) : null}
-      {!empty &&
+      {!listEmpty &&
       !skillsLoading &&
       !q &&
+      kindFilter === "all" &&
       (skillCount ?? 0) === 0 &&
       !entries.some((e) => e.kind === "slash" && e.item.kind === "skill") ? (
         <div className="composer-plus__item composer-plus__item--muted">
