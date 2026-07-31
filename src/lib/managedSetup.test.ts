@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   buildManagedSetupSteps,
+  buildSignatureView,
   classifySetupError,
   deriveSignatureStatus,
   emptyManagedLocalStatus,
   extractPreviewMeta,
   formatRedactedJson,
+  hasManagedArtifacts,
   isSensitiveKey,
   redactSensitiveValue,
+  signatureRecoveryId,
+  signatureStatusSeverity,
   summarizeSetupJson,
 } from "./managedSetup";
 
@@ -183,44 +187,155 @@ describe("extractPreviewMeta", () => {
 });
 
 describe("deriveSignatureStatus", () => {
-  it("prefers active managed settings from inspect", () => {
+  it("never claims verify_ok from managedSettingsActive or file presence alone", () => {
     expect(
       deriveSignatureStatus({
         local: emptyManagedLocalStatus({ managedSettingsActive: true }),
       }),
-    ).toBe("active");
-  });
-
-  it("surfaces signature files and artifacts honestly", () => {
+    ).toBe("present_unverified");
+    expect(
+      deriveSignatureStatus({
+        local: emptyManagedLocalStatus({
+          managedConfigPresent: true,
+          configSignaturePresent: true,
+          managedSettingsActive: true,
+        }),
+      }),
+    ).toBe("present_unverified");
     expect(
       deriveSignatureStatus({
         local: emptyManagedLocalStatus({ configSignaturePresent: true }),
       }),
-    ).toBe("sig_files");
+    ).toBe("present_unverified");
     expect(
       deriveSignatureStatus({
         local: emptyManagedLocalStatus({ managedConfigPresent: true }),
       }),
-    ).toBe("artifacts");
-    expect(deriveSignatureStatus({ local: emptyManagedLocalStatus() })).toBe(
-      "none",
-    );
-    expect(deriveSignatureStatus({})).toBe("unknown");
+    ).toBe("present_unverified");
   });
 
-  it("marks signature_rejected errors", () => {
+  it("returns absent / soft_fail honestly", () => {
+    expect(deriveSignatureStatus({ local: emptyManagedLocalStatus() })).toBe(
+      "absent",
+    );
+    expect(deriveSignatureStatus({})).toBe("soft_fail");
+    expect(
+      deriveSignatureStatus({
+        local: emptyManagedLocalStatus({ ok: false, reason: "boom" }),
+      }),
+    ).toBe("soft_fail");
+  });
+
+  it("only claims verify_ok when host/CLI reports signatureVerified", () => {
+    expect(
+      deriveSignatureStatus({
+        local: emptyManagedLocalStatus({
+          managedConfigPresent: true,
+          signatureVerified: true,
+          signatureVerifySource: "inspect",
+          presenceOnly: false,
+        }),
+      }),
+    ).toBe("verify_ok");
+    expect(
+      deriveSignatureStatus({
+        local: emptyManagedLocalStatus({
+          signatureVerified: false,
+          signatureVerifySource: "inspect",
+          presenceOnly: false,
+        }),
+      }),
+    ).toBe("verify_failed");
+  });
+
+  it("marks signature_rejected errors as verify_failed", () => {
     expect(
       deriveSignatureStatus({ errorKind: "signature_rejected" }),
-    ).toBe("rejected");
+    ).toBe("verify_failed");
+  });
+
+  it("treats successful install as present_unverified (not verify_ok)", () => {
+    expect(
+      deriveSignatureStatus({
+        installOk: true,
+        local: emptyManagedLocalStatus({ managedConfigPresent: true }),
+      }),
+    ).toBe("present_unverified");
+  });
+});
+
+describe("buildSignatureView + recovery", () => {
+  it("builds presence-only view for path artifacts", () => {
+    const view = buildSignatureView({
+      local: emptyManagedLocalStatus({
+        managedConfigPresent: true,
+        configSignaturePresent: true,
+        managedSettingsActive: true,
+        presenceOnly: true,
+      }),
+    });
+    expect(view.status).toBe("present_unverified");
+    expect(view.presenceOnly).toBe(true);
+    expect(view.hasArtifacts).toBe(true);
+    expect(view.hasSigFiles).toBe(true);
+    expect(view.severity).toBe("warn");
+    expect(view.facts.some((f) => f.id === "signature_verified" && f.detail === "not_reported")).toBe(
+      true,
+    );
+  });
+
+  it("surfaces verify_ok without presence-only", () => {
+    const view = buildSignatureView({
+      local: emptyManagedLocalStatus({
+        signatureVerified: true,
+        signatureVerifySource: "inspect",
+        presenceOnly: false,
+      }),
+    });
+    expect(view.status).toBe("verify_ok");
+    expect(view.presenceOnly).toBe(false);
+    expect(view.verifySource).toBe("inspect");
+    expect(signatureStatusSeverity("verify_ok")).toBe("ok");
+  });
+
+  it("maps recovery ids", () => {
+    expect(
+      signatureRecoveryId({ status: "present_unverified" }),
+    ).toBe("present_unverified");
+    expect(
+      signatureRecoveryId({
+        status: "soft_fail",
+        local: emptyManagedLocalStatus({ cliFound: false }),
+      }),
+    ).toBe("cli_missing");
+    expect(
+      signatureRecoveryId({
+        status: "verify_failed",
+        errorKind: "signature_rejected",
+      }),
+    ).toBe("verify_failed");
+  });
+});
+
+describe("hasManagedArtifacts", () => {
+  it("detects config / requirements / inspect flags", () => {
+    expect(hasManagedArtifacts(emptyManagedLocalStatus())).toBe(false);
+    expect(
+      hasManagedArtifacts(
+        emptyManagedLocalStatus({ requirementsPresent: true }),
+      ),
+    ).toBe(true);
   });
 });
 
 describe("buildManagedSetupSteps", () => {
-  it("blocks on missing CLI and advances after install", () => {
+  it("blocks on missing CLI; verify is never done for presence-only", () => {
     const noCli = buildManagedSetupSteps({ cliFound: false });
     expect(noCli.find((s) => s.id === "cli")?.state).toBe("blocked");
 
-    const ready = buildManagedSetupSteps({
+    // Presence + install must NOT mark verify as done (honesty).
+    // Soft may be promoted to "current" when no other step is current.
+    const present = buildManagedSetupSteps({
       cliFound: true,
       previewDone: true,
       installDone: true,
@@ -229,11 +344,38 @@ describe("buildManagedSetupSteps", () => {
         configSignaturePresent: true,
         managedSettingsActive: true,
       }),
-      signatureStatus: "active",
+      signatureStatus: "present_unverified",
     });
-    expect(ready.find((s) => s.id === "cli")?.state).toBe("done");
-    expect(ready.find((s) => s.id === "install")?.state).toBe("done");
+    expect(present.find((s) => s.id === "cli")?.state).toBe("done");
+    expect(present.find((s) => s.id === "install")?.state).toBe("done");
+    const verify = present.find((s) => s.id === "verify")?.state;
+    expect(verify === "soft" || verify === "current").toBe(true);
+    expect(verify).not.toBe("done");
+  });
+
+  it("marks verify done only on verify_ok", () => {
+    const ready = buildManagedSetupSteps({
+      cliFound: true,
+      previewDone: true,
+      installDone: true,
+      local: emptyManagedLocalStatus({
+        managedConfigPresent: true,
+        signatureVerified: true,
+        presenceOnly: false,
+      }),
+      signatureStatus: "verify_ok",
+    });
     expect(ready.find((s) => s.id === "verify")?.state).toBe("done");
+  });
+
+  it("blocks verify on verify_failed", () => {
+    const steps = buildManagedSetupSteps({
+      cliFound: true,
+      errorKind: "signature_rejected",
+      signatureStatus: "verify_failed",
+    });
+    expect(steps.find((s) => s.id === "verify")?.state).toBe("blocked");
+    expect(steps.find((s) => s.id === "install")?.state).toBe("blocked");
   });
 
   it("marks auth blocked on missing deployment key", () => {

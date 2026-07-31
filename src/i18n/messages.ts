@@ -2462,14 +2462,37 @@ const en = {
   "managedSetup.statusTitle": "Local managed status",
   "managedSetup.refreshStatus": "Refresh status",
   "managedSetup.refreshing": "Refreshing…",
-  "managedSetup.sig.none": "No managed artifacts",
-  "managedSetup.sig.artifacts": "Managed files present",
-  "managedSetup.sig.sigFiles": "Signature files present",
-  "managedSetup.sig.active": "Managed settings active",
-  "managedSetup.sig.rejected": "Signature rejected",
-  "managedSetup.sig.unknown": "Status unknown",
+  "managedSetup.sig.cardTitle": "Signature / managed policy",
+  "managedSetup.sig.absent": "No managed artifacts",
+  "managedSetup.sig.presentUnverified": "Present (unverified by App)",
+  "managedSetup.sig.verifyOk": "Signature verified (CLI)",
+  "managedSetup.sig.verifyFailed": "Signature verification failed",
+  "managedSetup.sig.softFail": "Status soft-fail / unknown",
+  "managedSetup.sig.presenceOnly": "Presence only",
+  "managedSetup.sig.presenceOnlyDetail":
+    "Local files or inspect flags are present. The App never re-verifies cryptographic signatures — only the CLI/doctor can claim verified.",
+  "managedSetup.sig.verifySource": "Verified by: {source}",
+  "managedSetup.sig.detail": "Details",
+  "managedSetup.sig.detailTitle": "Managed signature details",
   "managedSetup.sigHint":
-    "Status reflects local files and inspect flags only — the App does not re-verify cryptographic signatures. CLI rejects bad signatures before writing.",
+    "Status reflects local files and inspect flags. The App does not re-verify cryptographic signatures. verify_ok is shown only when the CLI/doctor reports verification. CLI rejects bad signatures before writing.",
+  "managedSetup.recovery.absent":
+    "No managed config or signature files found under GROK_HOME. Run Preview / Install after team auth if your org uses managed policy.",
+  "managedSetup.recovery.presentUnverified":
+    "Managed files or signature sidecars are present, but the App has not cryptographically verified them. Trust CLI install/doctor for verification; re-run Install if policy looks stale.",
+  "managedSetup.recovery.verifyOk":
+    "CLI/doctor reported signature verification success. No further recovery needed.",
+  "managedSetup.recovery.verifyFailed":
+    "The CLI rejected the managed config signature or envelope. Contact your administrator; do not force-write unverified policy. After a corrected key or envelope, re-run Install.",
+  "managedSetup.recovery.softFail":
+    "Could not fully probe managed status. Refresh after the CLI is available, or check Runtime → CLI path.",
+  "managedSetup.recovery.cliMissing":
+    "Grok Build CLI not found. Install or locate the CLI under Settings → Runtime, then refresh status.",
+  "managedSetup.recovery.inspectSoft":
+    "Inspect soft-failed (timeout or parse). Local path presence may still be accurate; refresh or run doctor from the CLI for verification claims.",
+  "managedSetup.detail.present": "present",
+  "managedSetup.detail.absent": "absent",
+  "managedSetup.detail.signatureVerified": "CLI signature verified",
   "managedSetup.chip.managedActive": "Inspect: managed active",
   "managedSetup.chip.configToml": "managed_config.toml",
   "managedSetup.chip.configSig": "managed_config.sig.json",
@@ -7475,14 +7498,37 @@ const zh: Record<MessageKey, string> = {
   "managedSetup.statusTitle": "本地托管状态",
   "managedSetup.refreshStatus": "刷新状态",
   "managedSetup.refreshing": "刷新中…",
-  "managedSetup.sig.none": "无托管产物",
-  "managedSetup.sig.artifacts": "已有托管文件",
-  "managedSetup.sig.sigFiles": "签名文件存在",
-  "managedSetup.sig.active": "托管设置已生效",
-  "managedSetup.sig.rejected": "签名被拒绝",
-  "managedSetup.sig.unknown": "状态未知",
+  "managedSetup.sig.cardTitle": "签名 / 托管策略",
+  "managedSetup.sig.absent": "无托管产物",
+  "managedSetup.sig.presentUnverified": "已存在（App 未验签）",
+  "managedSetup.sig.verifyOk": "签名已验证（CLI）",
+  "managedSetup.sig.verifyFailed": "签名验证失败",
+  "managedSetup.sig.softFail": "状态 soft-fail / 未知",
+  "managedSetup.sig.presenceOnly": "仅存在性",
+  "managedSetup.sig.presenceOnlyDetail":
+    "本地文件或 inspect 标志存在。App 从不重新做密码学验签——只有 CLI/doctor 可声称已验证。",
+  "managedSetup.sig.verifySource": "验证来源：{source}",
+  "managedSetup.sig.detail": "详情",
+  "managedSetup.sig.detailTitle": "托管签名详情",
   "managedSetup.sigHint":
-    "状态仅反映本地文件与 inspect 标志——App 不会重新做密码学验签。CLI 会在写入前拒绝错误签名。",
+    "状态反映本地文件与 inspect 标志。App 不会重新做密码学验签；仅当 CLI/doctor 报告验证成功时才显示 verify_ok。CLI 会在写入前拒绝错误签名。",
+  "managedSetup.recovery.absent":
+    "在 GROK_HOME 下未找到托管配置或签名文件。若组织使用托管策略，请在团队鉴权后运行预览 / 安装。",
+  "managedSetup.recovery.presentUnverified":
+    "已有托管文件或签名 sidecar，但 App 未做密码学验签。请以 CLI 安装/doctor 为准；策略看起来过期时请重新安装。",
+  "managedSetup.recovery.verifyOk":
+    "CLI/doctor 报告签名验证成功，无需额外恢复。",
+  "managedSetup.recovery.verifyFailed":
+    "CLI 拒绝了托管配置签名或信封。请联系管理员，不要强制写入未验证策略。密钥或信封修正后请重新安装。",
+  "managedSetup.recovery.softFail":
+    "无法完整探测托管状态。请在 CLI 可用后刷新，或检查 运行环境 → CLI 路径。",
+  "managedSetup.recovery.cliMissing":
+    "未找到 Grok Build CLI。请先在 设置 → 运行环境 安装或指定 CLI，然后刷新状态。",
+  "managedSetup.recovery.inspectSoft":
+    "Inspect soft-fail（超时或解析失败）。本地路径存在性可能仍准确；请刷新或在 CLI 运行 doctor 以获取验证声明。",
+  "managedSetup.detail.present": "存在",
+  "managedSetup.detail.absent": "不存在",
+  "managedSetup.detail.signatureVerified": "CLI 签名已验证",
   "managedSetup.chip.managedActive": "Inspect：托管已生效",
   "managedSetup.chip.configToml": "managed_config.toml",
   "managedSetup.chip.configSig": "managed_config.sig.json",

@@ -3750,6 +3750,15 @@ export type ManagedSetupStatusResult = {
   managedSettingsActive?: boolean | null;
   managedSettingsExists?: boolean | null;
   managedSettingsPath?: string | null;
+  /**
+   * Explicit CLI/inspect/doctor signature verification when reported.
+   * Null/undefined = not reported (App never invents verified).
+   */
+  signatureVerified?: boolean | null;
+  /** `inspect` | `doctor` when verification claim is present. */
+  signatureVerifySource?: string | null;
+  /** True when status is path/inspect presence only (App did not crypto-verify). */
+  presenceOnly?: boolean;
   reason?: string | null;
 };
 

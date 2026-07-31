@@ -2357,14 +2357,37 @@ export const zhTW: Record<MessageKey, string> = {
   "managedSetup.statusTitle": "本機託管狀態",
   "managedSetup.refreshStatus": "重新整理狀態",
   "managedSetup.refreshing": "重新整理中…",
-  "managedSetup.sig.none": "無託管產物",
-  "managedSetup.sig.artifacts": "已有託管檔案",
-  "managedSetup.sig.sigFiles": "簽名檔案存在",
-  "managedSetup.sig.active": "託管設定已生效",
-  "managedSetup.sig.rejected": "簽名被拒絕",
-  "managedSetup.sig.unknown": "狀態未知",
+  "managedSetup.sig.cardTitle": "簽名 / 託管原則",
+  "managedSetup.sig.absent": "無託管產物",
+  "managedSetup.sig.presentUnverified": "已存在（App 未驗簽）",
+  "managedSetup.sig.verifyOk": "簽名已驗證（CLI）",
+  "managedSetup.sig.verifyFailed": "簽名驗證失敗",
+  "managedSetup.sig.softFail": "狀態 soft-fail / 未知",
+  "managedSetup.sig.presenceOnly": "僅存在性",
+  "managedSetup.sig.presenceOnlyDetail":
+    "本機檔案或 inspect 旗標存在。App 從不重新做密碼學驗簽——只有 CLI/doctor 可聲稱已驗證。",
+  "managedSetup.sig.verifySource": "驗證來源：{source}",
+  "managedSetup.sig.detail": "詳細資料",
+  "managedSetup.sig.detailTitle": "託管簽名詳細資料",
   "managedSetup.sigHint":
-    "狀態僅反映本機檔案與 inspect 旗標——App 不會重新做密碼學驗簽。CLI 會在寫入前拒絕錯誤簽名。",
+    "狀態反映本機檔案與 inspect 旗標。App 不會重新做密碼學驗簽；僅當 CLI/doctor 報告驗證成功時才顯示 verify_ok。CLI 會在寫入前拒絕錯誤簽名。",
+  "managedSetup.recovery.absent":
+    "在 GROK_HOME 下找不到託管設定或簽名檔案。若組織使用託管原則，請在團隊鑑權後執行預覽 / 安裝。",
+  "managedSetup.recovery.presentUnverified":
+    "已有託管檔案或簽名 sidecar，但 App 未做密碼學驗簽。請以 CLI 安裝/doctor 為準；原則看起來過期時請重新安裝。",
+  "managedSetup.recovery.verifyOk":
+    "CLI/doctor 報告簽名驗證成功，無需額外復原。",
+  "managedSetup.recovery.verifyFailed":
+    "CLI 拒絕了託管設定簽名或信封。請聯絡管理員，不要強制寫入未驗證原則。金鑰或信封修正後請重新安裝。",
+  "managedSetup.recovery.softFail":
+    "無法完整探測託管狀態。請在 CLI 可用後重新整理，或檢查 執行環境 → CLI 路徑。",
+  "managedSetup.recovery.cliMissing":
+    "找不到 Grok Build CLI。請先在 設定 → 執行環境 安裝或指定 CLI，然後重新整理狀態。",
+  "managedSetup.recovery.inspectSoft":
+    "Inspect soft-fail（逾時或解析失敗）。本機路徑存在性可能仍準確；請重新整理或在 CLI 執行 doctor 以取得驗證聲明。",
+  "managedSetup.detail.present": "存在",
+  "managedSetup.detail.absent": "不存在",
+  "managedSetup.detail.signatureVerified": "CLI 簽名已驗證",
   "managedSetup.chip.managedActive": "Inspect：託管已生效",
   "managedSetup.chip.configToml": "managed_config.toml",
   "managedSetup.chip.configSig": "managed_config.sig.json",
