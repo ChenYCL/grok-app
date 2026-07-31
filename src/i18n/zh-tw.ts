@@ -2155,6 +2155,13 @@ export const zhTW: Record<MessageKey, string> = {
   "prov.save": "儲存",
   "prov.add": "新增",
   "prov.saving": "儲存中…",
+  "prov.saved": "供應商已儲存。",
+  "prov.savedHotReload":
+    "供應商已儲存，Agent 已重載 — 下一則訊息使用新設定（無需重新啟動應用程式）。",
+  "prov.savedApplyFailed":
+    "供應商已寫入磁碟，但即時套用失敗（{detail}）。可先傳送一則訊息；若對話仍不可用再重新啟動應用程式。",
+  "prov.err.saveTimeout":
+    "儲存耗時過長。設定可能已寫入 — 請關閉後重新開啟此面板；若對話不可用再重新啟動應用程式。",
   "prov.confirmDelete": "刪除供應商「{id}」？",
   "prov.loading": "載入中…",
   "prov.err.needBase": "請填寫 Base URL。",
@@ -2177,7 +2184,7 @@ export const zhTW: Record<MessageKey, string> = {
   "prov.customProvider": "自訂供應商",
   "prov.useThis": "使用",
   "prov.switchedHotReload":
-    "已切換服務商。下一則訊息會用新設定啟動新對話。",
+    "服務商已套用。下一則訊息會用新設定重連 — 無需完整重新啟動應用程式。",
   "prov.ccSwitch.importBtn": "從 CC Switch 匯入",
   "prov.ccSwitch.importBtnHint":
     "讀取本機 CC Switch 的 Grok Build 供應商並新增到此處",

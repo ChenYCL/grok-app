@@ -2250,6 +2250,13 @@ const en = {
   "prov.save": "Save",
   "prov.add": "Add",
   "prov.saving": "Saving…",
+  "prov.saved": "Provider saved.",
+  "prov.savedHotReload":
+    "Provider saved. Agents reloaded — next message uses the new config (no app restart).",
+  "prov.savedApplyFailed":
+    "Provider saved on disk, but live apply failed ({detail}). Try sending a message, or restart the app if chat stays offline.",
+  "prov.err.saveTimeout":
+    "Save is taking too long. Config may still have been written — close and reopen this panel, or restart if chat does not work.",
   "prov.confirmDelete": "Delete provider “{id}”?",
   "prov.loading": "Loading…",
   "prov.err.needBase": "Base URL is required.",
@@ -2273,7 +2280,7 @@ const en = {
   "prov.customProvider": "Custom provider",
   "prov.useThis": "Use",
   "prov.switchedHotReload":
-    "Provider switched. Next message starts a new session with the new config.",
+    "Provider applied. Next message reconnects with the new config — no full app restart needed.",
   "prov.ccSwitch.importBtn": "Import from CC Switch",
   "prov.ccSwitch.importBtnHint":
     "Read Grok Build providers from local CC Switch and add them here",
@@ -6289,6 +6296,13 @@ const zh: Record<MessageKey, string> = {
   "prov.save": "保存",
   "prov.add": "添加",
   "prov.saving": "保存中…",
+  "prov.saved": "提供商已保存。",
+  "prov.savedHotReload":
+    "提供商已保存，Agent 已重载 — 下一条消息使用新配置（无需重启应用）。",
+  "prov.savedApplyFailed":
+    "提供商已写入磁盘，但即时应用失败（{detail}）。可先发一条消息；若对话仍不可用再重启应用。",
+  "prov.err.saveTimeout":
+    "保存耗时过长。配置可能已写入 — 请关闭后重新打开此面板；若对话不可用再重启应用。",
   "prov.confirmDelete": "删除提供商「{id}」？",
   "prov.loading": "加载中…",
   "prov.err.needBase": "请填写 Base URL。",
@@ -6311,7 +6325,7 @@ const zh: Record<MessageKey, string> = {
   "prov.customProvider": "自定义提供商",
   "prov.useThis": "使用",
   "prov.switchedHotReload":
-    "已切换服务商。下一条消息会用新配置启动新会话。",
+    "服务商已应用。下一条消息会用新配置重连 — 无需完整重启应用。",
   "prov.ccSwitch.importBtn": "从 CC Switch 导入",
   "prov.ccSwitch.importBtnHint":
     "读取本机 CC Switch 的 Grok Build 供应商并添加到此处",

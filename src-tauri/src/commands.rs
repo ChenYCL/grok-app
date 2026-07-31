@@ -6956,67 +6956,87 @@ pub async fn providers_cc_switch_import(
 
 #[tauri::command]
 pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, String> {
-    // One-time migration of legacy single relay secrets → multi-provider config.
-    let secrets = store::load_secrets();
-    let _ = crate::providers::maybe_migrate_legacy_relay(
-        secrets.relay_base_url.as_deref(),
-        secrets.relay_api_key.as_deref(),
-        secrets.default_model.as_deref(),
-    );
-    // Ensure agent transport retries are high enough for flaky custom relays.
-    let _ = crate::providers::ensure_models_retry_cap();
-    // Fix bases saved without /v1 (causes silent multi-minute inference retries).
-    let _ = crate::providers::repair_custom_base_urls();
-    crate::providers::list_custom_providers()
+    // Blocking file I/O off the async runtime (migrations / repairs / list).
+    tauri::async_runtime::spawn_blocking(|| {
+        // One-time migration of legacy single relay secrets → multi-provider config.
+        let secrets = store::load_secrets();
+        let _ = crate::providers::maybe_migrate_legacy_relay(
+            secrets.relay_base_url.as_deref(),
+            secrets.relay_api_key.as_deref(),
+            secrets.default_model.as_deref(),
+        );
+        // Ensure agent transport retries are high enough for flaky custom relays.
+        let _ = crate::providers::ensure_models_retry_cap();
+        // Fix bases saved without /v1 (causes silent multi-minute inference retries).
+        let _ = crate::providers::repair_custom_base_urls();
+        crate::providers::list_custom_providers()
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Activate official Grok Build or a custom provider; returns updated list.
+///
+/// Recycles warm agents so the next send spawns with rebound auth / config
+/// (no full app restart).
 #[tauri::command]
 pub async fn providers_activate(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
     source: String,
     provider_id: Option<String>,
 ) -> Result<crate::providers::ProvidersListResult, String> {
-    let result =
-        crate::providers::activate_provider(&source, provider_id.as_deref())?;
-    // Composer model stays a catalog id (UI). Channel is `[models].default`.
-    // When leaving a custom route, drop stale provider ids from settings.
-    let mut settings = store::load_settings();
-    let cur = settings.model_id.clone().unwrap_or_default();
-    if result.active_source == "official" {
-        if cur.is_empty()
-            || crate::providers::is_custom_provider_id(&cur)
-            || cur == crate::providers::OFFICIAL_DEFAULT_MODEL
-        {
-            settings.model_id =
-                Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-            let _ = store::save_settings(&settings);
-        }
-    } else if result.active_source == "custom" {
-        // Keep catalog model in settings for the model picker; spawn resolves route id.
-        if cur.is_empty() || crate::providers::is_custom_provider_id(&cur) {
-            if let Some(p) = result
-                .active_provider_id
-                .as_ref()
-                .and_then(|id| result.providers.iter().find(|x| x.id == *id))
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let result =
+            crate::providers::activate_provider(&source, provider_id.as_deref())?;
+        // Composer model stays a catalog id (UI). Channel is `[models].default`.
+        // When leaving a custom route, drop stale provider ids from settings.
+        let mut settings = store::load_settings();
+        let cur = settings.model_id.clone().unwrap_or_default();
+        if result.active_source == "official" {
+            if cur.is_empty()
+                || crate::providers::is_custom_provider_id(&cur)
+                || cur == crate::providers::OFFICIAL_DEFAULT_MODEL
             {
-                let upstream = p.model.trim();
-                settings.model_id = Some(if upstream.is_empty() {
-                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
-                } else {
-                    upstream.to_string()
-                });
-            } else {
                 settings.model_id =
                     Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
+                let _ = store::save_settings(&settings);
             }
-            let _ = store::save_settings(&settings);
+        } else if result.active_source == "custom" {
+            // Keep catalog model in settings for the model picker; spawn resolves route id.
+            if cur.is_empty() || crate::providers::is_custom_provider_id(&cur) {
+                if let Some(p) = result
+                    .active_provider_id
+                    .as_ref()
+                    .and_then(|id| result.providers.iter().find(|x| x.id == *id))
+                {
+                    let upstream = p.model.trim();
+                    settings.model_id = Some(if upstream.is_empty() {
+                        crate::providers::OFFICIAL_CATALOG_MODEL.into()
+                    } else {
+                        upstream.to_string()
+                    });
+                } else {
+                    settings.model_id =
+                        Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
+                }
+                let _ = store::save_settings(&settings);
+            }
         }
-    }
+        Ok::<_, String>(result)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Parked processes keep old GROK_HOME auth/config in memory — kill them.
+    mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }
 
 #[tauri::command]
 pub async fn providers_upsert(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
     id: String,
     model: String,
     base_url: String,
@@ -7026,74 +7046,117 @@ pub async fn providers_upsert(
     set_as_default: Option<bool>,
     create_only: Option<bool>,
 ) -> Result<crate::providers::ProvidersListResult, String> {
-    let result = crate::providers::upsert_custom_provider(crate::providers::UpsertProviderInput {
-        id,
-        model: model.clone(),
-        base_url,
-        name,
-        api_key,
-        api_backend,
-        set_as_default,
-        create_only,
-    })?;
-    // Keep legacy secrets in sync for Doctor / account channel display.
-    if let Some(p) = result.providers.iter().find(|p| p.is_default).or(result.providers.first())
-    {
-        let mut secrets = store::load_secrets();
-        secrets.relay_base_url = Some(p.base_url.clone());
-        secrets.default_model = result.default_model.clone();
-        // Do not copy api_key into secrets (stays only in config.toml).
-        let _ = store::save_secrets(&secrets);
-        if set_as_default.unwrap_or(false) {
-            let mut settings = store::load_settings();
-            // Composer shows upstream request model, not the route slug.
-            let upstream = p.model.trim();
-            settings.model_id = Some(if upstream.is_empty() {
-                crate::providers::OFFICIAL_CATALOG_MODEL.into()
-            } else {
-                upstream.to_string()
-            });
-            let _ = store::save_settings(&settings);
+    let set_default_flag = set_as_default.unwrap_or(false);
+    let mutated_id = id.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let result =
+            crate::providers::upsert_custom_provider(crate::providers::UpsertProviderInput {
+                id,
+                model: model.clone(),
+                base_url,
+                name,
+                api_key,
+                api_backend,
+                set_as_default,
+                create_only,
+            })?;
+        // Keep legacy secrets in sync for Doctor / account channel display.
+        if let Some(p) = result
+            .providers
+            .iter()
+            .find(|p| p.is_default)
+            .or(result.providers.first())
+        {
+            let mut secrets = store::load_secrets();
+            secrets.relay_base_url = Some(p.base_url.clone());
+            secrets.default_model = result.default_model.clone();
+            // Do not copy api_key into secrets (stays only in config.toml).
+            let _ = store::save_secrets(&secrets);
+            if set_as_default.unwrap_or(false) {
+                let mut settings = store::load_settings();
+                // Composer shows upstream request model, not the route slug.
+                let upstream = p.model.trim();
+                settings.model_id = Some(if upstream.is_empty() {
+                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
+                } else {
+                    upstream.to_string()
+                });
+                let _ = store::save_settings(&settings);
+            }
         }
+        Ok::<_, String>(result)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Apply active-route / active-provider edits without requiring app restart.
+    // Recycle (not mere park) so parked shells cannot reopen with stale OIDC.
+    if crate::providers::provider_mutation_needs_agent_reload(
+        set_default_flag,
+        &mutated_id,
+        &result,
+    ) {
+        mgr.recycle_all_agents(&app, "provider_route").await;
     }
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn providers_remove(id: String) -> Result<crate::providers::ProvidersListResult, String> {
-    crate::providers::remove_custom_provider(&id)
+pub async fn providers_remove(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+) -> Result<crate::providers::ProvidersListResult, String> {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::providers::remove_custom_provider(&id)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    // Removing a provider (esp. the active one) must not leave warm agents on
+    // a deleted route id.
+    mgr.recycle_all_agents(&app, "provider_route").await;
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn providers_set_default(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
     model_id: String,
 ) -> Result<crate::providers::ProvidersListResult, String> {
     // Prefer activate_provider so auth material is rebound correctly.
-    let id = model_id.trim();
-    let list = crate::providers::list_custom_providers()?;
-    let result = if list.providers.iter().any(|p| p.id == id) {
-        crate::providers::activate_provider("custom", Some(id))?
-    } else {
-        crate::providers::activate_provider("official", None)?
-    };
-    let mut settings = store::load_settings();
-    if result.active_source == "custom" {
-        if let Some(p) = result
-            .active_provider_id
-            .as_ref()
-            .and_then(|pid| result.providers.iter().find(|x| x.id == *pid))
-        {
-            let upstream = p.model.trim();
-            settings.model_id = Some(if upstream.is_empty() {
-                crate::providers::OFFICIAL_CATALOG_MODEL.into()
-            } else {
-                upstream.to_string()
-            });
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let id = model_id.trim().to_string();
+        let list = crate::providers::list_custom_providers()?;
+        let result = if list.providers.iter().any(|p| p.id == id) {
+            crate::providers::activate_provider("custom", Some(&id))?
+        } else {
+            crate::providers::activate_provider("official", None)?
+        };
+        let mut settings = store::load_settings();
+        if result.active_source == "custom" {
+            if let Some(p) = result
+                .active_provider_id
+                .as_ref()
+                .and_then(|pid| result.providers.iter().find(|x| x.id == *pid))
+            {
+                let upstream = p.model.trim();
+                settings.model_id = Some(if upstream.is_empty() {
+                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
+                } else {
+                    upstream.to_string()
+                });
+            }
+        } else {
+            settings.model_id = Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
         }
-    } else {
-        settings.model_id = Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-    }
-    let _ = store::save_settings(&settings);
+        let _ = store::save_settings(&settings);
+        Ok::<_, String>(result)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }
 

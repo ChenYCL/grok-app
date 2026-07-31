@@ -4266,7 +4266,12 @@ export default function App() {
             "session://agents_recycled",
             (p) => {
               if (cancelled || !p) return;
-              // session_data_mode flip (and any future full recycle).
+              // session_data_mode flip, custom provider route apply (#376), CLI upgrade, etc.
+              if (p.reason === "provider_route") {
+                setToast(tr("prov.switchedHotReload"));
+                window.setTimeout(() => setToast(null), 3600);
+                return;
+              }
               if (
                 p.reason === "session_data_mode" ||
                 (p.killed != null && p.killed > 0)
@@ -14970,20 +14975,29 @@ export default function App() {
             .filter((p) => p.trusted)
             .map((p) => ({ id: p.id, name: p.name, path: p.path }))}
           onProviderActivated={() => {
-            // Hot-reload Grok Build: drop live ACP so next send re-spawns with new GROK_HOME config.
+            // Host already recycled warm agents on upsert/activate. Refresh UI
+            // chrome only — never park (sessionDisconnect) a live process: that
+            // kept stale OIDC/config in memory and required a full app restart
+            // (issue #376). Soft-fail so save UI never sticks on “Saving…”.
             void (async () => {
               try {
                 if (api.isTauri()) {
-                  await api.sessionDisconnect();
                   setSession({ ...IDLE_SNAPSHOT });
                 }
                 await refreshProviderRoute();
-                await refreshAccount({ refreshBilling: false });
-                await refreshVoiceGate();
+                await refreshAccount({ refreshBilling: false }).catch(() => {
+                  /* soft-fail billing refresh */
+                });
+                await refreshVoiceGate().catch(() => {
+                  /* soft-fail voice gate */
+                });
                 setToast(tr("prov.switchedHotReload"));
                 window.setTimeout(() => setToast(null), 3200);
               } catch (e) {
-                setToast(String(e));
+                setToast(
+                  tr("prov.savedApplyFailed", { detail: String(e) }),
+                );
+                window.setTimeout(() => setToast(null), 4800);
               }
             })();
           }}
