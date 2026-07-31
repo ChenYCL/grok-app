@@ -23313,6 +23313,8 @@ html[data-theme="light"] .rim-sidebar {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
 /* Streaming ACP NDJSON diagnostics (Settings → Runtime → Tools) */
 .stream-acp-ndjson {
   display: flex;

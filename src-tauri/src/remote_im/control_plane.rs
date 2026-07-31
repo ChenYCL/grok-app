@@ -623,7 +623,15 @@ pub fn grok_turn_cli_args_with_bg_wait(
     session_id: Option<&str>,
     always_approve: bool,
     bg_wait_flags: &[String],
-    grok_turn_cli_args_with_stream(prompt, session_id, always_approve, "streaming-json", &[])
+) -> Vec<String> {
+    grok_turn_cli_args_full(
+        prompt,
+        session_id,
+        always_approve,
+        "streaming-json",
+        &[],
+        bg_wait_flags,
+    )
 }
 
 /// Headless `-p` argv with explicit output format + optional partial-stream flags
@@ -634,6 +642,25 @@ pub fn grok_turn_cli_args_with_stream(
     always_approve: bool,
     output_format: &str,
     partial_flags: &[&str],
+) -> Vec<String> {
+    grok_turn_cli_args_full(
+        prompt,
+        session_id,
+        always_approve,
+        output_format,
+        partial_flags,
+        &[],
+    )
+}
+
+/// Full headless `-p` argv: format, optional partial-stream flags, resume, bg-wait.
+pub fn grok_turn_cli_args_full(
+    prompt: &str,
+    session_id: Option<&str>,
+    always_approve: bool,
+    output_format: &str,
+    partial_flags: &[&str],
+    bg_wait_flags: &[String],
 ) -> Vec<String> {
     let mut args = vec!["-p".into(), prompt.to_string()];
     if always_approve {

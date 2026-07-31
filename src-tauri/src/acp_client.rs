@@ -669,6 +669,15 @@ pub fn background_wait_spawn_flags_soft(
     raw_cli_version: Option<&str>,
 ) -> Vec<String> {
     let args = background_wait_spawn_flags(policy, timeout_sec);
+    if args.is_empty() {
+        return args;
+    }
+    match raw_cli_version {
+        Some(v) if cli_supports_background_wait(v) == Some(true) => args,
+        _ => Vec::new(),
+    }
+}
+
 // ── Include partial stream events (CLI 0.2.117+, headless) ─────────────────
 
 /// First CLI that accepts `--include-partial-messages`.
@@ -724,8 +733,8 @@ pub fn include_partial_messages_spawn_flags_soft(
         return args;
     }
     match raw_cli_version {
-        Some(v) if cli_supports_background_wait(v) == Some(true) => args,
-        _ => Vec::new(),
+        Some(v) if cli_supports_include_partial_messages(v) == Some(true) => args,
+        _ => vec![],
     }
 }
 
@@ -739,9 +748,6 @@ pub fn background_wait_spawn_flags_from_settings(
         settings.background_wait_timeout_sec,
         raw_cli_version,
     )
-        Some(v) if cli_supports_include_partial_messages(v) == Some(true) => args,
-        _ => vec![],
-    }
 }
 
 /// Resolve headless format + partial flag for Remote IM / diagnostics when the
@@ -1070,6 +1076,7 @@ impl AcpClient {
                 session_data_mode,
                 todo_gate_enabled,
                 todo_gate_max_fires,
+            );
             let _ = crate::agent_subagent_wt_snap::sync_subagent_wt_snap_to_agent_profile(
                 session_data_mode,
                 subagent_wt_snap,
@@ -1213,8 +1220,7 @@ impl AcpClient {
             cmd.env(k, v);
         }
         tracing::info!(
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} no_ask_user={} leader={} subagents={} memory={} agent_profile={:?} agents_json={}",
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} leader={} subagents={} memory={} compaction_mode={} compaction_detail={} compaction_flags={} agent_profile={:?} agents_json={}",
+            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} no_ask_user={} leader={} subagents={} memory={} compaction_mode={} compaction_detail={} compaction_flags={} agent_profile={:?} agents_json={}",
             grok_home.display(),
             session_data_mode,
             sandbox.as_ref().map(|s| s.profile.as_str()),
@@ -4630,6 +4636,10 @@ mod no_ask_user_spawn_tests {
         assert!(resolve_no_ask_user(None, true));
         assert!(resolve_no_ask_user(Some(true), false));
         assert!(!resolve_no_ask_user(Some(false), true));
+    }
+}
+
+#[cfg(test)]
 mod include_partial_messages_tests {
     use super::*;
 

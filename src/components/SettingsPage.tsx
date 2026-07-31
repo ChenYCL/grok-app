@@ -6215,9 +6215,6 @@ export function SettingsPage({
                     rowHighlight("settings-anchor-smj")
                   }
                   id="settings-anchor-smj"
-                    rowHighlight("settings-anchor-stream-acp-ndjson")
-                  }
-                  id="settings-anchor-stream-acp-ndjson"
                 >
                   <div className="settings-row settings-row--stack">
                     <div className="settings-row__text">
@@ -6233,6 +6230,18 @@ export function SettingsPage({
                     locale={resolveLocale(locale)}
                     cliVersion={cliInfo.version}
                     onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2000)}
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-stream-acp-ndjson")
+                  }
+                  id="settings-anchor-stream-acp-ndjson"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
                         {t("streamAcpNdjson.title")}
                       </div>
                       <div className="settings-row__desc">

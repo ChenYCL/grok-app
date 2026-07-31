@@ -1539,6 +1539,7 @@ export interface AppSettings {
    * writes `todo_gate_max_fires_per_prompt`. Soft-respawns on change.
    */
   todoGateMaxFiresPerPrompt?: number;
+  /**
    * Compaction mode for spawned agents (CLI 0.2.117+):
    * summary | transcript | segments. Maps to `--compaction-mode` /
    * GROK_COMPACTION_MODE. Default "summary". Soft-respawns on change.

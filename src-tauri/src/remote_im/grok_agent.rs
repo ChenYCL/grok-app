@@ -74,32 +74,24 @@ pub async fn run_turn(
     on_delta: Option<tokio::sync::mpsc::Sender<String>>,
 ) -> GrokTurnResult {
     let binary = resolve_grok_binary();
-    // Soft-fail older CLIs: only pass bg-wait flags when version ≥ 0.2.117.
+    // Soft-fail older CLIs for bg-wait flags and partial stream format upgrade.
     let settings = crate::store::load_settings();
     let cli_ver = crate::cli_probe::read_version_of(&binary);
     let bg_wait = crate::acp_client::background_wait_spawn_flags_from_settings(
         &settings,
         cli_ver.as_deref(),
     );
-    let args = super::control_plane::grok_turn_cli_args_with_bg_wait(
-        prompt,
-        session_id,
-        always_approve,
-        &bg_wait,
-    // Soft-fail older CLIs: only upgrade to streaming-messages-json +
-    // --include-partial-messages when settings enable it and CLI ≥ 0.2.117.
-    let settings = crate::store::load_settings();
-    let cli_ver = crate::cli_probe::read_version_of(&binary);
     let (fmt, partial) = crate::acp_client::resolve_headless_stream_from_settings(
         &settings,
         cli_ver.as_deref(),
     );
-    let args = super::control_plane::grok_turn_cli_args_with_stream(
+    let args = super::control_plane::grok_turn_cli_args_full(
         prompt,
         session_id,
         always_approve,
         fmt,
         &partial,
+        &bg_wait,
     );
 
     let mut cmd = Command::new(&binary);

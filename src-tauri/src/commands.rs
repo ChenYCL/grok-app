@@ -1326,6 +1326,9 @@ pub async fn settings_set(
             settings.todo_gate_max_fires_per_prompt,
         ) {
             tracing::warn!("settings_set sync todo_gate profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
     if subagent_wt_snap_flip {
         if let Err(e) = crate::agent_subagent_wt_snap::sync_subagent_wt_snap_to_agent_profile(
             &settings.session_data_mode,

@@ -2796,9 +2796,8 @@ const en = {
   "session.exportHtml": "Export chat as HTML",
   "session.exportImage": "Export chat as image",
   "session.exportImageTitle": "Export share card",
-  "session.exportImageHint": "Render a share card PNG from this conversation (optional thinking).",
-  "session.exportImageHint": "PNG share card of this conversation (theme + layout options below).",
-  "session.exportImageHint": "Render the conversation as a shareable PNG card.",
+  "session.exportImageHint":
+    "PNG share card of this conversation (theme + layout options below).",
   "session.exportImageSmart": "Smart summary poster",
   "session.exportImageSmartDesc":
     "Condense the chat into a branded poster.",
@@ -6821,9 +6820,7 @@ const zh: Record<MessageKey, string> = {
   "session.exportHtml": "导出会话为 HTML",
   "session.exportImage": "导出为图片",
   "session.exportImageTitle": "导出分享卡片",
-  "session.exportImageHint": "将本对话渲染为分享卡片 PNG（可选思考内容）。",
   "session.exportImageHint": "将本会话导出为 PNG 分享卡片（下方可选主题与布局）。",
-  "session.exportImageHint": "将对话渲染为可分享的 PNG 卡片。",
   "session.exportImageSmart": "智能总结海报",
   "session.exportImageSmartDesc": "将对话压缩为品牌海报。",
   "session.exportImageTheme": "卡片主题",

@@ -2109,6 +2109,9 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "worktree 数据库",
       "worktree 資料庫",
       "重建",
+    ],
+  },
+  {
     id: "runtime.cliUpdate",
     section: "runtime",
     tab: "cli",
@@ -2430,6 +2433,9 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "0.2.117",
       "流式消息",
       "消息 JSON",
+    ],
+  },
+  {
     id: "runtime.streamAcpNdjson",
     section: "runtime",
     tab: "tools",
