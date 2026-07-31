@@ -1,9 +1,11 @@
 /**
- * Settings → Extensions → Hooks: list / open folders, real try-run, recent activity.
+ * Settings → Extensions → Hooks: list / open folders, real try-run,
+ * stdin Validate, classified GlassModal results, recent activity.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
+import { GlassModal } from "@/components/GlassModal";
 import {
   IconExternalLink,
   IconFolder,
@@ -27,10 +29,20 @@ import {
   formatHooksTryRunSummary,
   HOOKS_TRY_DEFAULT_TIMEOUT_SECS,
   hooksTryRunActivityOutcome,
-  hooksTryStdinErrorCode,
   isHookScriptTryable,
   validateHooksTryStdin,
 } from "@/lib/hooksTryRun";
+import {
+  buildHooksStdinValidatePresentation,
+  buildHooksTryExceptionPresentation,
+  buildHooksTryPreflightError,
+  buildHooksTryPresentation,
+  hooksValidateBadgeTone,
+  hooksValidateHint,
+  hooksValidateKindLabel,
+  type HooksValidateKind,
+  type HooksValidatePresentation,
+} from "@/lib/hooksValidate";
 import {
   formatHookMtime,
   formatHookSize,
@@ -65,6 +77,15 @@ function outcomeLabel(
   return tr("ext.hooks.activity.info");
 }
 
+function severityMsgClass(
+  severity: HooksValidatePresentation["severity"],
+): string {
+  if (severity === "ok") return " ext-hooks-try__msg--ok";
+  if (severity === "err") return " ext-hooks-try__msg--err";
+  if (severity === "warn") return " ext-hooks-try__msg--warn";
+  return "";
+}
+
 export function ExtensionsHooksPanel({
   locale,
   projectPath = null,
@@ -90,15 +111,94 @@ export function ExtensionsHooksPanel({
   const [tryOpen, setTryOpen] = useState(true);
   const [tryPath, setTryPath] = useState("");
   const [tryJson, setTryJson] = useState(SAMPLE_STDIN);
-  const [tryTimeout, setTryTimeout] = useState(String(HOOKS_TRY_DEFAULT_TIMEOUT_SECS));
+  const [tryTimeout, setTryTimeout] = useState(
+    String(HOOKS_TRY_DEFAULT_TIMEOUT_SECS),
+  );
   const [tryRunning, setTryRunning] = useState(false);
-  const [tryResult, setTryResult] = useState<api.HooksTryRunResult | null>(null);
+  const [tryResult, setTryResult] = useState<api.HooksTryRunResult | null>(
+    null,
+  );
   const [tryMsg, setTryMsg] = useState<{
-    kind: "ok" | "err" | "info";
+    kind: "ok" | "err" | "info" | "warn";
     text: string;
   } | null>(null);
 
+  // GlassModal result (validate or try-run)
+  const [resultOpen, setResultOpen] = useState(false);
+  const [resultMode, setResultMode] = useState<"validate" | "try">("try");
+  const [resultPresentation, setResultPresentation] =
+    useState<HooksValidatePresentation | null>(null);
+
   const cliMissing = !cliFound;
+
+  const kindLabels = useMemo((): Partial<Record<HooksValidateKind, string>> => {
+    return {
+      ok: tr("ext.hooks.try.kind.ok"),
+      timeout: tr("ext.hooks.try.kind.timeout"),
+      exit_nonzero: tr("ext.hooks.try.kind.exitNonzero"),
+      empty_path: tr("ext.hooks.try.kind.emptyPath"),
+      path_outside_hooks: tr("ext.hooks.try.kind.pathOutside"),
+      path_not_absolute: tr("ext.hooks.try.kind.pathNotAbsolute"),
+      not_found: tr("ext.hooks.try.kind.notFound"),
+      not_a_file: tr("ext.hooks.try.kind.notAFile"),
+      invalid_path: tr("ext.hooks.try.kind.invalidPath"),
+      stdin_too_large: tr("ext.hooks.try.kind.stdinTooLarge"),
+      invalid_json: tr("ext.hooks.try.kind.invalidJson"),
+      stdin_empty: tr("ext.hooks.try.kind.stdinEmpty"),
+      stdin_not_object: tr("ext.hooks.try.kind.stdinNotObject"),
+      spawn_failed: tr("ext.hooks.try.kind.spawnFailed"),
+      wait_failed: tr("ext.hooks.try.kind.waitFailed"),
+      refused: tr("ext.hooks.try.kind.refused"),
+      host_only: tr("ext.hooks.try.kind.hostOnly"),
+      host_error: tr("ext.hooks.try.kind.hostError"),
+      other: tr("ext.hooks.try.kind.other"),
+    };
+  }, [tr]);
+
+  const kindHints = useMemo((): Partial<Record<HooksValidateKind, string>> => {
+    return {
+      ok: tr("ext.hooks.try.hint.ok"),
+      timeout: tr("ext.hooks.try.hint.timeout"),
+      exit_nonzero: tr("ext.hooks.try.hint.exitNonzero"),
+      empty_path: tr("ext.hooks.try.hint.emptyPath"),
+      path_outside_hooks: tr("ext.hooks.try.hint.pathOutside"),
+      path_not_absolute: tr("ext.hooks.try.hint.pathNotAbsolute"),
+      not_found: tr("ext.hooks.try.hint.notFound"),
+      not_a_file: tr("ext.hooks.try.hint.notAFile"),
+      invalid_path: tr("ext.hooks.try.hint.invalidPath"),
+      stdin_too_large: tr("ext.hooks.try.hint.stdinTooLarge"),
+      invalid_json: tr("ext.hooks.try.hint.invalidJson"),
+      stdin_empty: tr("ext.hooks.try.hint.stdinEmpty"),
+      stdin_not_object: tr("ext.hooks.try.hint.stdinNotObject"),
+      spawn_failed: tr("ext.hooks.try.hint.spawnFailed"),
+      wait_failed: tr("ext.hooks.try.hint.waitFailed"),
+      refused: tr("ext.hooks.try.hint.refused"),
+      host_only: tr("ext.hooks.try.hint.hostOnly"),
+      host_error: tr("ext.hooks.try.hint.hostError"),
+      other: tr("ext.hooks.try.hint.other"),
+    };
+  }, [tr]);
+
+  const summaryLabels = useMemo(
+    () => ({
+      refused: tr("ext.hooks.try.summaryRefused"),
+      timedOut: tr("ext.hooks.try.summaryTimedOut"),
+      ok: tr("ext.hooks.try.summaryOk"),
+    }),
+    [tr],
+  );
+
+  const stdinValidateLabels = useMemo(
+    () => ({
+      empty: tr("ext.hooks.try.errEmpty"),
+      tooLarge: tr("ext.hooks.try.errTooLarge"),
+      invalidJson: tr("ext.hooks.try.errInvalidJson"),
+      notObject: tr("ext.hooks.try.errNotObject"),
+      ok: tr("ext.hooks.try.validOk"),
+      kinds: kindLabels,
+    }),
+    [tr, kindLabels],
+  );
 
   useEffect(() => {
     setActivity([...listHookActivities()]);
@@ -157,7 +257,9 @@ export function ExtensionsHooksPanel({
   };
 
   const scopeLabel = (scope: string) =>
-    scope === "project" ? tr("ext.hooks.scope.project") : tr("ext.hooks.scope.user");
+    scope === "project"
+      ? tr("ext.hooks.scope.project")
+      : tr("ext.hooks.scope.user");
 
   const scriptHooks = useMemo(
     () => hooks.filter((h) => isHookScriptTryable(h)),
@@ -171,30 +273,67 @@ export function ExtensionsHooksPanel({
     setTryOpen(true);
   };
 
+  const openPresentation = (
+    mode: "validate" | "try",
+    presentation: HooksValidatePresentation,
+  ) => {
+    setResultMode(mode);
+    setResultPresentation(presentation);
+    setResultOpen(true);
+    const msgKind =
+      presentation.severity === "ok"
+        ? "ok"
+        : presentation.severity === "warn"
+          ? "warn"
+          : presentation.severity === "info"
+            ? "info"
+            : "err";
+    setTryMsg({ kind: msgKind, text: presentation.summary });
+  };
+
+  const onValidate = () => {
+    const { presentation } = buildHooksStdinValidatePresentation(
+      tryJson,
+      stdinValidateLabels,
+    );
+    openPresentation("validate", presentation);
+  };
+
   const onTryRun = async () => {
     const path = tryPath.trim();
-    if (!path) {
-      setTryMsg({ kind: "err", text: tr("ext.hooks.try.errNoPath") });
+    const preflight = buildHooksTryPreflightError(path, tryJson, {
+      isTauri: api.isTauri(),
+      labels: {
+        noPath: tr("ext.hooks.try.errNoPath"),
+        hostOnly: tr("ext.hooks.try.errHostOnly"),
+        tooLarge: tr("ext.hooks.try.errTooLarge"),
+        invalidJson: tr("ext.hooks.try.errInvalidJson"),
+        kinds: kindLabels,
+      },
+    });
+    if (preflight) {
+      setTryResult(null);
+      openPresentation("try", preflight);
       return;
     }
-    if (!api.isTauri()) {
-      setTryMsg({ kind: "err", text: tr("ext.hooks.try.errHostOnly") });
-      return;
-    }
+
     const stdinCheck = validateHooksTryStdin(tryJson);
     if (!stdinCheck.ok) {
-      const code = hooksTryStdinErrorCode(stdinCheck);
-      if (code === "too_large") {
-        setTryMsg({ kind: "err", text: tr("ext.hooks.try.errTooLarge") });
-      } else {
-        const detail = stdinCheck.error.replace(/^invalid_json:/, "") || "…";
-        setTryMsg({
-          kind: "err",
-          text: tr("ext.hooks.try.errInvalidJson", { detail }),
-        });
-      }
+      // Should be covered by preflight; belt-and-suspenders.
+      const { presentation } = buildHooksStdinValidatePresentation(tryJson, {
+        ...stdinValidateLabels,
+        empty: tr("ext.hooks.try.errEmpty"),
+      });
+      openPresentation("try", {
+        ...presentation,
+        kind:
+          presentation.kind === "stdin_empty"
+            ? "invalid_json"
+            : presentation.kind,
+      });
       return;
     }
+
     const timeoutSecs = clampHooksTryTimeout(
       tryTimeout.trim() ? Number(tryTimeout) : HOOKS_TRY_DEFAULT_TIMEOUT_SECS,
     );
@@ -210,10 +349,21 @@ export function ExtensionsHooksPanel({
         timeoutSecs,
       });
       setTryResult(res);
+      const presentation = buildHooksTryPresentation(res, {
+        ...summaryLabels,
+        fail: tr("ext.hooks.try.summaryFail", {
+          code:
+            res.exitCode == null || res.exitCode === undefined
+              ? "?"
+              : String(res.exitCode),
+        }),
+        kinds: kindLabels,
+      });
+      openPresentation("try", presentation);
+
+      const baseName = path.split(/[/\\]/).pop() || path;
       const summary = formatHooksTryRunSummary(res, {
-        refused: tr("ext.hooks.try.summaryRefused"),
-        timedOut: tr("ext.hooks.try.summaryTimedOut"),
-        ok: tr("ext.hooks.try.summaryOk"),
+        ...summaryLabels,
         fail: tr("ext.hooks.try.summaryFail", {
           code:
             res.exitCode == null || res.exitCode === undefined
@@ -221,12 +371,6 @@ export function ExtensionsHooksPanel({
               : String(res.exitCode),
         }),
       });
-      setTryMsg({
-        kind: res.ok ? "ok" : res.refused ? "err" : "err",
-        text: summary,
-      });
-      // Honest activity row (source=try); never mark ok unless host ok.
-      const baseName = path.split(/[/\\]/).pop() || path;
       pushHookActivity({
         id: `try-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         type: "TryRun",
@@ -235,6 +379,7 @@ export function ExtensionsHooksPanel({
         detail: redactHookDetail(
           [
             summary,
+            hooksValidateKindLabel(presentation.kind, kindLabels),
             res.path ? res.path : baseName,
             res.stdout?.trim() ? res.stdout.trim().slice(0, 80) : null,
           ]
@@ -246,12 +391,24 @@ export function ExtensionsHooksPanel({
       });
     } catch (e) {
       setTryResult(null);
-      setTryMsg({ kind: "err", text: String(e) });
+      const presentation = buildHooksTryExceptionPresentation(e, {
+        kinds: kindLabels,
+      });
+      openPresentation("try", presentation);
     } finally {
       setTryRunning(false);
       setBusy(null);
     }
   };
+
+  const resultTitle =
+    resultMode === "validate"
+      ? tr("ext.hooks.try.resultValidateTitle")
+      : tr("ext.hooks.try.resultTryTitle");
+
+  const resultHint = resultPresentation
+    ? hooksValidateHint(resultPresentation.kind, kindHints)
+    : "";
 
   return (
     <>
@@ -324,7 +481,9 @@ export function ExtensionsHooksPanel({
           <div
             className={
               "ext-alert" +
-              (isCliMissingError(error) ? " ext-alert--error" : " ext-alert--warn")
+              (isCliMissingError(error)
+                ? " ext-alert--error"
+                : " ext-alert--warn")
             }
             role="alert"
           >
@@ -368,7 +527,9 @@ export function ExtensionsHooksPanel({
                     className="btn btn--ghost btn--sm"
                     disabled={!!busy}
                     onClick={() =>
-                      void api.hooksReveal(h.path).catch((e) => setError(String(e)))
+                      void api
+                        .hooksReveal(h.path)
+                        .catch((e) => setError(String(e)))
                     }
                   >
                     <IconExternalLink size={13} />
@@ -396,7 +557,7 @@ export function ExtensionsHooksPanel({
         ) : null}
       </div>
 
-      {/* Real try-run */}
+      {/* Real try-run + validate */}
       <div className="settings-card ext-card ext-hooks-try">
         <button
           type="button"
@@ -477,6 +638,14 @@ export function ExtensionsHooksPanel({
             <div className="ext-hooks-try__actions">
               <button
                 type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={tryRunning || !!busy}
+                onClick={onValidate}
+              >
+                {tr("ext.hooks.try.validate")}
+              </button>
+              <button
+                type="button"
                 className="btn btn--solid btn--sm"
                 disabled={tryRunning || !!busy || !tryPath.trim()}
                 onClick={() => void onTryRun()}
@@ -485,6 +654,35 @@ export function ExtensionsHooksPanel({
                   ? tr("ext.hooks.try.running")
                   : tr("ext.hooks.try.run")}
               </button>
+              {resultPresentation || tryResult ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!resultPresentation && !tryResult}
+                  onClick={() => {
+                    if (resultPresentation) {
+                      setResultOpen(true);
+                    } else if (tryResult) {
+                      openPresentation(
+                        "try",
+                        buildHooksTryPresentation(tryResult, {
+                          ...summaryLabels,
+                          fail: tr("ext.hooks.try.summaryFail", {
+                            code:
+                              tryResult.exitCode == null ||
+                              tryResult.exitCode === undefined
+                                ? "?"
+                                : String(tryResult.exitCode),
+                          }),
+                          kinds: kindLabels,
+                        }),
+                      );
+                    }
+                  }}
+                >
+                  {tr("ext.hooks.try.viewResult")}
+                </button>
+              ) : null}
             </div>
             {tryMsg ? (
               <p
@@ -494,7 +692,9 @@ export function ExtensionsHooksPanel({
                     ? " ext-hooks-try__msg--ok"
                     : tryMsg.kind === "err"
                       ? " ext-hooks-try__msg--err"
-                      : "")
+                      : tryMsg.kind === "warn"
+                        ? " ext-hooks-try__msg--warn"
+                        : "")
                 }
                 role="status"
               >
@@ -502,7 +702,11 @@ export function ExtensionsHooksPanel({
               </p>
             ) : null}
             {tryResult ? (
-              <div className="ext-hooks-try__result" role="region" aria-live="polite">
+              <div
+                className="ext-hooks-try__result"
+                role="region"
+                aria-live="polite"
+              >
                 <div className="ext-hooks-try__result-meta">
                   <span
                     className={
@@ -522,6 +726,14 @@ export function ExtensionsHooksPanel({
                           ? tr("ext.hooks.try.badgeTimeout")
                           : tr("ext.hooks.activity.fail")}
                   </span>
+                  {resultPresentation ? (
+                    <span className="ext-badge ext-badge--muted">
+                      {hooksValidateKindLabel(
+                        resultPresentation.kind,
+                        kindLabels,
+                      )}
+                    </span>
+                  ) : null}
                   {tryResult.exitCode != null ? (
                     <span className="ext-badge ext-badge--muted">
                       {tr("ext.hooks.try.exitCode", {
@@ -541,7 +753,10 @@ export function ExtensionsHooksPanel({
                   ) : null}
                 </div>
                 {tryResult.path ? (
-                  <p className="ext-hooks-try__result-path" title={tryResult.path}>
+                  <p
+                    className="ext-hooks-try__result-path"
+                    title={tryResult.path}
+                  >
                     <code>{tryResult.path}</code>
                   </p>
                 ) : null}
@@ -550,7 +765,9 @@ export function ExtensionsHooksPanel({
                     {formatHooksTryRunOutput(tryResult)}
                   </pre>
                 ) : (
-                  <p className="ext-field-hint">{tr("ext.hooks.try.noOutput")}</p>
+                  <p className="ext-field-hint">
+                    {tr("ext.hooks.try.noOutput")}
+                  </p>
                 )}
               </div>
             ) : null}
@@ -596,6 +813,116 @@ export function ExtensionsHooksPanel({
           </ul>
         )}
       </div>
+
+      <GlassModal
+        open={resultOpen && !!resultPresentation}
+        onClose={() => setResultOpen(false)}
+        title={resultTitle}
+        size="lg"
+        closeLabel={tr("common.close")}
+        wrapBody
+        bodyClassName="ext-hooks-result-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={() => setResultOpen(false)}
+            >
+              {tr("common.close")}
+            </button>
+          </>
+        }
+      >
+        {resultPresentation ? (
+          <div className="ext-hooks-result">
+            <div className="ext-hooks-result__meta">
+              <span
+                className={
+                  "ext-badge ext-badge--" +
+                  hooksValidateBadgeTone(resultPresentation.severity)
+                }
+              >
+                {hooksValidateKindLabel(resultPresentation.kind, kindLabels)}
+              </span>
+              {resultPresentation.exitCode != null ? (
+                <span className="ext-badge ext-badge--muted">
+                  {tr("ext.hooks.try.exitCode", {
+                    code: String(resultPresentation.exitCode),
+                  })}
+                </span>
+              ) : null}
+              {resultPresentation.durationMs != null ? (
+                <span className="ext-badge ext-badge--muted">
+                  {resultPresentation.durationMs}ms
+                </span>
+              ) : null}
+              {resultPresentation.scope ? (
+                <span className="ext-badge ext-badge--muted">
+                  {scopeLabel(resultPresentation.scope)}
+                </span>
+              ) : null}
+              {resultPresentation.refused ? (
+                <span className="ext-badge ext-badge--muted">
+                  {tr("ext.hooks.try.badgeRefused")}
+                </span>
+              ) : null}
+              {resultPresentation.timedOut ? (
+                <span className="ext-badge ext-badge--muted">
+                  {tr("ext.hooks.try.badgeTimeout")}
+                </span>
+              ) : null}
+            </div>
+            <p
+              className={
+                "ext-hooks-result__summary" +
+                severityMsgClass(resultPresentation.severity)
+              }
+            >
+              {resultPresentation.summary}
+            </p>
+            {resultHint ? (
+              <p className="ext-hooks-result__hint">{resultHint}</p>
+            ) : null}
+            {resultPresentation.detail &&
+            resultPresentation.detail !== resultPresentation.summary ? (
+              <p className="ext-hooks-result__detail">
+                {resultPresentation.detail}
+              </p>
+            ) : null}
+            {resultPresentation.reason ? (
+              <p className="ext-hooks-result__reason">
+                <span className="ext-hooks-result__label">
+                  {tr("ext.hooks.try.reason")}
+                </span>
+                <code>{resultPresentation.reason}</code>
+              </p>
+            ) : null}
+            {resultPresentation.path ? (
+              <p
+                className="ext-hooks-result__path"
+                title={resultPresentation.path}
+              >
+                <span className="ext-hooks-result__label">
+                  {tr("ext.hooks.try.scriptPath")}
+                </span>
+                <code>{resultPresentation.path}</code>
+              </p>
+            ) : null}
+            {resultMode === "try" ? (
+              resultPresentation.output ? (
+                <pre className="ext-hooks-try__output ext-hooks-result__output">
+                  {resultPresentation.output}
+                </pre>
+              ) : resultPresentation.ok ||
+                resultPresentation.kind === "exit_nonzero" ||
+                resultPresentation.kind === "timeout" ? (
+                <p className="ext-field-hint">{tr("ext.hooks.try.noOutput")}</p>
+              ) : null
+            ) : null}
+          </div>
+        ) : null}
+      </GlassModal>
     </>
   );
 }
