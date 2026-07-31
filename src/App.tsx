@@ -634,6 +634,15 @@ import {
 } from "@/lib/gitWorktree";
 import { filterCliWorktreesForProject } from "@/lib/cliWorktrees";
 import {
+  canShipWorktree,
+  combineShipOutcome,
+  defaultPrTitleFromBranch,
+  redactShipOutput,
+  sanitizePrBody,
+  sanitizePrTitle,
+  shipOutcomeSummary,
+} from "@/lib/wtShipFlow";
+import {
   buildForkWorktreeName,
   canOfferForkAgentSession,
   canRestoreCodeOnFork,
@@ -737,6 +746,7 @@ import {
   IconActivity,
   IconFileDiff,
   IconGitBranch,
+  IconUpload,
   IconFileText,
   IconSettings,
   IconDoctor,
@@ -2263,6 +2273,16 @@ export default function App() {
   const [worktreeGcError, setWorktreeGcError] = useState<string | null>(null);
   const [worktreeGcPreview, setWorktreeGcPreview] =
     useState<api.GitWorktreeGcResult | null>(null);
+  /** Worktree ship flow (push + Open PR) dialog. */
+  const [shipOpen, setShipOpen] = useState(false);
+  const [shipTitle, setShipTitle] = useState("");
+  const [shipBody, setShipBody] = useState("");
+  const [shipDraft, setShipDraft] = useState(false);
+  const [shipCreatePr, setShipCreatePr] = useState(true);
+  const [shipBusy, setShipBusy] = useState(false);
+  const [shipError, setShipError] = useState<string | null>(null);
+  const [shipBranch, setShipBranch] = useState<string | null>(null);
+  const [shipStatus, setShipStatus] = useState<string | null>(null);
   /** Host stream-stall prompt (I06); null when dismissed or not stalled. */
   const [streamStall, setStreamStall] = useState<{
     sessionId?: string;
@@ -11448,6 +11468,132 @@ export default function App() {
     setWorktreeGcOpen(true);
   }, []);
 
+  /** Open Ship… dialog for the active project / worktree cwd. */
+  const openShipFlow = useCallback(() => {
+    if (!api.isTauri() || !activeProject?.path) {
+      showToast(tr("composer.worktreeShipNeedProject"), 3500);
+      return;
+    }
+    const current =
+      gitWorktrees.find((w) => pathsEqual(w.path, activeProject.path)) ?? null;
+    const branch =
+      current?.branch?.trim() ||
+      (session.sessionId
+        ? sessions.find((s) => s.id === session.sessionId)?.worktreeBranch
+        : null) ||
+      null;
+    if (
+      !canShipWorktree({
+        branch,
+        detached: current?.detached ?? !branch,
+        available: gitWorktreesAvailable,
+      })
+    ) {
+      // Still allow open with empty title if branch unknown — host resolves HEAD.
+      // But refuse detached when we know it.
+      if (current?.detached) {
+        showToast(tr("composer.worktreeShipDetached"), 4000);
+        return;
+      }
+    }
+    setShipBranch(branch);
+    setShipTitle(defaultPrTitleFromBranch(branch));
+    setShipBody("");
+    setShipDraft(false);
+    setShipCreatePr(true);
+    setShipError(null);
+    setShipStatus(null);
+    setShipBusy(false);
+    setShipOpen(true);
+  }, [
+    activeProject?.path,
+    gitWorktrees,
+    gitWorktreesAvailable,
+    session.sessionId,
+    sessions,
+    showToast,
+    tr,
+  ]);
+
+  const submitShipFlow = useCallback(async () => {
+    if (!api.isTauri() || !activeProject?.path) return;
+    let title: string;
+    let body: string;
+    try {
+      title = sanitizePrTitle(shipTitle);
+      body = sanitizePrBody(shipBody);
+    } catch (e) {
+      setShipError(String(e));
+      return;
+    }
+    setShipBusy(true);
+    setShipError(null);
+    setShipStatus(tr("composer.worktreeShipPushing"));
+    try {
+      const push = await api.gitPushBranch(activeProject.path);
+      let pr: api.GhPrCreateResult | null = null;
+      if (shipCreatePr) {
+        setShipStatus(tr("composer.worktreeShipCreatingPr"));
+        pr = await api.ghPrCreate({
+          projectPath: activeProject.path,
+          title,
+          body,
+          draft: shipDraft,
+          base: "main",
+        });
+      }
+      const outcome = combineShipOutcome(push, pr, {
+        createPr: shipCreatePr,
+      });
+      const summary = shipOutcomeSummary(outcome);
+      if (outcome.ok) {
+        setShipOpen(false);
+        setShipStatus(null);
+        if (outcome.prUrl) {
+          showToast(tr("composer.worktreeShipDonePr", { url: outcome.prUrl }), 6000);
+          void api.openExternalUrl(outcome.prUrl).catch(() => {
+            /* toast already shows URL */
+          });
+        } else {
+          showToast(tr("composer.worktreeShipDonePush"), 4000);
+        }
+      } else {
+        const detail = redactShipOutput(
+          outcome.failReason ||
+            pr?.reason ||
+            push.reason ||
+            summary ||
+            "ship failed",
+          600,
+        );
+        setShipError(detail);
+        setShipStatus(null);
+        // Honest toast — never claim PR opened when gh failed.
+        showToast(
+          shipCreatePr
+            ? tr("composer.worktreeShipFailed", { reason: detail })
+            : tr("composer.worktreeShipPushFailed", { reason: detail }),
+          6000,
+        );
+      }
+    } catch (e) {
+      const msg = redactShipOutput(String(e), 600);
+      setShipError(msg);
+      setShipStatus(null);
+      showToast(tr("composer.worktreeShipFailed", { reason: msg }), 6000);
+    } finally {
+      setShipBusy(false);
+    }
+  }, [
+    activeProject?.path,
+    shipBody,
+    shipCreatePr,
+    shipDraft,
+    shipTitle,
+    showToast,
+    tr,
+  ]);
+
   /** Dry-run `git worktree prune` for the modal preview. */
   const refreshWorktreeGcPreview = useCallback(async () => {
     if (!api.isTauri() || !activeProject?.path || !worktreeGcOpen) return;
@@ -14333,6 +14479,8 @@ export default function App() {
         forkConfirm ||
         resumeRestoreConfirm ||
         worktreeCreateOpen ||
+        worktreeGcOpen ||
+        shipOpen ||
         projectRulesTarget ||
         agentDashboardOpen,
     ),
@@ -17119,6 +17267,8 @@ export default function App() {
                       worktreeNew: tr("composer.worktreeNew"),
                       worktreeNewChat: tr("composer.worktreeNewChat"),
                       worktreeGc: tr("composer.worktreeGc"),
+                      worktreeShip: tr("composer.worktreeShip"),
+                      worktreeShipTip: tr("composer.worktreeShipTip"),
                       worktreeRemove: tr("composer.worktreeRemove"),
                       worktreeRemoveTip: tr("composer.worktreeRemoveTip"),
                       cliWorktrees: tr("composer.cliWorktrees"),
@@ -17145,6 +17295,7 @@ export default function App() {
                       openWorktreeCreate({ startNewChat: true })
                     }
                     onGc={openWorktreeGc}
+                    onShip={openShipFlow}
                     onRemove={confirmRemoveWorktree}
                     onOpen={() => {
                       void refreshGitWorktrees();
@@ -18183,6 +18334,7 @@ export default function App() {
               onRequestPlanChanges={() => openRequestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}
               onOpenPlanHistory={() => setShowPlanHistory(true)}
+              onShip={openShipFlow}
               onAsideLayoutHint={applyAsideLayoutHint}
               onClose={() => {
                 // Manual close — do not treat as plan-owned pane on later dismiss.
@@ -18591,6 +18743,133 @@ export default function App() {
             </p>
           ) : null}
         </div>
+      </GlassModal>
+      <GlassModal
+        open={shipOpen}
+        onClose={() => {
+          if (shipBusy) return;
+          setShipOpen(false);
+          setShipError(null);
+          setShipStatus(null);
+        }}
+        title={tr("composer.worktreeShipTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!shipBusy}
+        showClose={!shipBusy}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={shipBusy}
+              onClick={() => {
+                setShipOpen(false);
+                setShipError(null);
+                setShipStatus(null);
+              }}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={shipBusy || !shipTitle.trim()}
+              onClick={() => {
+                void submitShipFlow();
+              }}
+              data-testid="ship-submit"
+            >
+              {shipBusy
+                ? shipStatus || tr("composer.worktreeShipRunning")
+                : shipCreatePr
+                  ? tr("composer.worktreeShipConfirmPr")
+                  : tr("composer.worktreeShipConfirmPush")}
+            </button>
+          </>
+        }
+      >
+        <form
+          className="wt-ship"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (shipBusy || !shipTitle.trim()) return;
+            void submitShipFlow();
+          }}
+        >
+          <p className="wt-ship__hint">{tr("composer.worktreeShipHint")}</p>
+          {shipBranch ? (
+            <p className="wt-ship__branch">
+              {tr("composer.worktreeShipBranch", { branch: shipBranch })}
+            </p>
+          ) : null}
+          <label className="wt-ship__field">
+            <span className="wt-ship__label">
+              {tr("composer.worktreeShipTitleField")}
+            </span>
+            <input
+              className="settings-input"
+              value={shipTitle}
+              onChange={(e) => {
+                setShipTitle(e.target.value);
+                setShipError(null);
+              }}
+              placeholder={tr("composer.worktreeShipTitlePlaceholder")}
+              autoComplete="off"
+              autoFocus
+              disabled={shipBusy}
+              spellCheck={true}
+              data-testid="ship-title"
+            />
+          </label>
+          <label className="wt-ship__field">
+            <span className="wt-ship__label">
+              {tr("composer.worktreeShipBodyField")}
+            </span>
+            <textarea
+              className="settings-input wt-ship__body"
+              value={shipBody}
+              onChange={(e) => {
+                setShipBody(e.target.value);
+                setShipError(null);
+              }}
+              placeholder={tr("composer.worktreeShipBodyPlaceholder")}
+              rows={5}
+              disabled={shipBusy}
+              spellCheck={true}
+              data-testid="ship-body"
+            />
+          </label>
+          <label className="wt-ship__check">
+            <input
+              type="checkbox"
+              checked={shipCreatePr}
+              disabled={shipBusy}
+              onChange={(e) => setShipCreatePr(e.target.checked)}
+            />
+            <span>{tr("composer.worktreeShipCreatePr")}</span>
+          </label>
+          <label className="wt-ship__check">
+            <input
+              type="checkbox"
+              checked={shipDraft}
+              disabled={shipBusy || !shipCreatePr}
+              onChange={(e) => setShipDraft(e.target.checked)}
+            />
+            <span>{tr("composer.worktreeShipDraft")}</span>
+          </label>
+          {shipStatus ? (
+            <p className="wt-ship__status" aria-live="polite">
+              {shipStatus}
+            </p>
+          ) : null}
+          {shipError ? (
+            <p className="wt-ship__error" role="alert">
+              {shipError}
+            </p>
+          ) : null}
+        </form>
       </GlassModal>
       <GlassModal
         open={showShortcuts}
@@ -21205,6 +21484,14 @@ export default function App() {
                           setLocalError(wtBadge.path);
                         }
                       })();
+                    },
+                  },
+                  {
+                    id: "wt-ship",
+                    label: tr("composer.worktreeShip"),
+                    icon: <IconUpload size={16} />,
+                    onClick: () => {
+                      openShipFlow();
                     },
                   },
                   {

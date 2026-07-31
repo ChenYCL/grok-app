@@ -469,6 +469,8 @@ pub fn run() {
             commands::git_worktree_add,
             commands::git_worktree_remove,
             commands::git_worktree_gc,
+            commands::git_push_branch,
+            commands::gh_pr_create,
             cli_worktrees::cli_worktrees_list,
             cli_worktrees::cli_worktree_db_path,
             cli_worktrees::cli_worktree_db_stats,

@@ -40,6 +40,7 @@ import {
   IconRefresh,
   IconRewind,
   IconSearch,
+  IconUpload,
 } from "@/components/icons";
 import { PlanReviewPanel } from "@/components/PlanReviewPanel";
 import type { PlanReviewState } from "@/lib/planBody";
@@ -160,6 +161,11 @@ export interface ResourceViewerProps {
   onDismissPlan?: () => void;
   /** Open local plan review history archive (session menu / Resources). */
   onOpenPlanHistory?: () => void;
+  /**
+   * Ship flow from Changes → Workspace (push branch + open PR).
+   * Parent opens in-app Ship dialog; never window.confirm.
+   */
+  onShip?: () => void;
   /**
    * Content-aware right-pane layout hint (preview kind, tree open, tabs).
    * App soft-grows aside width so chrome icons never collide with window controls.
@@ -306,6 +312,7 @@ export function ResourceViewer({
   onRequestPlanChanges,
   onDismissPlan,
   onOpenPlanHistory,
+  onShip,
   onAsideLayoutHint,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -3405,6 +3412,20 @@ export function ResourceViewer({
                           >
                             {workspaceBranch}
                           </span>
+                        ) : null}
+                        {onShip && workspaceAvailable && workspaceBranch ? (
+                          <Tip label={tr("composer.worktreeShipTip")}>
+                            <button
+                              type="button"
+                              className="chrome-btn rp-changes-section__ship"
+                              onClick={() => onShip()}
+                              aria-label={tr("composer.worktreeShip")}
+                              data-testid="changes-workspace-ship"
+                            >
+                              <IconUpload size={13} />
+                              <span>{tr("composer.worktreeShip")}</span>
+                            </button>
+                          </Tip>
                         ) : null}
                       </div>
                       {workspaceLoading && workspaceFiles.length === 0 ? (

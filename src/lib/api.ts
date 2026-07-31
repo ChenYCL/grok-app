@@ -3231,6 +3231,64 @@ export async function gitWorktreeRemove(opts: {
   });
 }
 
+/** Soft-fail result of `git push -u origin HEAD` (worktree ship flow). */
+export type GitPushBranchResult = {
+  available: boolean;
+  ok: boolean;
+  branch?: string | null;
+  remote?: string | null;
+  stdout?: string | null;
+  stderr?: string | null;
+  reason?: string | null;
+};
+
+/**
+ * Push the current HEAD branch to origin for a project path.
+ * Soft-fails when git / origin / non-repo are missing (`available: false`).
+ */
+export async function gitPushBranch(
+  projectPath: string,
+): Promise<GitPushBranchResult> {
+  return invoke<GitPushBranchResult>("git_push_branch", { projectPath });
+}
+
+/** Soft-fail result of `gh pr create` (worktree ship flow). */
+export type GhPrCreateResult = {
+  available: boolean;
+  ok: boolean;
+  url?: string | null;
+  repo?: string | null;
+  base?: string | null;
+  head?: string | null;
+  stdout?: string | null;
+  stderr?: string | null;
+  reason?: string | null;
+};
+
+/**
+ * Create a GitHub PR via `gh pr create` (argv only). Soft-fails without `gh`.
+ * Never reports success without a PR URL.
+ */
+export async function ghPrCreate(opts: {
+  projectPath: string;
+  title: string;
+  body?: string | null;
+  draft?: boolean;
+  base?: string | null;
+  head?: string | null;
+  repo?: string | null;
+}): Promise<GhPrCreateResult> {
+  return invoke<GhPrCreateResult>("gh_pr_create", {
+    projectPath: opts.projectPath,
+    title: opts.title,
+    body: opts.body ?? null,
+    draft: opts.draft ?? false,
+    base: opts.base ?? null,
+    head: opts.head ?? null,
+    repo: opts.repo ?? null,
+  });
+}
+
 /** Persist last active chat without full settings_set side-effects. */
 export async function settingsRememberLastSession(
   sessionId?: string | null,
