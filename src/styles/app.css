@@ -916,7 +916,8 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
   opacity: 0.9;
 }
 
-/* Unread dot: background chat finished a turn while not viewed. */
+/* Unread dot: background chat finished a turn while not viewed.
+   Independent of mute — muted sessions still show this when a turn completes. */
 .tree-l3__unread {
   width: 7px;
   height: 7px;
@@ -931,6 +932,22 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
 .tree-l3--unread .tree-l3__name {
   color: var(--text-primary);
   font-weight: 600;
+}
+
+/* Muted desktop-notify badge — soft pill so it stays readable next to unread. */
+.tree-l3__muted {
+  color: var(--text-tertiary);
+  opacity: 1;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-tertiary) 12%, transparent);
+}
+
+.tree-l3--unread .tree-l3__muted {
+  /* Mute never hides unread — keep both indicators legible together. */
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent, #6b9fff) 12%, transparent);
 }
 
 /* Compact worktree-bound session badge (sidebar). */

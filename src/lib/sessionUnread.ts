@@ -141,8 +141,71 @@ export function clearUnread(
 }
 
 /**
+ * Sorted list of unread session ids (stable order for UI / tests).
+ * Independent of mute — muted sessions may still appear here.
+ */
+export function listUnreadSessionIds(
+  storage: SessionUnreadStorage = defaultStorage(),
+): string[] {
+  return Array.from(loadUnreadSessionIds(storage)).sort();
+}
+
+/**
+ * Toggle unread for `sessionId`.
+ * Returns the new unread state (`true` = unread). Empty / missing id → `false`.
+ */
+export function toggleUnread(
+  sessionId: string | null | undefined,
+  storage: SessionUnreadStorage = defaultStorage(),
+): boolean {
+  const id = normalizeId(sessionId);
+  if (!id) return false;
+  const ids = loadUnreadSessionIds(storage);
+  const nextUnread = !ids.has(id);
+  if (nextUnread) ids.add(id);
+  else ids.delete(id);
+  saveUnreadSessionIds(ids, storage);
+  return nextUnread;
+}
+
+/**
+ * Clear every unread marker. Returns how many ids were removed.
+ * Mute state is never touched.
+ */
+export function clearAllUnread(
+  storage: SessionUnreadStorage = defaultStorage(),
+): number {
+  const ids = loadUnreadSessionIds(storage);
+  const n = ids.size;
+  if (n === 0) return 0;
+  saveUnreadSessionIds([], storage);
+  return n;
+}
+
+/** Default: confirm bulk clear when more than this many unread sessions. */
+export const CLEAR_ALL_UNREAD_CONFIRM_THRESHOLD = 3;
+
+/**
+ * Whether bulk "clear all unread" should show an in-app confirm dialog.
+ * Threshold is exclusive lower bound: count > threshold → confirm.
+ * Zero/negative count → never confirm (caller should no-op first).
+ */
+export function shouldConfirmClearAllUnread(
+  count: number,
+  threshold: number = CLEAR_ALL_UNREAD_CONFIRM_THRESHOLD,
+): boolean {
+  if (!Number.isFinite(count) || count <= 0) return false;
+  const t =
+    Number.isFinite(threshold) && threshold >= 0
+      ? Math.floor(threshold)
+      : CLEAR_ALL_UNREAD_CONFIRM_THRESHOLD;
+  return count > t;
+}
+
+/**
  * Whether a completed turn should mark the session unread.
- * Only background sessions (not currently viewed). Mute is intentionally ignored.
+ * Only background sessions (not currently viewed). Mute is intentionally ignored —
+ * muted sessions still get the sidebar unread dot (mute only suppresses desktop notify).
  */
 export function shouldMarkUnreadOnTurnDone(opts: {
   sessionId: string | null | undefined;
@@ -171,3 +234,5 @@ export function isTurnDoneReadyTransition(
 /** Aliases matching DoD naming. */
 export const load = loadUnreadSessionIds;
 export const save = saveUnreadSessionIds;
+export const listUnread = listUnreadSessionIds;
+export const clearAll = clearAllUnread;

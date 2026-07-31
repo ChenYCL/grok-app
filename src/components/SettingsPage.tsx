@@ -410,6 +410,15 @@ export interface SettingsPageProps {
   /** Sidebar session-row relative updated time (localStorage). */
   sidebarShowRelativeTime?: boolean;
   onSidebarShowRelativeTime?: (v: boolean) => void;
+  /**
+   * Count of sessions muted for desktop notifications (localStorage).
+   * Unread dots stay independent of mute.
+   */
+  mutedSessionCount?: number;
+  onClearAllSessionMutes?: () => void;
+  /** Count of sessions with unread markers (localStorage). */
+  unreadSessionCount?: number;
+  onClearAllSessionUnread?: () => void;
   /** Zen mode — hide left + right panes (localStorage `grok.zenMode`). */
   zenMode?: boolean;
   onZenMode?: (v: boolean) => void;
@@ -1174,6 +1183,10 @@ export function SettingsPage({
   onMessageTimeFormat,
   sidebarShowRelativeTime = true,
   onSidebarShowRelativeTime,
+  mutedSessionCount = 0,
+  onClearAllSessionMutes,
+  unreadSessionCount = 0,
+  onClearAllSessionUnread,
   zenMode = false,
   onZenMode,
   skin = "default",
@@ -5589,6 +5602,72 @@ export function SettingsPage({
                         }
                         ariaLabel={t("settings.sidebarShowRelativeTime")}
                       />
+                    </div>
+                  </div>
+                ) : null}
+                {onClearAllSessionMutes ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-sessionMuteSummary")
+                    }
+                    id="settings-anchor-sessionMuteSummary"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.sessionMuteSummary")}
+                          tip={t("settings.sessionMuteSummaryDesc")}
+                        />
+                        <div className="settings-row__desc" style={{ marginTop: 6 }}>
+                          {mutedSessionCount > 0
+                            ? t("settings.sessionMuteCount", {
+                                n: String(mutedSessionCount),
+                              })
+                            : t("settings.sessionMuteCountZero")}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={mutedSessionCount <= 0}
+                        onClick={() => onClearAllSessionMutes()}
+                      >
+                        {t("settings.sessionMuteClear")}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {onClearAllSessionUnread ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-sessionUnreadSummary")
+                    }
+                    id="settings-anchor-sessionUnreadSummary"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.sessionUnreadSummary")}
+                          tip={t("settings.sessionUnreadSummaryDesc")}
+                        />
+                        <div className="settings-row__desc" style={{ marginTop: 6 }}>
+                          {unreadSessionCount > 0
+                            ? t("settings.sessionUnreadCount", {
+                                n: String(unreadSessionCount),
+                              })
+                            : t("settings.sessionUnreadCountZero")}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={unreadSessionCount <= 0}
+                        onClick={() => onClearAllSessionUnread()}
+                      >
+                        {t("settings.sessionUnreadClear")}
+                      </button>
                     </div>
                   </div>
                 ) : null}

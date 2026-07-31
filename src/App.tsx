@@ -536,16 +536,20 @@ import {
   showDesktopNotification,
 } from "@/lib/desktopNotify";
 import {
+  clearAllMutes as clearAllSessionMutes,
   loadMutedSessionIds,
   SESSION_MUTE_CHANGE_EVENT,
+  shouldConfirmClearAllMutes,
   toggle as toggleSessionMute,
 } from "@/lib/sessionMute";
 import {
+  clearAllUnread as clearAllSessionUnread,
   clearUnread as clearSessionUnread,
   isTurnDoneReadyTransition,
   loadUnreadSessionIds,
   markUnread as markSessionUnread,
   SESSION_UNREAD_CHANGE_EVENT,
+  shouldConfirmClearAllUnread,
   shouldMarkUnreadOnTurnDone,
 } from "@/lib/sessionUnread";
 import {
@@ -7843,6 +7847,79 @@ export default function App() {
   const handleToggleSessionMute = useCallback((sessionId: string) => {
     toggleSessionMute(sessionId);
     setMutedSessionIds(loadMutedSessionIds());
+  }, []);
+
+  const applyClearAllSessionUnread = useCallback(() => {
+    const n = clearAllSessionUnread();
+    setUnreadSessionIds(loadUnreadSessionIds());
+    if (n > 0) {
+      setToast(tr("session.clearAllUnreadToast", { n: String(n) }));
+      window.setTimeout(() => setToast(null), 2200);
+    } else {
+      setToast(tr("session.clearAllUnreadEmpty"));
+      window.setTimeout(() => setToast(null), 1800);
+    }
+  }, [tr]);
+
+  const handleClearAllSessionUnread = useCallback(() => {
+    const n = unreadSessionIds.size;
+    if (n <= 0) {
+      setToast(tr("session.clearAllUnreadEmpty"));
+      window.setTimeout(() => setToast(null), 1800);
+      return;
+    }
+    if (shouldConfirmClearAllUnread(n)) {
+      setAppDialog({
+        kind: "confirm",
+        title: tr("session.clearAllUnreadTitle"),
+        message: tr("session.clearAllUnreadBody", { n: String(n) }),
+        confirmLabel: tr("session.clearAllUnreadAction"),
+        onConfirm: () => {
+          applyClearAllSessionUnread();
+        },
+      });
+      return;
+    }
+    applyClearAllSessionUnread();
+  }, [unreadSessionIds.size, tr, applyClearAllSessionUnread]);
+
+  const applyClearAllSessionMutes = useCallback(() => {
+    const n = clearAllSessionMutes();
+    setMutedSessionIds(loadMutedSessionIds());
+    if (n > 0) {
+      setToast(tr("session.clearAllMutesToast", { n: String(n) }));
+      window.setTimeout(() => setToast(null), 2200);
+    } else {
+      setToast(tr("session.clearAllMutesEmpty"));
+      window.setTimeout(() => setToast(null), 1800);
+    }
+  }, [tr]);
+
+  const handleClearAllSessionMutes = useCallback(() => {
+    const n = mutedSessionIds.size;
+    if (n <= 0) {
+      setToast(tr("session.clearAllMutesEmpty"));
+      window.setTimeout(() => setToast(null), 1800);
+      return;
+    }
+    if (shouldConfirmClearAllMutes(n)) {
+      setAppDialog({
+        kind: "confirm",
+        title: tr("session.clearAllMutesTitle"),
+        message: tr("session.clearAllMutesBody", { n: String(n) }),
+        confirmLabel: tr("session.clearAllMutesAction"),
+        onConfirm: () => {
+          applyClearAllSessionMutes();
+        },
+      });
+      return;
+    }
+    applyClearAllSessionMutes();
+  }, [mutedSessionIds.size, tr, applyClearAllSessionMutes]);
+
+  const handleClearSessionUnread = useCallback((sessionId: string) => {
+    clearSessionUnread(sessionId);
+    setUnreadSessionIds(loadUnreadSessionIds());
   }, []);
 
   // Any path that binds the workbench to a session clears its unread marker.
@@ -15959,6 +16036,10 @@ export default function App() {
             saveSidebarShowRelativeTimePref(v, localStorage);
             setSidebarShowRelativeTime(v);
           }}
+          mutedSessionCount={mutedSessionIds.size}
+          onClearAllSessionMutes={handleClearAllSessionMutes}
+          unreadSessionCount={unreadSessionIds.size}
+          onClearAllSessionUnread={handleClearAllSessionUnread}
           zenMode={zenMode}
           onZenMode={setZenModeEnabled}
           skin={skin}
@@ -16686,6 +16767,21 @@ export default function App() {
                         <IconListCheck size={15} />
                       </button>
                     </Tip>
+                    {unreadSessionIds.size > 0 ? (
+                      <Tip label={tr("session.clearAllUnread")}>
+                        <button
+                          type="button"
+                          className="tree-l1__action"
+                          aria-label={tr("session.clearAllUnread")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleClearAllSessionUnread();
+                          }}
+                        >
+                          <IconCheck size={15} />
+                        </button>
+                      </Tip>
+                    ) : null}
                     <Tip label={tr("sidebar.archiveOlder")}>
                       <button
                         type="button"
@@ -16989,7 +17085,7 @@ export default function App() {
                                           ) : null}
                                           {mutedSessionIds.has(s.id) ? (
                                             <span
-                                              className="tree-l3__kind"
+                                              className="tree-l3__kind tree-l3__muted"
                                               title={tr("session.muted")}
                                               aria-label={tr("session.muted")}
                                             >
@@ -17281,7 +17377,7 @@ export default function App() {
                                 ) : null}
                                 {mutedSessionIds.has(s.id) ? (
                                   <span
-                                    className="tree-l3__kind"
+                                    className="tree-l3__kind tree-l3__muted"
                                     title={tr("session.muted")}
                                     aria-label={tr("session.muted")}
                                   >
@@ -23112,6 +23208,7 @@ export default function App() {
               viewingSessionIdRef.current === s.id;
             const wtBadge = sessionWorktreeBadgeFor(s);
             const sessionMuted = mutedSessionIds.has(s.id);
+            const sessionUnread = unreadSessionIds.has(s.id);
             const canPopOut = canOpenSessionInNewWindow({
               isDesktopHost: api.isDesktopHost(),
               isSecondaryWindow,
@@ -23512,6 +23609,26 @@ export default function App() {
                 ),
                 onClick: () => handleToggleSessionMute(s.id),
               },
+              ...(sessionUnread
+                ? [
+                    {
+                      id: "clear-unread",
+                      label: tr("session.clearUnread"),
+                      icon: <IconCheck size={16} />,
+                      onClick: () => handleClearSessionUnread(s.id),
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
+              ...(unreadSessionIds.size > 0
+                ? [
+                    {
+                      id: "clear-all-unread",
+                      label: tr("session.clearAllUnread"),
+                      icon: <IconCheck size={16} />,
+                      onClick: () => handleClearAllSessionUnread(),
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
               {
                 id: "rename",
                 label: tr("session.rename"),
