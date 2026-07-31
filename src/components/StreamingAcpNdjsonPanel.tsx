@@ -9,6 +9,11 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { createT, type Locale } from "@/i18n";
 import * as api from "@/lib/api";
 import {
+  exportRawStreamNdjson,
+  streamSessionExportFilename,
+  streamSessionExportMimeType,
+} from "@/lib/streamSessionExport";
+import {
   formatAcpNdjsonSummaryText,
   STREAMING_ACP_NDJSON_MIN_CLI,
   STREAMING_ACP_NDJSON_OUTPUT_FORMAT,
@@ -16,6 +21,16 @@ import {
   summarizeAcpNdjsonText,
   type AcpNdjsonSummary,
 } from "@/lib/streamingAcpNdjson";
+
+function downloadText(filename: string, body: string, mime: string) {
+  const blob = new Blob([body], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export type StreamingAcpNdjsonPanelProps = {
   locale: Locale;
@@ -80,6 +95,36 @@ export function StreamingAcpNdjsonPanel({
       setError(t("streamAcpNdjson.copyFailed"));
     }
   }, [summary, t, showToast]);
+
+  /** Redacted NDJSON save (never writes secrets unredacted). */
+  const onSaveNdjson = useCallback(() => {
+    const result = exportRawStreamNdjson(text, "streaming-json");
+    if (result.empty || !result.body) {
+      setError(t("streamAcpNdjson.emptyPaste"));
+      return;
+    }
+    downloadText(
+      streamSessionExportFilename("streaming-json", "acp-capture", null),
+      result.body,
+      streamSessionExportMimeType("streaming-json"),
+    );
+    showToast?.(t("streamAcpNdjson.savedNdjson", { n: result.lineCount }), 1800);
+  }, [text, t, showToast]);
+
+  /** Redacted NDJSON copy. */
+  const onCopyNdjson = useCallback(async () => {
+    const result = exportRawStreamNdjson(text, "streaming-json");
+    if (result.empty || !result.body) {
+      setError(t("streamAcpNdjson.emptyPaste"));
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(result.body);
+      showToast?.(t("streamAcpNdjson.copiedNdjson", { n: result.lineCount }), 1800);
+    } catch {
+      setError(t("streamAcpNdjson.copyFailed"));
+    }
+  }, [text, t, showToast]);
 
   const onImportFile = useCallback(
     (file: File | null) => {
@@ -198,6 +243,22 @@ export function StreamingAcpNdjsonPanel({
           disabled={!summary}
         >
           {t("streamAcpNdjson.copySummary")}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={onSaveNdjson}
+          disabled={busy || !text.trim()}
+        >
+          {t("streamAcpNdjson.saveNdjson")}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={() => void onCopyNdjson()}
+          disabled={busy || !text.trim()}
+        >
+          {t("streamAcpNdjson.copyNdjson")}
         </button>
         <button
           type="button"
