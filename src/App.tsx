@@ -315,8 +315,10 @@ import {
 } from "@/lib/sandboxProfile";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import {
-  ARCHIVE_AGE_DAY_OPTIONS,
-  filterSessionsOlderThanDays,
+  archiveAgeEmptyMessageKey,
+  listArchiveAgeOptionPreviews,
+  planArchiveOlderThan,
+  type ArchiveAgePlan,
 } from "@/lib/sessionArchiveAge";
 import {
   collapsedIdsFromExpandMap,
@@ -1533,6 +1535,13 @@ export default function App() {
   );
   /** Clear recent prompts — App-level GlassModal (avoids floating-menu dismiss). */
   const [promptHistoryClearOpen, setPromptHistoryClearOpen] = useState(false);
+  /**
+   * Archive-by-age pro confirm (GlassModal with preview count + title samples).
+   * Null when closed. Built via pure `planArchiveOlderThan`.
+   */
+  const [archiveAgeConfirm, setArchiveAgeConfirm] =
+    useState<ArchiveAgePlan<SessionRow> | null>(null);
+  const [archiveAgeBusy, setArchiveAgeBusy] = useState(false);
   const promptHistoryPanelRef = useRef<HTMLDivElement>(null);
   const promptHistoryOpenRef = useRef(false);
   promptHistoryOpenRef.current = promptHistoryOpen;
@@ -7588,71 +7597,80 @@ export default function App() {
 
   /**
    * Bulk-archive chats whose last update is older than `days`.
-   * Skips pinned + already-archived; confirms count via in-app dialog.
+   * Skips pinned + already-archived. Preview count + GlassModal confirm
+   * (never window.confirm). Empty → classified honesty toast.
    */
   const confirmArchiveOlderThan = (days: number) => {
     setCtxMenu(null);
-    const rows = filterSessionsOlderThanDays(sessions, days);
-    if (!rows.length) {
-      setToast(tr("sidebar.archiveOlderNone", { days: String(days) }));
-      window.setTimeout(() => setToast(null), 3200);
+    const plan = planArchiveOlderThan(sessions, days);
+    if (!plan.confirmNeeded || plan.count === 0) {
+      const kind = plan.emptyKind ?? "all_recent";
+      const key = archiveAgeEmptyMessageKey(kind);
+      setToast(
+        tr(key as MessageKey, {
+          days: String(days),
+          n: "0",
+        }),
+      );
+      window.setTimeout(() => setToast(null), 3600);
       return;
     }
-    const n = rows.length;
-    setAppDialog({
-      kind: "confirm",
-      title: tr("sidebar.archiveOlderTitle"),
-      message: tr("sidebar.archiveOlderConfirm", {
-        n: String(n),
-        days: String(days),
-      }),
-      confirmLabel: tr("sidebar.archiveSelected", { n: String(n) }),
-      onConfirm: async () => {
-        try {
-          if (!api.isTauri()) {
-            setLocalError(tr("error.needTauri"));
-            return;
-          }
-          const openId =
-            session.sessionId ?? viewingSessionIdRef.current ?? null;
-          const wasViewing =
-            !!openId && rows.some((s) => s.id === openId);
-          const viewingRow = wasViewing
-            ? rows.find((s) => s.id === openId) ?? null
-            : null;
+    setArchiveAgeConfirm(plan);
+  };
 
-          const results = await Promise.allSettled(
-            rows.map((s) => api.sessionSetArchived(s.id, true)),
-          );
-          const ok = results.filter((r) => r.status === "fulfilled").length;
-          const firstFail = results.find(
-            (r): r is PromiseRejectedResult => r.status === "rejected",
-          );
+  /** Apply a planned archive-by-age batch (GlassModal confirm). */
+  const runArchiveAgePlan = async (plan: ArchiveAgePlan<SessionRow>) => {
+    const rows = plan.sessions;
+    if (!rows.length) {
+      setArchiveAgeConfirm(null);
+      return;
+    }
+    setArchiveAgeBusy(true);
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      const openId =
+        session.sessionId ?? viewingSessionIdRef.current ?? null;
+      const wasViewing = !!openId && rows.some((s) => s.id === openId);
+      const viewingRow = wasViewing
+        ? rows.find((s) => s.id === openId) ?? null
+        : null;
 
-          await refreshSessions();
+      const results = await Promise.allSettled(
+        rows.map((s) => api.sessionSetArchived(s.id, true)),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const firstFail = results.find(
+        (r): r is PromiseRejectedResult => r.status === "rejected",
+      );
 
-          if (wasViewing && viewingRow) {
-            const proj = viewingRow.projectId
-              ? projects.find((p) => p.id === viewingRow.projectId) ?? null
-              : null;
-            if (proj) await newChat(proj, { switchToChat: true });
-            else await newChat(null, { switchToChat: true });
-          }
+      await refreshSessions();
 
-          if (ok > 0) {
-            setToast(tr("sidebar.archivedToast", { n: String(ok) }));
-            window.setTimeout(() => setToast(null), 3200);
-          }
-          if (firstFail) {
-            setLocalError(String(firstFail.reason));
-          } else {
-            setLocalError(null);
-          }
-        } catch (e) {
-          setLocalError(String(e));
-        }
-      },
-    });
+      if (wasViewing && viewingRow) {
+        const proj = viewingRow.projectId
+          ? projects.find((p) => p.id === viewingRow.projectId) ?? null
+          : null;
+        if (proj) await newChat(proj, { switchToChat: true });
+        else await newChat(null, { switchToChat: true });
+      }
+
+      if (ok > 0) {
+        setToast(tr("sidebar.archivedToast", { n: String(ok) }));
+        window.setTimeout(() => setToast(null), 3200);
+      }
+      if (firstFail) {
+        setLocalError(String(firstFail.reason));
+      } else {
+        setLocalError(null);
+      }
+      setArchiveAgeConfirm(null);
+    } catch (e) {
+      setLocalError(String(e));
+    } finally {
+      setArchiveAgeBusy(false);
+    }
   };
 
   /**
@@ -16913,6 +16931,7 @@ export default function App() {
           onArchiveOlderThan={(days) => {
             confirmArchiveOlderThan(days);
           }}
+          archiveAgeSessions={sessions}
           projectPath={effectiveProjectPath}
           onOpenProjectFileInResources={({ path, relativePath }) => {
             const targetPath = (path || relativePath || "").trim();
@@ -20556,6 +20575,81 @@ export default function App() {
         </p>
       </GlassModal>
       <GlassModal
+        open={!!archiveAgeConfirm}
+        onClose={() => {
+          if (archiveAgeBusy) return;
+          setArchiveAgeConfirm(null);
+        }}
+        title={tr("sidebar.archiveOlderTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!archiveAgeBusy}
+        showClose={!archiveAgeBusy}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={archiveAgeBusy}
+              onClick={() => setArchiveAgeConfirm(null)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={archiveAgeBusy || !archiveAgeConfirm?.count}
+              data-testid="archive-age-confirm"
+              onClick={() => {
+                if (!archiveAgeConfirm) return;
+                void runArchiveAgePlan(archiveAgeConfirm);
+              }}
+            >
+              {tr("sidebar.archiveOlderConfirmAction", {
+                n: String(archiveAgeConfirm?.count ?? 0),
+              })}
+            </button>
+          </>
+        }
+      >
+        {archiveAgeConfirm ? (
+          <div className="archive-age-modal">
+            <p className="archive-age-modal__msg">
+              {tr("sidebar.archiveOlderConfirm", {
+                n: String(archiveAgeConfirm.count),
+                days: String(archiveAgeConfirm.days),
+              })}
+            </p>
+            {archiveAgeConfirm.previewTitles.length > 0 ? (
+              <div className="archive-age-modal__preview">
+                <div className="archive-age-modal__preview-label">
+                  {tr("sidebar.archiveOlderPreviewLabel")}
+                </div>
+                <ul className="archive-age-modal__list">
+                  {archiveAgeConfirm.previewTitles.map((title, i) => {
+                    const row = archiveAgeConfirm.sessions[i];
+                    const key = row?.id ?? `preview-${i}`;
+                    return (
+                      <li key={key} className="archive-age-modal__item">
+                        {title || tr("session.untitled")}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {archiveAgeConfirm.previewMore > 0 ? (
+                  <div className="archive-age-modal__more">
+                    {tr("sidebar.archiveOlderPreviewMore", {
+                      n: String(archiveAgeConfirm.previewMore),
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </GlassModal>
+      <GlassModal
         open={worktreeCreateOpen}
         onClose={() => {
           if (worktreeCreateBusy) return;
@@ -23490,10 +23584,19 @@ export default function App() {
       {(() => {
         let items: ContextMenuItem[] = [];
         if (ctxMenu?.kind === "archive-older") {
-          items = ARCHIVE_AGE_DAY_OPTIONS.map((days) => ({
+          const agePreviews = listArchiveAgeOptionPreviews(sessions);
+          items = agePreviews.map(({ days, count }) => ({
             id: `archive-older-${days}`,
-            label: tr("sidebar.archiveOlderDays", { days: String(days) }),
+            label:
+              count > 0
+                ? tr("sidebar.archiveOlderDaysCount", {
+                    days: String(days),
+                    n: String(count),
+                  })
+                : tr("sidebar.archiveOlderDays", { days: String(days) }),
             icon: <IconArchive size={16} />,
+            // Keep rows clickable when empty so empty-honesty toast can fire.
+            disabled: false,
             onClick: () => {
               confirmArchiveOlderThan(days);
             },

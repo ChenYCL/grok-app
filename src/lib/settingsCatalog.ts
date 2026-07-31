@@ -2174,10 +2174,16 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     section: "archived",
     anchorId: "settings-anchor-archive-older",
     labelKey: "settings.archived.archiveOlder",
-    descKeys: ["settings.archived.archiveOlderDesc"],
+    descKeys: [
+      "settings.archived.archiveOlderDesc",
+      "settings.archived.archiveOlderMatchHint",
+      "settings.archived.archiveOlderNoneHint",
+    ],
     keywords: [
       "archive older",
       "bulk archive",
+      "archive by age",
+      "preview count",
       "old chats",
       "7 days",
       "30 days",

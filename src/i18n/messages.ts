@@ -60,11 +60,23 @@ const en = {
   "sidebar.deletedToast": "Deleted {n} chats",
   "sidebar.archiveOlder": "Archive older than…",
   "sidebar.archiveOlderDays": "Older than {days} days",
+  "sidebar.archiveOlderDaysCount": "Older than {days} days ({n})",
   "sidebar.archiveOlderTitle": "Archive older chats",
   "sidebar.archiveOlderConfirm":
     "Archive {n} chats not updated in the last {days} days? Pinned chats are kept. You can restore them later from Settings → Archived.",
   "sidebar.archiveOlderNone":
     "No unpinned chats older than {days} days.",
+  "sidebar.archiveOlderEmpty.no_sessions":
+    "No chats yet — nothing to archive by age.",
+  "sidebar.archiveOlderEmpty.none_active":
+    "Every chat is already archived. Nothing left to archive by age.",
+  "sidebar.archiveOlderEmpty.all_pinned":
+    "Older chats are pinned (or every active chat is pinned). Unpin to include them.",
+  "sidebar.archiveOlderEmpty.all_recent":
+    "No unpinned chats older than {days} days — all active chats are still recent.",
+  "sidebar.archiveOlderPreviewLabel": "Will archive:",
+  "sidebar.archiveOlderPreviewMore": "…and {n} more",
+  "sidebar.archiveOlderConfirmAction": "Archive {n}",
   "user.menu": "Account menu",
   "user.theme": "Theme",
   "user.themeLight": "Switch to light",
@@ -1573,8 +1585,13 @@ const en = {
   "settings.archived.totalCount": "{n} archived",
   "settings.archived.archiveOlder": "Archive older than…",
   "settings.archived.archiveOlderDesc":
-    "Bulk-archive active chats whose last update is older than the threshold. Pinned chats are skipped.",
+    "Bulk-archive active chats whose last update is older than the threshold. Pinned chats are skipped. Counts update from the live session list.",
   "settings.archived.archiveOlderDays": "{days} days",
+  "settings.archived.archiveOlderDaysCount": "{days} days ({n})",
+  "settings.archived.archiveOlderMatchHint":
+    "{n} chats match · pinned kept · restore from this page",
+  "settings.archived.archiveOlderNoneHint":
+    "No unpinned chats older than these thresholds right now.",
   "settings.section.permissions": "Permissions",
   "settings.section.composer": "Composer prefs",
   "settings.section.voice": "Voice",
@@ -6156,10 +6173,21 @@ const zh: Record<MessageKey, string> = {
   "sidebar.deletedToast": "已永久删除 {n} 个会话",
   "sidebar.archiveOlder": "归档超过…天的会话",
   "sidebar.archiveOlderDays": "超过 {days} 天",
+  "sidebar.archiveOlderDaysCount": "超过 {days} 天（{n}）",
   "sidebar.archiveOlderTitle": "按时间归档",
   "sidebar.archiveOlderConfirm":
     "将归档 {n} 个超过 {days} 天未更新的会话？置顶会话会保留。之后可在「设置 → 已归档会话」中还原。",
   "sidebar.archiveOlderNone": "没有超过 {days} 天且未置顶的会话。",
+  "sidebar.archiveOlderEmpty.no_sessions": "还没有会话，无法按时间归档。",
+  "sidebar.archiveOlderEmpty.none_active":
+    "所有会话都已归档，没有可再按时间归档的会话。",
+  "sidebar.archiveOlderEmpty.all_pinned":
+    "较旧的会话已置顶（或当前活跃会话全部置顶）。取消置顶后才会被纳入。",
+  "sidebar.archiveOlderEmpty.all_recent":
+    "没有超过 {days} 天且未置顶的会话——当前活跃会话都还比较新。",
+  "sidebar.archiveOlderPreviewLabel": "将归档：",
+  "sidebar.archiveOlderPreviewMore": "…还有 {n} 个",
+  "sidebar.archiveOlderConfirmAction": "归档 {n} 个",
   "user.menu": "个人中心",
   "user.theme": "主题",
   "user.themeLight": "切换到浅色",
@@ -7598,8 +7626,13 @@ const zh: Record<MessageKey, string> = {
   "settings.archived.totalCount": "共 {n} 条",
   "settings.archived.archiveOlder": "归档超过…天的会话",
   "settings.archived.archiveOlderDesc":
-    "批量归档最后更新时间超过阈值的活跃会话。置顶会话会跳过。",
+    "批量归档最后更新时间超过阈值的活跃会话。置顶会话会跳过。数量来自当前会话列表实时预览。",
   "settings.archived.archiveOlderDays": "{days} 天",
+  "settings.archived.archiveOlderDaysCount": "{days} 天（{n}）",
+  "settings.archived.archiveOlderMatchHint":
+    "{n} 个会话符合条件 · 置顶保留 · 可在本页还原",
+  "settings.archived.archiveOlderNoneHint":
+    "当前没有超过这些阈值且未置顶的会话。",
   "settings.section.permissions": "权限",
   "settings.section.composer": "对话偏好",
   "settings.section.voice": "语音",

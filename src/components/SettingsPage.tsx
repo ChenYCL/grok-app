@@ -42,7 +42,11 @@ import {
   countUnlinkedCliSessions,
   filterCliSessions,
 } from "@/lib/cliSessionsFilter";
-import { ARCHIVE_AGE_DAY_OPTIONS } from "@/lib/sessionArchiveAge";
+import {
+  listArchiveAgeOptionPreviews,
+  hasAnyArchiveAgeMatches,
+  type ArchiveAgeSessionLike,
+} from "@/lib/sessionArchiveAge";
 import { CostRollupPanel } from "@/components/CostRollupPanel";
 import { StreamingMessagesJsonPanel } from "@/components/StreamingMessagesJsonPanel";
 import { StreamingAcpNdjsonPanel } from "@/components/StreamingAcpNdjsonPanel";
@@ -739,6 +743,11 @@ export interface SettingsPageProps {
   onDeleteArchivedSessions?: (ids: string[]) => void;
   /** Bulk-archive active chats older than N days (confirm lives in App). */
   onArchiveOlderThan?: (days: number) => void;
+  /**
+   * Live session rows for archive-by-age preview counts (Settings → Archived).
+   * Filter / empty honesty are pure helpers; confirm GlassModal lives in App.
+   */
+  archiveAgeSessions?: readonly ArchiveAgeSessionLike[];
   /** Active project path for Skills/MCP inspect cwd. */
   projectPath?: string | null;
   /** Open a project file in Resources from codebase search results. */
@@ -1430,6 +1439,7 @@ export function SettingsPage({
   onRestoreArchivedSessions,
   onDeleteArchivedSessions,
   onArchiveOlderThan,
+  archiveAgeSessions = [],
   projectPath = null,
   onOpenProjectFileInResources,
   focusAnchorId = null,
@@ -2017,6 +2027,24 @@ export function SettingsPage({
   );
 
   const archivedTotal = archivedAllIds.length;
+
+  /** Live preview counts for archive-by-age day chips (pure helpers). */
+  const archiveAgePreviews = useMemo(
+    () => listArchiveAgeOptionPreviews(archiveAgeSessions),
+    [archiveAgeSessions],
+  );
+  const archiveAgeAnyMatch = useMemo(
+    () => hasAnyArchiveAgeMatches(archiveAgeSessions),
+    [archiveAgeSessions],
+  );
+  const archiveAgeMaxMatch = useMemo(
+    () =>
+      archiveAgePreviews.reduce(
+        (max, p) => (p.count > max ? p.count : max),
+        0,
+      ),
+    [archiveAgePreviews],
+  );
 
   // Drop stale selection when list changes (restore/delete/refresh).
   useEffect(() => {
@@ -6101,18 +6129,44 @@ export function SettingsPage({
                     role="group"
                     aria-label={t("settings.archived.archiveOlder")}
                   >
-                    {ARCHIVE_AGE_DAY_OPTIONS.map((days) => (
+                    {archiveAgePreviews.map(({ days, count }) => (
                       <button
                         key={days}
                         type="button"
-                        className="btn btn--ghost btn--sm"
+                        className={
+                          "btn btn--ghost btn--sm" +
+                          (count === 0
+                            ? " settings-archived-age__btn--empty"
+                            : "")
+                        }
                         onClick={() => onArchiveOlderThan(days)}
+                        data-count={count}
                       >
-                        {t("settings.archived.archiveOlderDays", {
-                          days: String(days),
-                        })}
+                        {count > 0
+                          ? t("settings.archived.archiveOlderDaysCount", {
+                              days: String(days),
+                              n: String(count),
+                            })
+                          : t("settings.archived.archiveOlderDays", {
+                              days: String(days),
+                            })}
                       </button>
                     ))}
+                  </div>
+                  <div
+                    className={
+                      "settings-archived-age__hint" +
+                      (archiveAgeAnyMatch
+                        ? ""
+                        : " settings-archived-age__hint--empty")
+                    }
+                    role="status"
+                  >
+                    {archiveAgeAnyMatch
+                      ? t("settings.archived.archiveOlderMatchHint", {
+                          n: String(archiveAgeMaxMatch),
+                        })
+                      : t("settings.archived.archiveOlderNoneHint")}
                   </div>
                 </div>
               </div>

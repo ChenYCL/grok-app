@@ -52,10 +52,21 @@ export const zhTW: Record<MessageKey, string> = {
   "sidebar.deletedToast": "已永久刪除 {n} 個對話",
   "sidebar.archiveOlder": "封存超過…天的對話",
   "sidebar.archiveOlderDays": "超過 {days} 天",
+  "sidebar.archiveOlderDaysCount": "超過 {days} 天（{n}）",
   "sidebar.archiveOlderTitle": "依時間封存",
   "sidebar.archiveOlderConfirm":
     "將封存 {n} 個超過 {days} 天未更新的對話？已置頂對話會保留。之後可在「設定 → 已封存對話」中還原。",
   "sidebar.archiveOlderNone": "沒有超過 {days} 天且未置頂的對話。",
+  "sidebar.archiveOlderEmpty.no_sessions": "還沒有對話，無法依時間封存。",
+  "sidebar.archiveOlderEmpty.none_active":
+    "所有對話都已封存，沒有可再依時間封存的對話。",
+  "sidebar.archiveOlderEmpty.all_pinned":
+    "較舊的對話已置頂（或目前活躍對話全部置頂）。取消置頂後才會被納入。",
+  "sidebar.archiveOlderEmpty.all_recent":
+    "沒有超過 {days} 天且未置頂的對話——目前活躍對話都還比較新。",
+  "sidebar.archiveOlderPreviewLabel": "將封存：",
+  "sidebar.archiveOlderPreviewMore": "…還有 {n} 個",
+  "sidebar.archiveOlderConfirmAction": "封存 {n} 個",
   "user.menu": "個人中心",
   "user.theme": "主題",
   "user.themeLight": "切換為淺色",
@@ -1495,8 +1506,13 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.archived.totalCount": "共 {n} 條",
   "settings.archived.archiveOlder": "封存超過…天的對話",
   "settings.archived.archiveOlderDesc":
-    "批次封存最後更新時間超過閾值的活躍對話。已置頂對話會略過。",
+    "批次封存最後更新時間超過閾值的活躍對話。已置頂對話會略過。數量來自目前對話列表即時預覽。",
   "settings.archived.archiveOlderDays": "{days} 天",
+  "settings.archived.archiveOlderDaysCount": "{days} 天（{n}）",
+  "settings.archived.archiveOlderMatchHint":
+    "{n} 個對話符合條件 · 置頂保留 · 可在本頁還原",
+  "settings.archived.archiveOlderNoneHint":
+    "目前沒有超過這些閾值且未置頂的對話。",
   "settings.section.permissions": "權限",
   "settings.section.composer": "對話偏好",
   "settings.section.voice": "語音",
