@@ -9508,7 +9508,8 @@ export default function App() {
   const runMcpDoctor = useCallback(
     async (name?: string | null) => {
       if (!api.isTauri()) {
-        setMcpDoctorError(tr("ext.needTauri"));
+        // Soft-fail: modal classifies host_only; no window.alert.
+        setMcpDoctorError("need_tauri");
         return;
       }
       const focus = name?.trim() || null;
@@ -9519,13 +9520,14 @@ export default function App() {
         const report = await api.mcpDoctor(focus);
         setMcpDoctorReport(report);
       } catch (e) {
+        // Soft-fail CLI missing / too old / timeout is classified in the modal.
         setMcpDoctorReport(null);
         setMcpDoctorError(String(e));
       } finally {
         setMcpDoctorLoading(false);
       }
     },
-    [tr],
+    [],
   );
 
   const showToast = useCallback((msg: string, ms = 3200) => {

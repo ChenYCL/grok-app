@@ -19,11 +19,8 @@ import {
   type McpOauthAction,
 } from "@/lib/mcpOauth";
 import {
-  classifyMcpRowHealth,
   countMcpDoctorFindings,
-  countMcpRowsByHealth,
   filterMcpDoctorFindings,
-  filterMcpRows,
   indexDoctorServerStatuses,
   lookupServerStatus,
   mcpAuthGuidanceKey,
@@ -33,14 +30,24 @@ import {
   mcpStatusLabelKey,
   normalizeMcpDoctorFindings,
   redactMcpText,
-  MCP_ROW_STATUS_FILTERS,
   type McpDoctorFindingLevel,
   type McpDoctorFindingRow,
   type McpDoctorReportLike,
-  type McpRowHealth,
-  type McpRowStatusFilter,
   type McpServerStatus,
 } from "@/lib/mcpStatus";
+import {
+  buildMcpProCopySummary,
+  classifyMcpDoctorOpError,
+  classifyMcpProStatus,
+  countMcpProByStatus,
+  filterMcpProRows,
+  mcpProStatusBadgeMod,
+  mcpProStatusLabelKey,
+  MCP_PRO_STATUS_FILTERS,
+  resolveMcpProEmptyState,
+  type McpProStatus,
+  type McpProStatusFilter,
+} from "@/lib/mcpStatusPro";
 
 export type McpServerRow = {
   name: string;
@@ -48,6 +55,8 @@ export type McpServerRow = {
   target?: string | null;
   vendor?: string | null;
   compatibilityStatus?: string | null;
+  /** App Extensions enable flag (default true when omitted). */
+  enabled?: boolean;
 };
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
@@ -57,20 +66,21 @@ type OauthHelpTarget = {
   status?: McpServerStatus | null;
 };
 
-function healthFilterLabel(filter: McpRowStatusFilter, t: TFn): string {
+function proFilterLabel(filter: McpProStatusFilter, t: TFn): string {
   if (filter === "all") return t("mcpModal.filter.all");
-  // Reuse Extensions status labels (ok / warn / error / unknown).
-  return t(mcpStatusLabelKey(filter) as MessageKey);
+  return t(mcpProStatusLabelKey(filter) as MessageKey);
 }
 
-function healthDotClass(health: McpRowHealth): string {
-  switch (health) {
+function proDotClass(status: McpProStatus): string {
+  switch (status) {
     case "ok":
       return "mcp-modal__dot--ok";
-    case "warn":
-      return "mcp-modal__dot--warn";
     case "error":
       return "mcp-modal__dot--error";
+    case "oauth":
+      return "mcp-modal__dot--oauth";
+    case "disabled":
+      return "mcp-modal__dot--disabled";
     default:
       return "mcp-modal__dot--unknown";
   }
@@ -190,23 +200,12 @@ export function McpStatusModal({
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<McpRowStatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<McpProStatusFilter>("all");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [summaryCopied, setSummaryCopied] = useState(false);
   const [oauthHelp, setOauthHelp] = useState<OauthHelpTarget | null>(null);
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthOpenError, setOauthOpenError] = useState<string | null>(null);
-
-  const statusCounts = useMemo(() => countMcpRowsByHealth(servers), [servers]);
-  const filtered = useMemo(
-    () => filterMcpRows(servers, { query, status: statusFilter }),
-    [servers, query, statusFilter],
-  );
-
-  const hasActiveFilters =
-    statusFilter !== "all" || query.trim().length > 0;
-  const isEmptyCatalog = !loading && servers.length === 0 && !error;
-  const isEmptyFilter =
-    !loading && servers.length > 0 && filtered.length === 0;
 
   const [findingQuery, setFindingQuery] = useState("");
   const [serverFilter, setServerFilter] = useState<string>("");
@@ -214,6 +213,41 @@ export function McpStatusModal({
   const doctorStatusIndex = useMemo(
     () => indexDoctorServerStatuses(doctorReport ?? null),
     [doctorReport],
+  );
+
+  const statusCounts = useMemo(
+    () => countMcpProByStatus(servers, doctorStatusIndex),
+    [servers, doctorStatusIndex],
+  );
+  const filtered = useMemo(
+    () =>
+      filterMcpProRows(
+        servers,
+        { query, status: statusFilter },
+        doctorStatusIndex,
+      ),
+    [servers, query, statusFilter, doctorStatusIndex],
+  );
+
+  const hasActiveFilters =
+    statusFilter !== "all" || query.trim().length > 0;
+
+  const emptyState = useMemo(
+    () =>
+      resolveMcpProEmptyState({
+        loading: !!loading,
+        error: error ?? null,
+        total: servers.length,
+        filtered: filtered.length,
+        hasFilters: hasActiveFilters,
+      }),
+    [loading, error, servers.length, filtered.length, hasActiveFilters],
+  );
+
+  const doctorOpError = useMemo(
+    () =>
+      doctorError?.trim() ? classifyMcpDoctorOpError(doctorError) : null,
+    [doctorError],
   );
 
   const findingRows = useMemo(() => {
@@ -301,7 +335,7 @@ export function McpStatusModal({
 
   const copyField = useCallback(
     async (row: McpServerRow, field: "name" | "target") => {
-      const text = mcpRowCopyText(row, field);
+      const text = redactMcpText(mcpRowCopyText(row, field));
       if (!text) return;
       try {
         await navigator.clipboard.writeText(text);
@@ -316,6 +350,27 @@ export function McpStatusModal({
     },
     [],
   );
+
+  const copySummary = useCallback(async () => {
+    const text = buildMcpProCopySummary(filtered, doctorStatusIndex, {
+      header: tr("mcpModal.summary", { n: filtered.length }),
+      statusLabels: {
+        ok: tr("ext.mcp.status.ok"),
+        error: tr("ext.mcp.status.error"),
+        oauth: tr("ext.mcp.status.oauth"),
+        disabled: tr("ext.mcp.status.disabled"),
+        unknown: tr("ext.mcp.status.unknown"),
+      },
+    });
+    if (!text.trim()) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setSummaryCopied(true);
+      window.setTimeout(() => setSummaryCopied(false), 1600);
+    } catch {
+      // Clipboard may be denied; leave UI unchanged.
+    }
+  }, [filtered, doctorStatusIndex, tr]);
 
   const oauthHelpName =
     oauthHelp?.action.server ||
@@ -403,6 +458,22 @@ export function McpStatusModal({
             </span>
           </button>
         ) : null}
+        {servers.length > 0 ? (
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm mcp-modal__copy"
+            onClick={() => void copySummary()}
+            title={tr("mcpModal.copySummary")}
+            aria-label={tr("mcpModal.copySummary")}
+          >
+            <IconCopy size={13} />
+            <span>
+              {summaryCopied
+                ? tr("mcpModal.copied")
+                : tr("mcpModal.copySummary")}
+            </span>
+          </button>
+        ) : null}
       </div>
 
       {servers.length > 0 || hasActiveFilters ? (
@@ -411,7 +482,7 @@ export function McpStatusModal({
           role="tablist"
           aria-label={tr("mcpModal.filter.statusLabel")}
         >
-          {MCP_ROW_STATUS_FILTERS.map((id) => {
+          {MCP_PRO_STATUS_FILTERS.map((id) => {
             const n = statusCounts[id];
             // Hide zero-count chips except "all" and the active selection.
             if (id !== "all" && n === 0 && statusFilter !== id) return null;
@@ -426,7 +497,7 @@ export function McpStatusModal({
                 }
                 onClick={() => setStatusFilter(id)}
               >
-                <span>{healthFilterLabel(id, (k, vars) => tr(k, vars))}</span>
+                <span>{proFilterLabel(id, (k, vars) => tr(k, vars))}</span>
                 <span className="mcp-modal__chip-count">{n}</span>
               </button>
             );
@@ -445,29 +516,56 @@ export function McpStatusModal({
         </p>
       ) : null}
 
-      {loading && servers.length === 0 && (
-        <p className="modal-status">{tr("mcpModal.loading")}</p>
-      )}
-      {error && (
-        <p className="modal-status modal-status--error">{error}</p>
-      )}
-      {isEmptyCatalog && (
-        <p className="modal-status">{tr("mcpModal.empty")}</p>
-      )}
-      {isEmptyFilter ? (
-        <div className="mcp-modal__empty-filter">
-          <p className="modal-status">{tr("mcpModal.filterEmpty")}</p>
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            onClick={() => {
-              setQuery("");
-              setStatusFilter("all");
-            }}
+      {emptyState ? (
+        <div
+          className={
+            "mcp-modal__empty" +
+            (emptyState.kind === "error" && !emptyState.softFail
+              ? " mcp-modal__empty--error"
+              : "") +
+            (emptyState.softFail ? " mcp-modal__empty--soft" : "")
+          }
+        >
+          <p
+            className={
+              "modal-status" +
+              (emptyState.kind === "error" && !emptyState.softFail
+                ? " modal-status--error"
+                : "")
+            }
           >
-            {tr("mcpModal.clearFilters")}
-          </button>
+            {tr(emptyState.titleKey as MessageKey)}
+          </p>
+          {emptyState.hintKey ? (
+            <p className="ext-field-hint">
+              {tr(emptyState.hintKey as MessageKey)}
+            </p>
+          ) : null}
+          {emptyState.kind === "error" && error ? (
+            <p className="mcp-modal__error-detail">
+              {redactMcpText(error).slice(0, 240)}
+            </p>
+          ) : null}
+          {emptyState.showClearFilters ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => {
+                setQuery("");
+                setStatusFilter("all");
+              }}
+            >
+              {tr("mcpModal.clearFilters")}
+            </button>
+          ) : null}
         </div>
+      ) : null}
+
+      {/* Non-empty list still shows a soft error banner when inspect partially failed. */}
+      {!emptyState && error ? (
+        <p className="modal-status modal-status--error">
+          {redactMcpText(error).slice(0, 240)}
+        </p>
       ) : null}
 
       {filtered.length > 0 ? (
@@ -476,39 +574,37 @@ export function McpStatusModal({
             const meta = mcpMetaLine(s);
             const doctorSt = lookupServerStatus(doctorStatusIndex, s.name);
             const oauthAction = classifyMcpOauthFromStatus(doctorSt);
-            // Prefer doctor tone when available (auth lamps); else inspect health.
-            const health = doctorSt
-              ? doctorSt.tone === "auth_expired" ||
-                doctorSt.tone === "auth_required"
-                ? "error"
-                : doctorSt.tone === "ok"
-                  ? "ok"
-                  : doctorSt.tone === "warn"
-                    ? "warn"
-                    : doctorSt.tone === "error"
-                      ? "error"
-                      : classifyMcpRowHealth(s)
-              : classifyMcpRowHealth(s);
-            const badgeTone = doctorSt?.tone
-              ? doctorSt.tone
-              : health === "error"
-                ? "error"
-                : health === "warn"
-                  ? "warn"
-                  : health === "ok"
-                    ? "ok"
-                    : "unknown";
-            const badgeMod = mcpStatusBadgeMod(badgeTone);
+            const proStatus = classifyMcpProStatus(s, doctorSt);
+            // Prefer fine-grained doctor tone for badge when present (auth expired
+            // vs required); otherwise map pro chip status.
+            const badgeMod =
+              doctorSt &&
+              (doctorSt.tone === "auth_expired" ||
+                doctorSt.tone === "auth_required" ||
+                doctorSt.tone === "ok" ||
+                doctorSt.tone === "warn" ||
+                doctorSt.tone === "error")
+                ? mcpStatusBadgeMod(doctorSt.tone)
+                : mcpProStatusBadgeMod(proStatus);
+            const badgeLabelKey = doctorSt
+              ? mcpStatusLabelKey(doctorSt.tone)
+              : mcpProStatusLabelKey(proStatus);
             const nameCopied = copiedKey === `${s.name}:name`;
             const targetCopied = copiedKey === `${s.name}:target`;
             const guidanceKey = doctorSt
               ? mcpAuthGuidanceKey(doctorSt.tone)
               : null;
             return (
-              <li key={s.name} className="mcp-modal__item">
+              <li
+                key={s.name}
+                className={
+                  "mcp-modal__item" +
+                  (proStatus === "disabled" ? " mcp-modal__item--disabled" : "")
+                }
+              >
                 <div className="mcp-modal__item-head">
                   <span
-                    className={`mcp-modal__dot ${healthDotClass(health)}`}
+                    className={`mcp-modal__dot ${proDotClass(proStatus)}`}
                     aria-hidden
                   />
                   <strong className="mcp-modal__name" title={s.name}>
@@ -517,12 +613,14 @@ export function McpStatusModal({
                   <span
                     className={"ext-badge ext-badge--" + badgeMod}
                     title={
-                      doctorSt?.reason ??
-                      s.compatibilityStatus ??
-                      undefined
+                      doctorSt?.reason
+                        ? redactMcpText(doctorSt.reason)
+                        : s.compatibilityStatus
+                          ? redactMcpText(s.compatibilityStatus)
+                          : undefined
                     }
                   >
-                    {tr(mcpStatusLabelKey(badgeTone) as MessageKey)}
+                    {tr(badgeLabelKey as MessageKey)}
                   </span>
                   <span className="mcp-modal__item-actions">
                     {oauthAction ? (
@@ -603,10 +701,17 @@ export function McpStatusModal({
                     ) : null}
                   </span>
                 </div>
-                {meta ? <span className="mcp-modal__meta">{meta}</span> : null}
+                {meta ? (
+                  <span className="mcp-modal__meta">
+                    {redactMcpText(meta)}
+                  </span>
+                ) : null}
                 {s.target ? (
-                  <em className="mcp-modal__target" title={s.target}>
-                    {s.target}
+                  <em
+                    className="mcp-modal__target"
+                    title={redactMcpText(s.target)}
+                  >
+                    {redactMcpText(s.target)}
                   </em>
                 ) : null}
                 {doctorSt?.reason && doctorSt.tone !== "ok" ? (
@@ -644,9 +749,33 @@ export function McpStatusModal({
           {doctorLoading && (
             <p className="modal-status">{tr("mcpModal.doctor.running")}</p>
           )}
-          {!doctorLoading && doctorError && (
-            <p className="modal-status modal-status--error">{doctorError}</p>
-          )}
+          {!doctorLoading && doctorOpError ? (
+            <div
+              className={
+                "mcp-modal__doctor-error" +
+                (doctorOpError.softFail
+                  ? " mcp-modal__doctor-error--soft"
+                  : "")
+              }
+            >
+              <p
+                className={
+                  "modal-status" +
+                  (doctorOpError.softFail ? "" : " modal-status--error")
+                }
+              >
+                {tr(doctorOpError.titleKey as MessageKey)}
+              </p>
+              <p className="ext-field-hint">
+                {tr(doctorOpError.hintKey as MessageKey)}
+              </p>
+              {doctorOpError.detail ? (
+                <p className="mcp-modal__error-detail">
+                  {doctorOpError.detail}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           {!doctorLoading && doctorReport && (
             <>
