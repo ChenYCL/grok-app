@@ -492,6 +492,7 @@ pub fn run() {
             git_pr_hub::git_pr_list,
             git_pr_hub::git_pr_view,
             git_pr_hub::git_pr_checks,
+            git_pr_hub::git_pr_comments,
             cli_worktrees::cli_worktrees_list,
             cli_worktrees::cli_worktree_db_path,
             cli_worktrees::cli_worktree_db_stats,

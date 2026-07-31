@@ -1,7 +1,8 @@
-//! Project-level GitHub PR hub via `gh pr list|view|checks` (argv, no shell).
+//! Project-level GitHub PR hub via `gh pr list|view|checks` + comments (argv, no shell).
 //!
 //! Soft-fails when `gh` / `git` is missing or the path is not a git work tree.
 //! Pure JSON parsers are unit-tested; host commands use enriched PATH (incl. `~/.grok/bin`).
+//! Comments load from `gh pr view --json comments,reviews,url,number`.
 
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -15,10 +16,13 @@ const GH_PR_TIMEOUT_SECS: u64 = 45;
 const LIST_CAP: usize = 100;
 const BODY_CAP: usize = 20_000;
 const CHECKS_CAP: usize = 200;
+const COMMENTS_CAP: usize = 50;
+const EXCERPT_CAP: usize = 200;
 
 const LIST_JSON_FIELDS: &str = "number,title,author,url,mergeable,state,headRefName,baseRefName,isDraft,statusCheckRollup,createdAt,updatedAt";
 const VIEW_JSON_FIELDS: &str = "number,title,author,url,mergeable,state,headRefName,baseRefName,isDraft,statusCheckRollup,createdAt,updatedAt,body";
 const CHECKS_JSON_FIELDS: &str = "name,state,bucket,link,description,workflow";
+const COMMENTS_JSON_FIELDS: &str = "number,url,comments,reviews";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -116,6 +120,41 @@ pub struct GitPrChecksResult {
     pub gh_found: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pr_number: Option<u64>,
+}
+
+/// Issue comment or review body on a PR conversation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPrCommentEntry {
+    pub id: String,
+    pub author: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author_login: Option<String>,
+    pub body: String,
+    pub excerpt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    /// comment | review
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPrCommentsResult {
+    pub available: bool,
+    pub comments: Vec<GitPrCommentEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub gh_found: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_number: Option<u64>,
+    /// PR conversation URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 // ── Pure helpers ────────────────────────────────────────────────────────────
@@ -495,6 +534,238 @@ pub fn summarize_checks(checks: &[GitPrCheckEntry]) -> PrChecksSummary {
     summarize_buckets(checks.iter().map(|c| c.bucket.clone()))
 }
 
+/// Collapse body to a single-line excerpt for list rows.
+pub fn excerpt_comment_body(body: &str, max: usize) -> String {
+    let flat: String = body
+        .replace("\r\n", "\n")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let flat = flat.trim();
+    if flat.is_empty() {
+        return String::new();
+    }
+    if flat.chars().count() <= max {
+        return flat.to_string();
+    }
+    let take = max.saturating_sub(1).max(1);
+    let mut out: String = flat.chars().take(take).collect();
+    while out.ends_with(char::is_whitespace) {
+        out.pop();
+    }
+    out.push('…');
+    out
+}
+
+fn id_from_value(raw: Option<&serde_json::Value>) -> Option<String> {
+    let raw = raw?;
+    if let Some(s) = raw.as_str() {
+        let t = s.trim();
+        if !t.is_empty() {
+            return Some(t.to_string());
+        }
+    }
+    if let Some(n) = raw.as_u64() {
+        return Some(n.to_string());
+    }
+    if let Some(n) = raw.as_i64() {
+        return Some(n.to_string());
+    }
+    None
+}
+
+fn cap_body(mut body: String) -> String {
+    if body.chars().count() > BODY_CAP {
+        body = body.chars().take(BODY_CAP).collect();
+    }
+    body
+}
+
+/// Parse one issue comment from `gh pr view --json comments`.
+pub fn parse_gh_pr_comment_object(raw: &serde_json::Value) -> Option<GitPrCommentEntry> {
+    if !raw.is_object() {
+        return None;
+    }
+    let body_raw = json_str(raw, &["body", "Body", "bodyText"]).unwrap_or_default();
+    let (author, author_login) = author_from_value(raw.get("author").or_else(|| raw.get("user")));
+    if body_raw.trim().is_empty() && author.is_empty() {
+        return None;
+    }
+    let created_at = json_str(raw, &["createdAt", "created_at", "publishedAt"]);
+    let id = id_from_value(raw.get("id"))
+        .or_else(|| id_from_value(raw.get("databaseId")))
+        .or_else(|| id_from_value(raw.get("node_id")))
+        .unwrap_or_else(|| {
+            format!(
+                "comment:{}:{}",
+                author,
+                created_at.as_deref().unwrap_or("")
+            )
+        });
+    let body = cap_body(body_raw);
+    let excerpt = excerpt_comment_body(&body, EXCERPT_CAP);
+    let url = json_str(
+        raw,
+        &["url", "URL", "htmlUrl", "html_url", "permalink"],
+    );
+    Some(GitPrCommentEntry {
+        id,
+        author,
+        author_login,
+        body,
+        excerpt,
+        url,
+        created_at,
+        kind: "comment".into(),
+        state: None,
+    })
+}
+
+/// Parse one review from `gh pr view --json reviews`.
+pub fn parse_gh_pr_review_object(raw: &serde_json::Value) -> Option<GitPrCommentEntry> {
+    if !raw.is_object() {
+        return None;
+    }
+    let body_raw = json_str(raw, &["body", "Body", "bodyText"]).unwrap_or_default();
+    let state = json_str(raw, &["state", "State"]);
+    let (author, author_login) = author_from_value(raw.get("author").or_else(|| raw.get("user")));
+    if body_raw.trim().is_empty() && state.is_none() && author.is_empty() {
+        return None;
+    }
+    if body_raw.trim().is_empty() {
+        if let Some(ref st) = state {
+            if st.eq_ignore_ascii_case("PENDING") {
+                return None;
+            }
+        }
+    }
+    let created_at = json_str(
+        raw,
+        &[
+            "submittedAt",
+            "submitted_at",
+            "createdAt",
+            "created_at",
+            "publishedAt",
+        ],
+    );
+    let id = id_from_value(raw.get("id"))
+        .or_else(|| id_from_value(raw.get("databaseId")))
+        .or_else(|| id_from_value(raw.get("node_id")))
+        .unwrap_or_else(|| {
+            format!(
+                "review:{}:{}",
+                author,
+                created_at.as_deref().unwrap_or("")
+            )
+        });
+    let body = cap_body(body_raw);
+    let mut excerpt = excerpt_comment_body(&body, EXCERPT_CAP);
+    if excerpt.is_empty() {
+        if let Some(ref st) = state {
+            excerpt = st.trim().to_string();
+        }
+    }
+    let url = json_str(
+        raw,
+        &["url", "URL", "htmlUrl", "html_url", "permalink"],
+    );
+    Some(GitPrCommentEntry {
+        id,
+        author,
+        author_login,
+        body,
+        excerpt,
+        url,
+        created_at,
+        kind: "review".into(),
+        state,
+    })
+}
+
+/// Merge issue comments + reviews, newest first, capped; dedupe by id.
+/// ISO-8601 timestamps (gh default) sort correctly via lexicographic compare.
+pub fn merge_pr_comments(
+    comments: Vec<GitPrCommentEntry>,
+    reviews: Vec<GitPrCommentEntry>,
+    cap: usize,
+) -> Vec<GitPrCommentEntry> {
+    let mut seen = std::collections::HashSet::new();
+    let mut merged = Vec::new();
+    for c in comments.into_iter().chain(reviews.into_iter()) {
+        if c.id.is_empty() || !seen.insert(c.id.clone()) {
+            continue;
+        }
+        merged.push(c);
+    }
+    merged.sort_by(|a, b| {
+        let ba = b.created_at.as_deref().unwrap_or("");
+        let aa = a.created_at.as_deref().unwrap_or("");
+        ba.cmp(aa)
+    });
+    if merged.len() > cap {
+        merged.truncate(cap);
+    }
+    merged
+}
+
+/// Pure parse for `gh pr view --json comments,reviews,url,number`.
+pub fn parse_gh_pr_comments_json(
+    stdout: &str,
+) -> Result<(Vec<GitPrCommentEntry>, Option<String>, Option<u64>), String> {
+    if stdout.trim().is_empty() {
+        return Ok((Vec::new(), None, None));
+    }
+    let value = parse_json_value(stdout)?;
+    if let Some(arr) = value.as_array() {
+        let mut comments = Vec::new();
+        for item in arr {
+            if let Some(c) = parse_gh_pr_comment_object(item) {
+                comments.push(c);
+                if comments.len() >= COMMENTS_CAP {
+                    break;
+                }
+            }
+        }
+        return Ok((comments, None, None));
+    }
+    if !value.is_object() {
+        return Ok((Vec::new(), None, None));
+    }
+    let url = json_str(&value, &["url", "URL", "htmlUrl", "html_url"]);
+    let number = json_u64(&value, &["number", "Number"]);
+
+    let mut comments = Vec::new();
+    if let Some(arr) = value
+        .get("comments")
+        .or_else(|| value.get("issueComments"))
+        .and_then(|v| v.as_array())
+    {
+        for item in arr {
+            if let Some(c) = parse_gh_pr_comment_object(item) {
+                comments.push(c);
+            }
+        }
+    }
+    let mut reviews = Vec::new();
+    if let Some(arr) = value
+        .get("reviews")
+        .or_else(|| value.get("latestReviews"))
+        .and_then(|v| v.as_array())
+    {
+        for item in arr {
+            if let Some(r) = parse_gh_pr_review_object(item) {
+                reviews.push(r);
+            }
+        }
+    }
+    Ok((
+        merge_pr_comments(comments, reviews, COMMENTS_CAP),
+        url,
+        number,
+    ))
+}
+
 // ── Host probe / run ────────────────────────────────────────────────────────
 
 fn normalize_project_path(project_path: &str) -> String {
@@ -637,6 +908,21 @@ fn soft_fail_checks(
         reason: Some(reason.into()),
         gh_found,
         pr_number,
+    }
+}
+
+fn soft_fail_comments(
+    reason: impl Into<String>,
+    gh_found: bool,
+    pr_number: Option<u64>,
+) -> GitPrCommentsResult {
+    GitPrCommentsResult {
+        available: false,
+        comments: vec![],
+        reason: Some(reason.into()),
+        gh_found,
+        pr_number,
+        url: None,
     }
 }
 
@@ -865,6 +1151,67 @@ pub async fn git_pr_checks(
     }
 }
 
+/// List recent conversation comments + reviews for a PR
+/// (`gh pr view <n> --json comments,reviews,url,number`). Soft-fails when gh/git missing.
+#[tauri::command]
+pub async fn git_pr_comments(
+    project_path: String,
+    number: u64,
+) -> Result<GitPrCommentsResult, String> {
+    if number == 0 {
+        return Ok(soft_fail_comments("invalid PR number", false, None));
+    }
+    let project = match prepare_project(&project_path) {
+        Ok(p) => p,
+        Err((reason, gh_found, _)) => {
+            return Ok(soft_fail_comments(reason, gh_found, Some(number)));
+        }
+    };
+
+    let num_s = number.to_string();
+    let out = match run_gh_in_project(
+        &project,
+        &["pr", "view", &num_s, "--json", COMMENTS_JSON_FIELDS],
+    ) {
+        Ok(o) => o,
+        Err(e) => return Ok(soft_fail_comments(e, true, Some(number))),
+    };
+
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let msg = if err.trim().is_empty() {
+            String::from_utf8_lossy(&out.stdout).to_string()
+        } else {
+            err.to_string()
+        };
+        return Ok(soft_fail_comments(
+            truncate_reason(
+                if msg.trim().is_empty() {
+                    "gh pr view comments failed"
+                } else {
+                    msg.trim()
+                },
+                240,
+            ),
+            true,
+            Some(number),
+        ));
+    }
+
+    let raw = String::from_utf8_lossy(&out.stdout);
+    match parse_gh_pr_comments_json(&raw) {
+        Ok((comments, url, parsed_number)) => Ok(GitPrCommentsResult {
+            available: true,
+            comments,
+            reason: None,
+            gh_found: true,
+            pr_number: parsed_number.or(Some(number)),
+            url,
+        }),
+        Err(e) => Ok(soft_fail_comments(e, true, Some(number))),
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -992,5 +1339,72 @@ mod tests {
         let list = parse_gh_pr_list_json(raw).unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].number, 3);
+    }
+
+    #[test]
+    fn parse_comments_and_reviews() {
+        let raw = r#"{
+          "number": 344,
+          "url": "https://github.com/RongleCat/grok-app/pull/344",
+          "comments": [
+            {
+              "id": "IC_1",
+              "author": { "login": "RongleCat" },
+              "body": "Thanks — integrated on main.",
+              "createdAt": "2026-07-31T02:53:02Z",
+              "url": "https://github.com/RongleCat/grok-app/pull/344#issuecomment-1"
+            }
+          ],
+          "reviews": [
+            {
+              "id": "PRR_1",
+              "author": { "login": "alice" },
+              "body": "LGTM with a nit on naming.",
+              "state": "APPROVED",
+              "submittedAt": "2026-07-31T03:00:00Z",
+              "url": "https://github.com/RongleCat/grok-app/pull/344#pullrequestreview-1"
+            },
+            {
+              "id": "PRR_pending",
+              "author": { "login": "bob" },
+              "body": "",
+              "state": "PENDING"
+            }
+          ]
+        }"#;
+        let (comments, url, number) = parse_gh_pr_comments_json(raw).unwrap();
+        assert_eq!(number, Some(344));
+        assert_eq!(
+            url.as_deref(),
+            Some("https://github.com/RongleCat/grok-app/pull/344")
+        );
+        // PENDING empty review dropped; 1 comment + 1 review.
+        assert_eq!(comments.len(), 2);
+        // Newest first (review submitted after comment).
+        assert_eq!(comments[0].kind, "review");
+        assert_eq!(comments[0].author, "alice");
+        assert_eq!(comments[0].state.as_deref(), Some("APPROVED"));
+        assert!(comments[0].excerpt.contains("LGTM"));
+        assert_eq!(comments[1].kind, "comment");
+        assert_eq!(comments[1].author, "RongleCat");
+    }
+
+    #[test]
+    fn excerpt_collapses_whitespace() {
+        let e = excerpt_comment_body("hello\n\n  world\t!", 200);
+        assert_eq!(e, "hello world !");
+        let short = excerpt_comment_body("abcdefghij", 6);
+        assert!(short.ends_with('…'));
+        assert!(short.chars().count() <= 6);
+    }
+
+    #[test]
+    fn parse_comments_empty() {
+        let (c, url, n) = parse_gh_pr_comments_json("").unwrap();
+        assert!(c.is_empty());
+        assert!(url.is_none());
+        assert!(n.is_none());
+        let (c2, _, _) = parse_gh_pr_comments_json(r#"{"number":1,"url":"u","comments":[],"reviews":[]}"#).unwrap();
+        assert!(c2.is_empty());
     }
 }

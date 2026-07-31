@@ -2,13 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   bucketFromCheckFields,
   classifyPrHubReason,
+  excerptCommentBody,
   formatChecksSummaryLine,
+  mergePrComments,
   normalizeMergeable,
   overallFromCounts,
   parseGhPrCheckObject,
   parseGhPrChecksJson,
+  parseGhPrCommentObject,
+  parseGhPrCommentsJson,
   parseGhPrListJson,
   parseGhPrObject,
+  parseGhPrReviewObject,
   parseGhPrViewJson,
   summarizeBuckets,
   summarizeChecks,
@@ -310,5 +315,175 @@ describe("parseGhPrObject edge cases", () => {
       author: "bob",
     });
     expect(pr?.author).toBe("bob");
+  });
+});
+
+const SAMPLE_COMMENTS_VIEW = JSON.stringify({
+  number: 344,
+  url: "https://github.com/RongleCat/grok-app/pull/344",
+  comments: [
+    {
+      id: "IC_1",
+      author: { login: "RongleCat" },
+      body: "Thanks — integrated on main via batch land.",
+      createdAt: "2026-07-31T02:53:02Z",
+      url: "https://github.com/RongleCat/grok-app/pull/344#issuecomment-1",
+    },
+    {
+      id: "IC_2",
+      author: { login: "alice" },
+      body: "Follow-up: please also cover zh-TW.",
+      createdAt: "2026-07-31T04:00:00Z",
+      url: "https://github.com/RongleCat/grok-app/pull/344#issuecomment-2",
+    },
+  ],
+  reviews: [
+    {
+      id: "PRR_1",
+      author: { login: "bob" },
+      body: "LGTM with a nit on naming.",
+      state: "APPROVED",
+      submittedAt: "2026-07-31T03:10:00Z",
+      url: "https://github.com/RongleCat/grok-app/pull/344#pullrequestreview-1",
+    },
+    {
+      id: "PRR_pending",
+      author: { login: "carol" },
+      body: "",
+      state: "PENDING",
+    },
+    {
+      id: "PRR_2",
+      author: { login: "dave" },
+      body: "",
+      state: "CHANGES_REQUESTED",
+      submittedAt: "2026-07-31T01:00:00Z",
+      url: "https://github.com/RongleCat/grok-app/pull/344#pullrequestreview-2",
+    },
+  ],
+});
+
+describe("excerptCommentBody", () => {
+  it("collapses whitespace and truncates", () => {
+    expect(excerptCommentBody("hello\n\n  world")).toBe("hello world");
+    expect(excerptCommentBody("abcdefghij", 6)).toMatch(/…$/);
+    expect(excerptCommentBody("abcdefghij", 6).length).toBeLessThanOrEqual(6);
+    expect(excerptCommentBody("")).toBe("");
+    expect(excerptCommentBody(null)).toBe("");
+  });
+});
+
+describe("parseGhPrCommentObject / parseGhPrReviewObject", () => {
+  it("parses issue comment", () => {
+    const c = parseGhPrCommentObject({
+      id: "IC_9",
+      author: { login: "alice" },
+      body: "Looks good",
+      createdAt: "2026-01-01T00:00:00Z",
+      url: "https://example.com/c/9",
+    });
+    expect(c?.kind).toBe("comment");
+    expect(c?.author).toBe("alice");
+    expect(c?.excerpt).toBe("Looks good");
+    expect(c?.url).toContain("/c/9");
+  });
+
+  it("parses review and drops empty PENDING", () => {
+    const r = parseGhPrReviewObject({
+      id: "PRR_9",
+      author: { login: "bob" },
+      body: "Needs tests",
+      state: "CHANGES_REQUESTED",
+      submittedAt: "2026-01-02T00:00:00Z",
+    });
+    expect(r?.kind).toBe("review");
+    expect(r?.state).toBe("CHANGES_REQUESTED");
+    expect(
+      parseGhPrReviewObject({
+        id: "PRR_p",
+        author: { login: "x" },
+        body: "",
+        state: "PENDING",
+      }),
+    ).toBeNull();
+  });
+
+  it("uses state as excerpt when body empty", () => {
+    const r = parseGhPrReviewObject({
+      id: "PRR_a",
+      author: "eve",
+      body: "",
+      state: "APPROVED",
+      submittedAt: "2026-01-03T00:00:00Z",
+    });
+    expect(r?.excerpt).toBe("APPROVED");
+  });
+});
+
+describe("parseGhPrCommentsJson", () => {
+  it("merges comments + reviews newest first and drops pending", () => {
+    const { comments, url, number } = parseGhPrCommentsJson(SAMPLE_COMMENTS_VIEW);
+    expect(number).toBe(344);
+    expect(url).toBe("https://github.com/RongleCat/grok-app/pull/344");
+    // 2 comments + 2 non-pending reviews
+    expect(comments).toHaveLength(4);
+    expect(comments[0]!.author).toBe("alice"); // 04:00
+    expect(comments[0]!.kind).toBe("comment");
+    expect(comments[1]!.author).toBe("bob"); // 03:10 review
+    expect(comments[1]!.kind).toBe("review");
+    expect(comments[2]!.author).toBe("RongleCat"); // 02:53
+    expect(comments[3]!.author).toBe("dave"); // 01:00
+    expect(comments[3]!.state).toBe("CHANGES_REQUESTED");
+  });
+
+  it("accepts bare comments array", () => {
+    const { comments } = parseGhPrCommentsJson(
+      JSON.stringify([
+        {
+          id: "1",
+          author: "a",
+          body: "hi",
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ]),
+    );
+    expect(comments).toHaveLength(1);
+    expect(comments[0]!.author).toBe("a");
+  });
+
+  it("returns empty for blank / empty object", () => {
+    expect(parseGhPrCommentsJson("").comments).toEqual([]);
+    expect(
+      parseGhPrCommentsJson(
+        JSON.stringify({ number: 1, url: "u", comments: [], reviews: [] }),
+      ).comments,
+    ).toEqual([]);
+  });
+});
+
+describe("mergePrComments", () => {
+  it("dedupes by id and caps", () => {
+    const a = parseGhPrCommentObject({
+      id: "same",
+      author: "a",
+      body: "one",
+      createdAt: "2026-01-02T00:00:00Z",
+    })!;
+    const b = parseGhPrCommentObject({
+      id: "same",
+      author: "a",
+      body: "dup",
+      createdAt: "2026-01-03T00:00:00Z",
+    })!;
+    const c = parseGhPrCommentObject({
+      id: "other",
+      author: "b",
+      body: "two",
+      createdAt: "2026-01-01T00:00:00Z",
+    })!;
+    const merged = mergePrComments([a, c], [b], 10);
+    expect(merged).toHaveLength(2);
+    expect(merged[0]!.id).toBe("same");
+    expect(merged[0]!.body).toBe("one"); // first wins
   });
 });
