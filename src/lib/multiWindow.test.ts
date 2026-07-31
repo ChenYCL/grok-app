@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAIN_WINDOW_LABEL,
   buildSessionDeepLinkHash,
+  canLiveParticipate,
   canOpenSessionInNewWindow,
   isMainWindowLabel,
   isSessionWindowLabel,
@@ -11,6 +12,7 @@ import {
   sanitizeSessionIdForLabel,
   sessionWindowLabel,
   shouldSkipAgentSpawn,
+  shouldSkipWarmConnect,
 } from "./multiWindow";
 
 const UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
@@ -97,8 +99,16 @@ describe("multiWindow", () => {
     ).toBe(false);
   });
 
-  it("skips agent spawn only in secondary windows", () => {
+  it("skips only passive warm-connect in secondary (MULTI-WIN-LITE)", () => {
+    expect(shouldSkipWarmConnect(true)).toBe(true);
+    expect(shouldSkipWarmConnect(false)).toBe(false);
+    // Deprecated alias tracks warm-connect, not send/stop.
     expect(shouldSkipAgentSpawn(true)).toBe(true);
     expect(shouldSkipAgentSpawn(false)).toBe(false);
+  });
+
+  it("allows live send/stop from main and secondary (shared Host)", () => {
+    expect(canLiveParticipate(false)).toBe(true);
+    expect(canLiveParticipate(true)).toBe(true);
   });
 });

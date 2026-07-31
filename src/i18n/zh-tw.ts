@@ -191,9 +191,11 @@ export const zhTW: Record<MessageKey, string> = {
   "session.openInNewWindowOk": "已在新視窗開啟",
   "session.openInNewWindowFailed": "無法開啟對話視窗",
   "session.openInNewWindowMissing": "找不到該對話 — 可能已被刪除。",
-  "session.viewOnlyTitle": "僅檢視",
-  "session.viewOnlyBanner":
-    "此視窗為僅檢視。Agent 啟動與傳送仍在主視窗，避免多視窗爭搶 live 槽位。",
+  "session.secondaryLiveTitle": "副視窗",
+  "session.secondaryLiveBanner":
+    "可在此傳送與停止。為此對話連線時，可能會把主視窗的 live Agent 移走，直到該回合結束。",
+  "session.focusMainWindow": "聚焦主視窗",
+  "session.focusMainWindowFailed": "無法聚焦主視窗",
   "session.collapseAllActivity": "收合全部活動",
   "session.collapseAllActivityHint": "收合已展開的工具階段與已完成的思考塊",
   "session.new": "新對話",

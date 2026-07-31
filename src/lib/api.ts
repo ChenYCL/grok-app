@@ -2621,7 +2621,8 @@ export async function appForceQuit() {
 
 /**
  * Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
- * Desktop Tauri only. Secondary windows are view-only (no agent spawn/send).
+ * Desktop Tauri only. Secondary is live-capable (send/stop via shared Host);
+ * passive warm-connect on open is still skipped in the frontend.
  */
 export async function openSessionWindow(
   sessionId: string,
@@ -2634,6 +2635,17 @@ export async function openSessionWindow(
     sessionId,
     title: title ?? null,
   });
+}
+
+/**
+ * Focus (and show/unminimize) the primary workbench window.
+ * Desktop Tauri only — used from secondary session windows (MULTI-WIN-LITE).
+ */
+export async function focusMainWindow(): Promise<void> {
+  if (!isDesktopHost()) {
+    throw new Error("focusMainWindow requires desktop Tauri");
+  }
+  await invoke<void>("focus_main_window");
 }
 
 // ── Custom providers (agent-home config.toml) ───────────────────────────────
