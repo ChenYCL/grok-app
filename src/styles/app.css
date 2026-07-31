@@ -3468,6 +3468,96 @@ html[data-sidebar-density="compact"] .session-row__meta {
   color: var(--danger, #e35d6a);
 }
 
+/* Worktree ship flow (push + open PR) */
+.wt-ship {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+
+.wt-ship__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.wt-ship__branch {
+  margin: 0;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-tertiary);
+  word-break: break-all;
+}
+
+.wt-ship__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wt-ship__label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.wt-ship__body {
+  resize: vertical;
+  min-height: 96px;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+.wt-ship__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wt-ship__check input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wt-ship__status {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.wt-ship__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--danger, #e35d6a);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rp-changes-section__ship {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11.5px;
+  line-height: 1.2;
+  padding: 2px 6px;
+  max-width: 100%;
+}
+
+.rp-changes-section__ship span {
+  white-space: nowrap;
+}
+
 .account-link:hover {
   color: var(--accent-hover, var(--accent));
   text-decoration: underline;

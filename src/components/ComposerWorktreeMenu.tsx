@@ -13,6 +13,7 @@ import {
   IconPlus,
   IconRefresh,
   IconTrash,
+  IconUpload,
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
@@ -40,6 +41,9 @@ export type ComposerWorktreeMenuLabels = {
   worktreeNew: string;
   worktreeNewChat: string;
   worktreeGc: string;
+  /** Push branch + open PR (worktree ship flow). */
+  worktreeShip?: string;
+  worktreeShipTip?: string;
   /** Per-row remove control (non-main only). */
   worktreeRemove?: string;
   worktreeRemoveTip?: string;
@@ -82,6 +86,8 @@ type Props = {
   onCreate: () => void;
   onCreateAndChat: () => void;
   onGc: () => void;
+  /** Push current branch + open GitHub PR (in-app Ship dialog). */
+  onShip?: () => void;
   /** Remove a live linked worktree (never main). Parent confirms + calls host. */
   onRemove?: (wt: GitWorktreeEntry) => void;
   onOpen?: () => void;
@@ -115,6 +121,7 @@ export function ComposerWorktreeMenu({
   onCreate,
   onCreateAndChat,
   onGc,
+  onShip,
   onRemove,
   onOpen,
   onCliRefresh,
@@ -148,11 +155,12 @@ export function ComposerWorktreeMenu({
   const cliCount = showCliSection
     ? Math.max(cliWorktrees.length, 1)
     : 0;
+  const showShip = !!onShip && !!(labels.worktreeShip || labels.worktreeShipTip);
   const estHeight = Math.min(
-    520,
+    560,
     44 +
       Math.min(LIST_MAX_H, listCount * 36 + 8) +
-      3 * 36 +
+      (3 + (showShip ? 1 : 0)) * 36 +
       16 +
       (showCliSection
         ? 28 + Math.min(CLI_LIST_MAX_H, cliCount * 36 + 8) + 28
@@ -367,6 +375,21 @@ export function ComposerWorktreeMenu({
                 <IconTrash size={14} aria-hidden />
                 <span>{labels.worktreeGc}</span>
               </button>
+              {showShip ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="cwm__action"
+                  title={labels.worktreeShipTip || labels.worktreeShip}
+                  onClick={() => {
+                    setOpen(false);
+                    onShip?.();
+                  }}
+                >
+                  <IconUpload size={14} aria-hidden />
+                  <span>{labels.worktreeShip || "Ship…"}</span>
+                </button>
+              ) : null}
             </div>
 
             {showCliSection ? (
