@@ -20148,6 +20148,97 @@ div.composer__input:empty::before {
 }
 
 /* Settings → Agent: workspace memory browser */
+/* Project codebase search (Settings → Agent) */
+.settings-codebase-search {
+  gap: 10px;
+}
+
+.settings-codebase-search__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-codebase-search__no-embed {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+
+.settings-codebase-search__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-codebase-search__chip {
+  appearance: none;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.35));
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.settings-codebase-search__chip:hover {
+  opacity: 1;
+}
+
+.settings-codebase-search__chip.is-active {
+  border-color: var(--accent, #7c6af7);
+  background: color-mix(in srgb, var(--accent, #7c6af7) 16%, transparent);
+  opacity: 1;
+}
+
+.settings-codebase-search__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-codebase-search__search {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.settings-codebase-search__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.settings-codebase-search__match-summary {
+  margin: 0;
+}
+
+.settings-codebase-search__list {
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.settings-codebase-search__snippet {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-codebase-search__empty {
+  padding: 8px 0 4px;
+}
+
+.settings-codebase-search__empty-title {
+  margin: 0 0 4px;
+}
+
 .settings-memory-browser {
   gap: 10px;
 }

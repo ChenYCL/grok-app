@@ -1537,6 +1537,31 @@ pub async fn fs_list_dir(
     crate::fs_browser::list_dir(&project_path, relative.as_deref().unwrap_or(""))
 }
 
+/// Project-scoped file name/path + content search (keyword / `rg` or walk).
+/// Soft-fails when path missing / not a dir / untrusted. Never invents
+/// embeddings or CLI code-graph results (`search_kind` is always `"keyword"`).
+#[tauri::command]
+pub async fn project_codebase_search(
+    project_path: String,
+    query: String,
+    mode: Option<String>,
+    limit: Option<usize>,
+) -> Result<crate::project_codebase_search::CodebaseSearchResult, String> {
+    let path = project_path;
+    let q = query;
+    let m = mode;
+    tokio::task::spawn_blocking(move || {
+        Ok(crate::project_codebase_search::search_project_codebase(
+            &path,
+            &q,
+            m.as_deref(),
+            limit,
+        ))
+    })
+    .await
+    .map_err(|e| format!("project codebase search task failed: {e}"))?
+}
+
 #[tauri::command]
 pub async fn fs_read_file(
     project_path: String,

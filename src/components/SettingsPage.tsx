@@ -227,6 +227,7 @@ import { GlassModal } from "@/components/GlassModal";
 import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
 import { MemoryEmbedPanel } from "@/components/MemoryEmbedPanel";
 import { CodebaseIndexingPanel } from "@/components/CodebaseIndexingPanel";
+import { CodebaseSearchPanel } from "@/components/CodebaseSearchPanel";
 import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
@@ -685,6 +686,12 @@ export interface SettingsPageProps {
   onArchiveOlderThan?: (days: number) => void;
   /** Active project path for Skills/MCP inspect cwd. */
   projectPath?: string | null;
+  /** Open a project file in Resources from codebase search results. */
+  onOpenProjectFileInResources?: (opts: {
+    path: string;
+    relativePath: string;
+    line?: number | null;
+  }) => void;
   /** After skill enable toggle — refresh slash palette in App. */
   onSkillsPrefsChanged?: () => void;
   /** Open the same shortcuts help modal as ⌘/ / Ctrl+/. */
@@ -1312,6 +1319,7 @@ export function SettingsPage({
   onDeleteArchivedSessions,
   onArchiveOlderThan,
   projectPath = null,
+  onOpenProjectFileInResources,
   onSkillsPrefsChanged,
   onOpenShortcutsHelp,
   onOpenProductTutorial,
@@ -3241,6 +3249,18 @@ export function SettingsPage({
                     )
                   }
                   onError={(msg) => showSettingsToast(msg, 3200)}
+                />
+              </div>
+              <div
+                className={
+                  "settings-codebase-search-wrap" +
+                  rowHighlight("settings-anchor-codebaseSearch")
+                }
+              >
+                <CodebaseSearchPanel
+                  locale={resolveLocale(locale)}
+                  projectPath={workspaceCwd}
+                  onOpenInResources={onOpenProjectFileInResources}
                 />
               </div>
               {onSubagentsEnabled ? (

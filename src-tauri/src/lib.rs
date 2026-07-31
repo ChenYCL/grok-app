@@ -30,6 +30,7 @@ mod support_bundle;
 mod editors;
 mod error;
 mod fs_browser;
+mod project_codebase_search;
 mod media_protocol;
 mod media_server;
 mod video_poster;
@@ -499,6 +500,7 @@ pub fn run() {
             commands::git_checkout_file,
             commands::delete_project_file,
             commands::fs_list_dir,
+            commands::project_codebase_search,
             commands::fs_read_file,
             commands::fs_write_file,
             commands::fs_write_absolute,

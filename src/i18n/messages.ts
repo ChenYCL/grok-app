@@ -1599,6 +1599,53 @@ const en = {
   "settings.codebaseIndexing.saving": "Saving…",
   "settings.codebaseIndexing.needTauri":
     "Codebase indexing settings require the desktop app.",
+  "settings.codebaseSearch": "Project codebase search",
+  "settings.codebaseSearchDesc":
+    "Search the active project by file path/name and/or file content. Host uses ripgrep when available, otherwise a capped walk. Path-scoped to the trusted project — keyword only; never invents embeddings or CLI code-graph results.",
+  "settings.codebaseSearch.path": "Project: {path}",
+  "settings.codebaseSearch.searchPlaceholder":
+    "Search files by name or content…",
+  "settings.codebaseSearch.modeLabel": "Search mode",
+  "settings.codebaseSearch.mode.all": "Name + content",
+  "settings.codebaseSearch.mode.name": "Name / path",
+  "settings.codebaseSearch.mode.content": "Content",
+  "settings.codebaseSearch.kind.keyword": "Keyword search",
+  "settings.codebaseSearch.engine.rg": "engine: rg",
+  "settings.codebaseSearch.engine.walk": "engine: walk",
+  "settings.codebaseSearch.noEmbeddings":
+    "App project search is keyword only (rg/walk). It does not use memory embeddings or invent code-graph hits — enable Codebase indexing for CLI graph/code-nav separately.",
+  "settings.codebaseSearch.idle": "Type a query to search this project",
+  "settings.codebaseSearch.idleHint":
+    "Choose name, content, or both. Results open in the editor, Finder, or Resources.",
+  "settings.codebaseSearch.searching": "Searching project…",
+  "settings.codebaseSearch.noMatches": "No keyword matches",
+  "settings.codebaseSearch.noMatchesHint":
+    "No path/name or content hits under the project (capped scan). This is not vector/semantic search.",
+  "settings.codebaseSearch.noProject":
+    "Select a trusted project in the workbench to search its files.",
+  "settings.codebaseSearch.pathMissing": "Project path is missing on disk",
+  "settings.codebaseSearch.pathMissingHint":
+    "Relocate or re-add the project folder, then try again.",
+  "settings.codebaseSearch.notADir": "Project path is not a directory",
+  "settings.codebaseSearch.untrusted": "Project is not trusted",
+  "settings.codebaseSearch.untrustedHint":
+    "Trust the project in the sidebar before searching its files.",
+  "settings.codebaseSearch.pathUnreadable": "Could not read project path",
+  "settings.codebaseSearch.error": "Project search failed",
+  "settings.codebaseSearch.needTauri":
+    "Project codebase search requires the desktop app.",
+  "settings.codebaseSearch.truncated":
+    "Results truncated at the host hit cap.",
+  "settings.codebaseSearch.matchSummary": "{count} matches",
+  "settings.codebaseSearch.matchSummaryContent":
+    "{count} matches · {content} content",
+  "settings.codebaseSearch.contentHit": "content",
+  "settings.codebaseSearch.nameHit": "name",
+  "settings.codebaseSearch.open": "Open",
+  "settings.codebaseSearch.reveal": "Reveal",
+  "settings.codebaseSearch.openResources": "Resources",
+  "settings.codebaseSearch.refresh": "Refresh",
+  "settings.codebaseSearch.clear": "Clear",
   "settings.allowUnverifiedCli": "Allow unverified CLI install",
   "settings.allowUnverifiedCliDesc":
     "Official mirrors often omit SHA-256 sidecars; missing checksums are allowed by default (HTTPS allowlist + binary probe). Turn this on to install even when GROK_CLI_REQUIRE_CHECKSUM=1. A mismatched checksum always fails.",
@@ -6629,6 +6676,47 @@ const zh: Record<MessageKey, string> = {
   "settings.codebaseIndexing.save": "保存代码库索引",
   "settings.codebaseIndexing.saving": "保存中…",
   "settings.codebaseIndexing.needTauri": "代码库索引设置需要桌面应用。",
+  "settings.codebaseSearch": "项目代码库搜索",
+  "settings.codebaseSearchDesc":
+    "按路径/文件名和/或文件内容搜索当前项目。Host 优先使用 ripgrep，否则有上限地遍历。范围限制在已信任项目——仅关键词，不会虚构 embedding 或 CLI 代码图结果。",
+  "settings.codebaseSearch.path": "项目：{path}",
+  "settings.codebaseSearch.searchPlaceholder": "按文件名或内容搜索…",
+  "settings.codebaseSearch.modeLabel": "搜索模式",
+  "settings.codebaseSearch.mode.all": "名称 + 内容",
+  "settings.codebaseSearch.mode.name": "名称 / 路径",
+  "settings.codebaseSearch.mode.content": "内容",
+  "settings.codebaseSearch.kind.keyword": "关键词搜索",
+  "settings.codebaseSearch.engine.rg": "引擎：rg",
+  "settings.codebaseSearch.engine.walk": "引擎：遍历",
+  "settings.codebaseSearch.noEmbeddings":
+    "应用内项目搜索仅为关键词（rg/遍历）。不会使用记忆 embedding，也不会虚构代码图命中——CLI 图/code-nav 请单独启用代码库索引。",
+  "settings.codebaseSearch.idle": "输入查询以搜索此项目",
+  "settings.codebaseSearch.idleHint":
+    "可选择名称、内容或两者。结果可在编辑器、访达或资源面板中打开。",
+  "settings.codebaseSearch.searching": "正在搜索项目…",
+  "settings.codebaseSearch.noMatches": "无关键词匹配",
+  "settings.codebaseSearch.noMatchesHint":
+    "项目下未命中路径/名称或内容（有扫描上限）。这不是向量/语义搜索。",
+  "settings.codebaseSearch.noProject": "请在工作台选择已信任的项目以搜索其文件。",
+  "settings.codebaseSearch.pathMissing": "项目路径在磁盘上不存在",
+  "settings.codebaseSearch.pathMissingHint": "请重新定位或添加项目文件夹后再试。",
+  "settings.codebaseSearch.notADir": "项目路径不是目录",
+  "settings.codebaseSearch.untrusted": "项目未信任",
+  "settings.codebaseSearch.untrustedHint": "请先在侧边栏信任该项目，再搜索其文件。",
+  "settings.codebaseSearch.pathUnreadable": "无法读取项目路径",
+  "settings.codebaseSearch.error": "项目搜索失败",
+  "settings.codebaseSearch.needTauri": "项目代码库搜索需要桌面应用。",
+  "settings.codebaseSearch.truncated": "结果已按 Host 命中上限截断。",
+  "settings.codebaseSearch.matchSummary": "{count} 条匹配",
+  "settings.codebaseSearch.matchSummaryContent":
+    "{count} 条匹配 · {content} 条内容",
+  "settings.codebaseSearch.contentHit": "内容",
+  "settings.codebaseSearch.nameHit": "名称",
+  "settings.codebaseSearch.open": "打开",
+  "settings.codebaseSearch.reveal": "在文件夹中显示",
+  "settings.codebaseSearch.openResources": "资源",
+  "settings.codebaseSearch.refresh": "刷新",
+  "settings.codebaseSearch.clear": "清除",
   "settings.allowUnverifiedCli": "允许未校验的 CLI 安装",
   "settings.allowUnverifiedCliDesc":
     "官方镜像通常不发布 SHA-256 校验文件；缺少校验时默认仍可安装（HTTPS 白名单 + 二进制探测）。开启此项可在设置了 GROK_CLI_REQUIRE_CHECKSUM=1 时仍允许安装。校验和不一致始终拒绝。",

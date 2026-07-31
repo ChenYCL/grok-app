@@ -929,6 +929,54 @@ export async function fsListDir(projectPath: string, relative = "") {
   });
 }
 
+/**
+ * Project-scoped keyword file/name + content search.
+ * Host uses `rg` when available, else walk with caps. Soft-fails when path
+ * missing / not a dir / untrusted. `searchKind` is always `"keyword"` —
+ * never invents embeddings or CLI code-graph results.
+ */
+export type CodebaseSearchHit = {
+  path: string;
+  name: string;
+  relativePath: string;
+  size: number;
+  mtimeMs: number;
+  snippet: string;
+  contentMatch: boolean;
+  line?: number | null;
+};
+
+export type CodebaseSearchResult = {
+  hits: CodebaseSearchHit[];
+  projectPath: string;
+  projectPathExists: boolean;
+  projectIsDir: boolean;
+  query: string;
+  /** name | content | all */
+  mode: string;
+  limit: number;
+  truncated: boolean;
+  /** rg | walk | none */
+  engine: string;
+  /** Always `"keyword"`. */
+  searchKind: string;
+  softFail?: string | null;
+};
+
+export async function projectCodebaseSearch(opts: {
+  projectPath: string;
+  query: string;
+  mode?: "name" | "content" | "all" | string | null;
+  limit?: number | null;
+}) {
+  return invoke<CodebaseSearchResult>("project_codebase_search", {
+    projectPath: opts.projectPath,
+    query: opts.query,
+    mode: opts.mode ?? null,
+    limit: opts.limit ?? null,
+  });
+}
+
 /** Read file under project root for preview (text or base64). */
 export async function fsReadFile(projectPath: string, relative: string) {
   return invoke<FsReadResult>("fs_read_file", {
