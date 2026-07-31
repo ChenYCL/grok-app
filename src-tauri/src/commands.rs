@@ -8008,6 +8008,13 @@ pub async fn x_evidence_get(
 }
 
 #[tauri::command]
+pub async fn x_evidence_stats() -> Result<crate::x_evidence::EvidenceStats, String> {
+    tauri::async_runtime::spawn_blocking(crate::x_evidence::evidence_stats)
+        .await
+        .map_err(|e| format!("x_evidence_stats: {e}"))?
+}
+
+#[tauri::command]
 pub async fn x_quote_pack(
     ids: Vec<String>,
     title: Option<String>,

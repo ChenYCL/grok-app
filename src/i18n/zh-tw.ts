@@ -520,6 +520,12 @@ export const zhTW: Record<MessageKey, string> = {
   "dashboard.lastActivity": "更新於 {time}",
   "dashboard.tool": "工具：{name}",
   "dashboard.open": "Agent 儀表板",
+  "dashboard.evidence.title": "X 證據",
+  "dashboard.evidence.hint":
+    "X 證據軌 — x_evidence_search 落庫的本地證據（docs/features/x-search.md）",
+  "dashboard.evidence.todayNew": "今日新證 {n}",
+  "dashboard.evidence.weekPacks": "本週引用包 {n}",
+  "dashboard.evidence.total": "共 {n} 條",
   "media.loadError": "應用程式內無法載入此媒體。",
   "media.openExternal": "以系統播放器開啟",
   "media.loading": "正在載入媒體…",

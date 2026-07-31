@@ -3,10 +3,11 @@
  * Distinct from AgentTasksPanel (per-turn tools for the focused chat).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Locale, MessageKey } from "@/i18n";
 import { createT } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
+import { xEvidenceStats, type XEvidenceStats } from "@/lib/api";
 import {
   countBusyDashboardRows,
   filterAgentDashboardRows,
@@ -149,6 +150,23 @@ export function AgentDashboardModal({
 }: AgentDashboardModalProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [query, setQuery] = useState("");
+  // X Evidence Rail counters (today's new evidence / this week's quote packs).
+  // Absent backend (mock mode) or empty store → hide the block silently.
+  const [evidence, setEvidence] = useState<XEvidenceStats | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    xEvidenceStats()
+      .then((s) => {
+        if (!cancelled) setEvidence(s);
+      })
+      .catch(() => {
+        if (!cancelled) setEvidence(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
   const filtered = useMemo(
     () => filterAgentDashboardRows(rows, query),
     [rows, query],
@@ -186,6 +204,25 @@ export function AgentDashboardModal({
       }
     >
       <p className="agent-dash__hint">{tr("dashboard.hint")}</p>
+      {evidence && evidence.total > 0 ? (
+        <div
+          className="agent-dash__evidence"
+          title={tr("dashboard.evidence.hint")}
+        >
+          <span className="agent-dash__evidence-title">
+            {tr("dashboard.evidence.title")}
+          </span>
+          <span className="agent-dash__evidence-stat">
+            {tr("dashboard.evidence.todayNew", { n: evidence.todayNew })}
+          </span>
+          <span className="agent-dash__evidence-stat">
+            {tr("dashboard.evidence.weekPacks", { n: evidence.weekPacks })}
+          </span>
+          <span className="agent-dash__evidence-stat agent-dash__evidence-stat--dim">
+            {tr("dashboard.evidence.total", { n: evidence.total })}
+          </span>
+        </div>
+      ) : null}
       <div className="agent-dash__toolbar">
         <input
           type="search"

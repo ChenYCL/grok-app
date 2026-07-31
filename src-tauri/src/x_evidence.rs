@@ -13,7 +13,7 @@
 //! Write path (publishing to X) is intentionally absent.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rusqlite::{params, Connection};
@@ -83,6 +83,15 @@ pub struct EvidenceFilter {
     pub author: Option<String>,
     #[serde(default)]
     pub limit: Option<u32>,
+}
+
+/// Small dashboard counters: today's new evidence / this week's quote packs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvidenceStats {
+    pub total: i64,
+    pub today_new: i64,
+    pub week_packs: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -408,6 +417,61 @@ fn items_to_evidence(
     out
 }
 
+// ── Stats (dashboard Evidence block) ─────────────────────────────────────────
+
+fn count_recent_packs(dir: &Path, days: u64) -> i64 {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(Duration::from_secs(days * 24 * 3600));
+    let Some(cutoff) = cutoff else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter(|e| {
+            e.path().extension().and_then(|s| s.to_str()) == Some("md")
+                && e.metadata()
+                    .and_then(|m| m.modified())
+                    .map(|t| t >= cutoff)
+                    .unwrap_or(false)
+        })
+        .count() as i64
+}
+
+fn stats_from(conn: &Connection, today_start_ms: i64, packs: &Path) -> Result<EvidenceStats, String> {
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM evidence", [], |r| r.get(0))
+        .map_err(|e| format!("x-evidence stats: {e}"))?;
+    let today_new: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM evidence WHERE fetched_at >= ?1",
+            params![today_start_ms],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("x-evidence stats: {e}"))?;
+    Ok(EvidenceStats {
+        total,
+        today_new,
+        week_packs: count_recent_packs(packs, 7),
+    })
+}
+
+/// Counters for the dashboard: total evidence / new since local midnight /
+/// quote packs written in the last 7 days.
+pub fn evidence_stats() -> Result<EvidenceStats, String> {
+    let conn = open_db()?;
+    let now = chrono::Local::now();
+    let today_start_ms = now
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .and_then(|naive| naive.and_local_timezone(chrono::Local).single())
+        .map(|dt| dt.timestamp_millis())
+        .unwrap_or_else(|| now.timestamp_millis() - 86_400_000);
+    stats_from(&conn, today_start_ms, &packs_dir())
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 fn build_x_evidence_prompt(query: &str, limit: u32) -> String {
@@ -685,6 +749,23 @@ mod tests {
         let items = items_to_evidence(&v, "q", None, "x_search");
         assert_eq!(items.len(), 2);
         assert!(items.iter().all(|i| !i.verified));
+    }
+
+    #[test]
+    fn stats_counts_today_and_total() {
+        let conn = mem_db();
+        let mut old = sample(Some("https://x.com/xai/status/1111111111111"), "old");
+        old.fetched_at_ms = 100;
+        upsert_evidence(&conn, &old).unwrap();
+        let mut fresh = sample(Some("https://x.com/xai/status/2222222222222"), "fresh");
+        fresh.fetched_at_ms = 5_000;
+        upsert_evidence(&conn, &fresh).unwrap();
+
+        let tmp = std::env::temp_dir().join("grok-app-x-evidence-test-empty-packs");
+        let stats = stats_from(&conn, 1_000, &tmp).unwrap();
+        assert_eq!(stats.total, 2);
+        assert_eq!(stats.today_new, 1);
+        assert_eq!(stats.week_packs, 0);
     }
 
     #[test]
