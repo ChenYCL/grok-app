@@ -3,17 +3,24 @@
  *
  * Token estimate heuristic (when the agent has not reported counts):
  *   tokens ≈ ceil(visibleChars / 4)
- * Chip total sums user + assistant body (+ thought) only (tools skipped).
+ * Chip total sums user + assistant body (+ thought) only (tools skipped),
+ * except tools/system-only transcripts soft-fall back to breakdown total.
  * Menu breakdown classifies further:
  *   user / assistant / thought / tools (tool_step & activity) / system-like,
  *   plus history = user+assistant+thought rollup.
  * Agent-reported system/tools/history buckets win without a `~` tilde.
  *
  * Host journal is **not** rewritten on compact (UI history stays full).
- * After a compact without `tokensAfter`, we therefore show "—" rather than
- * re-estimating from the full transcript (that would overstate agent context).
+ * After a compact without `tokensAfter`, we soft-fail with "—" (no invented
+ * full-history re-estimate). Chip still surfaces so the user can re-compact
+ * and read last-compact detail — not a silent hide.
  * When `tokensAfter` is known, later growth is estimated only from messages
  * after that compact marker and the chip is marked estimated (`~`).
+ *
+ * Empty / no-data honesty (CONTEXT-USAGE-PRO):
+ * - Brand-new sessions: hide chip (no "—" placeholder).
+ * - Soft-unknown after compact or partial agent signal: show muted "—".
+ * - Zero estimated role buckets render as "—" (not "~0").
  */
 
 export type ContextUsageSource = "known" | "estimated" | "unknown";
@@ -518,12 +525,233 @@ export interface ContextUsageDisplay {
 }
 
 /**
+ * How the composer should surface the context chip (CONTEXT-USAGE-PRO).
+ *
+ * - `hidden` — brand-new / empty: no "—" placeholder flash.
+ * - `soft_unknown` — activity signal (compact / partial agent / breakdown)
+ *   but no reliable total: show muted "—" and honest unknown copy.
+ * - `visible` — known or estimated token total for the chip label.
+ */
+export type ContextUsageSurfaceKind = "hidden" | "soft_unknown" | "visible";
+
+/** True when agent-reported usage has any numeric field (not inventing zeros). */
+export function knownUsageHasSignal(
+  known: KnownUsageBreakdown | null | undefined,
+): boolean {
+  if (!known) return false;
+  return (
+    known.inputTokens != null ||
+    known.outputTokens != null ||
+    known.totalTokens != null ||
+    known.systemTokens != null ||
+    known.toolsTokens != null ||
+    known.historyTokens != null
+  );
+}
+
+/** True when a breakdown has any non-zero or agent-known bucket. */
+export function breakdownHasSignal(
+  breakdown: ContextUsageBreakdown | null | undefined,
+): boolean {
+  if (!breakdown) return false;
+  if (breakdown.totalTokens > 0) return true;
+  if (
+    breakdown.userTokens > 0 ||
+    breakdown.assistantTokens > 0 ||
+    breakdown.thoughtTokens > 0
+  ) {
+    return true;
+  }
+  if ((breakdown.systemTokens ?? 0) > 0 || (breakdown.toolsTokens ?? 0) > 0) {
+    return true;
+  }
+  if ((breakdown.historyTokens ?? 0) > 0) return true;
+  const kb = breakdown.knownBuckets;
+  return Boolean(kb?.system || kb?.tools || kb?.history);
+}
+
+/**
+ * Resolve composer surface kind from a display snapshot.
+ * Pure — no DOM; callers map kind → render / hide.
+ */
+export function resolveContextUsageSurface(
+  display: ContextUsageDisplay,
+): ContextUsageSurfaceKind {
+  if (display.tokens != null && display.source !== "unknown") {
+    return "visible";
+  }
+  // Soft-fail after compact without token counts — still surface "—".
+  if (display.lastCompact) return "soft_unknown";
+  // Partial agent usage (I/O split without a chip total, etc.).
+  if (knownUsageHasSignal(display.knownUsage)) return "soft_unknown";
+  // Tools/system-only estimate path should already set tokens; keep as safety.
+  if (breakdownHasSignal(display.breakdown)) return "visible";
+  return "hidden";
+}
+
+/**
  * Whether the composer should surface context usage.
- * New / empty sessions stay hidden (no "—" placeholder); show only once
- * there is a known or estimated token figure after real activity.
+ * New / empty sessions stay hidden (no "—" placeholder); soft-fail "—"
+ * after compact / partial agent is still shown.
  */
 export function hasContextUsageData(display: ContextUsageDisplay): boolean {
-  return display.tokens != null && display.source !== "unknown";
+  return resolveContextUsageSurface(display) !== "hidden";
+}
+
+/**
+ * Menu empty-state kinds for breakdown / no-data honesty.
+ * Components map keys → i18n; pure helper never invents copy strings.
+ */
+export type ContextUsageEmptyKind =
+  | "none"
+  | "new_session"
+  | "unknown_after_compact"
+  | "no_breakdown"
+  | "partial_agent";
+
+export type ContextUsageEmptyState = {
+  kind: ContextUsageEmptyKind;
+  /**
+   * i18n key for body copy (when not `none`).
+   * Title always uses `context.menuTitle` / chip aria.
+   */
+  bodyKey:
+    | "context.emptyNewSession"
+    | "context.softFailUnknownNote"
+    | "context.breakdownEmpty"
+    | "context.partialAgentNote"
+    | null;
+};
+
+/**
+ * Resolve honest empty / soft-fail copy for the chip menu body.
+ * Does not decide visibility (use {@link resolveContextUsageSurface}).
+ */
+export function resolveContextUsageEmptyState(
+  display: ContextUsageDisplay,
+): ContextUsageEmptyState {
+  const surface = resolveContextUsageSurface(display);
+  if (surface === "hidden") {
+    return { kind: "new_session", bodyKey: "context.emptyNewSession" };
+  }
+  if (
+    display.source === "unknown" ||
+    (display.tokens == null && display.lastCompact)
+  ) {
+    return {
+      kind: "unknown_after_compact",
+      bodyKey: "context.softFailUnknownNote",
+    };
+  }
+  if (
+    display.tokens == null &&
+    knownUsageHasSignal(display.knownUsage) &&
+    !breakdownHasSignal(display.breakdown)
+  ) {
+    return { kind: "partial_agent", bodyKey: "context.partialAgentNote" };
+  }
+  if (!breakdownHasSignal(display.breakdown)) {
+    return { kind: "no_breakdown", bodyKey: "context.breakdownEmpty" };
+  }
+  return { kind: "none", bodyKey: null };
+}
+
+/**
+ * Format one breakdown bucket for UI.
+ * - known agent buckets → exact count (no tilde)
+ * - estimated &gt; 0 → `~n`
+ * - null / 0 / missing → "—" (never invent "~0")
+ */
+export function formatBreakdownBucketValue(
+  n: number | null | undefined,
+  opts?: { known?: boolean; locale?: string },
+): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const known = Boolean(opts?.known);
+  if (known) return formatTokenCount(n, opts?.locale ?? "zh");
+  if (n <= 0) return "—";
+  return `~${formatTokenCount(n, opts?.locale ?? "zh")}`;
+}
+
+/** Stable breakdown row ids for menus (labels are i18n elsewhere). */
+export type ContextBreakdownRowId =
+  | "system"
+  | "tools"
+  | "history"
+  | "user"
+  | "assistant"
+  | "thought";
+
+export type ContextBreakdownRow = {
+  id: ContextBreakdownRowId;
+  /** Pre-formatted value (`—`, `~1.2千`, `4万`). */
+  value: string;
+  /** True when value is agent-reported (no estimate tilde). */
+  known: boolean;
+  /** Raw token count when numeric; null when shown as "—". */
+  tokens: number | null;
+};
+
+/**
+ * Build labelled breakdown rows from a display breakdown.
+ * Always returns the six stable rows (system → thought) so menus stay consistent;
+ * empty/unknown buckets are "—".
+ */
+export function buildContextBreakdownRows(
+  breakdown: ContextUsageBreakdown | null | undefined,
+  locale: string = "zh",
+): ContextBreakdownRow[] {
+  const b = breakdown;
+  const known = b?.knownBuckets;
+  const row = (
+    id: ContextBreakdownRowId,
+    n: number | null | undefined,
+    isKnown?: boolean,
+  ): ContextBreakdownRow => {
+    const knownFlag = Boolean(isKnown);
+    const value = formatBreakdownBucketValue(n, {
+      known: knownFlag,
+      locale,
+    });
+    const tokens =
+      n != null && Number.isFinite(n) && (knownFlag || n > 0) ? Math.floor(n) : null;
+    return { id, value, known: knownFlag, tokens };
+  };
+  return [
+    row("system", b?.systemTokens ?? null, known?.system),
+    row("tools", b?.toolsTokens ?? null, known?.tools),
+    row("history", b?.historyTokens ?? null, known?.history),
+    // Role rows are always heuristic when present (never agent-tokenized).
+    row("user", b?.userTokens ?? 0, false),
+    row("assistant", b?.assistantTokens ?? 0, false),
+    row("thought", b?.thoughtTokens ?? 0, false),
+  ];
+}
+
+/** i18n key for a breakdown row id. */
+export function contextBreakdownRowLabelKey(
+  id: ContextBreakdownRowId,
+):
+  | "context.breakdownSystem"
+  | "context.breakdownTools"
+  | "context.breakdownHistory"
+  | "context.breakdownUser"
+  | "context.breakdownAssistant"
+  | "context.breakdownThought" {
+  switch (id) {
+    case "system":
+      return "context.breakdownSystem";
+    case "tools":
+      return "context.breakdownTools";
+    case "history":
+      return "context.breakdownHistory";
+    case "user":
+      return "context.breakdownUser";
+    case "assistant":
+      return "context.breakdownAssistant";
+    case "thought":
+      return "context.breakdownThought";
+  }
 }
 
 function breakdownOrNull(
@@ -600,6 +828,7 @@ export function resolveContextUsageDisplay(
   }
 
   // Compact happened without token counts — do not trust full UI history.
+  // Soft-fail: tokens stay unknown ("—"); keep estimated breakdown for honesty.
   if (lastCompact) {
     return {
       tokens: null,
@@ -615,6 +844,33 @@ export function resolveContextUsageDisplay(
   // Never compacted: rough estimate from visible transcript (or unknown empty).
   const estimated = estimateTokensFromMessages(messages);
   if (estimated <= 0) {
+    // Soft-fail: tools/system-only journals skip the chip-total heuristic but
+    // still have a breakdown total — surface that as estimated (not invent zero).
+    if (breakdown && breakdown.totalTokens > 0) {
+      return {
+        tokens: breakdown.totalTokens,
+        source: "estimated",
+        label: formatContextChipLabel(
+          breakdown.totalTokens,
+          "estimated",
+          locale,
+        ),
+        lastCompact: null,
+        breakdown,
+        knownUsage,
+      };
+    }
+    // Partial agent I/O without total — soft-unknown surface, no invented sum.
+    if (knownUsageHasSignal(knownUsage)) {
+      return {
+        tokens: null,
+        source: "unknown",
+        label: formatContextChipLabel(null, "unknown", locale),
+        lastCompact: null,
+        breakdown,
+        knownUsage,
+      };
+    }
     return {
       tokens: null,
       source: "unknown",

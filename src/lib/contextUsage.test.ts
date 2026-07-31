@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  breakdownHasSignal,
   buildCompactSlashCommand,
+  buildContextBreakdownRows,
   COMPACT_PRESET_CLI_INTENSITY,
   COMPACT_PRESET_IDS,
+  contextBreakdownRowLabelKey,
   DEFAULT_COMPACT_PRESET,
   estimateCompactAfterTokens,
   estimateContextBreakdown,
   estimateTokensFromMessages,
   estimateTokensFromText,
+  formatBreakdownBucketValue,
   formatCompactBeforeAfterRange,
   formatContextChipLabel,
   formatTokenCount,
@@ -17,11 +21,14 @@ import {
   isCompactPresetId,
   isSystemLikeMessage,
   isToolActivityMessage,
+  knownUsageHasSignal,
   mergeCompactTokensBefore,
   mergeKnownBucketsIntoBreakdown,
   reduceContextUsage,
   resolveCompactNoteBody,
   resolveContextUsageDisplay,
+  resolveContextUsageEmptyState,
+  resolveContextUsageSurface,
 } from "./contextUsage";
 
 describe("formatTokenCount", () => {
@@ -366,17 +373,20 @@ describe("reduceContextUsage", () => {
   });
 });
 
-describe("hasContextUsageData", () => {
-  it("is false for empty new sessions (no — chip)", () => {
+describe("hasContextUsageData / resolveContextUsageSurface", () => {
+  it("hides brand-new empty sessions (no — chip)", () => {
     const d = resolveContextUsageDisplay(INITIAL_CONTEXT_USAGE, []);
     expect(hasContextUsageData(d)).toBe(false);
+    expect(resolveContextUsageSurface(d)).toBe("hidden");
+    expect(resolveContextUsageEmptyState(d).kind).toBe("new_session");
   });
 
-  it("is true once estimated or known tokens exist", () => {
+  it("is visible once estimated or known tokens exist", () => {
     const estimated = resolveContextUsageDisplay(INITIAL_CONTEXT_USAGE, [
       { id: "u", role: "user", content: "a".repeat(40) },
     ]);
     expect(hasContextUsageData(estimated)).toBe(true);
+    expect(resolveContextUsageSurface(estimated)).toBe("visible");
 
     const known = resolveContextUsageDisplay(
       reduceContextUsage(INITIAL_CONTEXT_USAGE, {
@@ -386,9 +396,10 @@ describe("hasContextUsageData", () => {
       [],
     );
     expect(hasContextUsageData(known)).toBe(true);
+    expect(resolveContextUsageSurface(known)).toBe("visible");
   });
 
-  it("is false when compact left tokens unknown", () => {
+  it("soft-fails when compact left tokens unknown (still surfaces —)", () => {
     const state = reduceContextUsage(INITIAL_CONTEXT_USAGE, {
       type: "compact",
       trigger: "manual",
@@ -398,7 +409,87 @@ describe("hasContextUsageData", () => {
       { id: "c1", role: "tool", marker: "context_compact" },
     ]);
     expect(d.source).toBe("unknown");
-    expect(hasContextUsageData(d)).toBe(false);
+    expect(d.tokens).toBeNull();
+    expect(d.label).toBe("—");
+    // Soft-fail honesty: show muted chip so user can re-compact / read detail.
+    expect(hasContextUsageData(d)).toBe(true);
+    expect(resolveContextUsageSurface(d)).toBe("soft_unknown");
+    expect(resolveContextUsageEmptyState(d)).toEqual({
+      kind: "unknown_after_compact",
+      bodyKey: "context.softFailUnknownNote",
+    });
+  });
+
+  it("soft-fails on partial agent usage without a total", () => {
+    const state = reduceContextUsage(INITIAL_CONTEXT_USAGE, {
+      type: "usage",
+      inputTokens: 500,
+      // no output, no total
+    });
+    const d = resolveContextUsageDisplay(state, []);
+    expect(d.tokens).toBeNull();
+    expect(d.source).toBe("unknown");
+    expect(knownUsageHasSignal(d.knownUsage)).toBe(true);
+    expect(resolveContextUsageSurface(d)).toBe("soft_unknown");
+    expect(hasContextUsageData(d)).toBe(true);
+  });
+});
+
+describe("formatBreakdownBucketValue / buildContextBreakdownRows", () => {
+  it("never invents ~0 for empty buckets", () => {
+    expect(formatBreakdownBucketValue(null)).toBe("—");
+    expect(formatBreakdownBucketValue(0)).toBe("—");
+    expect(formatBreakdownBucketValue(0, { known: true })).toBe("0");
+    expect(formatBreakdownBucketValue(1200, { known: true })).toBe("1.2千");
+    expect(formatBreakdownBucketValue(1200)).toBe("~1.2千");
+  });
+
+  it("builds six stable labelled rows with — for empty", () => {
+    const rows = buildContextBreakdownRows({
+      userTokens: 10,
+      assistantTokens: 0,
+      thoughtTokens: 0,
+      systemTokens: null,
+      toolsTokens: 2,
+      historyTokens: 10,
+      totalTokens: 12,
+      estimated: true,
+      knownBuckets: { tools: true },
+    });
+    expect(rows).toHaveLength(6);
+    expect(rows.map((r) => r.id)).toEqual([
+      "system",
+      "tools",
+      "history",
+      "user",
+      "assistant",
+      "thought",
+    ]);
+    expect(rows.find((r) => r.id === "system")?.value).toBe("—");
+    expect(rows.find((r) => r.id === "tools")?.value).toBe("2");
+    expect(rows.find((r) => r.id === "tools")?.known).toBe(true);
+    expect(rows.find((r) => r.id === "user")?.value).toBe("~10");
+    expect(rows.find((r) => r.id === "assistant")?.value).toBe("—");
+    expect(contextBreakdownRowLabelKey("user")).toBe("context.breakdownUser");
+    expect(contextBreakdownRowLabelKey("system")).toBe(
+      "context.breakdownSystem",
+    );
+  });
+
+  it("breakdownHasSignal is false for pure-zero estimates", () => {
+    expect(
+      breakdownHasSignal({
+        userTokens: 0,
+        assistantTokens: 0,
+        thoughtTokens: 0,
+        systemTokens: 0,
+        toolsTokens: 0,
+        historyTokens: 0,
+        totalTokens: 0,
+        estimated: true,
+      }),
+    ).toBe(false);
+    expect(breakdownHasSignal(null)).toBe(false);
   });
 });
 
@@ -529,6 +620,39 @@ describe("resolveContextUsageDisplay", () => {
     // Visible split still available as estimated free/unknown note path
     expect(d.breakdown?.userTokens).toBe(100);
     expect(d.breakdown?.estimated).toBe(true);
+    expect(resolveContextUsageSurface(d)).toBe("soft_unknown");
+  });
+
+  it("tools-only transcript soft-falls back to breakdown total as estimated", () => {
+    const d = resolveContextUsageDisplay(INITIAL_CONTEXT_USAGE, [
+      {
+        id: "t",
+        role: "tool",
+        content: "a".repeat(40), // 10 tokens in tools bucket
+        marker: "tool_step",
+      },
+    ]);
+    // Chip total heuristic skips tools; pro path uses breakdown total.
+    expect(d.source).toBe("estimated");
+    expect(d.tokens).toBe(10);
+    expect(d.label.startsWith("~")).toBe(true);
+    expect(d.breakdown?.toolsTokens).toBe(10);
+    expect(d.breakdown?.userTokens).toBe(0);
+    expect(hasContextUsageData(d)).toBe(true);
+  });
+
+  it("empty state is no_breakdown when known total has no role split", () => {
+    const state = reduceContextUsage(INITIAL_CONTEXT_USAGE, {
+      type: "usage",
+      totalTokens: 9000,
+    });
+    const d = resolveContextUsageDisplay(state, []);
+    expect(d.source).toBe("known");
+    expect(d.breakdown).toBeNull();
+    expect(resolveContextUsageEmptyState(d)).toEqual({
+      kind: "no_breakdown",
+      bodyKey: "context.breakdownEmpty",
+    });
   });
 });
 
