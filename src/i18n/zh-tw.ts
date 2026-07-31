@@ -2347,9 +2347,17 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.themeDark": "深色",
   "settings.themeSchedule": "按時切換淺色 / 深色",
   "settings.themeScheduleDesc":
-    "主題為「跟隨系統」時，按本地時間在淺色與深色之間切換，而不是跟隨系統外觀。固定淺色或深色時忽略此排程。",
+    "主題為「跟隨系統」時按本地時鐘切換：淺色開始 → 深色開始為淺色時段（可跨午夜）。起迄時間相同或無效時 soft-fail 回退預設主題。固定淺色或深色時忽略此排程。",
   "settings.themeScheduleLightFrom": "淺色開始",
   "settings.themeScheduleDarkFrom": "深色開始",
+  "settings.themeSchedule.nextSwitch": "下次切換 {time} → {theme}",
+  "settings.themeSchedule.nextSwitchTomorrow": "下次切換 明天 {time} → {theme}",
+  "settings.themeSchedule.invalidEqual":
+    "淺色與深色開始時間相同 — 排程 soft-fail，回退預設主題，直到兩個時間不同。",
+  "settings.themeSchedule.invalidTimes":
+    "時間無效 — 排程 soft-fail，回退預設主題。",
+  "settings.themeSchedule.inactivePref":
+    "排程已開啟，但主題已固定為淺色或深色。將主題改為「跟隨系統」後才會按時鐘切換。",
   "settings.thinkingExpand": "思考過程",
   "settings.thinkingExpandDesc":
     "回覆完成後，思考/推理區塊保持展開，或自動摺疊。串流生成時仍會即時展開。",

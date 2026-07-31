@@ -9,6 +9,7 @@
  * - lightFrom → darkFrom is the light period (end exclusive)
  * - darkFrom → lightFrom is the dark period (may wrap midnight)
  * - lightFrom === darkFrom → invalid / zero-width → DEFAULT_RESOLVED_THEME
+ * - unparseable HH:mm → soft-fail → DEFAULT_RESOLVED_THEME
  */
 
 import { DEFAULT_RESOLVED_THEME, type Theme, type ThemePreference } from "./theme";
@@ -51,6 +52,39 @@ function defaultStorage(): ThemeScheduleStorage {
   return { getItem: () => null, setItem: () => {} };
 }
 
+/** Re-export HH:mm helpers for schedule call sites (parse / normalize / validate). */
+export { normalizeHHmm, parseTimeToMinutes };
+
+/** True when raw is a valid HH:mm (or HH:mm:ss with seconds ignored). */
+export function isValidThemeScheduleHHmm(raw: string): boolean {
+  return parseTimeToMinutes(raw) != null;
+}
+
+/**
+ * Range honesty for the two start times (ignores `enabled`).
+ * - invalid: one or both times unparseable
+ * - equal: zero-width window (soft-fail resolve)
+ * - ok: distinct valid times (same-day or midnight-wrapping)
+ */
+export type ThemeScheduleRangeKind = "ok" | "equal" | "invalid";
+
+export function themeScheduleRangeKind(
+  cfg: Pick<ThemeScheduleConfig, "lightFrom" | "darkFrom">,
+): ThemeScheduleRangeKind {
+  const light = parseTimeToMinutes(cfg.lightFrom);
+  const dark = parseTimeToMinutes(cfg.darkFrom);
+  if (light == null || dark == null) return "invalid";
+  if (light === dark) return "equal";
+  return "ok";
+}
+
+/** Soft-fail when range is not ok (resolve falls back to DEFAULT_RESOLVED_THEME). */
+export function isThemeScheduleRangeSoftFail(
+  cfg: Pick<ThemeScheduleConfig, "lightFrom" | "darkFrom">,
+): boolean {
+  return themeScheduleRangeKind(cfg) !== "ok";
+}
+
 /**
  * Pure: which concrete theme is active at `now` given light/dark start times.
  * Does not consult `enabled` — callers decide when schedule applies.
@@ -74,7 +108,7 @@ export function resolveThemeFromSchedule(
     // Same calendar day light window, e.g. 07:00 → 19:00.
     return mins >= light && mins < dark ? "light" : "dark";
   }
-  // Light wraps midnight, e.g. 19:00 → 07:00 (unusual but supported).
+  // Light wraps midnight, e.g. 20:00 → 08:00 (unusual but supported).
   return mins >= light || mins < dark ? "light" : "dark";
 }
 
@@ -104,6 +138,182 @@ export function resolveThemeWithSchedule(
     return resolveThemeFromSchedule(now, schedule);
   }
   return systemTheme;
+}
+
+/** Next wall-clock flip after `now` (switch instants are lightFrom / darkFrom). */
+export type ThemeScheduleNextSwitch = {
+  /** Local Date at the switch (seconds/ms zeroed). */
+  at: Date;
+  /** Theme that becomes active at `at`. */
+  toTheme: Theme;
+  /** Zero-padded HH:mm of the switch. */
+  atHHmm: string;
+  /**
+   * Calendar-day offset relative to `now`'s local date:
+   * 0 = same day, 1 = next calendar day (never further for a 2-boundary day).
+   */
+  dayOffset: 0 | 1;
+};
+
+function dateAtLocalMinutes(base: Date, dayOffset: number, mins: number): Date {
+  const d = new Date(
+    base.getFullYear(),
+    base.getMonth(),
+    base.getDate() + dayOffset,
+    Math.floor(mins / 60),
+    mins % 60,
+    0,
+    0,
+  );
+  return d;
+}
+
+function localDayOffset(from: Date, to: Date): 0 | 1 {
+  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
+  const b = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime();
+  const days = Math.round((b - a) / 86_400_000);
+  return days <= 0 ? 0 : 1;
+}
+
+/**
+ * Pure: next theme flip strictly after `now`.
+ * Returns null when times are invalid/equal (no meaningful boundary).
+ * Does not consult `enabled` — callers decide when to show the preview.
+ */
+export function computeNextThemeSwitch(
+  now: Date,
+  cfg: Pick<ThemeScheduleConfig, "lightFrom" | "darkFrom">,
+): ThemeScheduleNextSwitch | null {
+  const light = parseTimeToMinutes(cfg.lightFrom);
+  const dark = parseTimeToMinutes(cfg.darkFrom);
+  if (light == null || dark == null || light === dark) return null;
+
+  const candidates: Array<{ at: Date; toTheme: Theme; atHHmm: string }> = [];
+  for (const dayOffset of [0, 1, 2]) {
+    for (const [mins, toTheme] of [
+      [light, "light" as const],
+      [dark, "dark" as const],
+    ] as const) {
+      const at = dateAtLocalMinutes(now, dayOffset, mins);
+      if (at.getTime() <= now.getTime()) continue;
+      const hh = Math.floor(mins / 60);
+      const mm = mins % 60;
+      candidates.push({
+        at,
+        toTheme,
+        atHHmm: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`,
+      });
+    }
+  }
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => a.at.getTime() - b.at.getTime());
+  const best = candidates[0]!;
+  return {
+    at: best.at,
+    toTheme: best.toTheme,
+    atHHmm: best.atHHmm,
+    dayOffset: localDayOffset(now, best.at),
+  };
+}
+
+/**
+ * Settings honesty surface for the theme schedule control.
+ * Pure — no I/O, no Date.now (pass `now`).
+ */
+export type ThemeScheduleHonestyKind =
+  | "off"
+  | "inactive_pref"
+  | "invalid"
+  | "equal"
+  | "active";
+
+export type ThemeScheduleStatusKey =
+  | "settings.themeSchedule.inactivePref"
+  | "settings.themeSchedule.invalidTimes"
+  | "settings.themeSchedule.invalidEqual"
+  | "settings.themeSchedule.nextSwitch"
+  | "settings.themeSchedule.nextSwitchTomorrow";
+
+export type ThemeScheduleHonesty = {
+  kind: ThemeScheduleHonestyKind;
+  /** warn = soft-fail range; info = preview / inactive pref; none = off. */
+  severity: "none" | "info" | "warn";
+  /** Schedule-resolved theme when kind is active; else null. */
+  currentTheme: Theme | null;
+  next: ThemeScheduleNextSwitch | null;
+  /**
+   * Primary status line key under the controls (null when off and nothing to say).
+   * Callers interpolate `{time}` / `{theme}` for next-switch keys.
+   */
+  statusKey: ThemeScheduleStatusKey | null;
+};
+
+/**
+ * Derive Settings honesty for schedule: soft-fail ranges, inactive preference,
+ * and next-switch preview when the clock schedule is live.
+ */
+export function deriveThemeScheduleHonesty(input: {
+  preference: ThemePreference;
+  schedule: ThemeScheduleConfig;
+  now?: Date;
+}): ThemeScheduleHonesty {
+  const now = input.now ?? new Date();
+  const { preference, schedule } = input;
+
+  if (!schedule.enabled) {
+    return {
+      kind: "off",
+      severity: "none",
+      currentTheme: null,
+      next: null,
+      statusKey: null,
+    };
+  }
+
+  const range = themeScheduleRangeKind(schedule);
+  if (range === "invalid") {
+    return {
+      kind: "invalid",
+      severity: "warn",
+      currentTheme: null,
+      next: null,
+      statusKey: "settings.themeSchedule.invalidTimes",
+    };
+  }
+  if (range === "equal") {
+    return {
+      kind: "equal",
+      severity: "warn",
+      currentTheme: null,
+      next: null,
+      statusKey: "settings.themeSchedule.invalidEqual",
+    };
+  }
+
+  if (preference !== "system") {
+    return {
+      kind: "inactive_pref",
+      severity: "info",
+      currentTheme: null,
+      next: computeNextThemeSwitch(now, schedule),
+      statusKey: "settings.themeSchedule.inactivePref",
+    };
+  }
+
+  const next = computeNextThemeSwitch(now, schedule);
+  const statusKey: ThemeScheduleStatusKey | null = next
+    ? next.dayOffset === 0
+      ? "settings.themeSchedule.nextSwitch"
+      : "settings.themeSchedule.nextSwitchTomorrow"
+    : null;
+
+  return {
+    kind: "active",
+    severity: "info",
+    currentTheme: resolveThemeFromSchedule(now, schedule),
+    next,
+    statusKey,
+  };
 }
 
 /** Parse stored JSON / object; invalid → defaults. */
