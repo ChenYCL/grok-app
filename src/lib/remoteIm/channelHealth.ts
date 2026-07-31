@@ -15,6 +15,10 @@ import type {
   RemoteChannelId,
 } from "./types";
 import { maskSecretValue } from "./secretsApi";
+import {
+  telegramHealthHintKeys,
+  validateTelegramConfig,
+} from "./telegramConfig";
 
 /** Health tone for badges / callouts (maps to RimBadge). */
 export type RimChannelHealthTone = "ok" | "warn" | "err" | "neutral";
@@ -74,6 +78,16 @@ export type ClassifyChannelHealthInput = {
    * Used only for incomplete-form hints — never stores values.
    */
   secretKeysFilled?: ReadonlySet<string>;
+  /**
+   * Live form options (e.g. proxy URL) merged over saved instance.options
+   * for honest soft status while editing.
+   */
+  draftOptions?: Record<string, unknown>;
+  /**
+   * When the form has a non-empty Telegram token, pass it for format checks
+   * only (never stored by health helpers).
+   */
+  tokenValue?: string | null;
 };
 
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
@@ -199,7 +213,11 @@ export function channelModeLabel(
   }
   if (TELEGRAM_LIKE.includes(channel)) {
     const proxy = String(options.proxy ?? "").trim();
-    return proxy ? "proxy=set" : "proxy=none";
+    if (!proxy) return "long_poll;proxy=none";
+    const scheme = proxy.match(/^(https?|socks5h?):\/\//i)?.[1]?.toLowerCase();
+    return scheme
+      ? `long_poll;proxy=${scheme}`
+      : "long_poll;proxy=set";
   }
   if (channel === "wecom") {
     const mode = String(options.connect_mode ?? options.mode ?? "websocket");
@@ -229,9 +247,24 @@ export function credentialReadiness(
   channel: RemoteChannelId,
   instance: ChannelInstance,
   secretKeysFilled?: ReadonlySet<string>,
+  /**
+   * Optional raw token for Telegram format checks (never stored).
+   */
+  tokenValue?: string | null,
 ): { ready: boolean; missingKeys: string[] } {
-  const missing: string[] = [];
   const opts = isRecord(instance.options) ? instance.options : {};
+
+  if (channel === "telegram") {
+    const v = validateTelegramConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      tokenValue,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  const missing: string[] = [];
 
   for (const k of NON_SECRET_REQUIRED[channel] ?? []) {
     if (!optionString(opts, k)) missing.push(k);
@@ -289,7 +322,16 @@ export function classifyChannelHealth(
 ): RimChannelHealthDetail {
   const { instance, bridgeRunning } = input;
   const channel = instance.channel;
-  const opts = isRecord(instance.options) ? instance.options : {};
+  const savedOpts = isRecord(instance.options) ? instance.options : {};
+  const opts = {
+    ...savedOpts,
+    ...(isRecord(input.draftOptions) ? input.draftOptions : {}),
+  };
+  // Readiness evaluates against draft-merged options for honest soft status.
+  const readinessInstance: ChannelInstance = {
+    ...instance,
+    options: opts,
+  };
   const bridgeLinked = !!input.bridgeLinked;
   const openAcl =
     !instance.acl?.allowFrom ||
@@ -298,42 +340,46 @@ export function classifyChannelHealth(
 
   const { ready: credentialsReady, missingKeys } = credentialReadiness(
     channel,
-    instance,
+    readinessInstance,
     input.secretKeysFilled,
+    input.tokenValue,
   );
+
+  // Honest status: invalid token/proxy posture cannot look "connected".
+  const credsUsable =
+    !!instance.hasCredentials &&
+    (credentialsReady || channel !== "telegram");
 
   let tone: ChannelStatusTone = "unconfigured";
   if (instance.lastError) {
     tone = "error";
   } else if (
-    instance.hasCredentials &&
+    credsUsable &&
     instance.enabled &&
     bridgeRunning &&
     bridgeLinked
   ) {
     tone = "connected";
-  } else if (
-    instance.hasCredentials &&
-    instance.enabled &&
-    bridgeRunning
-  ) {
-    // Enabled + bridge up but not yet linked — still "connected" intent
-    // or "configured" if bridge not reporting this id
+  } else if (credsUsable && instance.enabled && bridgeRunning) {
+    // Enabled + bridge up but not yet linked — "configured" until linked
     tone = bridgeLinked ? "connected" : "configured";
-  } else if (instance.hasCredentials) {
+  } else if (credsUsable) {
+    tone = "configured";
+  } else if (instance.hasCredentials && !credentialsReady) {
+    // Saved vault but current form incomplete / invalid
     tone = "configured";
   }
 
   const transport = transportForChannel(channel, opts);
   const hintKeys: string[] = [];
 
-  if (!instance.hasCredentials) {
+  if (!instance.hasCredentials && !credentialsReady) {
     hintKeys.push("settings.remoteIm.health.hint.needCredentials");
   } else if (!instance.enabled) {
     hintKeys.push("settings.remoteIm.health.hint.disabled");
   } else if (!bridgeRunning) {
     hintKeys.push("settings.remoteIm.health.hint.bridgeStopped");
-  } else if (!bridgeLinked && instance.enabled) {
+  } else if (!bridgeLinked && instance.enabled && credentialsReady) {
     hintKeys.push("settings.remoteIm.health.hint.notLinked");
   }
 
@@ -341,7 +387,7 @@ export function classifyChannelHealth(
     hintKeys.push("settings.remoteIm.health.hint.openAcl");
   }
 
-  // Channel-specific depth (shippable for ≥2 types in UI)
+  // Channel-specific depth (Feishu / Telegram)
   if (FEISHU_LIKE.includes(channel)) {
     if (!optionString(opts, "app_id") && !instance.hasCredentials) {
       hintKeys.push("settings.remoteIm.health.hint.feishuAppId");
@@ -354,13 +400,16 @@ export function classifyChannelHealth(
   }
 
   if (TELEGRAM_LIKE.includes(channel)) {
-    hintKeys.push("settings.remoteIm.health.hint.telegramPoll");
-    if (optionString(opts, "proxy")) {
-      hintKeys.push("settings.remoteIm.health.hint.telegramProxy");
-    }
-    if (openAcl && instance.hasCredentials) {
-      // Telegram open ACL is especially risky
-      hintKeys.push("settings.remoteIm.health.hint.telegramAcl");
+    const tgV = validateTelegramConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      tokenValue: input.tokenValue,
+    });
+    for (const k of telegramHealthHintKeys(tgV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
     }
   }
 

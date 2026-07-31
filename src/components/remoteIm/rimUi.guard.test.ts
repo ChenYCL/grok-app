@@ -55,6 +55,16 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("channelHasDeepHealth");
   });
 
+  it("ChannelPanel Telegram guide + draft health without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-telegram-guide");
+    expect(src).toContain("draftOptions");
+    expect(src).toContain("validateTelegramConfig");
+    expect(src).not.toMatch(/window\.confirm/);
+    expect(src).not.toMatch(/window\.alert/);
+    expect(src).not.toMatch(/window\.prompt/);
+  });
+
   it("Overview has local event timeline without window.confirm", () => {
     const src = readFileSync(join(ROOT, "RemoteImOverview.tsx"), "utf8");
     expect(src).toContain("loadRimEventTimeline");

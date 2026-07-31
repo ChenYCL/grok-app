@@ -70,9 +70,9 @@ describe("channelModeLabel", () => {
       "domain=feishu",
     );
     expect(channelModeLabel("lark", { domain: "lark" })).toBe("domain=lark");
-    expect(channelModeLabel("telegram", {})).toBe("proxy=none");
+    expect(channelModeLabel("telegram", {})).toBe("long_poll;proxy=none");
     expect(channelModeLabel("telegram", { proxy: "socks5://x" })).toBe(
-      "proxy=set",
+      "long_poll;proxy=socks5",
     );
   });
 });
@@ -101,6 +101,28 @@ describe("credentialReadiness", () => {
     expect(
       credentialReadiness("telegram", bare, new Set(["token"])).ready,
     ).toBe(true);
+  });
+
+  it("telegram rejects invalid token format when value provided", () => {
+    const bare = inst("telegram", { hasCredentials: false });
+    const r = credentialReadiness(
+      "telegram",
+      bare,
+      new Set(["token"]),
+      "not-a-token",
+    );
+    expect(r.ready).toBe(false);
+    expect(r.missingKeys).toContain("token");
+  });
+
+  it("telegram rejects invalid proxy even with vault creds", () => {
+    const i = inst("telegram", {
+      hasCredentials: true,
+      options: { proxy: "garbage" },
+    });
+    const r = credentialReadiness("telegram", i);
+    expect(r.ready).toBe(false);
+    expect(r.missingKeys).toContain("proxy");
   });
 });
 
@@ -169,11 +191,55 @@ describe("classifyChannelHealth", () => {
     });
     expect(h.tone).toBe("error");
     expect(h.transport).toBe("long_poll");
-    expect(h.modeLabel).toBe("proxy=set");
+    expect(h.modeLabel).toBe("long_poll;proxy=socks5");
     expect(h.lastError).toBeTruthy();
     expect(h.lastError!).not.toContain("LEAKME");
     expect(h.hintKeys.some((k) => k.includes("telegramPoll"))).toBe(true);
+    expect(h.hintKeys.some((k) => k.includes("telegramNoWebhook"))).toBe(true);
     expect(h.hintKeys.some((k) => k.includes("telegramProxy"))).toBe(true);
+  });
+
+  it("telegram: draft invalid token cannot look connected", () => {
+    const tg = inst("telegram", {
+      hasCredentials: true,
+      enabled: true,
+      options: {},
+    });
+    const h = classifyChannelHealth({
+      instance: tg,
+      bridgeRunning: true,
+      bridgeLinked: true,
+      secretKeysFilled: new Set(["token"]),
+      tokenValue: "bad-token",
+      draftOptions: { proxy: "not-a-url" },
+    });
+    expect(h.credentialsReady).toBe(false);
+    expect(h.tone).not.toBe("connected");
+    expect(h.hintKeys.some((k) => k.includes("telegramTokenFormat"))).toBe(
+      true,
+    );
+    expect(h.hintKeys.some((k) => k.includes("telegramProxyInvalid"))).toBe(
+      true,
+    );
+  });
+
+  it("telegram: ready long_poll without public URL claims", () => {
+    const tg = inst("telegram", {
+      hasCredentials: true,
+      enabled: true,
+      options: {},
+    });
+    const h = classifyChannelHealth({
+      instance: tg,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h.credentialsReady).toBe(true);
+    expect(h.tone).toBe("connected");
+    expect(h.transport).toBe("long_poll");
+    expect(h.modeLabel).toBe("long_poll;proxy=none");
+    expect(h.hintKeys.some((k) => k.includes("telegramPoll"))).toBe(true);
+    expect(h.hintKeys.some((k) => k.includes("telegramNoWebhook"))).toBe(true);
   });
 
   it("error tone when lastError set", () => {

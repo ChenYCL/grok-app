@@ -112,4 +112,38 @@ describe("remoteIm channelSchemas", () => {
       }
     }
   });
+
+  it("telegram schema documents long-poll bind + proxy fields (§6.5)", () => {
+    const tg = getChannelSchema("telegram")!;
+    expect(tg.implemented).toBe(true);
+    expect(tg.scanSupport).toBe(false);
+    expect(tg.pasteSupport).toBe(true);
+    expect(tg.needsPublicUrl).toBeFalsy();
+    expect(tg.connectionKey).toContain("longPoll");
+    const token = tg.fields.find((f) => f.key === "token");
+    expect(token?.secret).toBe(true);
+    expect(token?.helpKey).toBe("settings.remoteIm.telegram.tokenHelp");
+    expect(tg.fields.some((f) => f.key === "proxy")).toBe(true);
+    expect(tg.fields.some((f) => f.key === "proxy_username")).toBe(true);
+    expect(tg.fields.some((f) => f.key === "proxy_password")).toBe(true);
+    expect(tg.fields.some((f) => f.key === "thread_isolation")).toBe(true);
+    expect(showsPublicUrlCallout(tg, {})).toBe(false);
+  });
+
+  it("telegram validateBindFields requires token", () => {
+    const tg = getChannelSchema("telegram")!;
+    expect(validateBindFields(tg, {}).ok).toBe(false);
+    expect(
+      validateBindFields(tg, {
+        token: "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw",
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateBindFields(
+        tg,
+        {},
+        { hasCredentials: true, secretKeysFilled: new Set() },
+      ).ok,
+    ).toBe(true);
+  });
 });

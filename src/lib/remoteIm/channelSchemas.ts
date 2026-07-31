@@ -381,14 +381,21 @@ const TELEGRAM_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.telegram.tokenHelp",
+    placeholderKey: "settings.remoteIm.telegram.tokenPlaceholder",
   },
   ACL_ALLOW_FROM,
-  PROXY,
+  {
+    ...PROXY,
+    helpKey: "settings.remoteIm.telegram.proxyHelp",
+    placeholderKey: "settings.remoteIm.telegram.proxyPlaceholder",
+  },
   {
     key: "proxy_username",
     labelKey: "settings.remoteIm.field.proxyUsername",
     control: "text",
     section: "advanced",
+    helpKey: "settings.remoteIm.telegram.proxyUserHelp",
   },
   {
     key: "proxy_password",
@@ -396,6 +403,7 @@ const TELEGRAM_FIELDS: ChannelSchema["fields"] = [
     control: "password",
     section: "advanced",
     secret: true,
+    helpKey: "settings.remoteIm.telegram.proxyPassHelp",
   },
   PROGRESS_STYLE,
   {
@@ -404,6 +412,7 @@ const TELEGRAM_FIELDS: ChannelSchema["fields"] = [
     control: "checkbox",
     section: "options",
     defaultValue: false,
+    helpKey: "settings.remoteIm.telegram.threadHelp",
   },
 ];
 
