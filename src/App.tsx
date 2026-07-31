@@ -4788,18 +4788,59 @@ export default function App() {
                       m.role === "user"
                         ? hydrateDisplayContent(rawContent)
                         : rawContent;
+                    const rawMarker =
+                      (m as { marker?: string }).marker || undefined;
+                    const marker =
+                      rawMarker ||
+                      (m.role === "tool" && content.startsWith("context_compact")
+                        ? "context_compact"
+                        : m.role === "tool" && content.startsWith("tool_step|")
+                          ? "tool_step"
+                          : m.role === "tool" &&
+                              content.startsWith("turn_cancelled")
+                            ? "turn_cancelled"
+                            : undefined);
+                    const toolParsed =
+                      marker === "tool_step"
+                        ? parseToolStepContent(content)
+                        : null;
+                    const role = m.role as "user" | "assistant" | "tool";
+                    let displayContent = toolParsed?.title || content;
+                    if (role === "assistant" && displayContent) {
+                      displayContent =
+                        extractAutomationPayload(displayContent).cleanText;
+                    }
+                    const thoughtPhases = splitThoughtPhases(m.thought);
                     return {
                       id: m.id,
-                      role: m.role as "user" | "assistant" | "tool",
-                      content,
+                      role,
+                      content: displayContent,
                       thought: m.thought ?? undefined,
+                      thoughtPhases,
+                      segments:
+                        role === "assistant"
+                          ? buildSegmentsFromLegacy(
+                              displayContent,
+                              m.thought,
+                              thoughtPhases,
+                            )
+                          : undefined,
                       isError: m.isError || undefined,
                       createdAt: m.createdAt || undefined,
+                      marker,
+                      toolCallId: m.id.startsWith("tool-")
+                        ? m.id.slice(5)
+                        : undefined,
+                      toolKind: toolParsed?.kind,
+                      toolStatus: toolParsed?.status,
+                      toolDetail: toolParsed?.detail,
+                      toolPath: toolParsed?.path,
                       streaming: false,
                     };
                   });
-                  messagesBySessionRef.current.set(sid, mapped);
-                  setMessages(mapped);
+                  const woven = weaveToolsIntoAssistantSegments(mapped);
+                  messagesBySessionRef.current.set(sid, woven);
+                  setMessages(woven);
                 } catch {
                   /* ignore */
                 }
@@ -10429,29 +10470,67 @@ export default function App() {
         // Refresh UI from truncated journal.
         if (viewingSessionIdRef.current === sessionId) {
           const stored = await api.sessionMessages(sessionId);
-          const mapped: ChatMessage[] = stored.map((m) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant" | "tool",
-            content: m.content,
-            thought: m.thought ?? undefined,
-            thoughtPhases: splitThoughtPhases(m.thought),
-            isError: m.isError || undefined,
-            marker: m.marker || undefined,
-            createdAt: m.createdAt || undefined,
-            attachments: (m.attachments ?? []).map((a) => ({
-              path: a.path,
-              name: a.name || a.path.split(/[/\\]/).pop() || a.path,
-              isDir: !!a.isDir,
-            })),
-            streaming: false,
-          }));
-          const kept = truncateThroughUserPrompt(mapped, targetPromptIndex);
+          const mapped: ChatMessage[] = stored.map((m) => {
+            const content = m.content || "";
+            const rawMarker = m.marker || undefined;
+            const marker =
+              rawMarker ||
+              (m.role === "tool" && content.startsWith("tool_step|")
+                ? "tool_step"
+                : m.role === "tool" && content.startsWith("context_compact")
+                  ? "context_compact"
+                  : m.role === "tool" && content.startsWith("turn_cancelled")
+                    ? "turn_cancelled"
+                    : undefined);
+            const toolParsed =
+              marker === "tool_step" ? parseToolStepContent(content) : null;
+            const role = m.role as "user" | "assistant" | "tool";
+            let displayContent = toolParsed?.title || content;
+            if (role === "assistant" && displayContent) {
+              displayContent =
+                extractAutomationPayload(displayContent).cleanText;
+            }
+            const thoughtPhases = splitThoughtPhases(m.thought);
+            return {
+              id: m.id,
+              role,
+              content: displayContent,
+              thought: m.thought ?? undefined,
+              thoughtPhases,
+              segments:
+                role === "assistant"
+                  ? buildSegmentsFromLegacy(
+                      displayContent,
+                      m.thought,
+                      thoughtPhases,
+                    )
+                  : undefined,
+              isError: m.isError || undefined,
+              marker,
+              createdAt: m.createdAt || undefined,
+              toolCallId: m.id.startsWith("tool-")
+                ? m.id.slice(5)
+                : undefined,
+              toolKind: toolParsed?.kind,
+              toolStatus: toolParsed?.status,
+              toolDetail: toolParsed?.detail,
+              toolPath: toolParsed?.path,
+              attachments: (m.attachments ?? []).map((a) => ({
+                path: a.path,
+                name: a.name || a.path.split(/[/\\]/).pop() || a.path,
+                isDir: !!a.isDir,
+              })),
+              streaming: false,
+            };
+          });
+          const woven = weaveToolsIntoAssistantSegments(mapped);
+          const kept = truncateThroughUserPrompt(woven, targetPromptIndex);
           const finalMsgs =
-            kept.length || mapped.length <= result.keptCount
+            kept.length || woven.length <= result.keptCount
               ? kept.length
                 ? kept
-                : mapped
-              : mapped.slice(0, result.keptCount);
+                : woven
+              : woven.slice(0, result.keptCount);
           messagesBySessionRef.current.set(sessionId, finalMsgs);
           setMessages(finalMsgs);
         } else {

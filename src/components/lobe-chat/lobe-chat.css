@@ -719,109 +719,259 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   -webkit-text-fill-color: var(--chat-code-fg);
 }
 
-/* ── Assistant timeline (CodePilot-aligned activity rail) ── */
+/* ── Assistant timeline (Grok.com activity rail — match official web) ── */
 .lobe-chat-assistant-timeline {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   min-width: 0;
   width: 100%;
 }
 
-/* Single vertical rail — CodePilot flat tool list */
 .lobe-timeline-rail {
   width: 100%;
   max-width: var(--chat-content-max, 48rem);
-  margin: 2px 0 0 2px;
-  padding: 0 0 0 10px;
-  border-left: 2px solid color-mix(in srgb, var(--chat-border, #888) 42%, transparent);
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-/* ── Thinking (trigger row + optional body) ── */
-.lobe-chat-thinking {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.lobe-chat-thinking__trigger {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  max-width: 100%;
-  min-height: 28px;
-  padding: 4px 8px;
   margin: 0;
+  padding: 0;
+  border-left: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/*
+ * Official palette (light):
+ *   header / steps text ≈ #737373
+ *   rail ≈ #e5e5e5
+ *   answer text ≈ #0a0a0a
+ * Dark theme uses chat-text-* tokens with similar relative weight.
+ */
+.grok-act {
+  --grok-act-fg: color-mix(in srgb, var(--chat-text-2, #737373) 100%, transparent);
+  --grok-act-fg-dim: color-mix(in srgb, var(--chat-text-3, #a3a3a3) 100%, transparent);
+  --grok-act-rail: color-mix(in srgb, var(--chat-border, #e5e5e5) 85%, transparent);
+  width: 100%;
+  max-width: var(--chat-content-max, 48rem);
+  margin: 0 0 8px;
+  color: var(--grok-act-fg);
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 400;
+  font-family: inherit;
+  letter-spacing: -0.01em;
+}
+
+/* Worked for 1m 2s ∨ — lighter than step text, ~14px */
+.grok-act__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0 0 2px;
+  padding: 0;
   border: none;
-  border-radius: 6px;
   background: transparent;
-  color: var(--chat-text-2);
-  font-size: 12px;
-  line-height: 1.35;
+  color: var(--grok-act-fg-dim);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  font-family: inherit;
+  letter-spacing: -0.01em;
   cursor: pointer;
   text-align: left;
 }
-.lobe-chat-thinking__trigger:hover {
-  background: color-mix(in srgb, var(--chat-border, #888) 12%, transparent);
-  color: var(--chat-text);
+.grok-act__header:hover {
+  color: var(--grok-act-fg);
+}
+.grok-act__header-text {
+  min-width: 0;
+}
+.grok-act__header-caret {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.85;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
-.lobe-chat-thinking__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--chat-text-3);
-  flex-shrink: 0;
+.grok-act__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 6px 0 0;
+  padding: 0;
 }
-/* Dot + label must share one pulse (same name/duration/easing) so they stay in phase. */
-.lobe-chat-thinking__dot--live {
-  background: var(--chat-link);
+
+/* One step row — icon | continuous rail + label */
+.grok-act__step {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--grok-act-fg);
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 400;
+  font-family: inherit;
+}
+.grok-act__step.is-error {
+  color: var(--chat-danger, #c44);
+}
+.grok-act__step.is-running .grok-act__label-text {
+  opacity: 0.9;
+}
+
+.grok-act__icon-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 16px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.grok-act__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--grok-act-fg);
+  flex-shrink: 0;
+  z-index: 1;
+  opacity: 0.85;
+}
+.grok-act__step.is-error .grok-act__icon {
+  color: var(--chat-danger, #c44);
+  opacity: 1;
+}
+.grok-act__step.is-running .grok-act__icon {
   animation: chat-live-pulse 1.2s ease-in-out infinite;
 }
 
-/* CodePilot-style gist label (not "思考 1/2/3") */
-.lobe-chat-thinking__label {
+/* Vertical connector — continuous, 1px, light gray */
+.grok-act__rail {
+  flex: 1 1 auto;
+  width: 1px;
+  min-height: 10px;
+  margin: 4px 0 0;
+  background: var(--grok-act-rail);
+}
+
+.grok-act__main {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.grok-act__step.is-last .grok-act__main {
+  padding-bottom: 2px;
+}
+
+.grok-act__label-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+}
+
+.grok-act__label-text {
   min-width: 0;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  color: color-mix(in srgb, var(--chat-text-2) 88%, transparent);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--grok-act-fg);
 }
-.lobe-chat-thinking__label--live {
+
+/* “Browsed ” / “Searched web for ” same weight; url/query not bold */
+.grok-act__label-prefix {
+  font-weight: 400;
+}
+.grok-act__label-url,
+.grok-act__label-query {
+  font-weight: 400;
+}
+
+/* Right meta: “10 results” + favicon stack */
+.grok-act__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--grok-act-fg-dim);
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.grok-act__meta-count {
+  opacity: 0.95;
+}
+.grok-act__favicons {
+  display: inline-flex;
+  align-items: center;
+  flex-direction: row-reverse;
+}
+.grok-act__favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--chat-bg, #fff);
+  border: 1.5px solid color-mix(in srgb, var(--chat-border, #e5e5e5) 80%, transparent);
+  object-fit: cover;
+  margin-left: -6px;
+  box-sizing: border-box;
+}
+.grok-act__favicon:last-child {
+  margin-left: 0;
+}
+
+/* Live footer */
+.grok-act__working {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 2px;
+  padding: 0;
+  color: var(--grok-act-fg);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-family: inherit;
+}
+.grok-act__working-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--grok-act-fg);
+  opacity: 0.85;
+  flex-shrink: 0;
   animation: chat-live-pulse 1.2s ease-in-out infinite;
 }
+.grok-act__working-label {
+  min-width: 0;
+}
 
-/* Shared live indicator — one keyframe for all thinking/tool pulse UIs */
 @keyframes chat-live-pulse {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 1;
-  }
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
 }
-
-/* Keep alias so older selectors still work and stay phase-aligned */
 @keyframes chat-pulse {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 1;
-  }
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
 }
 
-/* Thinking/status highlight disabled — plain secondary text. */
 .lobe-shiny-text {
   color: var(--chat-text-2);
   background: none;
@@ -830,179 +980,15 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   animation: none;
 }
 
-.lobe-chat-thinking__body {
-  max-height: min(40vh, 280px);
-  overflow-y: auto;
-  margin: 0 0 2px 14px;
-  padding: 6px 8px 8px 10px;
-  border-left: 2px solid color-mix(in srgb, var(--chat-border, #888) 30%, transparent);
-  color: var(--chat-text-2);
-  font-size: 12px;
-  line-height: 1.45;
-  /* MarkdownChat owns whitespace; pre-wrap inflated gaps around path/url cards */
-  white-space: normal;
-  background: transparent;
-}
-
-/* Inside phase rail: thinking sits flush; no extra outer indent */
-.lobe-timeline-rail > .lobe-chat-thinking {
-  margin: 0;
-}
-.lobe-timeline-rail .lobe-chat-thinking__trigger {
-  padding-left: 6px;
-  padding-right: 6px;
-}
-.lobe-timeline-rail .lobe-chat-thinking__body {
-  margin-left: 6px;
-}
-
-/* Failed tools: no transcript banner — red dots live only in turn-activity. */
-
-/* ── End-of-turn chip family ── */
-.lobe-end-turn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: fit-content;
-  max-width: 100%;
-  margin: 8px 0 4px;
-  padding: 4px 0;
-  color: var(--chat-text-2);
-  font-size: var(--chat-fs-sm);
-}
-.lobe-end-turn--warning {
-  color: var(--chat-warning, #c90);
-}
-.lobe-end-turn--error {
-  color: var(--chat-danger, #e11);
-}
-.lobe-end-turn__mark {
-  display: inline-flex;
-  opacity: 0.75;
-}
-.lobe-end-turn__title {
-  color: inherit;
-}
-
-/* ── Work phase (CodePilot ToolActionsGroup header) ── */
-.lobe-timeline-phase {
-  width: 100%;
-  max-width: var(--chat-content-max, 48rem);
-  margin: 0;
-  font-size: 12px;
-  color: var(--chat-text-2);
-}
-.lobe-timeline-phase__trigger {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 28px;
-  margin: 0;
-  padding: 4px 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  text-align: left;
-}
-.lobe-timeline-phase__trigger:hover {
-  background: color-mix(in srgb, var(--chat-border, #888) 12%, transparent);
-  color: var(--chat-text);
-}
-.lobe-timeline-phase.is-live .lobe-timeline-phase__trigger {
-  cursor: default;
-}
-/* Count badge — CodePilot muted chip */
-.lobe-timeline-phase__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.25rem;
-  height: 1.15rem;
-  padding: 0 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--chat-border, #888) 22%, transparent);
-  color: var(--chat-text-3);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-.lobe-timeline-phase__title {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 400;
-  color: color-mix(in srgb, var(--chat-text-2) 90%, transparent);
-}
-.lobe-timeline-phase__title.is-error {
-  color: var(--chat-danger, #c44);
-}
-.lobe-timeline-phase__title.is-running,
-.lobe-timeline-phase.is-live .lobe-timeline-phase__title {
-  color: var(--chat-text);
-}
-.lobe-timeline-phase__caret {
-  display: inline-flex;
-  align-items: center;
-  color: var(--chat-text-3);
-  flex-shrink: 0;
-  margin-left: auto;
-  transition: transform 0.15s ease;
-}
-.lobe-timeline-phase__caret.is-open {
-  transform: rotate(90deg);
-}
-
-/* ── Inline tool steps (CodePilot ToolActionRow) ── */
+/* Bare tool expand body (failures) */
 .lobe-timeline-tool {
-  width: 100%;
-  max-width: var(--chat-content-max, 48rem);
-  margin: 0;
-  padding: 0;
-  font-size: 12px;
-  color: var(--chat-text-2);
-}
-.lobe-timeline-tool__row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  padding: 4px 6px;
-  border-radius: 4px;
-}
-.lobe-timeline-tool__row--toggle {
-  width: 100%;
-  margin: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.lobe-timeline-tool:hover .lobe-timeline-tool__row {
-  background: color-mix(in srgb, var(--chat-border, #888) 10%, transparent);
-}
-.lobe-timeline-tool__caret {
-  display: inline-flex;
-  align-items: center;
-  color: var(--chat-text-3);
-  flex-shrink: 0;
-  transition: transform 0.15s ease;
-}
-.lobe-timeline-tool__caret.is-open {
-  transform: rotate(90deg);
+  flex-wrap: wrap;
 }
 .lobe-timeline-tool__body {
-  margin: 0 0 2px 6px;
-  padding: 0 6px 4px;
+  flex: 1 1 100%;
+  width: 100%;
+  margin: 0 0 2px 28px;
+  padding: 0 0 4px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1019,53 +1005,11 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   line-height: 1.35;
   color: var(--chat-text-3);
 }
-.lobe-timeline-tool__name {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  color: color-mix(in srgb, var(--chat-text-2) 85%, transparent);
-}
-.lobe-timeline-tool__name.is-error {
-  color: var(--chat-danger, #c44);
-}
-.lobe-timeline-tool.is-running .lobe-timeline-tool__name {
-  color: var(--chat-text);
-}
-.lobe-timeline-tool__path {
-  flex-shrink: 1;
-  max-width: 10rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  color: var(--chat-text-3);
-}
-/* Status on the RIGHT — one rail of dots, aligned */
-.lobe-timeline-tool__status {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--chat-text-3) 70%, transparent);
-  flex-shrink: 0;
-  margin-left: auto;
-}
-.lobe-timeline-tool__status.is-error {
-  background: var(--chat-danger, #e11);
-}
-.lobe-timeline-tool__status.is-running {
-  background: var(--chat-link);
-  animation: chat-live-pulse 1.2s ease-in-out infinite;
-}
 .lobe-timeline-tool__fail-hint {
-  margin: 0 0 2px 6px;
-  padding: 0 6px 2px;
+  margin: 0;
+  padding: 0;
   color: var(--chat-text-3);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1075,44 +1019,93 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
 .lobe-timeline-tool-group {
   width: 100%;
   margin: 0;
-  font-size: 12px;
+  font-size: 15px;
   color: var(--chat-text-2);
-}
-.lobe-timeline-tool-group__trigger {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 28px;
-  margin: 0;
-  padding: 4px 6px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  text-align: left;
-}
-.lobe-timeline-tool-group__trigger:hover {
-  background: color-mix(in srgb, var(--chat-border, #888) 10%, transparent);
-  color: var(--chat-text);
-}
-.lobe-timeline-tool-group__label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: color-mix(in srgb, var(--chat-text-2) 88%, transparent);
 }
 .lobe-timeline-tool-group__list {
   margin: 0;
-  padding: 0 0 0 8px;
-  border-left: 2px solid color-mix(in srgb, var(--chat-border, #888) 28%, transparent);
+  padding: 0 0 0 4px;
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+/* ── Bare thinking (Thought for Ns) — Grok chrome ── */
+.grok-thought {
+  width: 100%;
+  max-width: var(--chat-content-max, 48rem);
+  margin: 2px 0 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--chat-text-2, #9ca3af) 95%, transparent);
+}
+.grok-thought__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--chat-text-2, #9ca3af) 92%, transparent);
+  font-size: 13px;
+  font-weight: 400;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  cursor: pointer;
+  text-align: left;
+}
+.grok-thought__header:disabled {
+  cursor: default;
+}
+.grok-thought__header:not(:disabled):hover {
+  color: var(--chat-text-2, #d1d5db);
+}
+.grok-thought__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: color-mix(in srgb, var(--chat-text-3, #9ca3af) 100%, transparent);
+  flex-shrink: 0;
+}
+.grok-thought.is-live .grok-thought__icon,
+.grok-thought__label--live {
+  animation: chat-live-pulse 1.2s ease-in-out infinite;
+}
+.grok-thought__label {
+  min-width: 0;
+  font-weight: 400;
+  font-family: inherit;
+}
+.grok-thought__caret {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.75;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+/* Dig-in body: clearly secondary, not the answer */
+.grok-thought__body {
+  margin: 6px 0 4px 26px;
+  padding: 0 0 4px;
+  max-height: min(32vh, 220px);
+  overflow-y: auto;
+  color: color-mix(in srgb, var(--chat-text-3, #9ca3af) 95%, transparent);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.grok-thought__body .chat-md,
+.grok-thought__body .chat-md--muted,
+.grok-thought__body .chat-md p,
+.grok-thought__body .chat-md li {
+  color: color-mix(in srgb, var(--chat-text-3, #9ca3af) 98%, transparent) !important;
+  font-size: 12.5px;
+}
+.grok-thought.is-collapsed .grok-thought__body {
+  display: none;
 }
 
 /* ── Turn activity summary (tasks panel / legacy) ── */
@@ -2281,3 +2274,7 @@ html[data-chat-width="full"] .lobe-chat,
   color: var(--chat-text-2, var(--text-secondary));
   opacity: 0.9;
 }
+
+/* hmr-bust 1785472098 */
+
+/* hmr-bust 1785472433 */

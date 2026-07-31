@@ -1,15 +1,19 @@
 /**
- * Lobe Thinking — collapsible reasoning row.
+ * Bare thinking row (no tools in this burst) — Grok / Claude “Thought for Ns” chrome.
  *
- * Label model (CodePilot / Opencode):
- * - Prefer content summary (**bold** / # heading / first line)
- * - Never show dumb counters like "思考 1 / 思考 2"
- * - Streaming without summary → streamingLabel ("思考中…")
- * - Done without summary → duration ("思考了 Ns") or doneLabel
+ * Official rhythm:
+ * - Streaming: 💡 Thinking  (or short gist)
+ * - Done collapsed (default): 💡 Thought for 12s  >     ← ONLY this line
+ * - Done expanded: 💡 Thought for 12s  ∨  + muted body
+ *
+ * Never use “思考完成” / raw first-line (“Quick note:”) as the chrome label.
+ * Full markdown is dig-in only, never the collapsed surface.
+ *
+ * Tool bursts use TimelinePhaseBlock (“Worked for Ns”) instead.
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { IconChevronDown } from "@/components/icons";
+import { IconBulb, IconChevronDown, IconChevronRight } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { MarkdownChat } from "./MarkdownChat";
 import type { Locale } from "@/i18n";
@@ -37,22 +41,21 @@ export function Thinking({
 }: {
   content?: string | ReactNode;
   thinking?: boolean;
-  /** Duration in ms (Lobe stores ms). */
+  /** Duration in ms when known (live timer or history). */
   durationMs?: number;
   streamingLabel: string;
+  /** Fallback when no duration yet — should be short “Thought”, not “Reasoning complete”. */
   doneLabel: string;
-  /** e.g. "Thought for {n}s" — n is seconds with 1 decimal */
   thoughtForLabel: (seconds: string) => string;
   locale?: Locale;
-  /** Override stored preference (tests / parent). */
   expandPref?: ThinkingExpandPref;
   onExpandPrefChange?: (pref: ThinkingExpandPref) => void;
-  /** Open external http(s) links from thinking markdown. */
   onOpenExternalLink?: (url: string) => void;
 }) {
   const [pref, setPref] = useState<ThinkingExpandPref>(
     () => expandPref ?? loadThinkingExpandPref(),
   );
+  // Done → start collapsed (auto-collapse default). Streaming → open.
   const [open, setOpen] = useState(() =>
     thinking ? true : thinkingDefaultOpenWhenDone(pref),
   );
@@ -64,13 +67,10 @@ export function Thinking({
   const thinkingRef = useRef(!!thinking);
   thinkingRef.current = !!thinking;
 
-  // Honor prop override (tests / parent).
   useEffect(() => {
     if (expandPref != null) setPref(expandPref);
   }, [expandPref]);
 
-  // Settings (or another tab) changed the preference — apply to finished blocks
-  // the user has not manually toggled.
   useEffect(() => {
     if (expandPref != null) return;
     const apply = (next: ThinkingExpandPref) => {
@@ -100,7 +100,6 @@ export function Thinking({
     };
   }, [expandPref]);
 
-  // Collapse all activity: force closed finished blocks only (leave streaming open).
   useEffect(() => {
     const onCollapseAll = () => {
       if (thinkingRef.current) return;
@@ -120,13 +119,11 @@ export function Thinking({
       if (startRef.current == null) startRef.current = Date.now();
       return;
     }
-    // Segment finished (thought → content/tools, or turn idle).
     if (startRef.current != null) {
       setLocalDuration(Date.now() - startRef.current);
       startRef.current = null;
     }
-    // Always auto-collapse when done unless user prefers keep-open or
-    // manually toggled this block open after it finished.
+    // Finished → collapse unless user prefers keep-open and hasn’t toggled.
     if (!userToggled.current) {
       setOpen(thinkingDefaultOpenWhenDone(pref));
     }
@@ -136,35 +133,35 @@ export function Thinking({
     if (durationMs != null) setLocalDuration(durationMs);
   }, [durationMs]);
 
-  // Avoid "Thought for 0.0s" for sub-100ms phases.
-  const durationText =
-    localDuration != null && localDuration >= 100
-      ? thoughtForLabel((localDuration / 1000).toFixed(1))
-      : doneLabel;
-
-  const textContent = typeof content === "string" ? content : "";
-  const summary = useMemo(
-    () => extractThinkingSummary(textContent),
-    [textContent],
-  );
-
   /**
-   * CodePilot ThinkingRow: summary (or Thinking… / Thought) is the trigger.
-   * Duration is a fine fallback when we have no extractable gist.
+   * Chrome label (always duration-first when done):
+   * - live: gist || “Thinking”
+   * - done: “Thought for Ns” | fallback “Thought” (never “思考完成” / first line)
    */
-  const triggerLabel = thinking
-    ? summary || streamingLabel
-    : summary || durationText;
+  const chromeLabel = useMemo(() => {
+    if (thinking) {
+      const gist = extractThinkingSummary(
+        typeof content === "string" ? content : "",
+      );
+      return gist || streamingLabel;
+    }
+    if (localDuration != null && localDuration >= 100) {
+      // Whole seconds like Grok “Thought for 12s” (not 12.3)
+      const sec = Math.max(1, Math.round(localDuration / 1000));
+      return thoughtForLabel(String(sec));
+    }
+    return doneLabel;
+  }, [thinking, content, streamingLabel, localDuration, thoughtForLabel, doneLabel]);
 
   const hasBody =
     (typeof content === "string" && content.trim().length > 0) ||
     (content != null && typeof content !== "string");
 
   const toggle = () => {
+    if (!hasBody) return;
     setOpen((v) => {
       const next = !v;
       userToggled.current = true;
-      // Remember: open after finish → keep-open; close → auto-collapse
       if (!thinking) {
         const p: ThinkingExpandPref = next ? "keep-open" : "auto-collapse";
         saveThinkingExpandPref(p);
@@ -175,45 +172,47 @@ export function Thinking({
   };
 
   return (
-    <div className="lobe-chat-thinking">
+    <div
+      className={
+        "grok-thought" +
+        (thinking ? " is-live" : "") +
+        (open && hasBody ? " is-open" : " is-collapsed")
+      }
+      data-testid="thinking-block"
+      data-expanded={open && hasBody ? "1" : "0"}
+    >
       <button
         type="button"
-        className="lobe-chat-thinking__trigger"
-        aria-expanded={open}
+        className="grok-thought__header"
+        aria-expanded={hasBody ? open : undefined}
         onClick={toggle}
+        disabled={!hasBody}
       >
+        <span className="grok-thought__icon" aria-hidden>
+          <IconBulb size={16} stroke={1.5} />
+        </span>
         <span
           className={cn(
-            "lobe-chat-thinking__dot",
-            thinking && "lobe-chat-thinking__dot--live",
+            "grok-thought__label",
+            thinking && "grok-thought__label--live",
           )}
-        />
-        <span
-          className={cn(
-            "lobe-chat-thinking__label",
-            thinking && "lobe-chat-thinking__label--live",
-          )}
-          style={{ color: "var(--lobe-color-text-secondary)" }}
-          title={
-            summary && !thinking && durationText !== doneLabel
-              ? durationText
-              : undefined
-          }
         >
-          {triggerLabel}
+          {chromeLabel}
         </span>
         {hasBody ? (
-          <IconChevronDown
-            size={12}
-            className={cn(
-              "lobe-chat-thinking__caret text-[var(--lobe-color-text-tertiary)] transition-transform shrink-0 ml-auto",
-              open && "rotate-180",
+          <span className="grok-thought__caret" aria-hidden>
+            {open ? (
+              <IconChevronDown size={14} stroke={1.75} />
+            ) : (
+              <IconChevronRight size={14} stroke={1.75} />
             )}
-          />
+          </span>
         ) : null}
       </button>
+
+      {/* Collapsed: header only. Expanded: muted dig-in body. */}
       {open && hasBody ? (
-        <div className="lobe-chat-thinking__body">
+        <div className="grok-thought__body">
           {typeof content === "string" ? (
             <MarkdownChat
               locale={locale}

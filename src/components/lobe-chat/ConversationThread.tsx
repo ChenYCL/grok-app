@@ -1,6 +1,9 @@
 /**
  * LobeHub-aligned chat thread (pure CSS 1:1).
  * Replaces AI Elements / previous ConversationThread.
+ *
+ * Activity chrome: Grok.com Worked-for / tool rail (TimelinePhaseBlock + lobe-chat.css .grok-act).
+ * Hard-reload the webview if CSS HMR misses a bulk style rewrite.
  */
 
 import {
@@ -21,6 +24,7 @@ import {
   lastRegenerableAssistantId,
   messageSegments,
   isTurnPromptMessage,
+  weaveToolsIntoAssistantSegments,
   type ChatMessage,
   type SessionState,
 } from "@/lib/session";
@@ -47,6 +51,7 @@ import { AttachmentCard } from "@/components/AttachmentCard";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import {
   IconArrowsMinimize,
+  IconBulb,
   IconChat,
   IconClock,
   IconExportMd,
@@ -911,14 +916,24 @@ export function ConversationThread({
     !turnBusy;
 
   /**
+   * Display-layer weave: journal reload / cache races can leave tool_step rows
+   * outside assistant.segments. Always stitch before paint so history shows the
+   * same Worked-for phase as live (thought ↔ tools interleaved).
+   */
+  const wovenMessages = useMemo(
+    () => weaveToolsIntoAssistantSegments(messages),
+    [messages],
+  );
+
+  /**
    * Paint list: drop inlined tool_step journal rows; when filter is
    * `conversation`, also drop every tool_step row. Full `messages` stays for
    * path maps / live tools / nodes — only the virtual list + render loop use this.
    * (64 woven tools otherwise force virtualization and thrash near-bottom stick.)
    */
   const transcriptMessages = useMemo(
-    () => filterMessagesForTranscript(messages, transcriptFilter),
-    [messages, transcriptFilter],
+    () => filterMessagesForTranscript(wovenMessages, transcriptFilter),
+    [wovenMessages, transcriptFilter],
   );
 
   // Force-mount only what must stay in DOM. Do NOT always force the last N
@@ -995,7 +1010,7 @@ export function ConversationThread({
           const tcid =
             (m.toolCallId || "").trim() ||
             (m.id.startsWith("tool-") ? m.id.slice(5) : "");
-          return !!tcid && isToolInlinedInAssistants(messages, tcid);
+          return !!tcid && isToolInlinedInAssistants(wovenMessages, tcid);
         })();
       const collapsedTool =
         toolInlined ||
@@ -1112,7 +1127,8 @@ export function ConversationThread({
               const tcid =
                 (m.toolCallId || "").trim() ||
                 (m.id.startsWith("tool-") ? m.id.slice(5) : "");
-              if (tcid && isToolInlinedInAssistants(messages, tcid)) {
+              // Use woven list — parent `messages` may lag display-layer weave.
+              if (tcid && isToolInlinedInAssistants(wovenMessages, tcid)) {
                 return virtualized ? (
                   <div
                     key={m.id}
@@ -1141,6 +1157,7 @@ export function ConversationThread({
                     <TimelineToolRow
                       tool={toolSeg}
                       autoCollapse={toolStepsAutoCollapse}
+                      locale={locale}
                     />
                   </div>
                 </div>,
@@ -1496,7 +1513,7 @@ export function ConversationThread({
                       <Thinking
                         locale={locale}
                         thinking
-                        streamingLabel={tr("chat.thinking")}
+                        streamingLabel={tr("chat.thinkingLabel")}
                         doneLabel={tr("chat.thoughtDone")}
                         thoughtForLabel={(n) => tr("chat.thoughtFor", { n })}
                       />
@@ -1507,30 +1524,9 @@ export function ConversationThread({
                       let contentOccBase = 0;
                       return timelineUnits.map((unit) => {
                         if (unit.kind === "phase") {
-                          // Conversation filter: keep thoughts, drop tool chrome.
-                          if (!showToolChrome) {
-                            const thoughts = unit.thoughts.filter((t) =>
-                              t.trim(),
-                            );
-                            if (!thoughts.length) return null;
-                            return (
-                              <div key={`${m.id}-${unit.id}`}>
-                                {thoughts.map((text, ti) => (
-                                  <Thinking
-                                    key={`${m.id}-${unit.id}-th-${ti}`}
-                                    locale={locale}
-                                    content={text}
-                                    thinking={false}
-                                    streamingLabel={tr("chat.thinking")}
-                                    doneLabel={tr("chat.thoughtDone")}
-                                    thoughtForLabel={(n) =>
-                                      tr("chat.thoughtFor", { n })
-                                    }
-                                  />
-                                ))}
-                              </div>
-                            );
-                          }
+                          // Always paint Grok Worked-for rail (tools + thought steps).
+                          // “Conversation only” only hides standalone tool_step rows,
+                          // not this official activity summary.
                           return (
                             <TimelinePhaseBlock
                               key={`${m.id}-${unit.id}`}
@@ -1538,10 +1534,15 @@ export function ConversationThread({
                               locale={locale}
                               messageStreaming={!!m.streaming}
                               autoCollapse={toolStepsAutoCollapse}
+                              historyTimestamps={[
+                                m.createdAt,
+                                ...unit.tools.map((t) => t.createdAt),
+                              ]}
                             />
                           );
                         }
                         if (unit.kind === "tool") {
+                          // Bare tool outside a phase — respect hide-tools filter.
                           if (!showToolChrome) return null;
                           return (
                             <div
@@ -1551,14 +1552,28 @@ export function ConversationThread({
                               <TimelineToolRow
                                 tool={unit.tool}
                                 autoCollapse={toolStepsAutoCollapse}
+                                locale={locale}
                               />
                             </div>
                           );
                         }
-                        if (unit.kind === "thought") {
+                        // Adjacent bare thoughts are coalesced into thought-group.
+                        if (
+                          unit.kind === "thought" ||
+                          unit.kind === "thought-group"
+                        ) {
+                          const texts =
+                            unit.kind === "thought-group"
+                              ? unit.texts
+                              : [unit.text];
+                          const joined = texts
+                            .map((t) => t.trim())
+                            .filter(Boolean)
+                            .join("\n\n");
+                          const streaming = unit.streaming;
                           if (
-                            !unit.text.trim() &&
-                            !(m.streaming && unit.streaming)
+                            !joined &&
+                            !(m.streaming && streaming)
                           ) {
                             return null;
                           }
@@ -1569,9 +1584,9 @@ export function ConversationThread({
                             >
                               <Thinking
                                 locale={locale}
-                                thinking={unit.streaming}
-                                content={unit.text}
-                                streamingLabel={tr("chat.thinking")}
+                                thinking={streaming}
+                                content={joined}
+                                streamingLabel={tr("chat.thinkingLabel")}
                                 doneLabel={tr("chat.thoughtDone")}
                                 thoughtForLabel={(n) =>
                                   tr("chat.thoughtFor", { n })
@@ -1766,12 +1781,18 @@ export function ConversationThread({
           ) : null}
 
           {showQuietThinking ? (
-            <div className="lobe-chat-live-tool is-running" role="status">
-              <span className="lobe-chat-live-tool__mark" aria-hidden>
-                <span className="lobe-chat-thinking__dot lobe-chat-thinking__dot--live" />
-              </span>
-              <span className="lobe-chat-live-tool__title lobe-chat-live-tool__title--pulse">
-                {tr("chat.thinking")}
+            <div
+              className="grok-act__step is-running is-last"
+              role="status"
+              data-testid="quiet-thinking"
+            >
+              <div className="grok-act__icon-col" aria-hidden>
+                <span className="grok-act__icon">
+                  <IconBulb size={16} stroke={1.5} />
+                </span>
+              </div>
+              <span className="grok-act__label grok-act__label--live">
+                {tr("chat.thinkingLabel")}
               </span>
             </div>
           ) : null}

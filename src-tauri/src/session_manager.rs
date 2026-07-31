@@ -358,6 +358,8 @@ do NOT reprint the transcript in your reply; answer ONLY the new user message be
 const TOOL_CONTENT_SNIPPET_MAX: usize = 200_000;
 
 /// Extract human-visible path + detail from tool_call payload for activity UI.
+/// path includes file paths **and** web_fetch URLs (`rawInput.url`) so reload
+/// can show Grok-style “Browsed host/path” instead of bare “Tool”.
 fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>, Option<String>) {
     let path = raw
         .pointer("/locations/0/path")
@@ -366,6 +368,10 @@ fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>, Option<St
         .or_else(|| raw.pointer("/rawInput/filePath"))
         .or_else(|| raw.pointer("/rawInput/target_file"))
         .or_else(|| raw.pointer("/rawInput/targetFile"))
+        // web_fetch / browse / open_page
+        .or_else(|| raw.pointer("/rawInput/url"))
+        .or_else(|| raw.pointer("/rawInput/uri"))
+        .or_else(|| raw.pointer("/rawInput/href"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let command = raw
@@ -376,11 +382,88 @@ fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>, Option<St
     let detail = command.or_else(|| {
         raw.pointer("/rawInput/query")
             .or_else(|| raw.pointer("/rawInput/pattern"))
+            .or_else(|| raw.pointer("/rawInput/search"))
+            .or_else(|| raw.pointer("/rawInput/q"))
             .or_else(|| raw.pointer("/rawInput/description"))
             .and_then(|v| v.as_str())
             .map(|s| s.chars().take(240).collect::<String>())
     });
     (detail, path)
+}
+
+/// Normalize ACP kind tokens so journal reload classifies correctly.
+fn normalize_tool_kind_for_journal(kind: &str, title: &str) -> String {
+    let k = kind.trim().to_ascii_lowercase();
+    let t = title.trim().to_ascii_lowercase();
+    if k == "fetch" || t.starts_with("fetch:") || t == "web_fetch" || t.contains("web_fetch") {
+        return "web_fetch".into();
+    }
+    if k == "search" || t.starts_with("web search") || t.contains("web_search") {
+        return "web_search".into();
+    }
+    if !kind.trim().is_empty() {
+        return kind.trim().to_string();
+    }
+    String::new()
+}
+
+/// Prefer human-readable journal labels (never bare “tool” when we have better).
+fn tool_journal_label(
+    title: &str,
+    kind: &str,
+    detail: &Option<String>,
+    path: &Option<String>,
+) -> String {
+    let t = title.trim();
+    if !t.is_empty() && !t.eq_ignore_ascii_case("tool") && t != "web_fetch" && t != "web_search"
+    {
+        return t.to_string();
+    }
+    // "Fetch: https://…" style titles from tool_call_update
+    if t.to_ascii_lowercase().starts_with("fetch:") {
+        return t.to_string();
+    }
+    if let Some(p) = path.as_ref().filter(|p| !p.is_empty()) {
+        return p.clone();
+    }
+    if let Some(d) = detail.as_ref().filter(|d| !d.is_empty()) {
+        return d.clone();
+    }
+    let k = kind.trim();
+    if !k.is_empty() && !k.eq_ignore_ascii_case("tool") {
+        return k.replace('_', " ");
+    }
+    if !t.is_empty() {
+        return t.to_string();
+    }
+    "tool".into()
+}
+
+/// True if `next` journal body is richer than `prev` (do not downgrade on upsert).
+fn tool_journal_richer(prev: &str, next: &str) -> bool {
+    if prev == next {
+        return false;
+    }
+    let prev_generic = prev.contains("|tool") || prev.ends_with("|tool");
+    let next_generic = next.contains("|tool\n") || next.ends_with("|tool");
+    if prev_generic && !next_generic {
+        return true;
+    }
+    if !prev_generic && next_generic {
+        return false;
+    }
+    // Prefer rows with URL / multi-line detail
+    let score = |s: &str| {
+        let mut n = s.len();
+        if s.contains("https://") || s.contains("http://") {
+            n += 500;
+        }
+        if s.contains('\n') {
+            n += 100;
+        }
+        n
+    };
+    score(next) > score(prev)
 }
 
 fn take_tool_content_str(v: Option<&serde_json::Value>) -> Option<String> {
@@ -3593,24 +3676,16 @@ impl SessionManager {
                 Self::emit_empty_run_if_any(app, empty_run);
 
                 // Live tool activity for UI — prefer human call text over bare "tool".
-                let live_title = if !title.is_empty() && title.to_ascii_lowercase() != "tool" {
-                    title.clone()
-                } else if let Some(ref d) = detail {
-                    d.clone()
-                } else if let Some(ref p) = path_out {
-                    p.clone()
-                } else if !kind.is_empty() && kind.to_ascii_lowercase() != "tool" {
-                    kind.replace('_', " ")
-                } else {
-                    String::new()
-                };
+                let kind_j = normalize_tool_kind_for_journal(&kind, &title);
+                let live_title =
+                    tool_journal_label(&title, &kind_j, &detail, &path_out);
                 let _ = app.emit(
                     "session://tool",
                     serde_json::json!({
                         "sessionId": app_sid,
                         "toolCallId": tool_call_id,
                         "title": live_title,
-                        "kind": kind,
+                        "kind": if kind_j.is_empty() { kind.clone() } else { kind_j.clone() },
                         "status": if status.is_empty() { "in_progress" } else { &status },
                         "path": path_out,
                         "detail": detail,
@@ -3630,29 +3705,32 @@ impl SessionManager {
                     && !app_sid.is_empty()
                     && !tool_call_id.is_empty()
                 {
-                    let label = if !title.is_empty() {
-                        title.clone()
-                    } else if !kind.is_empty() {
+                    let label = tool_journal_label(&title, &kind_j, &detail, &path_out);
+                    let kind_store = if kind_j.is_empty() {
                         kind.clone()
                     } else {
-                        "tool".into()
+                        kind_j
                     };
-                    let mut content = format!("tool_step|{st}|{kind}|{label}");
+                    let mut content = format!("tool_step|{st}|{kind_store}|{label}");
                     if let Some(ref d) = detail {
                         content.push('\n');
                         content.push_str(&d.chars().take(400).collect::<String>());
                     }
                     if let Some(ref p) = path_out {
+                        // Always persist path/url so reload can paint “Browsed …”.
                         content.push('\n');
                         content.push_str(p);
                     }
                     let mid = format!("tool-{tool_call_id}");
-                    // Upsert: replace prior journal row with same id if any.
+                    // Upsert: replace only when new content is richer (never downgrade
+                    // a Fetch:https://… row to bare "tool" on a sparse completed tick).
                     let mut msgs = store::load_messages(&app_sid);
                     if let Some(slot) = msgs.iter_mut().find(|m| m.id == mid) {
-                        slot.content = content.clone();
-                        slot.marker = Some("tool_step".into());
-                        let _ = store::save_messages(&app_sid, &msgs);
+                        if tool_journal_richer(&slot.content, &content) {
+                            slot.content = content.clone();
+                            slot.marker = Some("tool_step".into());
+                            let _ = store::save_messages(&app_sid, &msgs);
+                        }
                     } else {
                         let _ = store::append_message(
                             &app_sid,
@@ -4340,9 +4418,14 @@ impl SessionManager {
                 title,
                 kind,
                 status,
-                raw: _,
+                raw,
             } => {
-                let (app_sid, live_title, st, finished) = {
+                let (detail, path_hint) = extract_tool_ui_fields(&raw);
+                let path_out = path_hint.filter(|p| !p.is_empty());
+                let kind_j = normalize_tool_kind_for_journal(&kind, &title);
+                let live_title =
+                    tool_journal_label(&title, &kind_j, &detail, &path_out);
+                let (app_sid, st, finished) = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
                         // Defensive: background turns never load-replay, but if
@@ -4361,13 +4444,6 @@ impl SessionManager {
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         let finished =
                             matches!(Self::try_finish_deferred_prompt_complete(s), Some(_));
-                        let live_title = if !title.is_empty() {
-                            title.clone()
-                        } else if !kind.is_empty() {
-                            kind.clone()
-                        } else {
-                            "tool".into()
-                        };
                         let st = if status.is_empty() {
                             "in_progress".to_string()
                         } else {
@@ -4379,14 +4455,29 @@ impl SessionManager {
                             "completed" | "failed" | "error" | "cancelled"
                         ) && !tool_call_id.is_empty()
                         {
-                            let content =
-                                format!("tool_step|{st}|{kind}|{live_title}");
+                            let kind_store = if kind_j.is_empty() {
+                                kind.clone()
+                            } else {
+                                kind_j.clone()
+                            };
+                            let mut content =
+                                format!("tool_step|{st}|{kind_store}|{live_title}");
+                            if let Some(ref d) = detail {
+                                content.push('\n');
+                                content.push_str(&d.chars().take(400).collect::<String>());
+                            }
+                            if let Some(ref p) = path_out {
+                                content.push('\n');
+                                content.push_str(p);
+                            }
                             let mid = format!("tool-{tool_call_id}");
                             let mut msgs = store::load_messages(&s.app_session_id);
                             if let Some(slot) = msgs.iter_mut().find(|m| m.id == mid) {
-                                slot.content = content.clone();
-                                slot.marker = Some("tool_step".into());
-                                let _ = store::save_messages(&s.app_session_id, &msgs);
+                                if tool_journal_richer(&slot.content, &content) {
+                                    slot.content = content.clone();
+                                    slot.marker = Some("tool_step".into());
+                                    let _ = store::save_messages(&s.app_session_id, &msgs);
+                                }
                             } else {
                                 let _ = store::append_message(
                                     &s.app_session_id,
@@ -4403,7 +4494,7 @@ impl SessionManager {
                                 );
                             }
                         }
-                        (s.app_session_id.clone(), live_title, st, finished)
+                        (s.app_session_id.clone(), st, finished)
                     } else {
                         return;
                     }
@@ -4414,8 +4505,10 @@ impl SessionManager {
                         "sessionId": app_sid,
                         "toolCallId": tool_call_id,
                         "title": live_title,
-                        "kind": kind,
+                        "kind": if kind_j.is_empty() { kind.clone() } else { kind_j },
                         "status": st,
+                        "path": path_out,
+                        "detail": detail,
                     }),
                 );
                 if finished {
