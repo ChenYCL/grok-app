@@ -4,6 +4,7 @@
  * Client-side search + kind chips filter the host list (preview stays redacted).
  * Host list + content search under GROK_HOME/memory (capped, path-scoped).
  * Previews/snippets redact likely secrets. Open / reveal / delete per file.
+ * App search is always keyword — never invents embeddings (CLI hybrid separate).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
@@ -19,14 +20,16 @@ import {
 import {
   MEMORY_BROWSER_KIND_FILTERS,
   countMemoryEntriesByKind,
-  filterMemoryEntries,
   hasActiveMemoryBrowserFilters,
   normalizeMemoryBrowserKind,
   type MemoryBrowserKindFilter,
 } from "@/lib/memoryBrowserFilter";
 import {
   MEMORY_SEARCH_DEBOUNCE_MS,
-  mergeMemoryBrowserRows,
+  buildMemoryBrowserDisplayRows,
+  memoryBrowserMatchBadge,
+  memoryBrowserMatchSummary,
+  resolveMemoryBrowserEmptyState,
   shouldRunMemoryContentSearch,
   type MemoryBrowserRow,
 } from "@/lib/memoryBrowserSearch";
@@ -169,23 +172,23 @@ export function MemoryBrowserPanel({
     };
   }, [experimentalMemory]);
 
-  const filtered = useMemo(
-    () => filterMemoryEntries(entries, { query, kind: kindFilter }),
-    [entries, query, kindFilter],
-  );
   const kindCounts = useMemo(() => countMemoryEntriesByKind(entries), [entries]);
   const activeFilters = hasActiveMemoryBrowserFilters({
     query,
     kind: kindFilter,
   });
-  const isEmptyCatalog = entries.length === 0;
-  const isEmptyFilter = !isEmptyCatalog && filtered.length === 0;
 
   const clearFilters = () => {
     setQuery("");
     setKindFilter("all");
     setDebouncedFilter("");
   };
+
+  const scrollToEmbedSettings = useCallback(() => {
+    const el = document.getElementById("settings-anchor-memoryEmbed");
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   // Debounce free-text before host content search.
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -235,9 +238,39 @@ export function MemoryBrowserPanel({
     };
   }, [cwd, debouncedFilter, experimentalMemory]);
 
+  // Merge content hits + re-apply kind chip (kind was lost after content-search merge).
   const rows: MemoryBrowserRow[] = useMemo(
-    () => mergeMemoryBrowserRows(entries, searchHits, query),
-    [entries, searchHits, query],
+    () => buildMemoryBrowserDisplayRows(entries, searchHits, query, kindFilter),
+    [entries, searchHits, query, kindFilter],
+  );
+
+  const emptyState = useMemo(
+    () =>
+      resolveMemoryBrowserEmptyState({
+        experimentalMemory,
+        loading,
+        searching,
+        entryCount: entries.length,
+        rowCount: rows.length,
+        query,
+        kind: kindFilter,
+        embedConfigured,
+      }),
+    [
+      experimentalMemory,
+      loading,
+      searching,
+      entries.length,
+      rows.length,
+      query,
+      kindFilter,
+      embedConfigured,
+    ],
+  );
+
+  const matchSummary = useMemo(
+    () => memoryBrowserMatchSummary(rows, query, kindFilter),
+    [rows, query, kindFilter],
   );
 
   const toggleExpand = (path: string) => {
@@ -291,6 +324,9 @@ export function MemoryBrowserPanel({
 
   const queryActive = shouldRunMemoryContentSearch(query);
   const showTruncated = queryActive && searchTruncated && rows.length > 0;
+  // Inline "searching…" only when rows already show (empty state covers zero-row case).
+  const showSearchingInline =
+    queryActive && searching && rows.length > 0 && !emptyState;
 
   return (
     <div
@@ -303,16 +339,7 @@ export function MemoryBrowserPanel({
       </div>
 
       {experimentalMemory ? (
-        <div
-          className="settings-memory-browser__embed-status"
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 8,
-            alignItems: "center",
-            marginBottom: 8,
-          }}
-        >
+        <div className="settings-memory-browser__embed-status">
           <span className="ext-badge ext-badge--muted">
             {t("settings.memoryBrowser.searchMode.appKeyword")}
           </span>
@@ -326,28 +353,26 @@ export function MemoryBrowserPanel({
             </span>
           ) : null}
           {cliSearchMode === "keyword" && embedConfigured === false ? (
-            <span className="ext-field-hint" style={{ margin: 0 }}>
+            <span className="ext-field-hint settings-memory-browser__embed-hint">
               {t("settings.memoryBrowser.embedUnsetHint")}
             </span>
           ) : null}
-          <a
-            href="#settings-anchor-memoryEmbed"
+          <button
+            type="button"
             className="btn btn--ghost btn--sm"
-            onClick={(e) => {
-              e.preventDefault();
-              const el = document.getElementById("settings-anchor-memoryEmbed");
-              el?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
+            onClick={scrollToEmbedSettings}
           >
             {t("settings.memoryBrowser.openEmbedSettings")}
-          </a>
+          </button>
         </div>
       ) : null}
 
       {!experimentalMemory ? (
-        <p className="ext-field-hint settings-memory-browser__empty">
-          {t("settings.memoryBrowser.off")}
-        </p>
+        <div className="settings-memory-browser__filter-empty">
+          <p className="ext-field-hint settings-memory-browser__empty">
+            {t("settings.memoryBrowser.off")}
+          </p>
+        </div>
       ) : (
         <>
           <div
@@ -436,7 +461,20 @@ export function MemoryBrowserPanel({
             <p className="ext-field-hint">{t("settings.memoryBrowser.noProject")}</p>
           ) : null}
 
-          {queryActive && searching ? (
+          {matchSummary ? (
+            <p className="ext-field-hint settings-memory-browser__match-summary" role="status">
+              {matchSummary.queryActive && matchSummary.contentHits > 0
+                ? t("settings.memoryBrowser.matchSummaryContent", {
+                    count: matchSummary.total,
+                    content: matchSummary.contentHits,
+                  })
+                : t("settings.memoryBrowser.matchSummary", {
+                    count: matchSummary.total,
+                  })}
+            </p>
+          ) : null}
+
+          {showSearchingInline ? (
             <p className="ext-field-hint" aria-live="polite">
               {t("settings.memoryBrowser.searching")}
             </p>
@@ -455,19 +493,15 @@ export function MemoryBrowserPanel({
             </div>
           ) : null}
 
-          {loading ? (
-            <p className="ext-field-hint">{t("settings.memoryBrowser.loading")}</p>
-          ) : isEmptyCatalog ? (
-            <p className="ext-field-hint settings-memory-browser__empty">
-              {t("settings.memoryBrowser.empty")}
-            </p>
-          ) : isEmptyFilter ? (
+          {emptyState ? (
             <div className="settings-memory-browser__filter-empty">
               <p className="ext-field-hint settings-memory-browser__empty">
-                {t("settings.memoryBrowser.filterEmpty")}
+                {t(emptyState.titleKey)}
               </p>
-              <p className="ext-field-hint">{t("settings.memoryBrowser.filterEmptyHint")}</p>
-              {activeFilters ? (
+              {emptyState.hintKey ? (
+                <p className="ext-field-hint">{t(emptyState.hintKey)}</p>
+              ) : null}
+              {emptyState.showClearFilters ? (
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm settings-memory-browser__clear-filters"
@@ -476,19 +510,23 @@ export function MemoryBrowserPanel({
                   {t("settings.memoryBrowser.clearFilters")}
                 </button>
               ) : null}
+              {emptyState.showEmbedLink ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm settings-memory-browser__clear-filters"
+                  onClick={scrollToEmbedSettings}
+                >
+                  {t("settings.memoryBrowser.openEmbedSettings")}
+                </button>
+              ) : null}
             </div>
-          ) : rows.length === 0 ? (
-            <p className="ext-field-hint">
-              {queryActive
-                ? t("settings.memoryBrowser.searchEmpty")
-                : t("settings.memoryBrowser.empty")}
-            </p>
           ) : (
             <ul className="ext-list settings-memory-browser__list">
               {rows.map((e) => {
                 const open = expanded.has(e.path);
                 const canPreview = !!e.preview;
                 const busy = actionBusyPath === e.path;
+                const matchBadge = memoryBrowserMatchBadge(e, query);
                 return (
                   <li key={e.path} className="ext-item">
                     <div className="ext-item__head">
@@ -498,9 +536,13 @@ export function MemoryBrowserPanel({
                       <span className="ext-badge ext-badge--muted">
                         {t(kindLabelKey(e.kind))}
                       </span>
-                      {e.contentMatch ? (
+                      {matchBadge === "content" ? (
                         <span className="ext-badge ext-badge--muted">
                           {t("settings.memoryBrowser.contentHit")}
+                        </span>
+                      ) : matchBadge === "name" ? (
+                        <span className="ext-badge ext-badge--muted">
+                          {t("settings.memoryBrowser.nameHit")}
                         </span>
                       ) : null}
                     </div>

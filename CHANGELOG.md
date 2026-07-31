@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Agent / memory
+- **Memory browser pro** (Settings → Agent): kind chips apply after content-search merge (regression fix); contextual empty states (off / loading / empty catalog / searching / no matches / filtered) with mode-aware hints + **Clear filters**; honest keyword-only App search hints and soft-link to Memory embedding when model unset; name vs content match badges + match summary; pure `buildMemoryBrowserDisplayRows` / `resolveMemoryBrowserEmptyState` + tests; en/zh/zh-TW
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 
 #### Runtime / connection

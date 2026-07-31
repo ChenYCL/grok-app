@@ -1305,18 +1305,32 @@ const en = {
     "Memory is off. Turn on Cross-session memory above to browse files.",
   "settings.memoryBrowser.loading": "Loading memory files…",
   "settings.memoryBrowser.empty": "No memory files found for this project.",
+  "settings.memoryBrowser.emptyHint":
+    "Memory files appear after the agent writes MEMORY.md, session logs, or an index under {GROK_HOME}/memory.",
   "settings.memoryBrowser.filterEmpty": "No memory files match these filters",
   "settings.memoryBrowser.filterEmptyHint":
     "Clear the search or pick another kind to see more files.",
+  "settings.memoryBrowser.filterEmptyHintKind":
+    "No files of this kind. Choose All or another kind chip.",
   "settings.memoryBrowser.clearFilters": "Clear filters",
   "settings.memoryBrowser.error": "Could not load memory files",
   "settings.memoryBrowser.kindFilterLabel": "Filter by memory kind",
   "settings.memoryBrowser.searchPlaceholder": "Search by name or file content…",
   "settings.memoryBrowser.searching": "Searching memory content…",
+  "settings.memoryBrowser.searchingHint":
+    "Scanning file bodies under the memory root (keyword only — no embeddings).",
   "settings.memoryBrowser.searchEmpty": "No memory files match this search.",
+  "settings.memoryBrowser.searchEmptyHint":
+    "App search matches names, paths, and file bodies with keywords only — not semantic embeddings.",
+  "settings.memoryBrowser.searchEmptyHintKeyword":
+    "No keyword matches. App browser never invents embeddings; set an embedding model only if you want CLI hybrid memory_search.",
   "settings.memoryBrowser.searchTruncated":
     "Showing the first matches only (search cap). Narrow the query for more precision.",
   "settings.memoryBrowser.contentHit": "content",
+  "settings.memoryBrowser.nameHit": "name",
+  "settings.memoryBrowser.matchSummary": "{count} files",
+  "settings.memoryBrowser.matchSummaryContent":
+    "{count} files · {content} content hits",
   "settings.memoryBrowser.open": "Open",
   "settings.memoryBrowser.reveal": "Reveal",
   "settings.memoryBrowser.refresh": "Refresh",
@@ -5378,17 +5392,31 @@ const zh: Record<MessageKey, string> = {
   "settings.memoryBrowser.off": "记忆已关闭。请先打开上方的「跨会话记忆」后再浏览文件。",
   "settings.memoryBrowser.loading": "正在加载记忆文件…",
   "settings.memoryBrowser.empty": "当前项目未找到记忆文件。",
+  "settings.memoryBrowser.emptyHint":
+    "代理写入 MEMORY.md、会话摘要或索引到 {GROK_HOME}/memory 后会出现在此列表。",
   "settings.memoryBrowser.filterEmpty": "没有符合筛选条件的记忆文件",
   "settings.memoryBrowser.filterEmptyHint": "清空搜索或换一个类型以查看更多文件。",
+  "settings.memoryBrowser.filterEmptyHintKind":
+    "此类型下没有文件。请选择「全部」或其他类型。",
   "settings.memoryBrowser.clearFilters": "清除筛选",
   "settings.memoryBrowser.error": "无法加载记忆文件",
   "settings.memoryBrowser.kindFilterLabel": "按记忆类型筛选",
   "settings.memoryBrowser.searchPlaceholder": "按名称或文件正文搜索…",
   "settings.memoryBrowser.searching": "正在搜索记忆正文…",
+  "settings.memoryBrowser.searchingHint":
+    "正在记忆目录中扫描文件正文（仅关键词 — 无 embedding）。",
   "settings.memoryBrowser.searchEmpty": "没有匹配此搜索的记忆文件。",
+  "settings.memoryBrowser.searchEmptyHint":
+    "应用内搜索仅按名称、路径与文件正文做关键词匹配 — 不是语义 embedding。",
+  "settings.memoryBrowser.searchEmptyHintKeyword":
+    "没有关键词匹配。应用内浏览器不会伪造 embedding；仅在需要 CLI 混合 memory_search 时再设置 embedding 模型。",
   "settings.memoryBrowser.searchTruncated":
     "仅显示前若干条匹配（搜索上限）。请缩小关键词以更精确。",
   "settings.memoryBrowser.contentHit": "正文",
+  "settings.memoryBrowser.nameHit": "名称",
+  "settings.memoryBrowser.matchSummary": "{count} 个文件",
+  "settings.memoryBrowser.matchSummaryContent":
+    "{count} 个文件 · {content} 条正文命中",
   "settings.memoryBrowser.open": "打开",
   "settings.memoryBrowser.reveal": "显示",
   "settings.memoryBrowser.refresh": "刷新",
