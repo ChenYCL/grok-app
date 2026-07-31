@@ -7,7 +7,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use parking_lot::Mutex as ParkingMutex;
 use serde::{Deserialize, Serialize};
@@ -42,8 +42,8 @@ struct PendingPermission {
     summary: String,
 }
 
-static PENDING_PERMS: Mutex<std::collections::HashMap<(String, u64), PendingPermission>> =
-    Mutex::new(std::collections::HashMap::new());
+static PENDING_PERMS: LazyLock<Mutex<std::collections::HashMap<(String, u64), PendingPermission>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 /// One append-only ledger row (camelCase for the UI).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
