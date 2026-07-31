@@ -1631,6 +1631,7 @@ export interface AppSettings {
    * only — no invented env override. Soft-respawns on change.
    */
   autoWakeEnabled?: boolean;
+  /**
    * Enable Grok Build workflows (`workflows_enabled` in agent-home config).
    * Default false. Independent mode writes the top-level key; soft-respawns.
    * No in-app runner — scripts run via CLI / Rhai `workflow` tool.

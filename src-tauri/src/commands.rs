@@ -1366,12 +1366,18 @@ pub async fn settings_set(
             settings.auto_wake_enabled,
         ) {
             tracing::warn!("settings_set sync auto_wake profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
     if workflows_flip {
         if let Err(e) = crate::agent_workflows::sync_workflows_to_agent_profile(
             &settings.session_data_mode,
             settings.workflows_enabled,
         ) {
             tracing::warn!("settings_set sync workflows profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
     if two_pass_compaction_flip {
         if let Err(e) = crate::agent_two_pass_compaction::sync_two_pass_compaction_to_agent_profile(
             &settings.session_data_mode,
@@ -10868,6 +10874,8 @@ pub async fn audit_ledger_export() -> Result<serde_json::Value, String> {
         &["jsonl", "json", "txt"],
     )
     .await
+}
+
 /// One-shot headless batch turn for a project cwd (`grok -p`, soft-fail).
 /// Sequential multi-project dispatch lives in the FE; this runs a single project.
 #[tauri::command]

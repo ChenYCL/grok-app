@@ -2750,7 +2750,6 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.goal.phase.worker": "執行",
   "reliability.goal.phase.status": "狀態",
   "reliability.goal.phase.unknown": "目標",
-    "彙總忙碌工作階段、停滯訊號、最近錯誤卡片與工具稽核帳本；可匯出支援包。",
   "reliability.supportZipHint":
     "去敏後的 Doctor 報告、近期日誌與停滯時間軸快照（不含金鑰）。",
 

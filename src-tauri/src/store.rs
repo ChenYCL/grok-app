@@ -2535,6 +2535,9 @@ mod tests {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.auto_wake_enabled);
         assert!(!AppSettings::default().auto_wake_enabled);
+    }
+
+    #[test]
     fn workflows_enabled_defaults_false_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.workflows_enabled);

@@ -1101,6 +1101,7 @@ impl AcpClient {
             let _ = crate::agent_auto_wake::sync_auto_wake_to_agent_profile(
                 session_data_mode,
                 auto_wake_enabled,
+            );
             let _ = crate::agent_two_pass_compaction::sync_two_pass_compaction_to_agent_profile(
                 session_data_mode,
                 two_pass_compaction,

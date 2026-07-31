@@ -4580,7 +4580,6 @@ impl SessionManager {
                 let kind_j = normalize_tool_kind_for_journal(&kind, &title);
                 let live_title =
                     tool_journal_label(&title, &kind_j, &detail, &path_out);
-                let (app_sid, st, finished) = {
                 let (app_sid, project_path, live_title, st, finished, open_changed, already_terminal) = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
@@ -4654,7 +4653,6 @@ impl SessionManager {
                                 );
                             }
                         }
-                        (s.app_session_id.clone(), st, finished)
                         (
                             s.app_session_id.clone(),
                             s.project_path.clone(),

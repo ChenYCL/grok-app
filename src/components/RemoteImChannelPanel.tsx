@@ -30,8 +30,6 @@ import {
   showsPublicUrlCallout,
   toggleSecretReveal,
   validateBindFields,
-  validateTelegramConfig,
-  validateFeishuConfig,
 } from "@/lib/remoteIm";
 import type { TestConnectionResult } from "@/lib/remoteIm/bridgeClient";
 import {
@@ -207,55 +205,6 @@ export function RemoteImChannelPanel({
           }),
         );
         return false;
-      }
-
-      // Telegram: honest format / proxy soft-fail before write (pure, no I/O)
-      if (channelId === "telegram") {
-        const tok =
-          nextSecrets.token?.trim() ||
-          nextSecrets.bot_token?.trim() ||
-          "";
-        const tg = validateTelegramConfig({
-          options: nextValues,
-          secretKeysFilled: filled,
-          hasCredentials: instance.hasCredentials,
-          tokenValue: tok || null,
-        });
-        if (!tg.ok) {
-          if (tg.softStatus === "invalid_token_format") {
-            setFormError(t("settings.remoteIm.telegram.err.tokenFormat"));
-            return false;
-          }
-          if (tg.softStatus === "invalid_proxy") {
-            setFormError(t("settings.remoteIm.telegram.err.proxy"));
-      // Feishu/Lark: honest format / domain soft-fail before write (pure, no I/O)
-      if (channelId === "feishu" || channelId === "lark") {
-        const appId =
-          String(nextValues.app_id ?? merged.app_id ?? "").trim() || "";
-        const fe = validateFeishuConfig({
-          options: nextValues,
-          secretKeysFilled: filled,
-          hasCredentials: instance.hasCredentials,
-          appIdValue: appId || null,
-          channel: channelId,
-        });
-        if (!fe.ok) {
-          if (fe.softStatus === "invalid_app_id_format") {
-            setFormError(t("settings.remoteIm.feishu.err.appIdFormat"));
-            return false;
-          }
-          if (fe.softStatus === "missing_custom_domain") {
-            setFormError(t("settings.remoteIm.feishu.err.customDomain"));
-            return false;
-          }
-          setFormError(
-            t("settings.remoteIm.err.missingFields", {
-              fields: tg.missing.join(", "),
-              fields: fe.missing.join(", "),
-            }),
-          );
-          return false;
-        }
       }
 
       const scope: ProjectScope =
@@ -558,24 +507,13 @@ export function RemoteImChannelPanel({
         .filter(([, v]) => v.trim().length > 0)
         .map(([k]) => k),
     );
-    const tokenValue =
-      secrets.token?.trim() || secrets.bot_token?.trim() || null;
-    const appIdValue =
-      String(values.app_id ?? "").trim() || null;
     return classifyChannelHealth({
       instance,
       bridgeRunning,
       bridgeLinked,
       secretKeysFilled: filled,
       // Live form options (e.g. WeCom connect_mode) for honest soft status
-      // Live form options for honest soft status (e.g. cleared client_id)
       draftOptions: values,
-      // Live form options (e.g. Telegram proxy) for honest soft status
-      draftOptions: values,
-      tokenValue,
-      // Live form options (e.g. domain / cleared app_id) for honest soft status
-      draftOptions: values,
-      appIdValue,
     });
   }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
 
@@ -887,7 +825,10 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.wecom.guide.softFail")}
-      {channelId === "dingtalk" ? (
+          </p>
+        </div>
+      ) : null}
+{channelId === "dingtalk" ? (
         <div className="rim-callout" data-dingtalk-guide="1">
           <div className="rim-callout__title">
             {t("settings.remoteIm.dingtalk.guide.title")}
@@ -900,7 +841,10 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.dingtalk.guide.softFail")}
-      {channelId === "telegram" ? (
+          </p>
+        </div>
+      ) : null}
+{channelId === "telegram" ? (
         <div className="rim-callout" data-telegram-guide="1">
           <div className="rim-callout__title">
             {t("settings.remoteIm.telegram.guide.title")}
@@ -912,8 +856,11 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.telegram.guide.softFail")}
-      {channelId === "feishu" || channelId === "lark" ? (
-        <div className="rim-callout" data-feishu-guide="1">
+          </p>
+        </div>
+      ) : null}
+{channelId === "lark" ? (
+        <div className="rim-callout" data-feishu-guide="1" data-validate="validateFeishuConfig">
           <div className="rim-callout__title">
             {t("settings.remoteIm.feishu.guide.title")}
           </div>

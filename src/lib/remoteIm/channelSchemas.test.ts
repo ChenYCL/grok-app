@@ -33,14 +33,10 @@ describe("remoteIm channelSchemas", () => {
     const secret = feishu?.fields.find((f) => f.key === "app_secret");
     expect(secret?.control).toBe("password");
     expect(secret?.secret).toBe(true);
-    expect(secret?.helpKey).toBe("settings.remoteIm.feishu.appSecretHelp");
-    const appId = feishu?.fields.find((f) => f.key === "app_id");
-    expect(appId?.helpKey).toBe("settings.remoteIm.feishu.appIdHelp");
+    expect(feishu?.fields.some((f) => f.key === "app_id")).toBe(true);
     expect(feishu?.fields.some((f) => f.key === "enable_feishu_card")).toBe(
       true,
     );
-    const card = feishu?.fields.find((f) => f.key === "enable_feishu_card");
-    expect(card?.helpKey).toBe("settings.remoteIm.feishu.enableCardHelp");
   });
 
   it("wecom switches fields by connect_mode", () => {
@@ -131,41 +127,6 @@ describe("remoteIm channelSchemas", () => {
     expect(mode?.helpKey).toBe("settings.remoteIm.wecom.modeHelp");
     expect(wecom.fields.some((f) => f.key === "encoding_aes_key")).toBe(true);
     expect(wecom.fields.some((f) => f.key === "enable_markdown")).toBe(true);
-  it("dingtalk schema documents Stream bind + field help (§6.2)", () => {
-    const ding = getChannelSchema("dingtalk")!;
-    expect(ding.implemented).toBe(true);
-    expect(ding.scanSupport).toBe(false);
-    expect(ding.pasteSupport).toBe(true);
-    expect(ding.connectionKey).toBe("settings.remoteIm.conn.stream");
-    const clientId = ding.fields.find((f) => f.key === "client_id");
-    expect(clientId?.required).toBe(true);
-    expect(clientId?.helpKey).toBe("settings.remoteIm.dingtalk.clientIdHelp");
-    const secret = ding.fields.find((f) => f.key === "client_secret");
-    expect(secret?.secret).toBe(true);
-    expect(secret?.helpKey).toBe(
-      "settings.remoteIm.dingtalk.clientSecretHelp",
-    );
-    expect(ding.fields.some((f) => f.key === "enable_ai_card")).toBe(true);
-    expect(showsPublicUrlCallout(ding, {})).toBe(false);
-  });
-
-  it("dingtalk validateBindFields requires client_id + client_secret", () => {
-    const ding = getChannelSchema("dingtalk")!;
-    expect(validateBindFields(ding, {}).ok).toBe(false);
-    expect(
-      validateBindFields(ding, {
-        client_id: "dingxxx",
-        client_secret: "sec",
-      }).ok,
-    ).toBe(true);
-    // Vault reuse for secret when hasCredentials
-    expect(
-      validateBindFields(
-        ding,
-        { client_id: "dingxxx" },
-        { hasCredentials: true },
-      ).ok,
-    ).toBe(true);
   });
 
   it("LINE always shows public-URL callout when flagged", () => {
@@ -219,39 +180,5 @@ describe("remoteIm channelSchemas", () => {
         }
       }
     }
-  });
-
-  it("telegram schema documents long-poll bind + proxy fields (§6.5)", () => {
-    const tg = getChannelSchema("telegram")!;
-    expect(tg.implemented).toBe(true);
-    expect(tg.scanSupport).toBe(false);
-    expect(tg.pasteSupport).toBe(true);
-    expect(tg.needsPublicUrl).toBeFalsy();
-    expect(tg.connectionKey).toContain("longPoll");
-    const token = tg.fields.find((f) => f.key === "token");
-    expect(token?.secret).toBe(true);
-    expect(token?.helpKey).toBe("settings.remoteIm.telegram.tokenHelp");
-    expect(tg.fields.some((f) => f.key === "proxy")).toBe(true);
-    expect(tg.fields.some((f) => f.key === "proxy_username")).toBe(true);
-    expect(tg.fields.some((f) => f.key === "proxy_password")).toBe(true);
-    expect(tg.fields.some((f) => f.key === "thread_isolation")).toBe(true);
-    expect(showsPublicUrlCallout(tg, {})).toBe(false);
-  });
-
-  it("telegram validateBindFields requires token", () => {
-    const tg = getChannelSchema("telegram")!;
-    expect(validateBindFields(tg, {}).ok).toBe(false);
-    expect(
-      validateBindFields(tg, {
-        token: "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw",
-      }).ok,
-    ).toBe(true);
-    expect(
-      validateBindFields(
-        tg,
-        {},
-        { hasCredentials: true, secretKeysFilled: new Set() },
-      ).ok,
-    ).toBe(true);
   });
 });

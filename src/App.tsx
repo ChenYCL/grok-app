@@ -15481,6 +15481,8 @@ export default function App() {
             setAutoWakeEnabled(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, autoWakeEnabled: v }),
+            );
+          }}
           workflowsEnabled={workflowsEnabled}
           onWorkflowsEnabled={(v) => {
             setWorkflowsEnabled(v);

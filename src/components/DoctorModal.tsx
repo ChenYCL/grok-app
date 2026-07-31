@@ -3,7 +3,7 @@
  * GlassModal detail, re-run, support zip, reset app data, CLI doctor fixes.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   IconAlertTriangle,
   IconCheck,
@@ -43,7 +43,6 @@ import {
   type DoctorFindingSourceFilter,
 } from "@/lib/doctorFindings";
 import { CliUpdateRow } from "@/components/CliUpdateRow";
-import { installDialogFocus } from "@/lib/a11yFocus";
 import { redact } from "@/lib/redact";
 
 export type DoctorModalProps = {
@@ -206,19 +205,8 @@ export function DoctorModal({
     void run();
   }, [open, run]);
 
-  const panelRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
   useEffect(() => {
     if (!open) return;
-    return installDialogFocus(() => panelRef.current, {
-      onEscape: () => onCloseRef.current(),
-      capture: true,
-      initialFocus: "first",
-      restoreFocus: true,
-    });
-  }, [open]);
     const onKey = (e: KeyboardEvent) => {
       // Don't close the main modal when detail GlassModal is open (it traps Escape).
       if (e.key === "Escape" && !detailKey) onClose();
@@ -661,7 +649,6 @@ export function DoctorModal({
       role="presentation"
     >
       <div
-        ref={panelRef}
         className="modal doctor-modal"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
