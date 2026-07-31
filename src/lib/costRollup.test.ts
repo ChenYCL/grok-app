@@ -8,8 +8,11 @@ import {
   dedupeUsageSamples,
   extractKnownUsageFromJournalMessages,
   finiteTokenCount,
+  formatCostRollupExport,
+  formatRollupEstimatedCost,
   formatRollupTokens,
   loadCostUsageSamples,
+  mergeCostRollupPrecision,
   parseCostUsageSample,
   recordCostUsageSample,
   sampleFromUsageEvent,
@@ -62,6 +65,33 @@ describe("formatRollupTokens", () => {
     expect(formatRollupTokens(1500)).toBe("1.5k");
     expect(formatRollupTokens(12_400)).toBe("12k");
     expect(formatRollupTokens(2_500_000)).toBe("2.50M");
+  });
+});
+
+describe("formatRollupEstimatedCost / mergeCostRollupPrecision", () => {
+  it("always prefixes ~ for estimate/partial and never fakes none", () => {
+    expect(formatRollupEstimatedCost(1.25, "estimate")).toBe("~$1.25");
+    expect(formatRollupEstimatedCost(0.5, "partial")).toBe("~$0.5");
+    expect(formatRollupEstimatedCost(1.25, "none")).toBe("—");
+    expect(formatRollupEstimatedCost(null, "estimate")).toBe("—");
+  });
+
+  it("merges precision with unknown-session honesty", () => {
+    expect(mergeCostRollupPrecision(["estimate", "estimate"])).toBe(
+      "estimate",
+    );
+    expect(mergeCostRollupPrecision(["estimate", "partial"])).toBe(
+      "partial",
+    );
+    // Some rows have $ rates, others only tokens → overall partial.
+    expect(mergeCostRollupPrecision(["estimate", "none"])).toBe("partial");
+    expect(mergeCostRollupPrecision(["none", "none"])).toBe("none");
+    expect(
+      mergeCostRollupPrecision(["estimate"], { hasUnknownSessions: true }),
+    ).toBe("partial");
+    expect(
+      mergeCostRollupPrecision(["none"], { hasUnknownSessions: true }),
+    ).toBe("none");
   });
 });
 
@@ -230,8 +260,11 @@ describe("aggregateCostRollup", () => {
       ],
     });
     expect(view.invoiceGrade).toBe(false);
+    expect(view.groupBy).toBe("project");
     expect(view.empty).toBe(false);
     expect(view.sessionsKnown).toBe(3);
+    // Alpha has $, Beta has tokens without rates → overall partial.
+    expect(view.precision).toBe("partial");
 
     const alpha = view.buckets.find(
       (b) => b.projectId === "p1" && b.day === "2026-04-06",
@@ -240,6 +273,7 @@ describe("aggregateCostRollup", () => {
     expect(alpha?.estimatedUsd).toBeCloseTo(4.5, 6); // 1.5M * $3/1M input
     expect(alpha?.precision).toBe("estimate");
     expect(alpha?.sessionsKnown).toBe(2);
+    expect(alpha?.sessionId).toBe(null);
 
     const beta = view.buckets.find(
       (b) => b.projectId === "p2" && b.day === "2026-04-05",
@@ -247,6 +281,31 @@ describe("aggregateCostRollup", () => {
     expect(beta?.totalTokens).toBe(10_000);
     expect(beta?.estimatedUsd).toBe(null); // unknown model rates
     expect(beta?.precision).toBe("none");
+  });
+
+  it("groups by session × day when groupBy=session", () => {
+    const view = aggregateCostRollup({
+      samples,
+      sessions: [
+        { id: "s1", projectId: "p1", title: "Chat A" },
+        { id: "s2", projectId: "p1", title: "Chat B" },
+        { id: "s3", projectId: "p2", title: "Chat C" },
+      ],
+      projects: [
+        { id: "p1", name: "Alpha" },
+        { id: "p2", name: "Beta" },
+      ],
+      groupBy: "session",
+    });
+    expect(view.groupBy).toBe("session");
+    expect(view.buckets).toHaveLength(3);
+    const a = view.buckets.find((b) => b.sessionId === "s1");
+    expect(a?.sessionTitle).toBe("Chat A");
+    expect(a?.projectName).toBe("Alpha");
+    expect(a?.totalTokens).toBe(1_000_000);
+    expect(a?.sessionsKnown).toBe(1);
+    const chatB = view.buckets.find((row) => row.sessionId === "s2");
+    expect(chatB?.totalTokens).toBe(500_000);
   });
 
   it("marks sessions without samples as unknown (not zero)", () => {
@@ -385,5 +444,69 @@ describe("sinceDayDaysAgo", () => {
     const now = Date.parse("2026-04-10T15:00:00.000Z");
     expect(sinceDayDaysAgo(1, now, true)).toBe("2026-04-10");
     expect(sinceDayDaysAgo(3, now, true)).toBe("2026-04-08");
+  });
+});
+
+describe("formatCostRollupExport", () => {
+  it("exports empty view with disclaimer", () => {
+    const view = aggregateCostRollup({ samples: [] });
+    const text = formatCostRollupExport(view, { days: 14 });
+    expect(text).toContain("Cost rollup summary");
+    expect(text).toContain("never invoice-grade");
+    expect(text).toContain("No known usage");
+    expect(text).toContain("Window: last 14 day(s)");
+    expect(text).toContain("Group by: project × day");
+  });
+
+  it("lists project buckets with ~ estimates", () => {
+    const view = aggregateCostRollup({
+      samples: [
+        {
+          sessionId: "s1",
+          projectId: "p1",
+          projectName: "Alpha",
+          day: "2026-04-06",
+          modelId: "grok-4.5",
+          inputTokens: 1_000_000,
+          outputTokens: 0,
+          totalTokens: 1_000_000,
+          source: "usage",
+        },
+      ],
+      projects: [{ id: "p1", name: "Alpha" }],
+    });
+    const text = formatCostRollupExport(view, {
+      days: 7,
+      generatedAt: "2026-04-10T00:00:00.000Z",
+    });
+    expect(text).toContain("Generated: 2026-04-10T00:00:00.000Z");
+    expect(text).toContain("2026-04-06 · Alpha");
+    expect(text).toMatch(/Est\. cost: ~\$/);
+    expect(text).toContain("estimate");
+    expect(text).not.toMatch(/Est\. cost: \$[0-9]/); // must be ~$ not bare $
+  });
+
+  it("lists session grain with titles", () => {
+    const view = aggregateCostRollup({
+      samples: [
+        {
+          sessionId: "s1",
+          projectId: "p1",
+          projectName: "Alpha",
+          day: "2026-04-06",
+          modelId: "mystery",
+          totalTokens: 1000,
+          source: "usage",
+        },
+      ],
+      sessions: [{ id: "s1", projectId: "p1", title: "Debug loop" }],
+      groupBy: "session",
+    });
+    const text = formatCostRollupExport(view);
+    expect(text).toContain("Group by: session × day");
+    expect(text).toContain("Debug loop");
+    expect(text).toContain("Alpha");
+    // unknown rates → no $ invent
+    expect(text).toMatch(/Est\. cost: —/);
   });
 });

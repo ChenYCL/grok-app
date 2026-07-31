@@ -2766,13 +2766,17 @@ const en = {
   // Cost rollup (Settings → Runtime → Tools) — known tokens only, never invoice-grade
   "costRollup.title": "Cost rollup",
   "costRollup.settingsDesc":
-    "Known token usage by project and day (from live usage and session journals when available). Estimates only — not billing.",
+    "Known token usage by project or session and day (from live usage and session journals when available). Estimates only — not billing. Optional summary export.",
   "costRollup.lead":
-    "Rolling {days}-day view of agent-reported token counts grouped by project. Sessions without known usage stay Unknown.",
+    "Rolling {days}-day view of agent-reported token counts. Switch Project / Session grain below. Sessions without known usage stay Unknown.",
   "costRollup.disclaimer":
-    "Rough estimate from a static rates table — never invoice-grade. Missing usage is Unknown, not $0.",
+    "Rough estimate from a static rates table — never invoice-grade. Missing usage is Unknown, not $0. Dollar amounts always show as ~ estimates.",
   "costRollup.refresh": "Refresh",
   "costRollup.clear": "Clear local samples",
+  "costRollup.clearConfirmTitle": "Clear local cost samples?",
+  "costRollup.clearConfirmBody":
+    "Removes the on-device sample ring used for this rollup. Does not affect chats, journals, or provider billing.",
+  "costRollup.clearConfirmAction": "Clear samples",
   "costRollup.emptyTitle": "No known usage yet",
   "costRollup.emptyBody":
     "Token counts appear when the agent reports usage (or a journal compact includes tokensAfter). Until then, rows stay Unknown.",
@@ -2783,7 +2787,30 @@ const en = {
   "costRollup.tokens": "Tokens",
   "costRollup.costUnknown": "—",
   "costRollup.noProject": "No project",
+  "costRollup.untitledSession": "Untitled session",
   "costRollup.unknownCount": "{count} unknown",
+  "costRollup.groupByAria": "Group rollup by",
+  "costRollup.groupProject": "By project",
+  "costRollup.groupSession": "By session",
+  "costRollup.daysAria": "Rolling window",
+  "costRollup.daysN": "{days}d",
+  "costRollup.listProjectAria": "Usage by project and day",
+  "costRollup.listSessionAria": "Usage by session and day",
+  "costRollup.ioSplit": "in {input} · out {output}",
+  "costRollup.precisionEstimate": "~ estimate",
+  "costRollup.precisionPartial": "partial",
+  "costRollup.precisionNone": "no rate",
+  "costRollup.exportCopy": "Copy summary",
+  "costRollup.exportDownload": "Download .txt",
+  "costRollup.exportCopied": "Cost summary copied",
+  "costRollup.exportCopyFailed": "Could not copy summary",
+  "costRollup.exportDownloaded": "Cost summary downloaded",
+  "costRollup.exportTitle": "Cost rollup summary",
+  "costRollup.exportGroupProject": "Group by: project × day",
+  "costRollup.exportGroupSession": "Group by: session × day",
+  "costRollup.exportWindow": "Window: last {days} day(s)",
+  "costRollup.exportEmpty": "No known usage in this window.",
+  "costRollup.invoiceNote": "Not invoice-grade.",
 
   // Streaming-messages-json diagnostics (Settings → Runtime → Tools)
   "smj.title": "Streaming messages JSON",
@@ -7174,13 +7201,17 @@ const zh: Record<MessageKey, string> = {
 
   "costRollup.title": "费用汇总",
   "costRollup.settingsDesc":
-    "按项目与日期汇总已知 token 用量（来自实时 usage 与会话 journal，若有）。仅为估算 — 非账单。",
+    "按项目或会话与日期汇总已知 token 用量（来自实时 usage 与会话 journal，若有）。仅为估算 — 非账单。可导出摘要。",
   "costRollup.lead":
-    "近 {days} 天按项目分组的 agent 上报 token。无已知用量的会话记为「未知」。",
+    "近 {days} 天 agent 上报 token。下方可切换按项目 / 按会话。无已知用量的会话记为「未知」。",
   "costRollup.disclaimer":
-    "基于静态费率表的粗估 — 绝非账单级精度。缺失用量显示为未知，而非 $0。",
+    "基于静态费率表的粗估 — 绝非账单级精度。缺失用量显示为未知，而非 $0。金额一律以 ~ 估算展示。",
   "costRollup.refresh": "刷新",
   "costRollup.clear": "清除本地样本",
+  "costRollup.clearConfirmTitle": "清除本地费用样本？",
+  "costRollup.clearConfirmBody":
+    "将删除用于本汇总的本机样本环。不影响聊天、journal 或服务商账单。",
+  "costRollup.clearConfirmAction": "清除样本",
   "costRollup.emptyTitle": "暂无已知用量",
   "costRollup.emptyBody":
     "当 agent 上报 usage（或 journal 的 compact 含 tokensAfter）时会出现数字。此前保持「未知」。",
@@ -7191,7 +7222,30 @@ const zh: Record<MessageKey, string> = {
   "costRollup.tokens": "Token",
   "costRollup.costUnknown": "—",
   "costRollup.noProject": "无项目",
+  "costRollup.untitledSession": "未命名会话",
   "costRollup.unknownCount": "{count} 未知",
+  "costRollup.groupByAria": "汇总分组方式",
+  "costRollup.groupProject": "按项目",
+  "costRollup.groupSession": "按会话",
+  "costRollup.daysAria": "时间窗口",
+  "costRollup.daysN": "{days} 天",
+  "costRollup.listProjectAria": "按项目与日期的用量",
+  "costRollup.listSessionAria": "按会话与日期的用量",
+  "costRollup.ioSplit": "入 {input} · 出 {output}",
+  "costRollup.precisionEstimate": "~ 估算",
+  "costRollup.precisionPartial": "部分",
+  "costRollup.precisionNone": "无费率",
+  "costRollup.exportCopy": "复制摘要",
+  "costRollup.exportDownload": "下载 .txt",
+  "costRollup.exportCopied": "费用摘要已复制",
+  "costRollup.exportCopyFailed": "无法复制摘要",
+  "costRollup.exportDownloaded": "费用摘要已下载",
+  "costRollup.exportTitle": "费用汇总摘要",
+  "costRollup.exportGroupProject": "分组：项目 × 日",
+  "costRollup.exportGroupSession": "分组：会话 × 日",
+  "costRollup.exportWindow": "窗口：近 {days} 天",
+  "costRollup.exportEmpty": "该窗口内暂无已知用量。",
+  "costRollup.invoiceNote": "非账单级精度。",
 
   "smj.title": "流式 Messages JSON",
   "smj.settingsDesc":
