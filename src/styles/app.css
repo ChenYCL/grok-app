@@ -8673,7 +8673,7 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   gap: 10px 12px;
 }
 
-/* Secondary multi-window: honest view-only notice (not an error). */
+/* Secondary multi-window: live tip + focus main (not an error). */
 .view-only-banner {
   margin: 0 var(--space-5) var(--space-2);
   padding: var(--space-3) var(--space-4);
@@ -8685,6 +8685,19 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   color: var(--text-primary);
 }
 
+.view-only-banner__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+}
+
+.view-only-banner__copy {
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
 .view-only-banner__title {
   font-weight: 600;
   margin-bottom: 2px;
@@ -8693,6 +8706,11 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
 .view-only-banner__body {
   color: var(--text-secondary, var(--text-primary));
   opacity: 0.92;
+}
+
+.view-only-banner__action {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* Prefer warning palette even when combined with error-banner utility classes. */

@@ -344,6 +344,7 @@ pub fn run() {
             commands::cli_session_continue_cwd,
             commands::session_create,
             commands::open_session_window,
+            commands::focus_main_window,
             commands::session_delete,
             commands::session_rename,
             commands::session_set_archived,

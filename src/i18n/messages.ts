@@ -208,9 +208,11 @@ const en = {
   "session.openInNewWindowFailed": "Could not open session window",
   "session.openInNewWindowMissing":
     "That chat was not found — it may have been deleted.",
-  "session.viewOnlyTitle": "View only",
-  "session.viewOnlyBanner":
-    "This window is view-only. Agent spawn and send stay in the main window so sessions do not fight over the live slot.",
+  "session.secondaryLiveTitle": "Secondary window",
+  "session.secondaryLiveBanner":
+    "Send and stop work here. Connecting for this chat may move the live agent from the main window until that turn finishes.",
+  "session.focusMainWindow": "Focus main window",
+  "session.focusMainWindowFailed": "Could not focus main window",
   "session.collapseAllActivity": "Collapse all activity",
   "session.collapseAllActivityHint":
     "Collapse expanded tool phases and finished thinking blocks",
@@ -4326,9 +4328,11 @@ const zh: Record<MessageKey, string> = {
   "session.openInNewWindowOk": "已在新窗口打开",
   "session.openInNewWindowFailed": "无法打开会话窗口",
   "session.openInNewWindowMissing": "未找到该会话 — 可能已被删除。",
-  "session.viewOnlyTitle": "仅查看",
-  "session.viewOnlyBanner":
-    "此窗口为仅查看。Agent 启动与发送仍在主窗口，避免多窗口争抢 live 槽位。",
+  "session.secondaryLiveTitle": "副窗口",
+  "session.secondaryLiveBanner":
+    "可在此发送与停止。为此会话连接时，可能会把主窗口的 live Agent 移走，直到该回合结束。",
+  "session.focusMainWindow": "聚焦主窗口",
+  "session.focusMainWindowFailed": "无法聚焦主窗口",
   "session.collapseAllActivity": "收起全部活动",
   "session.collapseAllActivityHint": "收起已展开的工具阶段与已完成的思考块",
   "session.new": "新会话",

@@ -660,6 +660,9 @@ pub fn app_force_quit(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Primary workbench window label (matches tauri.conf.json + frontend multiWindow).
+const MAIN_WINDOW_LABEL: &str = "main";
+
 /// Secondary session window label prefix (`session-<uuid>`). Matches frontend `multiWindow.ts`.
 const SESSION_WINDOW_LABEL_PREFIX: &str = "session-";
 
@@ -685,9 +688,10 @@ fn session_window_label(session_id: &str) -> Option<String> {
 
 /// Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
 ///
-/// Secondary windows are view-focused: the frontend skips warm-connect / send so
-/// they never steal the Host live slot from the main window. Re-opening the same
-/// session focuses the existing window instead of spawning a third copy.
+/// Secondary windows are live-capable (send/stop via shared Host). The frontend
+/// still skips *passive* warm-connect on open so browsing does not demote main’s
+/// agent until the user acts. Re-opening the same session focuses the existing
+/// window instead of spawning a third copy.
 #[tauri::command]
 pub fn open_session_window(
     app: tauri::AppHandle,
@@ -715,7 +719,7 @@ pub fn open_session_window(
         return Ok(());
     }
 
-    // Deep link: frontend parses `#/session/<id>` on boot (view-only mode).
+    // Deep link: frontend parses `#/session/<id>` on boot (secondary live mode).
     let url = format!("index.html#/session/{sid}");
     WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
         .title(win_title)
@@ -726,6 +730,20 @@ pub fn open_session_window(
         .center()
         .build()
         .map_err(|e| format!("open session window: {e}"))?;
+    Ok(())
+}
+
+/// Focus (show / unminimize) the primary workbench window from a secondary pane.
+#[tauri::command]
+pub fn focus_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+
+    let w = app
+        .get_webview_window(MAIN_WINDOW_LABEL)
+        .ok_or_else(|| "main window not found".to_string())?;
+    let _ = w.show();
+    let _ = w.unminimize();
+    let _ = w.set_focus();
     Ok(())
 }
 

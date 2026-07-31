@@ -2,8 +2,11 @@
  * Multi-window session helpers (desktop Tauri).
  *
  * Minimal product: open a chat in a second webview window via deep link
- * `#/session/<id>`. Secondary windows are **view-focused** — they must not
- * warm-connect / spawn / send so they never fight the Host live slot.
+ * `#/session/<id>`. Secondary windows **participate live** — send / stop /
+ * ensureConnected go through the shared process Host (session-targeted).
+ *
+ * They still skip *passive* warm-connect on open/browse so merely popping a
+ * second pane does not demote the main window’s agent until the user acts.
  *
  * Window labels: `main` (primary) · `session-<uuid>` (secondary).
  */
@@ -119,9 +122,30 @@ export function canOpenSessionInNewWindow(opts: {
 }
 
 /**
- * Secondary windows must not spawn / warm-connect / send — Host has a single
- * live focus slot and concurrent connects steal it from the main window.
+ * Skip *passive* warm-connect when opening/browsing a session.
+ * Secondary windows stay passive until the user sends (then ensureConnected runs).
+ * Host has one live focus slot; auto-connect on open would demote main’s agent.
+ */
+export function shouldSkipWarmConnect(isSecondaryWindow: boolean): boolean {
+  return isSecondaryWindow;
+}
+
+/**
+ * Whether this window may send / stop / ensureConnected for its focused session.
+ * Secondary webviews share the process Host — live participation is allowed
+ * (session-targeted invoke). Policy locked here so UI gates stay honest.
+ */
+export function canLiveParticipate(isSecondaryWindow: boolean): boolean {
+  // Secondary is not view-only for send/stop. Argument kept for call-site clarity
+  // and future policy tweaks (e.g. mirror/browser).
+  void isSecondaryWindow;
+  return true;
+}
+
+/**
+ * @deprecated Prefer `shouldSkipWarmConnect` for browse and `canLiveParticipate`
+ * for send/stop. Kept as warm-connect alias so older call sites stay safe.
  */
 export function shouldSkipAgentSpawn(isSecondaryWindow: boolean): boolean {
-  return isSecondaryWindow;
+  return shouldSkipWarmConnect(isSecondaryWindow);
 }

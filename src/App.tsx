@@ -101,11 +101,12 @@ import {
   saveWindowAlwaysOnTopPref,
 } from "@/lib/windowAlwaysOnTop";
 import {
+  canLiveParticipate,
   canOpenSessionInNewWindow,
   isSessionWindowLabel,
   parseSessionDeepLinkHash,
   resolveSecondarySessionId,
-  shouldSkipAgentSpawn,
+  shouldSkipWarmConnect,
 } from "@/lib/multiWindow";
 import {
   applyChatWidth,
@@ -1258,11 +1259,12 @@ export default function App() {
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /**
    * Secondary session window (`session-*` label / `#/session/<id>` deep link).
-   * View-focused: loads journal + follows streams, but never warm-connects / sends
-   * so it cannot steal the Host live slot from the main window.
+   * Live-capable (MULTI-WIN-LITE): send / stop / ensureConnected use the shared
+   * process Host. Passive warm-connect on open is still skipped so browsing a
+   * second pane does not demote main’s agent until the user acts.
    */
   // True only for real `session-*` windows (set after label detect). Hash alone
-  // on main must not disable send.
+  // on main must not change layout / chrome.
   const [isSecondaryWindow, setIsSecondaryWindow] = useState(false);
   const isSecondaryWindowRef = useRef(false);
   isSecondaryWindowRef.current = isSecondaryWindow;
@@ -2689,7 +2691,7 @@ export default function App() {
 
   /**
    * Detect secondary session window early (label + deep-link hash).
-   * Sets view-only mode before warm-connect / last-session restore can run.
+   * Sets role before warm-connect / last-session restore can run.
    */
   useEffect(() => {
     if (!api.isDesktopHost()) {
@@ -2716,8 +2718,9 @@ export default function App() {
           hash: window.location.hash,
           windowLabel: label,
         });
-        // Label wins for view-only: only real session-* windows skip spawn.
-        // Hash alone on main should not disable send (e.g. manual hash edit).
+        // Label wins for secondary role: only real session-* windows skip
+        // passive warm-connect and collapse chrome. Hash alone on main must
+        // not change layout (e.g. manual hash edit).
         setIsSecondaryWindow(secondary);
         isSecondaryWindowRef.current = secondary;
         if (focusId) {
@@ -2746,7 +2749,7 @@ export default function App() {
   }, []);
 
   // Dock / tray busy-session badge from liveMap projection.
-  // Secondary windows must not overwrite the dock badge from a view-only pane.
+  // Secondary windows must not overwrite the dock badge (main owns chrome).
   useEffect(() => {
     if (isSecondaryWindow) return;
     if (!trayBusyBadge) {
@@ -3690,7 +3693,7 @@ export default function App() {
               snap.sessionId === secondaryFocusSessionIdRef.current
             ) {
               // Same chat is already live on Host — mirror state without
-              // warm-connect (view-only still follows streams by session id).
+              // passive warm-connect (secondary still follows streams by id).
               setSession((prev) => ({
                 ...snap,
                 state: reconcileSessionState(snap.state, prev.state),
@@ -5402,9 +5405,10 @@ export default function App() {
     // The next send on this chat will `ensureConnected` intentionally.
     // Skip when project folder is missing (D05) — user must relocate first.
     //
-    // Secondary (view-only) windows never warm-connect — Host live slot is shared
-    // process-wide; connecting from a second webview steals focus from main.
-    if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) {
+    // Secondary windows skip *passive* warm-connect — Host live slot is shared
+    // process-wide; auto-connect on open would demote main’s agent. Intentional
+    // send still runs ensureConnected (MULTI-WIN-LITE).
+    if (shouldSkipWarmConnect(isSecondaryWindowRef.current)) {
       return;
     }
     const foreignBusy =
@@ -5430,7 +5434,7 @@ export default function App() {
       void (async () => {
         if (viewingSessionIdRef.current !== warmId) return;
         if (sendInFlightRef.current || connectingRef.current) return;
-        if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) return;
+        if (shouldSkipWarmConnect(isSecondaryWindowRef.current)) return;
         try {
           const snap = await api.sessionConnect({
             projectPath:
@@ -5611,7 +5615,7 @@ export default function App() {
     isSecondaryWindow,
   ]);
 
-  /** Open (or focus) a chat in a secondary view-only webview window. */
+  /** Open (or focus) a chat in a secondary live-capable webview window. */
   const openSessionInNewWindow = useCallback(
     (s: SessionRow) => {
       if (
@@ -5943,11 +5947,12 @@ export default function App() {
       }),
     [session.state, stopLatch],
   );
+  // MULTI-WIN-LITE: secondary shares Host — send/stop allowed (session-targeted).
   const effectiveCanSend =
-    stopGate.sendable && !shouldSkipAgentSpawn(isSecondaryWindow);
-  // Secondary is view-only: stop belongs to the main window's live slot.
+    stopGate.sendable && canLiveParticipate(isSecondaryWindow);
   const effectiveCanStop =
-    !isSecondaryWindow && canStopWithStopLatch(session.state, stopLatch);
+    canLiveParticipate(isSecondaryWindow) &&
+    canStopWithStopLatch(session.state, stopLatch);
 
   const refreshSessions = async () => {
     try {
@@ -7487,8 +7492,8 @@ export default function App() {
       | boolean
       | { force?: boolean; sessionId?: string | null } = false,
   ): Promise<string | null> => {
-    // View-only secondary window: never connect / demote / spawn.
-    if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) {
+    // MULTI-WIN-LITE: secondary may connect when the user sends (shared Host).
+    if (!canLiveParticipate(isSecondaryWindowRef.current)) {
       return null;
     }
     const opts =
@@ -7773,9 +7778,9 @@ export default function App() {
     fromQueue?: boolean;
     targetSessionId?: string | null;
   }): Promise<boolean> => {
-    // Secondary windows are view-only — never spawn/send from here.
-    if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) {
-      setLocalError(tr("session.viewOnlyBanner"));
+    // MULTI-WIN-LITE: secondary may send via shared Host (session-targeted).
+    if (!canLiveParticipate(isSecondaryWindowRef.current)) {
+      setLocalError(tr("session.secondaryLiveBanner"));
       return false;
     }
     if (sendInFlightRef.current) return false;
@@ -8104,8 +8109,8 @@ export default function App() {
 
   /** Enqueue when agent is busy; otherwise send immediately. */
   const send = async () => {
-    if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) {
-      showToast(tr("session.viewOnlyBanner"), 4000);
+    if (!canLiveParticipate(isSecondaryWindowRef.current)) {
+      showToast(tr("session.secondaryLiveBanner"), 4000);
       return;
     }
     const segments = parseStoredContent(draft);
@@ -16546,18 +16551,40 @@ export default function App() {
             </div>
           )}
 
-          {/* Secondary multi-window: honest view-only (no spawn / send from this pane). */}
+          {/* Secondary multi-window: live-capable tip + focus main (MULTI-WIN-LITE). */}
           {isSecondaryWindow && mainPane === "chat" && (
             <div
               className="view-only-banner"
               role="status"
-              aria-label={tr("session.viewOnlyTitle")}
+              aria-label={tr("session.secondaryLiveTitle")}
             >
-              <div className="view-only-banner__title">
-                {tr("session.viewOnlyTitle")}
-              </div>
-              <div className="view-only-banner__body">
-                {tr("session.viewOnlyBanner")}
+              <div className="view-only-banner__row">
+                <div className="view-only-banner__copy">
+                  <div className="view-only-banner__title">
+                    {tr("session.secondaryLiveTitle")}
+                  </div>
+                  <div className="view-only-banner__body">
+                    {tr("session.secondaryLiveBanner")}
+                  </div>
+                </div>
+                {api.isDesktopHost() ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost view-only-banner__action"
+                    onClick={() => {
+                      void api.focusMainWindow().catch((e) => {
+                        showToast(
+                          tr("session.focusMainWindowFailed") +
+                            ": " +
+                            String(e),
+                          3200,
+                        );
+                      });
+                    }}
+                  >
+                    {tr("session.focusMainWindow")}
+                  </button>
+                ) : null}
               </div>
             </div>
           )}
