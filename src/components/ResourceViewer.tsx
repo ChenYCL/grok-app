@@ -44,6 +44,11 @@ import {
 } from "@/components/icons";
 import { PlanReviewPanel } from "@/components/PlanReviewPanel";
 import type { PlanReviewState } from "@/lib/planBody";
+import {
+  resolvePlanResourceEmptyState,
+  shouldAutoLeavePlanSideMode,
+  shouldShowPlanChromeButton,
+} from "@/lib/planModePro";
 import { OfficeDocumentPreview } from "@/components/OfficeDocumentPreview";
 import { CodePreview } from "@/components/CodePreview";
 import { isOfficeKind } from "@/lib/filePreviewSrc";
@@ -155,6 +160,20 @@ export interface ResourceViewerProps {
   plan?: PlanReviewState | null;
   /** Increment / change to force switch into Plan mode (详情 / auto-open). */
   planFocusKey?: number | null;
+  /**
+   * PLAN-MODE-PRO empty-state context (composer mode, settings, hard-dismiss).
+   * When omitted, empty panel falls back to the generic planEmpty copy.
+   */
+  planChrome?: {
+    /** Composer access mode (`plan` | `agent` | …). */
+    composerMode?: string;
+    /** Settings: allow plan mode (false → spawn --no-plan). Default true. */
+    planEnabled?: boolean;
+    /** User hard-dismissed this plan cycle. */
+    userClosed?: boolean;
+    /** Local plan history archive is non-empty. */
+    hasHistory?: boolean;
+  } | null;
   onApprovePlan?: () => void;
   /** Optional revision note when requesting changes (empty allowed). */
   onRequestPlanChanges?: (note?: string) => void;
@@ -308,6 +327,7 @@ export function ResourceViewer({
   sessionChanges = [],
   plan = null,
   planFocusKey = null,
+  planChrome = null,
   onApprovePlan,
   onRequestPlanChanges,
   onDismissPlan,
@@ -329,6 +349,26 @@ export function ResourceViewer({
   const [treeVisible, setTreeVisible] = useState(false);
   const [sideMode, setSideMode] = useState<SideMode>("files");
   const lastPlanFocusKey = useRef<number | null>(null);
+  /** User opened Plan via open-in-resources / planFocus — keep empty states. */
+  const [userPinnedPlanSide, setUserPinnedPlanSide] = useState(false);
+
+  const planResourceEmpty = useMemo(
+    () =>
+      resolvePlanResourceEmptyState({
+        planVisible: !!plan?.visible,
+        planEnabled: planChrome?.planEnabled !== false,
+        userClosed: !!planChrome?.userClosed,
+        composerMode: planChrome?.composerMode ?? "agent",
+        hasHistory: !!planChrome?.hasHistory,
+      }),
+    [
+      plan?.visible,
+      planChrome?.planEnabled,
+      planChrome?.userClosed,
+      planChrome?.composerMode,
+      planChrome?.hasHistory,
+    ],
+  );
   const [treeWidth, setTreeWidth] = useState(loadTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
   const splitRef = useRef<HTMLDivElement>(null);
@@ -1269,8 +1309,11 @@ export function ResourceViewer({
     if (mode === "plan") {
       setSideMode("plan");
       setTreeVisible(false);
+      setUserPinnedPlanSide(true);
       return;
     }
+    // Leaving Plan unpins empty-state hold.
+    setUserPinnedPlanSide(false);
     if (treeVisible && sideMode === mode) {
       setTreeVisible(false);
       return;
@@ -1279,21 +1322,29 @@ export function ResourceViewer({
     setTreeVisible(true);
   };
 
-  // External “open plan in resources” (详情 / auto-open on review).
+  // External “open plan in resources” (详情 / auto-open on review / plan mode).
   useEffect(() => {
     if (planFocusKey == null) return;
     if (lastPlanFocusKey.current === planFocusKey) return;
     lastPlanFocusKey.current = planFocusKey;
     setSideMode("plan");
     setTreeVisible(false);
+    setUserPinnedPlanSide(true);
   }, [planFocusKey]);
 
-  // Plan hard-dismissed / approved / cancelled while viewing plan → files.
+  // Plan hard-dismissed while viewing plan → files only when not user-pinned
+  // (open-in-resources keeps the empty state reachable).
   useEffect(() => {
-    if (sideMode === "plan" && (!plan || !plan.visible)) {
+    if (
+      shouldAutoLeavePlanSideMode({
+        sideModeIsPlan: sideMode === "plan",
+        planVisible: !!plan?.visible,
+        userPinnedPlanSide,
+      })
+    ) {
       setSideMode("files");
     }
-  }, [plan, sideMode]);
+  }, [plan, sideMode, userPinnedPlanSide]);
 
   // Drag-resize preview | file-tree split
   useEffect(() => {
@@ -2871,7 +2922,12 @@ export function ResourceViewer({
               }}
             />
           ) : null}
-          {plan?.visible ? (
+          {shouldShowPlanChromeButton({
+            planVisible: !!plan?.visible,
+            composerMode: planChrome?.composerMode ?? "agent",
+            userClosed: !!planChrome?.userClosed,
+            userPinnedPlanSide,
+          }) ? (
             <Tip label={tr("resources.plan")}>
               <button
                 type="button"
@@ -2881,6 +2937,7 @@ export function ResourceViewer({
                 }
                 onClick={() => showSidePanel("plan")}
                 aria-label={tr("resources.plan")}
+                data-testid="resources-plan-chrome-btn"
               >
                 <IconPlan size={16} />
               </button>
@@ -3010,15 +3067,28 @@ export function ResourceViewer({
               onDismiss={onDismissPlan}
             />
           ) : sideMode === "plan" ? (
-            <div className="rp__empty-state">
-              <div className="rp__empty-title">{tr("resources.plan")}</div>
-              <div className="rp__empty-desc">{tr("resources.planEmpty")}</div>
-              {onOpenPlanHistory ? (
+            <div
+              className={
+                "rp__empty-state plan-resource-empty plan-resource-empty--" +
+                (planResourceEmpty?.kind ?? "idle")
+              }
+              data-testid="plan-resource-empty"
+              data-empty-kind={planResourceEmpty?.kind ?? "idle"}
+              role="status"
+            >
+              <div className="rp__empty-title plan-resource-empty__title">
+                {tr(planResourceEmpty?.titleKey ?? "resources.plan")}
+              </div>
+              <div className="rp__empty-desc plan-resource-empty__hint">
+                {tr(planResourceEmpty?.hintKey ?? "resources.planEmpty")}
+              </div>
+              {(planResourceEmpty?.showHistoryCta ?? false) &&
+              onOpenPlanHistory ? (
                 <button
                   type="button"
-                  className="btn btn--ghost btn--sm"
-                  style={{ marginTop: 12 }}
+                  className="btn btn--ghost btn--sm plan-resource-empty__cta"
                   onClick={onOpenPlanHistory}
+                  data-testid="plan-resource-empty-history"
                 >
                   {tr("plan.history")}
                 </button>

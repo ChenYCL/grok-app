@@ -472,7 +472,13 @@ import {
 } from "@/lib/exportSharePro";
 import { loadExportLogoPref } from "@/lib/exportLogoPref";
 import { recordTraceExport } from "@/lib/traceHistory";
-import { clearPlanHistory, recordPlanHistory } from "@/lib/planHistory";
+import {
+  clearPlanHistory,
+  loadPlanHistory,
+  recordPlanHistory,
+  PLAN_HISTORY_CHANGE_EVENT,
+  PLAN_HISTORY_STORAGE_KEY,
+} from "@/lib/planHistory";
 import type { PlanHistoryEntry } from "@/lib/planHistory";
 import { planDisplayMarkdown } from "@/lib/planBody";
 import {
@@ -2150,8 +2156,28 @@ export default function App() {
   const [showPlanHistory, setShowPlanHistory] = useState(false);
   const [planHistoryPreview, setPlanHistoryPreview] =
     useState<PlanHistoryEntry | null>(null);
+  /** Non-empty archive — drives Plan empty-state history CTA. */
+  const [planHistoryNonEmpty, setPlanHistoryNonEmpty] = useState(
+    () => loadPlanHistory().length > 0,
+  );
   /** Request-changes note modal (optional free-form feedback). */
   const [planReviseOpen, setPlanReviseOpen] = useState(false);
+
+  // Keep plan-history empty CTA honest after archive / clear.
+  useEffect(() => {
+    const refresh = () => setPlanHistoryNonEmpty(loadPlanHistory().length > 0);
+    refresh();
+    const onChange = () => refresh();
+    window.addEventListener(PLAN_HISTORY_CHANGE_EVENT, onChange);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === PLAN_HISTORY_STORAGE_KEY) refresh();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(PLAN_HISTORY_CHANGE_EVENT, onChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
   const [planReviseNote, setPlanReviseNote] = useState("");
   /**
    * Dedupe plan-complete history rows per session+toolCall cycle
@@ -19151,6 +19177,12 @@ export default function App() {
               sessionMessages={messages}
               plan={plan}
               planFocusKey={planFocusKey}
+              planChrome={{
+                composerMode: mode,
+                planEnabled,
+                userClosed: plan.userClosed,
+                hasHistory: planHistoryNonEmpty,
+              }}
               onApprovePlan={() => void approvePlan()}
               onRequestPlanChanges={() => openRequestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}

@@ -8,6 +8,7 @@ import {
   shouldShowPlanBar,
   type PlanBarModel,
 } from "@/lib/planStatus";
+import { shouldOfferOpenInResourcesFromModel } from "@/lib/planModePro";
 
 export type PlanStatusBarLabels = {
   goal: string;
@@ -153,11 +154,14 @@ export function PlanStatusBar({
       ) : null}
 
       <div className="plan-bar__actions">
-        {planVisible && onOpenDetails ? (
+        {shouldOfferOpenInResourcesFromModel(model, planVisible) &&
+        onOpenDetails ? (
           <button
             type="button"
             className="btn btn--ghost btn--sm plan-bar__btn"
             onClick={onOpenDetails}
+            data-testid="plan-bar-open-resources"
+            title={labels.expand}
           >
             {labels.expand}
           </button>

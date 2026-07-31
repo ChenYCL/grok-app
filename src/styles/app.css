@@ -8385,6 +8385,42 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   color: var(--text-tertiary);
   font-size: 13px;
 }
+.plan-review__empty--waiting {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* PLAN-MODE-PRO — Resources → Plan contextual empty */
+.plan-resource-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 28px 24px;
+  max-width: 28rem;
+}
+.plan-resource-empty__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.plan-resource-empty__hint {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.plan-resource-empty__cta {
+  margin-top: 8px;
+}
+.plan-resource-empty--plan_mode .plan-resource-empty__title {
+  color: var(--accent);
+}
+.plan-resource-empty--disabled .plan-resource-empty__hint {
+  color: var(--text-tertiary);
+}
+.plan-resource-empty--user_closed .plan-resource-empty__hint {
+  color: var(--text-tertiary);
+}
 .plan-review__steps {
   margin-top: 20px;
   padding-top: 16px;

@@ -1009,6 +1009,17 @@ export const zhTW: Record<MessageKey, string> = {
   "plan.ready": "計劃待審閱",
   "plan.context": "上下文",
   "plan.empty": "（空 plan）",
+  /** PLAN-MODE-PRO — Resources → Plan 空狀態 */
+  "plan.emptyDisabledTitle": "計劃模式已關閉",
+  "plan.emptyDisabledHint":
+    "請在 設定 → Agent 中開啟「允許計劃模式」，Agent 才能起草計劃。仍可從歷史查看已封存的計劃。",
+  "plan.emptyClosedTitle": "本對話計劃已關閉",
+  "plan.emptyClosedHint":
+    "你已關閉本輪計劃。在 Agent 再次發起計劃任務（或新的 exit_plan_mode 審閱）之前不會再顯示。",
+  "plan.emptyPlanModeHint":
+    "已開啟計劃模式。傳送訊息後 Agent 會在此起草計劃，就緒後可核准或請求修改。",
+  "plan.emptyIdleHint":
+    "目前對話沒有進行中的計劃。可在 Access 中開啟計劃模式，或從計劃歷史查看已封存審閱。",
   "plan.approve": "核准並建置",
   "plan.changes": "請求修改",
   "plan.dismiss": "關閉",
