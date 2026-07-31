@@ -34,11 +34,22 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 | `apiKey` | Required for custom relay; never returned plaintext to UI |
 | `model` | **Active** request body model id (written to config `model = …`) |
 | `models` | Multi-model catalog (`[{id, name}]`); App field `app_models` JSON in TOML (ignored by Grok Build). Each entry has request id + **display name** for composer chip |
+| `efforts` | Reasoning-effort options for this channel (`[{id, name, isDefault}]`); App field `app_efforts` JSON. Composer effort menu uses this on custom route. Empty → Grok `low`/`medium`/`high` fallback |
 | `apiBackend` | Message format: `responses` (default) \| `chat_completions` \| `messages` |
 | `isDefault` | Maps to `[models].default` (set only via **Use** / composer pick activate, not a form checkbox) |
 
-CPA / sub2api / grok-go are **not special-cased** — any compatible base URL works.
-No bundled third-party presets (e.g. yunyi) ship with the app; users add relays themselves.
+### Presets (add provider)
+
+Add flow opens a **preset gallery** (`providerPresets.ts`):
+
+| Preset | Models | Default efforts |
+|--------|--------|-----------------|
+| **Custom** | empty (user fills) | Grok `medium`/`low`/`high` |
+| **DeepSeek** | `deepseek-v4-flash`, `deepseek-v4-pro` | `low` / `high` / `xhigh` / `max` (docs mapping table; default `high`) |
+
+DeepSeek base: `https://api.deepseek.com/v1`, `chat_completions`. User still pastes API key. More presets can be registered without Host schema changes.
+
+CPA / sub2api / grok-go remain generic OpenAI-compatible relays.
 
 ## Settings UI (Account → Custom providers)
 

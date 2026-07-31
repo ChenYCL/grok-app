@@ -19,6 +19,19 @@ pub struct ProviderModelEntry {
     pub name: String,
 }
 
+/// One selectable reasoning-effort option for a custom channel.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderEffortEntry {
+    /// Value passed to `--reasoning-effort` / upstream `reasoning_effort`.
+    pub id: String,
+    /// Composer display label (optional; falls back to id).
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomProvider {
@@ -33,6 +46,9 @@ pub struct CustomProvider {
     /// Catalog of selectable models for this channel (App-managed).
     #[serde(default)]
     pub models: Vec<ProviderModelEntry>,
+    /// Reasoning efforts for this channel (App-managed). Empty → App falls back to Grok 3.
+    #[serde(default)]
+    pub efforts: Vec<ProviderEffortEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -49,10 +65,14 @@ pub struct UpsertProviderInput {
     pub create_only: Option<bool>,
     /// Optional multi-model catalog; when omitted on edit, keep previous `app_models`.
     pub models: Option<Vec<ProviderModelEntry>>,
+    /// Optional effort catalog; when omitted on edit, keep previous `app_efforts`.
+    pub efforts: Option<Vec<ProviderEffortEntry>>,
 }
 
 /// TOML field (ignored by Grok Build) storing JSON array of `{id,name}`.
 const APP_MODELS_KEY: &str = "app_models";
+/// TOML field (ignored by Grok Build) storing JSON array of `{id,name,isDefault}`.
+const APP_EFFORTS_KEY: &str = "app_efforts";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -215,6 +235,11 @@ pub fn repair_custom_base_urls() -> Result<bool, String> {
                 .get(APP_MODELS_KEY)
                 .cloned()
                 .unwrap_or_default();
+            let app_efforts = s
+                .fields
+                .get(APP_EFFORTS_KEY)
+                .cloned()
+                .unwrap_or_default();
             out = remove_section(&out, &s.id);
             let mut fields = vec![
                 ("model".into(), model),
@@ -225,6 +250,9 @@ pub fn repair_custom_base_urls() -> Result<bool, String> {
             ];
             if !app_models.trim().is_empty() {
                 fields.push((APP_MODELS_KEY.into(), app_models));
+            }
+            if !app_efforts.trim().is_empty() {
+                fields.push((APP_EFFORTS_KEY.into(), app_efforts));
             }
             out = append_section(&out, &s.id, &fields);
             changed = true;
@@ -483,6 +511,47 @@ fn resolve_active_model(models: &[ProviderModelEntry], preferred: &str) -> Strin
         .unwrap_or_else(|| pref.to_string())
 }
 
+fn encode_app_efforts(efforts: &[ProviderEffortEntry]) -> String {
+    serde_json::to_string(efforts).unwrap_or_else(|_| "[]".into())
+}
+
+/// Normalize efforts: unique ids, blank names → id.
+pub fn normalize_provider_efforts(efforts: &[ProviderEffortEntry]) -> Vec<ProviderEffortEntry> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut any_default = false;
+    for e in efforts {
+        let id = e.id.trim().to_string();
+        if id.is_empty() || !seen.insert(id.clone()) {
+            continue;
+        }
+        let name = e.name.trim();
+        let is_default = e.is_default && !any_default;
+        if is_default {
+            any_default = true;
+        }
+        out.push(ProviderEffortEntry {
+            name: if name.is_empty() {
+                id.clone()
+            } else {
+                name.to_string()
+            },
+            id,
+            is_default,
+        });
+    }
+    out
+}
+
+fn decode_app_efforts(raw: Option<&str>) -> Vec<ProviderEffortEntry> {
+    if let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) {
+        if let Ok(list) = serde_json::from_str::<Vec<ProviderEffortEntry>>(s) {
+            return normalize_provider_efforts(&list);
+        }
+    }
+    Vec::new()
+}
+
 fn ensure_agent_home() -> Result<PathBuf, String> {
     ensure_app_dirs().map_err(|e| e.to_string())?;
     let home = agent_home_dir();
@@ -519,6 +588,7 @@ pub fn maybe_migrate_legacy_relay(
         set_as_default: Some(true),
         create_only: Some(true),
         models: None,
+        efforts: None,
     })?;
     Ok(())
 }
@@ -647,6 +717,7 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             &model,
             &model,
         );
+        let efforts = decode_app_efforts(s.fields.get(APP_EFFORTS_KEY).map(|x| x.as_str()));
         providers.push(CustomProvider {
             id: s.id,
             model,
@@ -656,6 +727,7 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             api_backend,
             is_default,
             models,
+            efforts,
         });
     }
     let (active_source, active_provider_id) =
@@ -879,19 +951,29 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     let model = resolve_active_model(&models, &model);
     let app_models_json = encode_app_models(&models);
 
+    let prev_app_efforts = existing
+        .and_then(|s| s.fields.get(APP_EFFORTS_KEY))
+        .cloned();
+    let efforts = if let Some(ref list) = input.efforts {
+        normalize_provider_efforts(list)
+    } else {
+        decode_app_efforts(prev_app_efforts.as_deref())
+    };
+    let app_efforts_json = encode_app_efforts(&efforts);
+
     text = remove_section(&text, &id);
-    text = append_section(
-        &text,
-        &id,
-        &[
-            ("model".into(), model),
-            ("base_url".into(), base_url),
-            ("name".into(), name),
-            ("api_key".into(), next_key),
-            ("api_backend".into(), api_backend),
-            (APP_MODELS_KEY.into(), app_models_json),
-        ],
-    );
+    let mut fields = vec![
+        ("model".into(), model),
+        ("base_url".into(), base_url),
+        ("name".into(), name),
+        ("api_key".into(), next_key),
+        ("api_backend".into(), api_backend),
+        (APP_MODELS_KEY.into(), app_models_json),
+    ];
+    if !app_efforts_json.is_empty() && app_efforts_json != "[]" {
+        fields.push((APP_EFFORTS_KEY.into(), app_efforts_json));
+    }
+    text = append_section(&text, &id, &fields);
 
     if input.set_as_default.unwrap_or(false) {
         text = set_models_default(&text, &id);
@@ -1134,6 +1216,7 @@ mod tests {
                     id: "m".into(),
                     name: "m".into(),
                 }],
+                efforts: vec![],
             }],
             default_model: Some("relay".into()),
             active_source: "custom".into(),
@@ -1221,5 +1304,46 @@ mod tests {
             resolve_active_model(&list, "missing"),
             "deepseek-v4-flash"
         );
+    }
+
+    #[test]
+    fn app_efforts_normalize_and_roundtrip() {
+        let list = normalize_provider_efforts(&[
+            ProviderEffortEntry {
+                id: " low ".into(),
+                name: "Low".into(),
+                is_default: false,
+            },
+            ProviderEffortEntry {
+                id: "high".into(),
+                name: "".into(),
+                is_default: true,
+            },
+            ProviderEffortEntry {
+                id: "high".into(),
+                name: "dup".into(),
+                is_default: true,
+            },
+            ProviderEffortEntry {
+                id: "xhigh".into(),
+                name: "xHigh".into(),
+                is_default: false,
+            },
+            ProviderEffortEntry {
+                id: "max".into(),
+                name: "Max".into(),
+                is_default: false,
+            },
+        ]);
+        assert_eq!(list.len(), 4);
+        assert_eq!(list[0].id, "low");
+        assert_eq!(list[1].id, "high");
+        assert!(list[1].is_default);
+        assert_eq!(list[1].name, "high");
+        assert_eq!(list[2].id, "xhigh");
+        assert_eq!(list[3].id, "max");
+        let json = encode_app_efforts(&list);
+        let decoded = decode_app_efforts(Some(&json));
+        assert_eq!(decoded, list);
     }
 }

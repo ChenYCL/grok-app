@@ -174,9 +174,9 @@ export function stripCommonEffortSuffix(label: string): string {
 
 /**
  * Display label for an effort.
- * - Standard ids (`high` / `medium` / `low`): prefer i18n so locale controls
- *   高/中/低 vs High/Medium/Low (catalog labels are English-only).
- * - Other catalog labels: strip a shared " Effort" suffix, then raw id.
+ * - Standard Grok ids (`high` / `medium` / `low`): prefer i18n.
+ * - DeepSeek-style ids (`xhigh` / `max` / `none`): prefer i18n when provided.
+ * - Other catalog labels: strip a shared " Effort" suffix, then raw id / label.
  */
 export function effortDisplayLabel(
   effort: EffortOption | string,
@@ -184,12 +184,18 @@ export function effortDisplayLabel(
     high?: string;
     medium?: string;
     low?: string;
+    xhigh?: string;
+    max?: string;
+    none?: string;
   },
 ): string {
   const id = typeof effort === "string" ? effort : effort.id;
   if (id === "high" && i18nLabels?.high) return i18nLabels.high;
   if (id === "medium" && i18nLabels?.medium) return i18nLabels.medium;
   if (id === "low" && i18nLabels?.low) return i18nLabels.low;
+  if (id === "xhigh" && i18nLabels?.xhigh) return i18nLabels.xhigh;
+  if (id === "max" && i18nLabels?.max) return i18nLabels.max;
+  if (id === "none" && i18nLabels?.none) return i18nLabels.none;
 
   if (typeof effort !== "string") {
     const raw = effort.label?.trim();
@@ -197,6 +203,32 @@ export function effortDisplayLabel(
     return effortDisplayLabel(effort.id, i18nLabels);
   }
   return effort;
+}
+
+/**
+ * Map provider-channel effort entries into EffortOption for composer menus.
+ */
+export function effortOptionsFromProvider(
+  efforts:
+    | Array<{ id: string; name?: string; label?: string; isDefault?: boolean }>
+    | null
+    | undefined,
+): EffortOption[] | null {
+  if (!efforts?.length) return null;
+  const out: EffortOption[] = [];
+  const seen = new Set<string>();
+  for (const e of efforts) {
+    const id = e.id?.trim() ?? "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const label = (e.name ?? e.label)?.trim();
+    out.push({
+      id,
+      label: label || undefined,
+      isDefault: !!e.isDefault,
+    });
+  }
+  return out.length ? out : null;
 }
 
 export function isValidPolicy(id: string): id is PermissionPolicyId {

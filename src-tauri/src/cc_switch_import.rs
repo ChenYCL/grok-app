@@ -411,6 +411,7 @@ pub fn import_cc_switch_providers(req: CcSwitchImportRequest) -> Result<CcSwitch
                     parsed.model.clone()
                 },
             }]),
+            efforts: None,
         }) {
             Ok(list) => {
                 existing.insert(id);

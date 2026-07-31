@@ -28,6 +28,11 @@ import {
   slugifyProviderId,
   withProviderSaveTimeout,
 } from "@/lib/providerSave";
+import {
+  PROVIDER_PRESETS,
+  defaultCustomChannelEfforts,
+  type ProviderPreset,
+} from "@/lib/providerPresets";
 
 export interface ProvidersPanelProps {
   locale: Locale;
@@ -46,6 +51,12 @@ type FormModel = {
   name: string;
 };
 
+type FormEffort = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+};
+
 type FormState = {
   id: string;
   name: string;
@@ -53,9 +64,10 @@ type FormState = {
   apiKey: string;
   apiBackend: string;
   models: FormModel[];
+  efforts: FormEffort[];
 };
 
-type RightMode = "empty" | "create" | "edit" | "official";
+type RightMode = "empty" | "pick" | "create" | "edit" | "official";
 type Selection = null | "official" | string;
 
 const emptyForm = (): FormState => ({
@@ -65,6 +77,11 @@ const emptyForm = (): FormState => ({
   apiKey: "",
   apiBackend: "responses",
   models: [],
+  efforts: defaultCustomChannelEfforts().map((e) => ({
+    id: e.id,
+    name: e.name || e.id,
+    isDefault: !!e.isDefault,
+  })),
 });
 
 function modelsFromProvider(p: api.CustomProvider): FormModel[] {
@@ -77,6 +94,40 @@ function modelsFromProvider(p: api.CustomProvider): FormModel[] {
   const id = p.model?.trim() ?? "";
   if (!id) return [];
   return [{ id, name: id }];
+}
+
+function effortsFromProvider(p: api.CustomProvider): FormEffort[] {
+  if (p.efforts?.length) {
+    return p.efforts.map((e) => ({
+      id: e.id,
+      name: e.name?.trim() || e.id,
+      isDefault: !!e.isDefault,
+    }));
+  }
+  return defaultCustomChannelEfforts().map((e) => ({
+    id: e.id,
+    name: e.name || e.id,
+    isDefault: !!e.isDefault,
+  }));
+}
+
+function formFromPreset(preset: ProviderPreset): FormState {
+  return {
+    id: preset.suggestedId,
+    name: preset.name,
+    baseUrl: preset.baseUrl,
+    apiKey: "",
+    apiBackend: preset.apiBackend,
+    models: preset.models.map((m) => ({
+      id: m.id,
+      name: m.name || m.id,
+    })),
+    efforts: preset.efforts.map((e) => ({
+      id: e.id,
+      name: e.name || e.id,
+      isDefault: !!e.isDefault,
+    })),
+  };
 }
 
 function hostOf(url: string): string {
@@ -127,6 +178,9 @@ export function ProvidersPanel({
   /** Draft row for manually adding a model. */
   const [draftModelId, setDraftModelId] = useState("");
   const [draftModelName, setDraftModelName] = useState("");
+  /** Draft row for adding a reasoning effort. */
+  const [draftEffortId, setDraftEffortId] = useState("");
+  const [draftEffortName, setDraftEffortName] = useState("");
   const [hint, setHint] = useState<string | null>(null);
   const [hintTone, setHintTone] = useState<"ok" | "err" | "muted">("muted");
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -199,12 +253,43 @@ export function ProvidersPanel({
   /** Show official row even without OAuth so users can paste an API key for speech. */
   const showOfficialRow = true;
 
+  /** Open preset gallery (or skip to blank form when no presets). */
   const openCreate = () => {
     setSelection(null);
     setEditingId(null);
     setForm(emptyForm());
     setDraftModelId("");
     setDraftModelName("");
+    setDraftEffortId("");
+    setDraftEffortName("");
+    setRemoteModels([]);
+    setHint(null);
+    setShowKey(false);
+    setRightMode(PROVIDER_PRESETS.length > 0 ? "pick" : "create");
+  };
+
+  const openCustomCreate = () => {
+    setSelection(null);
+    setEditingId(null);
+    setForm(emptyForm());
+    setDraftModelId("");
+    setDraftModelName("");
+    setDraftEffortId("");
+    setDraftEffortName("");
+    setRemoteModels([]);
+    setHint(null);
+    setShowKey(false);
+    setRightMode("create");
+  };
+
+  const openPresetCreate = (preset: ProviderPreset) => {
+    setSelection(null);
+    setEditingId(null);
+    setForm(formFromPreset(preset));
+    setDraftModelId("");
+    setDraftModelName("");
+    setDraftEffortId("");
+    setDraftEffortName("");
     setRemoteModels([]);
     setHint(null);
     setShowKey(false);
@@ -371,9 +456,12 @@ export function ProvidersPanel({
       apiKey: "",
       apiBackend: p.apiBackend || "responses",
       models: modelsFromProvider(p),
+      efforts: effortsFromProvider(p),
     });
     setDraftModelId("");
     setDraftModelName("");
+    setDraftEffortId("");
+    setDraftEffortName("");
     setRemoteModels([]);
     setHint(null);
     setShowKey(false);
@@ -388,6 +476,8 @@ export function ProvidersPanel({
     setRemoteModels([]);
     setDraftModelId("");
     setDraftModelName("");
+    setDraftEffortId("");
+    setDraftEffortName("");
   };
 
   const addModelToForm = (modelId: string, displayName?: string) => {
@@ -424,6 +514,22 @@ export function ProvidersPanel({
       setHintTone("err");
       return;
     }
+    let efforts = form.efforts
+      .map((e) => ({
+        id: e.id.trim(),
+        name: e.name.trim() || e.id.trim(),
+        isDefault: !!e.isDefault,
+      }))
+      .filter((e) => e.id);
+    if (efforts.length === 0) {
+      efforts = defaultCustomChannelEfforts().map((e) => ({
+        id: e.id,
+        name: e.name || e.id,
+        isDefault: !!e.isDefault,
+      }));
+    } else if (!efforts.some((e) => e.isDefault)) {
+      efforts = efforts.map((e, i) => ({ ...e, isDefault: i === 0 }));
+    }
     setBusy(true);
     setHint(tr("prov.saving"));
     setHintTone("muted");
@@ -452,6 +558,7 @@ export function ProvidersPanel({
           setAsDefault: false,
           createOnly: !editingId,
           models,
+          efforts,
         }),
         PROVIDER_SAVE_TIMEOUT_MS,
         tr("prov.err.saveTimeout"),
@@ -732,6 +839,53 @@ export function ProvidersPanel({
           {rightMode === "empty" && (
             <div className="prov-detail-empty">
               <p>{tr("prov.detailEmpty")}</p>
+            </div>
+          )}
+
+          {rightMode === "pick" && (
+            <div className="prov-detail settings-card prov-form">
+              <div className="prov-form__head">
+                <h3 className="prov-detail__title">{tr("prov.presetsTitle")}</h3>
+                <button
+                  type="button"
+                  className="chrome-btn"
+                  onClick={closeRight}
+                  aria-label={tr("common.close")}
+                >
+                  <IconClose size={16} />
+                </button>
+              </div>
+              <p className="prov-field__hint">{tr("prov.presetsHint")}</p>
+              <div className="prov-presets" role="list">
+                <button
+                  type="button"
+                  className="prov-presets__chip prov-presets__chip--custom"
+                  role="listitem"
+                  onClick={openCustomCreate}
+                >
+                  <IconPlus size={16} />
+                  <span>{tr("prov.presetCustom")}</span>
+                </button>
+                {PROVIDER_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className="prov-presets__chip"
+                    role="listitem"
+                    onClick={() => openPresetCreate(preset)}
+                    title={
+                      preset.blurbKey
+                        ? tr(preset.blurbKey as MessageKey)
+                        : preset.name
+                    }
+                  >
+                    <span className="prov-presets__avatar" aria-hidden>
+                      {preset.name.slice(0, 1)}
+                    </span>
+                    <span className="prov-presets__name">{preset.name}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1122,6 +1276,188 @@ export function ProvidersPanel({
                       >
                         <IconPlus size={14} />
                         {tr("prov.addModel")}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="prov-field prov-field--full">
+                  <span className="prov-field__label-row">
+                    <span className="prov-field__label">
+                      {tr("prov.efforts")}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={busy}
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          efforts: defaultCustomChannelEfforts().map((e) => ({
+                            id: e.id,
+                            name: e.name || e.id,
+                            isDefault: !!e.isDefault,
+                          })),
+                        }))
+                      }
+                    >
+                      {tr("prov.effortsResetGrok")}
+                    </button>
+                  </span>
+                  <p className="prov-field__hint">{tr("prov.effortsHint")}</p>
+                  <div
+                    className="prov-models prov-efforts"
+                    role="group"
+                    aria-label={tr("prov.efforts")}
+                  >
+                    <div className="prov-models__head" aria-hidden>
+                      <span>{tr("prov.effortDisplayName")}</span>
+                      <span>{tr("prov.effortId")}</span>
+                      <span />
+                    </div>
+                    {form.efforts.length === 0 ? (
+                      <p className="prov-models__empty">
+                        {tr("prov.effortsEmpty")}
+                      </p>
+                    ) : (
+                      form.efforts.map((e, index) => (
+                        <div key={index} className="prov-models__row">
+                          <input
+                            className="settings-input"
+                            value={e.name}
+                            onChange={(ev) => {
+                              const name = ev.target.value;
+                              setForm((f) => ({
+                                ...f,
+                                efforts: f.efforts.map((row, i) =>
+                                  i === index ? { ...row, name } : row,
+                                ),
+                              }));
+                            }}
+                            placeholder={tr("prov.effortDisplayNamePh")}
+                            aria-label={tr("prov.effortDisplayName")}
+                            autoComplete="off"
+                          />
+                          <input
+                            className="settings-input"
+                            value={e.id}
+                            onChange={(ev) => {
+                              const next = ev.target.value;
+                              setForm((f) => ({
+                                ...f,
+                                efforts: f.efforts.map((row, i) =>
+                                  i === index
+                                    ? {
+                                        ...row,
+                                        id: next,
+                                        name:
+                                          !row.name.trim() ||
+                                          row.name.trim() === row.id
+                                            ? next
+                                            : row.name,
+                                      }
+                                    : row,
+                                ),
+                              }));
+                            }}
+                            placeholder={tr("prov.effortIdPh")}
+                            aria-label={tr("prov.effortId")}
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                          <button
+                            type="button"
+                            className="icon-btn prov-models__remove"
+                            onClick={() =>
+                              setForm((f) => ({
+                                ...f,
+                                efforts: f.efforts.filter((_, i) => i !== index),
+                              }))
+                            }
+                            aria-label={tr("prov.removeEffort")}
+                            disabled={busy}
+                          >
+                            <IconTrash size={15} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                    <div className="prov-models__add-row">
+                      <input
+                        className="settings-input"
+                        value={draftEffortName}
+                        onChange={(ev) => setDraftEffortName(ev.target.value)}
+                        placeholder={tr("prov.effortDisplayNamePh")}
+                        aria-label={tr("prov.effortDisplayName")}
+                        autoComplete="off"
+                      />
+                      <input
+                        className="settings-input"
+                        value={draftEffortId}
+                        onChange={(ev) => {
+                          const id = ev.target.value;
+                          setDraftEffortId(id);
+                          setDraftEffortName((n) =>
+                            !n.trim() || n.trim() === draftEffortId.trim()
+                              ? id
+                              : n,
+                          );
+                        }}
+                        placeholder={tr("prov.effortIdPh")}
+                        aria-label={tr("prov.effortId")}
+                        autoComplete="off"
+                        spellCheck={false}
+                        onKeyDown={(ev) => {
+                          if (ev.key === "Enter") {
+                            ev.preventDefault();
+                            const id = draftEffortId.trim();
+                            if (!id) return;
+                            setForm((f) => {
+                              if (f.efforts.some((x) => x.id === id)) return f;
+                              return {
+                                ...f,
+                                efforts: [
+                                  ...f.efforts,
+                                  {
+                                    id,
+                                    name: draftEffortName.trim() || id,
+                                    isDefault: f.efforts.length === 0,
+                                  },
+                                ],
+                              };
+                            });
+                            setDraftEffortId("");
+                            setDraftEffortName("");
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm prov-models__add-btn"
+                        disabled={busy || !draftEffortId.trim()}
+                        onClick={() => {
+                          const id = draftEffortId.trim();
+                          if (!id) return;
+                          setForm((f) => {
+                            if (f.efforts.some((x) => x.id === id)) return f;
+                            return {
+                              ...f,
+                              efforts: [
+                                ...f.efforts,
+                                {
+                                  id,
+                                  name: draftEffortName.trim() || id,
+                                  isDefault: f.efforts.length === 0,
+                                },
+                              ],
+                            };
+                          });
+                          setDraftEffortId("");
+                          setDraftEffortName("");
+                        }}
+                      >
+                        <IconPlus size={14} />
+                        {tr("prov.addEffort")}
                       </button>
                     </div>
                   </div>

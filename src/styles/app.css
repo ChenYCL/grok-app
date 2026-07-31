@@ -14001,6 +14001,64 @@ textarea::-webkit-scrollbar-thumb:active,
   line-height: 1.35;
 }
 
+/* Preset gallery (add provider) */
+.prov-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.prov-presets__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.prov-presets__chip:hover {
+  border-color: color-mix(in srgb, var(--text-primary) 28%, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-active, #2a2a2a) 70%, transparent);
+}
+
+.prov-presets__chip--custom {
+  background: var(--text-primary);
+  color: var(--bg-main);
+  border-color: transparent;
+}
+
+.prov-presets__chip--custom:hover {
+  filter: brightness(1.05);
+  background: var(--text-primary);
+  color: var(--bg-main);
+}
+
+.prov-presets__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  font-size: 12px;
+  font-weight: 650;
+  flex-shrink: 0;
+}
+
+.prov-presets__name {
+  white-space: nowrap;
+}
+
 /* Multi-model catalog: one table shell, shared column headers, compact rows */
 .prov-models {
   margin-top: 0;

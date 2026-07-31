@@ -376,6 +376,7 @@ import {
   GROK_BUILD_MODELS,
   PERMISSION_POLICIES,
   findModel,
+  effortOptionsFromProvider,
   isValidEffort,
   isValidModelId,
   isValidPolicy,
@@ -11505,6 +11506,22 @@ export default function App() {
     void refreshVoiceGate();
   }, [customRouteActive, refreshVoiceGate]);
 
+  /** Effort list for the active channel (custom provider catalog or official). */
+  const channelEffortOptions = useMemo(() => {
+    if (providerActiveSource !== "custom" || !activeCustomProvider) {
+      return null;
+    }
+    return effortOptionsFromProvider(activeCustomProvider.efforts);
+  }, [providerActiveSource, activeCustomProvider]);
+
+  // When switching channels, snap effort into the active list if needed.
+  useEffect(() => {
+    if (!channelEffortOptions?.length) return;
+    if (isValidEffort(effort, channelEffortOptions)) return;
+    const next = pickDefaultEffort(null, channelEffortOptions);
+    setEffort(next);
+  }, [channelEffortOptions, effort]);
+
   const handleModelPick = useCallback(
     async (pick: ComposerModelPick) => {
       if (modelPickBusy) return;
@@ -11552,6 +11569,7 @@ export default function App() {
               name: provider.name,
               apiBackend: provider.apiBackend,
               models: catalog,
+              efforts: provider.efforts,
               setAsDefault: false,
             });
           }
@@ -11562,6 +11580,11 @@ export default function App() {
             await api.providersActivate("custom", pick.providerId);
           }
           await refreshProviderRoute();
+          // Snap effort to the picked channel's catalog when needed.
+          const nextEfforts = effortOptionsFromProvider(provider.efforts);
+          if (nextEfforts?.length && !isValidEffort(effort, nextEfforts)) {
+            setEffort(pickDefaultEffort(null, nextEfforts));
+          }
         }
       } catch (e) {
         showToast(String(e), 4000);
@@ -11580,6 +11603,7 @@ export default function App() {
       refreshProviderRoute,
       showToast,
       tr,
+      effort,
     ],
   );
   const liveBrandKind = useMemo(
@@ -18893,6 +18917,7 @@ export default function App() {
                       providers={composerProviderInputs}
                       activeSource={providerActiveSource}
                       activeProviderId={providerActiveId}
+                      channelEfforts={channelEffortOptions}
                       labels={{
                         model: tr("composer.model"),
                         modelGroupOfficial: tr("composer.modelGroupOfficial"),
@@ -18901,6 +18926,8 @@ export default function App() {
                         effortHigh: tr("effort.high"),
                         effortMedium: tr("effort.medium"),
                         effortLow: tr("effort.low"),
+                        effortXhigh: tr("effort.xhigh"),
+                        effortMax: tr("effort.max"),
                         modelSearchPlaceholder: tr(
                           "composer.modelSearchPlaceholder",
                         ),
@@ -18910,7 +18937,13 @@ export default function App() {
                         void handleModelPick(pick);
                       }}
                       onEffort={(v) => {
-                        if (!isValidEffort(v)) return;
+                        if (
+                          !isValidEffort(
+                            v,
+                            channelEffortOptions ?? undefined,
+                          )
+                        )
+                          return;
                         setEffort(v);
                         void api
                           .composerPrefsSet({
@@ -19367,6 +19400,8 @@ export default function App() {
               effortHigh: tr("effort.high"),
               effortMedium: tr("effort.medium"),
               effortLow: tr("effort.low"),
+              effortXhigh: tr("effort.xhigh"),
+              effortMax: tr("effort.max"),
               contextCurrent: tr("context.current"),
               contextUnknown: tr("phone.contextUnknown"),
               contextCompact: tr("context.compactAction"),
@@ -19383,6 +19418,7 @@ export default function App() {
             providers={composerProviderInputs}
             activeSource={providerActiveSource}
             activeProviderId={providerActiveId}
+            channelEfforts={channelEffortOptions}
             mode={mode}
             policy={policy}
             contextDisplay={contextUsageDisplay}
@@ -19405,7 +19441,10 @@ export default function App() {
               void handleModelPick(pick);
             }}
             onEffort={(v) => {
-              if (!isValidEffort(v)) return;
+              if (
+                !isValidEffort(v, channelEffortOptions ?? undefined)
+              )
+                return;
               setEffort(v);
               void api
                 .composerPrefsSet({

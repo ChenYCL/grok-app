@@ -208,6 +208,8 @@ export interface ComposerModelMenuProps {
     effortHigh: string;
     effortMedium: string;
     effortLow: string;
+    effortXhigh?: string;
+    effortMax?: string;
     /** Search field placeholder in the model nested list. */
     modelSearchPlaceholder: string;
     /** Empty state when filter matches nothing. */
@@ -217,6 +219,11 @@ export interface ComposerModelMenuProps {
     /** @deprecated Prefer real custom groups via `providers`. */
     modelViaProvider?: string;
   };
+  /**
+   * When custom route is active, use channel-configured efforts
+   * (e.g. DeepSeek low/high/xhigh/max) instead of official catalog.
+   */
+  channelEfforts?: import("@/lib/grokCatalog").EffortOption[] | null;
   /** Prefer over onModel when provided. */
   onModelPick?: (pick: ComposerModelPick) => void;
   onModel?: (id: string) => void;
@@ -233,6 +240,8 @@ function resolveEffortLabel(
     high: labels.effortHigh,
     medium: labels.effortMedium,
     low: labels.effortLow,
+    xhigh: labels.effortXhigh,
+    max: labels.effortMax,
   });
 }
 
@@ -243,6 +252,7 @@ export function ComposerModelMenu({
   providers = [],
   activeSource = "official",
   activeProviderId = null,
+  channelEfforts = null,
   labels,
   onModelPick,
   onModel,
@@ -261,7 +271,10 @@ export function ComposerModelMenu({
   });
   const filteredGroups = filterComposerModelGroups(groups, modelQuery);
   const activeModel = findModel(modelId, modelList);
-  const effortList = effortsForModel(activeModel);
+  const effortList =
+    activeSource === "custom" && channelEfforts && channelEfforts.length > 0
+      ? effortsForModel(null, channelEfforts)
+      : effortsForModel(activeModel);
 
   const clearModelQuery = () => setModelQuery("");
 

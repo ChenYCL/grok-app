@@ -23,6 +23,8 @@ import {
   GROK_BUILD_MODELS,
   PERMISSION_POLICIES,
   SESSION_MODES,
+  effortDisplayLabel,
+  effortsForModel,
   type EffortOption,
   type ModelOption,
   type PermissionPolicyId,
@@ -87,6 +89,8 @@ export type PhoneComposerToolsSheetProps = {
     effortHigh: string;
     effortMedium: string;
     effortLow: string;
+    effortXhigh?: string;
+    effortMax?: string;
     contextCurrent: string;
     contextUnknown: string;
     contextCompact: string;
@@ -105,6 +109,8 @@ export type PhoneComposerToolsSheetProps = {
   /** Active inference route: official | custom. */
   activeSource?: string;
   activeProviderId?: string | null;
+  /** Channel-configured efforts when custom route is active. */
+  channelEfforts?: EffortOption[] | null;
   mode: string;
   policy: string;
   contextDisplay: ContextUsageDisplay;
@@ -123,10 +129,16 @@ export type PhoneComposerToolsSheetProps = {
 function effortLabel(
   id: string,
   labels: PhoneComposerToolsSheetProps["labels"],
+  effortList?: EffortOption[],
 ): string {
-  if (id === "high") return labels.effortHigh;
-  if (id === "medium") return labels.effortMedium;
-  return labels.effortLow;
+  const entry = effortList?.find((e) => e.id === id);
+  return effortDisplayLabel(entry ?? id, {
+    high: labels.effortHigh,
+    medium: labels.effortMedium,
+    low: labels.effortLow,
+    xhigh: labels.effortXhigh,
+    max: labels.effortMax,
+  });
 }
 
 function modeLabel(
@@ -201,6 +213,7 @@ export function PhoneComposerToolsSheet({
   providers = [],
   activeSource = "official",
   activeProviderId = null,
+  channelEfforts = null,
   mode,
   policy,
   contextDisplay,
@@ -245,6 +258,10 @@ export function PhoneComposerToolsSheet({
     activeSource === "custom"
       ? providers.find((x) => x.id === activeProviderId)?.model ?? null
       : null;
+  const effortList =
+    activeSource === "custom" && channelEfforts && channelEfforts.length > 0
+      ? effortsForModel(null, channelEfforts)
+      : GROK_BUILD_EFFORTS;
   const officialLabel =
     modelList.find((m) => m.id === modelId)?.label ?? modelId;
   const modelLabel = composerModelChipLabel({
@@ -372,7 +389,7 @@ export function PhoneComposerToolsSheet({
               <SheetRow
                 icon={<IconBolt size={20} />}
                 label={labels.model}
-                value={`${modelLabel} ${effortLabel(effort, labels)}`}
+                value={`${modelLabel} ${effortLabel(effort, labels, effortList)}`}
                 chevron
                 onClick={() => setPanel("model")}
               />
@@ -478,7 +495,7 @@ export function PhoneComposerToolsSheet({
               <SheetRow
                 icon={<IconActivity size={20} />}
                 label={labels.effort}
-                value={effortLabel(effort, labels)}
+                value={effortLabel(effort, labels, effortList)}
                 chevron
                 onClick={() => setPanel("effort")}
               />
@@ -486,7 +503,7 @@ export function PhoneComposerToolsSheet({
           )}
 
           {panel === "effort" &&
-            GROK_BUILD_EFFORTS.map((e) => (
+            effortList.map((e) => (
               <button
                 key={e.id}
                 type="button"
@@ -499,7 +516,7 @@ export function PhoneComposerToolsSheet({
                 }}
               >
                 <span className="phone-sheet__row-label">
-                  {effortLabel(e.id, labels)}
+                  {effortLabel(e.id, labels, effortList)}
                 </span>
                 {e.id === effort ? (
                   <span className="phone-sheet__row-value" aria-hidden>
