@@ -3693,6 +3693,43 @@ export async function privacyConfigSet(
   });
 }
 
+/**
+ * Codebase indexing — `[features].codebase_indexing` (code graph, not embeddings).
+ * Missing key is unset (CLI default on). Writes only in independent agent-home.
+ */
+export type CodebaseIndexingSnapshot = {
+  path: string;
+  grokHome: string;
+  mode: string;
+  writable: boolean;
+  fileExists: boolean;
+  /** `unset` | `bool` | `custom` */
+  kind: string;
+  enabled?: boolean | null;
+  customRaw?: string | null;
+  cliDefault: boolean;
+  effectiveEnabled: boolean;
+  redactedPreview: string;
+  /** Always false — App never invents embeddings for this surface. */
+  inventsEmbeddings: boolean;
+};
+
+export type CodebaseIndexingPatch = {
+  enabled?: boolean | null;
+};
+
+export async function codebaseIndexingGet(): Promise<CodebaseIndexingSnapshot> {
+  return invoke<CodebaseIndexingSnapshot>("codebase_indexing_get");
+}
+
+export async function codebaseIndexingSet(
+  patch: CodebaseIndexingPatch,
+): Promise<CodebaseIndexingSnapshot> {
+  return invoke<CodebaseIndexingSnapshot>("codebase_indexing_set", {
+    enabled: patch.enabled ?? null,
+  });
+}
+
 export interface VoiceSessionState {
   active: boolean;
   mode?: string;

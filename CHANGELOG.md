@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Agent / memory
+- **Codebase indexing UX** (Settings → Agent; `[features].codebase_indexing`): honest enable/status for Grok Build **code graph** indexing (not memory embeddings). Missing key stays unset with CLI default **on** shown as effective status only; independent agent-home writes bool + soft-respawn; shared mode read-only; non-bool (glob) forms stay read-only custom; soft-fail when CLI is known older than 0.2.117. Pure helpers + tests; `settingsCatalog` + en/zh/zh-TW
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 
 #### Runtime / connection
@@ -126,6 +127,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增（按域）**
 
+- **Agent**：**代码库索引 UX**（设置 → Agent；`[features].codebase_indexing`）：如实展示代码**图**索引开关与状态（非记忆 embedding）；缺失键保持未设置并标注 CLI 默认开启；独立 agent-home 写 bool + soft-respawn；共享只读；glob 自定义只读；旧 CLI soft-fail；纯助手与测试；en/zh/zh-TW + settingsCatalog
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、会话变更审阅（+/− · 并排 diff · j/k）、结构化 JSON 回复面板（校验/复制/导出）、上下文用量/费用粗估
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）；**混合会话搜索**（全部/标题/内容芯片、含已归档、关键词片段与徽章，无向量）
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、系统提示词覆盖（`--system-prompt-override`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）

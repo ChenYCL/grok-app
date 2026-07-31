@@ -1421,6 +1421,49 @@ const en = {
   "settings.memoryEmbed.saving": "Saving…",
   "settings.memoryEmbed.needTauri":
     "Memory embedding settings require the desktop app.",
+  "settings.codebaseIndexing": "Codebase indexing (code graph)",
+  "settings.codebaseIndexingDesc":
+    "Honest view of Grok Build `[features].codebase_indexing` in the active GROK_HOME config.toml (0.2.117+). Code **graph** indexing for search/code-nav — not memory embeddings. Missing key stays unset (CLI default on). Independent agent-home can write a bool + soft-respawn; shared mode is read-only. Non-bool forms (globs) stay read-only custom. Soft-fails when CLI is known older.",
+  "settings.codebaseIndexing.path": "Config: {path}",
+  "settings.codebaseIndexing.loading": "Loading codebase indexing config…",
+  "settings.codebaseIndexing.error":
+    "Could not load or update codebase indexing config",
+  "settings.codebaseIndexing.saved":
+    "Codebase indexing config saved (agent soft-respawned)",
+  "settings.codebaseIndexing.sharedWarning":
+    "Shared mode shows ~/.grok/config.toml (read-only probe). Switch session data mode to independent to write `[features].codebase_indexing` into App agent-home.",
+  "settings.codebaseIndexing.mode.independent": "Independent (agent-home)",
+  "settings.codebaseIndexing.mode.shared": "Shared (~/.grok)",
+  "settings.codebaseIndexing.missing": "File not found yet",
+  "settings.codebaseIndexing.writable": "Editable",
+  "settings.codebaseIndexing.readOnly": "Read-only",
+  "settings.codebaseIndexing.presence.unset": "unset",
+  "settings.codebaseIndexing.presence.on": "on",
+  "settings.codebaseIndexing.presence.off": "off",
+  "settings.codebaseIndexing.presence.custom": "custom",
+  "settings.codebaseIndexing.status.effectiveOn": "effective: on",
+  "settings.codebaseIndexing.status.effectiveOff": "effective: off",
+  "settings.codebaseIndexing.cliOld":
+    "CLI older than {min} — key may be ignored (soft-fail)",
+  "settings.codebaseIndexing.cliUnknown": "CLI version unknown (soft-fail)",
+  "settings.codebaseIndexing.noEmbeddings":
+    "This is code graph indexing only. The App never invents embeddings or vector-search status here — use Memory embedding settings for `[memory.embedding]`.",
+  "settings.codebaseIndexing.enable": "Enable codebase indexing",
+  "settings.codebaseIndexing.enableDesc":
+    "When set on, Grok Build may build a local code graph for search/code-nav. When set off, code-nav index creation is skipped. Unset follows the CLI default (on).",
+  "settings.codebaseIndexing.unsetDefaultHint":
+    "Key is unset — CLI default is on. Toggle once to write an explicit bool into config.toml.",
+  "settings.codebaseIndexing.customHint":
+    "Custom (non-bool) value: {raw}. Edit config.toml for globs; this panel only writes true/false.",
+  "settings.codebaseIndexing.preview": "Features key (codebase_indexing)",
+  "settings.codebaseIndexing.previewEmpty":
+    "No `[features].codebase_indexing` assignment found yet in this config.",
+  "settings.codebaseIndexing.refresh": "Refresh",
+  "settings.codebaseIndexing.reset": "Reset",
+  "settings.codebaseIndexing.save": "Save codebase indexing",
+  "settings.codebaseIndexing.saving": "Saving…",
+  "settings.codebaseIndexing.needTauri":
+    "Codebase indexing settings require the desktop app.",
   "settings.allowUnverifiedCli": "Allow unverified CLI install",
   "settings.allowUnverifiedCliDesc":
     "Official mirrors often omit SHA-256 sidecars; missing checksums are allowed by default (HTTPS allowlist + binary probe). Turn this on to install even when GROK_CLI_REQUIRE_CHECKSUM=1. A mismatched checksum always fails.",
@@ -5478,6 +5521,46 @@ const zh: Record<MessageKey, string> = {
   "settings.memoryEmbed.save": "保存记忆 embedding 键",
   "settings.memoryEmbed.saving": "保存中…",
   "settings.memoryEmbed.needTauri": "记忆 embedding 设置需要桌面应用。",
+  "settings.codebaseIndexing": "代码库索引（代码图）",
+  "settings.codebaseIndexingDesc":
+    "如实展示当前 GROK_HOME config.toml 中的 Grok Build `[features].codebase_indexing`（0.2.117+）。用于搜索/code-nav 的代码**图**索引——不是记忆 embedding。缺失键保持未设置（CLI 默认开启）。独立 agent-home 可写入 bool 并 soft-respawn；共享模式只读。非 bool 形式（glob）保持自定义只读。已知旧版 CLI 时 soft-fail。",
+  "settings.codebaseIndexing.path": "配置：{path}",
+  "settings.codebaseIndexing.loading": "正在加载代码库索引配置…",
+  "settings.codebaseIndexing.error": "无法加载或更新代码库索引配置",
+  "settings.codebaseIndexing.saved": "代码库索引配置已保存（agent 已 soft-respawn）",
+  "settings.codebaseIndexing.sharedWarning":
+    "共享模式显示 ~/.grok/config.toml（只读探测）。切换到独立会话数据模式后，才能将 `[features].codebase_indexing` 写入 App agent-home。",
+  "settings.codebaseIndexing.mode.independent": "独立（agent-home）",
+  "settings.codebaseIndexing.mode.shared": "共享（~/.grok）",
+  "settings.codebaseIndexing.missing": "文件尚不存在",
+  "settings.codebaseIndexing.writable": "可编辑",
+  "settings.codebaseIndexing.readOnly": "只读",
+  "settings.codebaseIndexing.presence.unset": "未设置",
+  "settings.codebaseIndexing.presence.on": "开",
+  "settings.codebaseIndexing.presence.off": "关",
+  "settings.codebaseIndexing.presence.custom": "自定义",
+  "settings.codebaseIndexing.status.effectiveOn": "生效：开",
+  "settings.codebaseIndexing.status.effectiveOff": "生效：关",
+  "settings.codebaseIndexing.cliOld":
+    "CLI 低于 {min} — 可能忽略该键（soft-fail）",
+  "settings.codebaseIndexing.cliUnknown": "CLI 版本未知（soft-fail）",
+  "settings.codebaseIndexing.noEmbeddings":
+    "此处仅为代码图索引。应用不会在此虚构 embedding 或向量检索状态——记忆 embedding 请使用 `[memory.embedding]` 设置。",
+  "settings.codebaseIndexing.enable": "启用代码库索引",
+  "settings.codebaseIndexing.enableDesc":
+    "设为开时，Grok Build 可构建本地代码图以供搜索/code-nav。设为关时跳过 code-nav 索引创建。未设置则遵循 CLI 默认（开）。",
+  "settings.codebaseIndexing.unsetDefaultHint":
+    "键未设置 — CLI 默认为开。切换一次即可在 config.toml 中写入明确 bool。",
+  "settings.codebaseIndexing.customHint":
+    "自定义（非 bool）值：{raw}。请在 config.toml 中编辑 glob；本面板仅写入 true/false。",
+  "settings.codebaseIndexing.preview": "features 键（codebase_indexing）",
+  "settings.codebaseIndexing.previewEmpty":
+    "此配置中尚未找到 `[features].codebase_indexing` 赋值。",
+  "settings.codebaseIndexing.refresh": "刷新",
+  "settings.codebaseIndexing.reset": "重置",
+  "settings.codebaseIndexing.save": "保存代码库索引",
+  "settings.codebaseIndexing.saving": "保存中…",
+  "settings.codebaseIndexing.needTauri": "代码库索引设置需要桌面应用。",
   "settings.allowUnverifiedCli": "允许未校验的 CLI 安装",
   "settings.allowUnverifiedCliDesc":
     "官方镜像通常不发布 SHA-256 校验文件；缺少校验时默认仍可安装（HTTPS 白名单 + 二进制探测）。开启此项可在设置了 GROK_CLI_REQUIRE_CHECKSUM=1 时仍允许安装。校验和不一致始终拒绝。",

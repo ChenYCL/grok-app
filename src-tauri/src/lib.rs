@@ -6,6 +6,7 @@ mod acp_client;
 mod agent_config_view;
 mod agent_config_edit;
 mod agent_privacy;
+mod agent_codebase_indexing;
 mod agent_memory;
 mod agent_memory_embed;
 mod agents_catalog;
@@ -384,6 +385,8 @@ pub fn run() {
             commands::agent_config_edit_set,
             commands::privacy_config_get,
             commands::privacy_config_set,
+            commands::codebase_indexing_get,
+            commands::codebase_indexing_set,
             commands::session_set_model,
             commands::session_rewind_drop_last_user,
             commands::session_rewind_points,
