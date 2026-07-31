@@ -619,6 +619,9 @@ export function RemoteImChannelPanel({
     const accessTokenValue =
       channelId === "matrix"
         ? secrets.access_token || secrets.token || null
+    const appIdValue =
+      channelId === "weibo" || channelId === "feishu" || channelId === "lark"
+        ? String(values.app_id ?? values.app_key ?? "").trim() || null
         : null;
     return classifyChannelHealth({
       instance,
@@ -630,6 +633,7 @@ export function RemoteImChannelPanel({
       tokenValue,
 
       accessTokenValue,
+      appIdValue,
     });
   }, [instance, bridgeRunning, bridgeLinked, secrets, values, channelId]);
 
@@ -1057,6 +1061,23 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.matrix.guide.softFail")}
+      {channelId === "weibo" ? (
+        <div
+          className="rim-callout"
+          data-weibo-guide="1"
+          data-validate="validateWeiboConfig"
+        >
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.weibo.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.weibo.guide.step1")}</li>
+            <li>{t("settings.remoteIm.weibo.guide.step2")}</li>
+            <li>{t("settings.remoteIm.weibo.guide.step3")}</li>
+            <li>{t("settings.remoteIm.weibo.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.weibo.guide.softFail")}
           </p>
         </div>
       ) : null}

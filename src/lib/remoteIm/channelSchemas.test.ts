@@ -278,6 +278,26 @@ describe("remoteIm channelSchemas", () => {
     expect(showsPublicUrlCallout(feishu, {})).toBe(false);
   });
 
+  it("weibo §6.13: app_id + app_secret + advanced endpoints, no public URL", () => {
+    const weibo = getChannelSchema("weibo")!;
+    expect(weibo.implemented).toBe(true);
+    expect(weibo.scanSupport).toBe(false);
+    expect(weibo.pasteSupport).toBe(true);
+    expect(showsPublicUrlCallout(weibo, {})).toBe(false);
+    expect(weibo.fields.some((f) => f.key === "app_id" && f.required)).toBe(
+      true,
+    );
+    const secret = weibo.fields.find((f) => f.key === "app_secret");
+    expect(secret?.secret).toBe(true);
+    expect(secret?.control).toBe("password");
+    expect(weibo.fields.some((f) => f.key === "token_endpoint")).toBe(true);
+    expect(weibo.fields.some((f) => f.key === "ws_endpoint")).toBe(true);
+    expect(weibo.fields.find((f) => f.key === "app_id")?.helpKey).toBe(
+      "settings.remoteIm.weibo.appIdHelp",
+    );
+  });
+
+
   it("rejects credential submit when schema not implemented", () => {
     const fake = {
       ...getChannelSchema("line")!,

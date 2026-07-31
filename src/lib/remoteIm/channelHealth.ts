@@ -37,6 +37,9 @@ import {
   matrixHealthHintKeys,
   validateMatrixConfig,
 } from "./matrixConfig";
+  validateWeiboConfig,
+  weiboHealthHintKeys,
+} from "./weiboConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -136,6 +139,7 @@ const LINE_LIKE: RemoteChannelId[] = ["line"];
 const SLACK_LIKE: RemoteChannelId[] = ["slack"];
 const QQ_LIKE: RemoteChannelId[] = ["qq"];
 const MATRIX_LIKE: RemoteChannelId[] = ["matrix"];
+const WEIBO_LIKE: RemoteChannelId[] = ["weibo"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -147,6 +151,8 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   discord: ["token"],
   // Slack secrets validated via slackConfig (bot_token + app_token)
   slack: ["bot_token", "app_token"],
+  // Weibo secrets validated via weiboConfig
+  weibo: ["app_secret"],
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
   // Weixin secrets validated via weixinConfig
   weixin: ["token"],
@@ -165,6 +171,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   line: [],
   slack: [],
   // QQ validated via qqConfig (ws_url / url alias)
+  weibo: ["app_id"],
 };
 
 
@@ -344,6 +351,16 @@ export function channelModeLabel(
         : "ws"
       : "bad";
     return `forward_ws · ${scheme}`;
+  if (channel === "weibo") {
+    const parts: string[] = ["mode=ws"];
+    if (optionString(options, "token_endpoint")) parts.push("token=custom");
+    if (
+      optionString(options, "ws_endpoint") ||
+      optionString(options, "ws_url")
+    ) {
+      parts.push("ws=custom");
+    }
+    return parts.join(" · ");
   }
   return null;
 }
@@ -466,6 +483,12 @@ export function credentialReadiness(
       options: opts,
       secretKeysFilled,
       hasCredentials: instance.hasCredentials,
+  if (WEIBO_LIKE.includes(channel)) {
+    const v = validateWeiboConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -528,6 +551,7 @@ export function classifyChannelHealth(
     input.botTokenValue,
     input.appTokenValue,
     input.accessTokenValue,
+
   );
 
   // Honest status: incomplete mode-switch / missing keys / bad LINE port-path
@@ -700,6 +724,15 @@ export function classifyChannelHealth(
     for (const k of qqHealthHintKeys(qqV, {
       openAcl: openAcl && (instance.hasCredentials || qqV.ok),
       tokenInForm,
+  if (WEIBO_LIKE.includes(channel)) {
+    const weiboV = validateWeiboConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue: input.appIdValue,
+    });
+    for (const k of weiboHealthHintKeys(weiboV, {
+      openAcl: openAcl && instance.hasCredentials,
     })) {
       hintKeys.push(k);
     }
@@ -745,5 +778,6 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     SLACK_LIKE.includes(channel)
     QQ_LIKE.includes(channel)
     MATRIX_LIKE.includes(channel)
+    WEIBO_LIKE.includes(channel)
   );
 }

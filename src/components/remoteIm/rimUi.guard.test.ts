@@ -97,6 +97,11 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("data-matrix-guide");
     expect(src).toContain('channelId === "matrix"');
     expect(src).toContain("accessTokenValue");
+  it("ChannelPanel Weibo guide + paste-first bind without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-weibo-guide");
+    expect(src).toContain("validateWeiboConfig");
+    expect(src).toContain('channelId === "weibo"');
     expect(src).not.toMatch(/window\.confirm/);
   });
 
