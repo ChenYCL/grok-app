@@ -19494,6 +19494,11 @@ div.composer__input:empty::before {
   user-select: none;
 }
 
+.fork-confirm__restore--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .rewind-confirm__restore input,
 .fork-confirm__restore input {
   margin-top: 2px;

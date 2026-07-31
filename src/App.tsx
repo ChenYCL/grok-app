@@ -784,9 +784,15 @@ import {
 } from "@/lib/prHubDeepLink";
 import {
   buildForkWorktreeName,
-  canOfferForkAgentSession,
   canRestoreCodeOnFork,
+  defaultForkAgentChecked,
+  forkSuccessToastKey,
+  isWorktreeNameCollisionError,
+  resolveForkAgentCheckbox,
   resolveForkAgentSession,
+  resolveSessionForkSoftFail,
+  resumeRestoreSuccessToastKey,
+  softFailKindFromRestoreGate,
 } from "@/lib/sessionFork";
 import {
   buildResumeWorktreeName,
@@ -10789,11 +10795,67 @@ export default function App() {
   );
 
 
+  /** Honest fork-agent checkbox presentation (never claims available without id). */
+  const forkAgentCheckbox = useMemo(
+    () =>
+      resolveForkAgentCheckbox(
+        forkConfirm?.source.agentSessionId,
+        "fork",
+        forkCliSession,
+      ),
+    [forkConfirm?.source.agentSessionId, forkCliSession],
+  );
+  const resumeAgentCheckbox = useMemo(
+    () =>
+      resolveForkAgentCheckbox(
+        resumeRestoreConfirm?.agentSessionId,
+        "resume",
+        resumeForkCliSession,
+      ),
+    [resumeRestoreConfirm?.agentSessionId, resumeForkCliSession],
+  );
+
+  /** Toast classified soft-fail for fork / resume-restore (silent on cancel). */
+  const toastSessionForkSoftFail = useCallback(
+    (
+      err: unknown,
+      opts?: {
+        op?: "fork" | "resume_restore";
+        preferredKind?:
+          | "need_tauri"
+          | "busy"
+          | "dirty"
+          | "no_project"
+          | "unavailable"
+          | "worktree_collision"
+          | "worktree_failed"
+          | "bind_failed"
+          | "fork_failed"
+          | "cli_arm_failed"
+          | "cancelled"
+          | "other"
+          | null;
+        durationMs?: number;
+      },
+    ) => {
+      const r = resolveSessionForkSoftFail(err, {
+        op: opts?.op ?? "fork",
+        preferredKind: opts?.preferredKind,
+      });
+      if (r.silent) return r;
+      const base = tr(r.messageKey as Parameters<typeof tr>[0]);
+      showToast(r.detail ? `${base}: ${r.detail}` : base, opts?.durationMs ?? 4500);
+      return r;
+    },
+    [showToast, tr],
+  );
+
   /**
    * Fork a session (full history or through a user-prompt index) and open it.
    * Optional restore-code: when clean git work tree, create a sibling worktree
    * at HEAD and bind the forked session to that path (never force on dirty).
    * Optional CLI `--fork-session`: new agent session id with parent context.
+   * Soft-fail on dirty / worktree / bind; never invents agent-fork success.
    */
   const runForkSession = useCallback(
     async (
@@ -10805,10 +10867,13 @@ export default function App() {
       },
     ) => {
       if (!api.isTauri()) {
-        showToast(tr("error.needTauri"));
+        toastSessionForkSoftFail("need tauri", {
+          preferredKind: "need_tauri",
+        });
         return;
       }
       const restoreCode = !!opts?.restoreCode;
+      // Checkbox honesty: never arm agent fork without a linked source id.
       const forkResolved = resolveForkAgentSession({
         wantFork: !!opts?.forkCliSession,
         agentSessionId: source.agentSessionId,
@@ -10826,28 +10891,30 @@ export default function App() {
         if (restoreCode) {
           const projectPath = sourceProject?.path?.trim() || "";
           if (!projectPath) {
-            showToast(tr("session.forkRestoreNoProject"), 4500);
+            toastSessionForkSoftFail("no project", {
+              preferredKind: "no_project",
+              durationMs: 4500,
+            });
+            // Keep dialog open so the user can uncheck restore and fork journal-only.
             return;
           }
           let status: api.GitStatusResult;
           try {
             status = await api.gitStatus(projectPath);
           } catch (e) {
-            showToast(
-              tr("session.forkRestoreUnavailable") + ": " + String(e),
-              4500,
-            );
+            toastSessionForkSoftFail(e, {
+              preferredKind: "unavailable",
+              durationMs: 4500,
+            });
             return;
           }
           const gate = canRestoreCodeOnFork(projectPath, status);
           if (!gate.ok) {
-            if (gate.reason === "dirty") {
-              showToast(tr("session.forkRestoreDirty"), 5200);
-            } else if (gate.reason === "no_project") {
-              showToast(tr("session.forkRestoreNoProject"), 4500);
-            } else {
-              showToast(tr("session.forkRestoreUnavailable"), 4500);
-            }
+            const kind = softFailKindFromRestoreGate(gate);
+            toastSessionForkSoftFail(gate.reason, {
+              preferredKind: kind,
+              durationMs: kind === "dirty" ? 5200 : 4500,
+            });
             // Keep dialog open so the user can uncheck restore and fork journal-only.
             return;
           }
@@ -10865,23 +10932,19 @@ export default function App() {
               break;
             } catch (e) {
               lastErr = e;
-              const msg = String(e).toLowerCase();
               // Retry only on path/branch collision; other errors are fatal.
-              if (
-                !msg.includes("already exists") &&
-                !msg.includes("already registered") &&
-                !msg.includes("already checked out")
-              ) {
+              if (!isWorktreeNameCollisionError(e)) {
                 break;
               }
             }
           }
           if (!created) {
-            showToast(
-              tr("session.forkRestoreFailed") +
-                (lastErr ? ": " + String(lastErr) : ""),
-              5200,
-            );
+            toastSessionForkSoftFail(lastErr ?? "worktree failed", {
+              preferredKind: isWorktreeNameCollisionError(lastErr)
+                ? "worktree_collision"
+                : "worktree_failed",
+              durationMs: 5200,
+            });
             return;
           }
 
@@ -10913,11 +10976,20 @@ export default function App() {
         const title = /^(fork of|分叉：|分叉:)\s*/i.test(base)
           ? base
           : tr("session.forkTitleOf", { name: base || "chat" });
-        const meta = await api.sessionFork(source.id, {
-          throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
-          title,
-          forkAgentSession: forkResolved.fork,
-        });
+        let meta: Awaited<ReturnType<typeof api.sessionFork>>;
+        try {
+          meta = await api.sessionFork(source.id, {
+            throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
+            title,
+            forkAgentSession: forkResolved.fork,
+          });
+        } catch (e) {
+          toastSessionForkSoftFail(e, {
+            preferredKind: "fork_failed",
+            durationMs: 4500,
+          });
+          return;
+        }
 
         // Rebind fork to the worktree project when restore-code succeeded.
         let projectId = meta.projectId ?? source.projectId;
@@ -10929,10 +11001,10 @@ export default function App() {
             );
             projectId = updated.projectId ?? bindProject.id;
           } catch (e) {
-            showToast(
-              tr("session.forkRestoreBindFailed") + ": " + String(e),
-              4500,
-            );
+            toastSessionForkSoftFail(e, {
+              preferredKind: "bind_failed",
+              durationMs: 4500,
+            });
             // Fall through: journal fork still exists on source project.
             bindProject = sourceProject;
             projectId = meta.projectId ?? source.projectId;
@@ -10977,24 +11049,23 @@ export default function App() {
         }
         await openSession(row, openProj);
         showToast(
-          restoredWorktree
-            ? forkResolved.fork
-              ? tr("session.forkOkRestoreCli")
-              : tr("session.forkOkRestore")
-            : forkResolved.fork
-              ? tr("session.forkOkCli")
-              : tr("session.forkOk"),
+          tr(
+            forkSuccessToastKey({
+              restoredWorktree,
+              forkedAgent: forkResolved.fork,
+            }) as Parameters<typeof tr>[0],
+          ),
           2800,
         );
       } catch (e) {
-        showToast(tr("session.forkFailed") + ": " + String(e), 4500);
+        toastSessionForkSoftFail(e, { preferredKind: "fork_failed" });
       } finally {
         setForkBusy(false);
       }
     },
     // openSession / refreshSessions via closure
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projects, showToast, tr],
+    [projects, showToast, toastSessionForkSoftFail, tr],
   );
 
   const confirmForkSession = useCallback(
@@ -11006,8 +11077,10 @@ export default function App() {
         source.agentSessionId ||
         (session.sessionId === source.id ? session.agentSessionId : null);
       const enriched = { ...source, agentSessionId: agentId ?? null };
-      // Default on when the source has an agent session to fork (full context).
-      setForkCliSession(canOfferForkAgentSession(enriched.agentSessionId));
+      // Honest default: on only when a linked agent session exists.
+      setForkCliSession(
+        defaultForkAgentChecked(enriched.agentSessionId, "fork"),
+      );
       setForkConfirm({
         source: enriched,
         throughUserPromptIndex: throughUserPromptIndex ?? null,
@@ -11020,6 +11093,7 @@ export default function App() {
    * Resume an existing session on a clean sibling worktree at current HEAD.
    * Reuses the fork restore-code dirty gate; does not clone the journal.
    * Optional CLI `--fork-session`: new agent session id (source agent left intact).
+   * Soft-fail on dirty / worktree / bind; never invents agent-fork success.
    */
   const runResumeWithCodeRestore = useCallback(
     async (
@@ -11027,7 +11101,10 @@ export default function App() {
       opts?: { forkCliSession?: boolean },
     ) => {
       if (!api.isTauri()) {
-        showToast(tr("error.needTauri"));
+        toastSessionForkSoftFail("need tauri", {
+          op: "resume_restore",
+          preferredKind: "need_tauri",
+        });
         return;
       }
       const isOpenSource =
@@ -11037,9 +11114,14 @@ export default function App() {
         busyIds.has(source.id) ||
         (isOpenSource && !canRewindSession)
       ) {
-        showToast(tr("session.resumeRestoreBusy"), 3500);
+        toastSessionForkSoftFail("busy", {
+          op: "resume_restore",
+          preferredKind: "busy",
+          durationMs: 3500,
+        });
         return;
       }
+      // Checkbox honesty: never arm agent fork without a linked source id.
       const forkResolved = resolveForkAgentSession({
         wantFork: !!opts?.forkCliSession,
         agentSessionId: source.agentSessionId,
@@ -11052,7 +11134,11 @@ export default function App() {
           : null;
         const projectPath = sourceProject?.path?.trim() || "";
         if (!projectPath) {
-          showToast(tr("session.resumeRestoreNoProject"), 4500);
+          toastSessionForkSoftFail("no project", {
+            op: "resume_restore",
+            preferredKind: "no_project",
+            durationMs: 4500,
+          });
           return;
         }
 
@@ -11060,21 +11146,21 @@ export default function App() {
         try {
           status = await api.gitStatus(projectPath);
         } catch (e) {
-          showToast(
-            tr("session.resumeRestoreUnavailable") + ": " + String(e),
-            4500,
-          );
+          toastSessionForkSoftFail(e, {
+            op: "resume_restore",
+            preferredKind: "unavailable",
+            durationMs: 4500,
+          });
           return;
         }
         const gate = canRestoreCodeOnResume(projectPath, status);
         if (!gate.ok) {
-          if (gate.reason === "dirty") {
-            showToast(tr("session.resumeRestoreDirty"), 5200);
-          } else if (gate.reason === "no_project") {
-            showToast(tr("session.resumeRestoreNoProject"), 4500);
-          } else {
-            showToast(tr("session.resumeRestoreUnavailable"), 4500);
-          }
+          const kind = softFailKindFromRestoreGate(gate);
+          toastSessionForkSoftFail(gate.reason, {
+            op: "resume_restore",
+            preferredKind: kind,
+            durationMs: kind === "dirty" ? 5200 : 4500,
+          });
           return;
         }
 
@@ -11090,22 +11176,19 @@ export default function App() {
             break;
           } catch (e) {
             lastErr = e;
-            const msg = String(e).toLowerCase();
-            if (
-              !msg.includes("already exists") &&
-              !msg.includes("already registered") &&
-              !msg.includes("already checked out")
-            ) {
+            if (!isWorktreeNameCollisionError(e)) {
               break;
             }
           }
         }
         if (!created) {
-          showToast(
-            tr("session.resumeRestoreCreateFailed") +
-              (lastErr ? ": " + String(lastErr) : ""),
-            5200,
-          );
+          toastSessionForkSoftFail(lastErr ?? "worktree failed", {
+            op: "resume_restore",
+            preferredKind: isWorktreeNameCollisionError(lastErr)
+              ? "worktree_collision"
+              : "worktree_failed",
+            durationMs: 5200,
+          });
           return;
         }
 
@@ -11129,10 +11212,11 @@ export default function App() {
         try {
           await api.sessionSetProject(source.id, bindProject.id);
         } catch (e) {
-          showToast(
-            tr("session.resumeRestoreBindFailed") + ": " + String(e),
-            4500,
-          );
+          toastSessionForkSoftFail(e, {
+            op: "resume_restore",
+            preferredKind: "bind_failed",
+            durationMs: 4500,
+          });
           return;
         }
 
@@ -11149,14 +11233,17 @@ export default function App() {
           /* soft-fail badge meta */
         }
 
+        let agentForkArmed = false;
         if (forkResolved.fork) {
           try {
             await api.sessionSetForkAgentSession(source.id, true);
+            agentForkArmed = true;
           } catch (e) {
-            showToast(
-              tr("session.forkCliFailed") + ": " + String(e),
-              4500,
-            );
+            toastSessionForkSoftFail(e, {
+              op: "resume_restore",
+              preferredKind: "cli_arm_failed",
+              durationMs: 4500,
+            });
             // Worktree rebind still succeeded — continue without agent fork.
           }
         }
@@ -11176,23 +11263,25 @@ export default function App() {
         setExpandedProjects((e) => ({ ...e, [bindProject!.id]: true }));
         await openSession(row, bindProject);
         showToast(
-          forkResolved.fork
-            ? tr("session.resumeRestoreOkCli")
-            : tr("session.resumeRestoreOk"),
+          tr(
+            resumeRestoreSuccessToastKey({
+              forkedAgent: agentForkArmed,
+            }) as Parameters<typeof tr>[0],
+          ),
           2800,
         );
       } catch (e) {
-        showToast(
-          tr("session.resumeRestoreFailed") + ": " + String(e),
-          4500,
-        );
+        toastSessionForkSoftFail(e, {
+          op: "resume_restore",
+          preferredKind: "other",
+        });
       } finally {
         setResumeRestoreBusy(false);
       }
     },
     // openSession / refreshSessions / busyIds / canRewindSession via closure
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projects, showToast, tr, session.sessionId],
+    [projects, showToast, toastSessionForkSoftFail, tr, session.sessionId],
   );
 
   const confirmResumeWithCodeRestore = useCallback(
@@ -11201,8 +11290,10 @@ export default function App() {
       const agentId =
         source.agentSessionId ||
         (session.sessionId === source.id ? session.agentSessionId : null);
-      // Default off (reuse agent id); user can opt into CLI --fork-session.
-      setResumeForkCliSession(false);
+      // Honest default: off (reuse agent id); opt-in only when available.
+      setResumeForkCliSession(
+        defaultForkAgentChecked(agentId, "resume"),
+      );
       setResumeRestoreConfirm({
         ...source,
         agentSessionId: agentId ?? null,
@@ -21473,7 +21564,8 @@ export default function App() {
                   throughUserPromptIndex:
                     forkConfirm.throughUserPromptIndex ?? null,
                   restoreCode: forkRestoreCode,
-                  forkCliSession,
+                  // Honesty: only pass true when checkbox is actually available.
+                  forkCliSession: forkAgentCheckbox.checked,
                 });
               }}
             >
@@ -21501,22 +21593,27 @@ export default function App() {
           <p className="fork-confirm__hint">
             {tr("session.forkRestoreCodeHint")}
           </p>
-          {canOfferForkAgentSession(forkConfirm?.source.agentSessionId) ? (
-            <>
-              <label className="fork-confirm__restore">
-                <input
-                  type="checkbox"
-                  checked={forkCliSession}
-                  disabled={forkBusy}
-                  onChange={(e) => setForkCliSession(e.target.checked)}
-                />
-                <span>{tr("session.forkCliSession")}</span>
-              </label>
-              <p className="fork-confirm__hint">
-                {tr("session.forkCliSessionHint")}
-              </p>
-            </>
-          ) : null}
+          <label
+            className={
+              "fork-confirm__restore" +
+              (forkAgentCheckbox.disabled ? " fork-confirm__restore--disabled" : "")
+            }
+          >
+            <input
+              type="checkbox"
+              checked={forkAgentCheckbox.checked}
+              disabled={forkBusy || forkAgentCheckbox.disabled}
+              onChange={(e) => {
+                if (forkAgentCheckbox.disabled) return;
+                setForkCliSession(e.target.checked);
+              }}
+              aria-disabled={forkAgentCheckbox.disabled || undefined}
+            />
+            <span>{tr("session.forkCliSession")}</span>
+          </label>
+          <p className="fork-confirm__hint">
+            {tr(forkAgentCheckbox.hintKey as Parameters<typeof tr>[0])}
+          </p>
         </div>
       </GlassModal>
 
@@ -21554,7 +21651,8 @@ export default function App() {
               onClick={() => {
                 if (!resumeRestoreConfirm) return;
                 void runResumeWithCodeRestore(resumeRestoreConfirm, {
-                  forkCliSession: resumeForkCliSession,
+                  // Honesty: only pass true when checkbox is actually available.
+                  forkCliSession: resumeAgentCheckbox.checked,
                 });
               }}
             >
@@ -21572,26 +21670,29 @@ export default function App() {
           <p className="fork-confirm__hint">
             {tr("session.resumeRestoreHint")}
           </p>
-          {canOfferForkAgentSession(
-            resumeRestoreConfirm?.agentSessionId,
-          ) ? (
-            <>
-              <label className="fork-confirm__restore">
-                <input
-                  type="checkbox"
-                  checked={resumeForkCliSession}
-                  disabled={resumeRestoreBusy}
-                  onChange={(e) =>
-                    setResumeForkCliSession(e.target.checked)
-                  }
-                />
-                <span>{tr("session.forkCliSession")}</span>
-              </label>
-              <p className="fork-confirm__hint">
-                {tr("session.resumeForkCliSessionHint")}
-              </p>
-            </>
-          ) : null}
+          <label
+            className={
+              "fork-confirm__restore" +
+              (resumeAgentCheckbox.disabled
+                ? " fork-confirm__restore--disabled"
+                : "")
+            }
+          >
+            <input
+              type="checkbox"
+              checked={resumeAgentCheckbox.checked}
+              disabled={resumeRestoreBusy || resumeAgentCheckbox.disabled}
+              onChange={(e) => {
+                if (resumeAgentCheckbox.disabled) return;
+                setResumeForkCliSession(e.target.checked);
+              }}
+              aria-disabled={resumeAgentCheckbox.disabled || undefined}
+            />
+            <span>{tr("session.forkCliSession")}</span>
+          </label>
+          <p className="fork-confirm__hint">
+            {tr(resumeAgentCheckbox.hintKey as Parameters<typeof tr>[0])}
+          </p>
         </div>
       </GlassModal>
 

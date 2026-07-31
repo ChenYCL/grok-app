@@ -324,7 +324,11 @@ const en = {
   "session.forkCliSession":
     "Fork CLI agent session (new agent id — grok --fork-session)",
   "session.forkCliSessionHint":
-    "Creates a new agent session id with the parent’s full context (ACP session/fork). The original agent session stays unchanged. Off when no agent session is linked yet.",
+    "Creates a new agent session id with the parent’s full context (ACP session/fork). The original agent session stays unchanged. Default on when a linked agent session exists.",
+  "session.forkCliSessionNoAgent":
+    "No linked agent session — cannot fork a new agent id",
+  "session.forkCliSessionNoAgentHint":
+    "Connect or send a message first so this chat has a linked agent session. Until then the journal can still be forked without a new agent id.",
   "session.resumeForkCliSessionHint":
     "On this worktree, allocate a new agent session id instead of reusing the original (CLI --fork-session). Leave unchecked to continue the same agent session.",
   "session.forkOkCli": "Forked · new agent session · opened new chat",
@@ -333,6 +337,9 @@ const en = {
   "session.resumeRestoreOkCli":
     "Resumed · new agent session · opened on a clean worktree",
   "session.forkCliFailed": "Could not arm CLI agent session fork",
+  "session.forkWorktreeCollision":
+    "Could not create a worktree — name or path already in use. Try again.",
+  "session.forkCancelled": "Fork cancelled",
   "session.resumeRestore": "Resume with code restore",
   "session.resumeRestoreTitle": "Resume with code restore",
   "session.resumeRestoreConfirm":
@@ -6415,7 +6422,10 @@ const zh: Record<MessageKey, string> = {
   "session.forkCliSession":
     "分叉 CLI Agent 会话（新 agent id — grok --fork-session）",
   "session.forkCliSessionHint":
-    "用父会话完整上下文创建新的 agent session id（ACP session/fork）。原 agent 会话保持不变。尚未关联 agent 会话时不可用。",
+    "用父会话完整上下文创建新的 agent session id（ACP session/fork）。原 agent 会话保持不变。已关联 agent 会话时默认开启。",
+  "session.forkCliSessionNoAgent": "尚未关联 agent 会话，无法分叉新的 agent id",
+  "session.forkCliSessionNoAgentHint":
+    "请先连接或发送消息，让本会话关联 agent session。在此之前仍可仅分叉对话内容（不新建 agent id）。",
   "session.resumeForkCliSessionHint":
     "在本 worktree 上分配新的 agent session id，而不是复用原会话（CLI --fork-session）。不勾选则继续同一 agent 会话。",
   "session.forkOkCli": "已分叉 · 新 agent 会话 · 已打开新会话",
@@ -6423,6 +6433,9 @@ const zh: Record<MessageKey, string> = {
   "session.resumeRestoreOkCli":
     "已恢复 · 新 agent 会话 · 已在干净 worktree 中打开",
   "session.forkCliFailed": "无法启用 CLI Agent 会话分叉",
+  "session.forkWorktreeCollision":
+    "无法创建 worktree — 名称或路径已被占用，请重试。",
+  "session.forkCancelled": "已取消分叉",
   "session.resumeRestore": "恢复对话并还原代码",
   "session.resumeRestoreTitle": "恢复对话并还原代码",
   "session.resumeRestoreConfirm":
