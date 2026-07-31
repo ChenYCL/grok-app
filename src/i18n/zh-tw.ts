@@ -2481,6 +2481,10 @@ export const zhTW: Record<MessageKey, string> = {
   "prov.add": "新增",
   "prov.saving": "儲存中…",
   "prov.saved": "供應商已儲存。",
+  "prov.savedReplaced":
+    "同 id 仍殘留在設定中，已用目前表單覆蓋（舊項目可能未刪乾淨）。",
+  "prov.err.recreateNeedKey":
+    "此 id 在磁碟上仍存在。請填寫 API Key 以覆蓋，或先刪除殘留的供應商。",
   "prov.savedHotReload":
     "供應商已儲存，Agent 已重載 — 下一則訊息使用新設定（無需重新啟動應用程式）。",
   "prov.savedApplyFailed":

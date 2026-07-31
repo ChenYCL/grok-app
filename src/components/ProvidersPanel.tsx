@@ -540,36 +540,73 @@ export function ProvidersPanel({
     setBusy(true);
     setHint(tr("prov.saving"));
     setHintTone("muted");
+    const isCreate = rightMode === "create" || !editingId;
     const id =
       editingId ??
       (slugifyProviderId(form.id || form.name || form.baseUrl) ||
         `provider-${Date.now().toString(36)}`);
-    // Keep active request model if still in catalog; else first entry.
+    // Create flow: always use the form catalog (first model). Never reuse a
+    // ghost list entry's active model after delete+re-add with the same id.
     const existing = list?.providers.find((p) => p.id === id);
     const preferred =
-      existing?.model && models.some((m) => m.id === existing.model)
+      !isCreate &&
+      existing?.model &&
+      models.some((m) => m.id === existing.model)
         ? existing.model
         : models[0].id;
+    const payload = {
+      id,
+      model: preferred,
+      baseUrl: form.baseUrl.trim(),
+      name: form.name.trim() || id,
+      apiKey: form.apiKey.trim() || undefined,
+      apiBackend: form.apiBackend,
+      setAsDefault: false as boolean,
+      models,
+      efforts,
+    };
     try {
       // Wall-clock budget so a hung host IPC cannot leave the UI on “Saving…”.
       // Disk write may still complete after a timeout (user can re-open panel).
       // Do not auto-set default — user activates via Use / composer pick.
-      const r = await withProviderSaveTimeout(
-        api.providersUpsert({
-          id,
-          model: preferred,
-          baseUrl: form.baseUrl.trim(),
-          name: form.name.trim() || id,
-          apiKey: form.apiKey.trim() || undefined,
-          apiBackend: form.apiBackend,
-          setAsDefault: false,
-          createOnly: !editingId,
-          models,
-          efforts,
-        }),
-        PROVIDER_SAVE_TIMEOUT_MS,
-        tr("prov.err.saveTimeout"),
-      );
+      //
+      // Create: try createOnly first so we never silently merge a ghost section.
+      // If the same id still exists (failed/missed delete, or re-add preset),
+      // overwrite with the form payload so the new preset wins.
+      let r: api.ProvidersListResult;
+      let replacedExisting = false;
+      try {
+        r = await withProviderSaveTimeout(
+          api.providersUpsert({
+            ...payload,
+            createOnly: isCreate,
+          }),
+          PROVIDER_SAVE_TIMEOUT_MS,
+          tr("prov.err.saveTimeout"),
+        );
+      } catch (e) {
+        const msg = String(e);
+        const alreadyExists =
+          isCreate && /already exists/i.test(msg);
+        if (!alreadyExists) throw e;
+        if (!form.apiKey.trim()) {
+          setHint(tr("prov.err.recreateNeedKey"));
+          setHintTone("err");
+          setBusy(false);
+          return;
+        }
+        r = await withProviderSaveTimeout(
+          api.providersUpsert({
+            ...payload,
+            createOnly: false,
+            // Force-write key so we do not keep a deleted provider's secret.
+            apiKey: form.apiKey.trim(),
+          }),
+          PROVIDER_SAVE_TIMEOUT_MS,
+          tr("prov.err.saveTimeout"),
+        );
+        replacedExisting = true;
+      }
       setList(r);
       const saved = r.providers.find((p) => p.id === id);
       if (saved) {
@@ -597,6 +634,9 @@ export function ProvidersPanel({
           setHint(tr("prov.savedApplyFailed", { detail: String(e) }));
           setHintTone("err");
         }
+      } else if (replacedExisting) {
+        setHint(tr("prov.savedReplaced"));
+        setHintTone("ok");
       } else {
         setHint(tr("prov.saved"));
         setHintTone("ok");

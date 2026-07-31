@@ -2590,6 +2590,10 @@ const en = {
   "prov.add": "Add",
   "prov.saving": "Saving…",
   "prov.saved": "Provider saved.",
+  "prov.savedReplaced":
+    "Same id already existed — replaced with this form (previous entry was still on disk).",
+  "prov.err.recreateNeedKey":
+    "This id still exists on disk. Enter an API key to replace it, or delete the leftover provider first.",
   "prov.savedHotReload":
     "Provider saved. Agents reloaded — next message uses the new config (no app restart).",
   "prov.savedApplyFailed":
@@ -7607,6 +7611,10 @@ const zh: Record<MessageKey, string> = {
   "prov.add": "添加",
   "prov.saving": "保存中…",
   "prov.saved": "提供商已保存。",
+  "prov.savedReplaced":
+    "同 id 仍残留在配置中，已用当前表单覆盖（旧条目可能未删干净）。",
+  "prov.err.recreateNeedKey":
+    "该 id 在磁盘上仍存在。请填写 API Key 以覆盖，或先删除残留的提供商。",
   "prov.savedHotReload":
     "提供商已保存，Agent 已重载 — 下一条消息使用新配置（无需重启应用）。",
   "prov.savedApplyFailed":

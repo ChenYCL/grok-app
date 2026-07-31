@@ -913,15 +913,24 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     let mut text = read_text(&path);
     let sections = parse_model_sections(&text);
     let existing = sections.iter().find(|s| s.id == id);
-    if input.create_only.unwrap_or(false) && existing.is_some() {
+    let create_only = input.create_only.unwrap_or(false);
+    if create_only && existing.is_some() {
         return Err(format!("provider id `{id}` already exists"));
     }
     let prev_key = existing
         .and_then(|s| s.fields.get("api_key"))
         .cloned()
         .unwrap_or_default();
+    // On create, never inherit a ghost key from a stale section (should not
+    // exist when create_only, but keep the path explicit for overwrite upserts).
     let next_key = match input.api_key.as_deref() {
-        None | Some("") => prev_key,
+        None | Some("") => {
+            if create_only {
+                String::new()
+            } else {
+                prev_key
+            }
+        }
         Some(k) => k.trim().to_string(),
     };
     if next_key.is_empty() {
@@ -992,8 +1001,18 @@ pub fn remove_custom_provider(id: &str) -> Result<ProvidersListResult, String> {
     let id = sanitize_id(id)?;
     let path = agent_config_toml();
     let mut text = read_text(&path);
+    let sections = parse_model_sections(&text);
+    if !sections.iter().any(|s| s.id == id) {
+        // Fail loudly so the UI cannot think a delete succeeded when the
+        // section was already gone or the id did not match (re-add ghosts).
+        return Err(format!("provider `{id}` not found"));
+    }
     let def = get_models_default(&text);
     text = remove_section(&text, &id);
+    // Verify the section is actually gone before reporting success.
+    if parse_model_sections(&text).iter().any(|s| s.id == id) {
+        return Err(format!("failed to remove provider `{id}` from config"));
+    }
     let fell_back_official = def.as_deref() == Some(id.as_str());
     if fell_back_official {
         text = set_models_default(&text, OFFICIAL_DEFAULT_MODEL);
