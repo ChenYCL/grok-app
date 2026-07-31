@@ -19,8 +19,10 @@ import {
   PERMISSION_POLICIES,
   SESSION_MODES,
   effortDisplayLabel,
+  effortUiOptionsForCatalog,
   effortsForModel,
   findModel,
+  spawnIdToEffortUiSlot,
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
@@ -230,19 +232,24 @@ export interface ComposerModelMenuProps {
   onEffort: (id: string) => void;
 }
 
-function resolveEffortLabel(
-  effortId: string,
-  effortList: ReturnType<typeof effortsForModel>,
-  labels: ComposerModelMenuProps["labels"],
-): string {
-  const entry = effortList.find((e) => e.id === effortId);
-  return effortDisplayLabel(entry ?? effortId, {
+function effortI18n(labels: ComposerModelMenuProps["labels"]) {
+  return {
     high: labels.effortHigh,
     medium: labels.effortMedium,
     low: labels.effortLow,
     xhigh: labels.effortXhigh,
-    max: labels.effortMax,
-  });
+    max: labels.effortMax ?? labels.effortXhigh,
+  };
+}
+
+/** Label for a spawn effort id via the canonical UI ladder (低/中/高/极高). */
+function resolveEffortLabel(
+  spawnId: string,
+  catalogEfforts: ReturnType<typeof effortsForModel> | null | undefined,
+  labels: ComposerModelMenuProps["labels"],
+): string {
+  const slot = spawnIdToEffortUiSlot(spawnId, catalogEfforts);
+  return effortDisplayLabel(slot ?? spawnId, effortI18n(labels));
 }
 
 export function ComposerModelMenu({
@@ -271,10 +278,12 @@ export function ComposerModelMenu({
   });
   const filteredGroups = filterComposerModelGroups(groups, modelQuery);
   const activeModel = findModel(modelId, modelList);
-  const effortList =
+  const effortCatalog =
     activeSource === "custom" && channelEfforts && channelEfforts.length > 0
       ? effortsForModel(null, channelEfforts)
       : effortsForModel(activeModel);
+  /** Ordered UI ladder (3 or 4 slots); spawnId is the real model value. */
+  const effortUiList = effortUiOptionsForCatalog(effortCatalog);
 
   const clearModelQuery = () => setModelQuery("");
 
@@ -364,7 +373,7 @@ export function ComposerModelMenu({
     officialLabel,
     activeCustom,
   });
-  const eLabel = resolveEffortLabel(effort, effortList, labels);
+  const eLabel = resolveEffortLabel(effort, effortCatalog, labels);
   // Compact trigger: model + short effort (locale), no middle-dot noise.
   const triggerText = `${modelLabel} ${eLabel}`;
   const title = `${labels.model}: ${modelLabel} · ${labels.effort}: ${eLabel}`;
@@ -497,28 +506,33 @@ export function ComposerModelMenu({
               </>
             ))}
           {nested === "effort" &&
-            effortList.map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                className={"cmm__opt" + (e.id === effort ? " is-active" : "")}
-                onClick={() => {
-                  onEffort(e.id);
-                  setNested(null);
-                }}
-              >
-                <span className="cmm__opt-main">
-                  <span className="cmm__opt-title">
-                    {resolveEffortLabel(e.id, effortList, labels)}
+            effortUiList.map((e) => {
+              const active =
+                e.spawnId === effort ||
+                spawnIdToEffortUiSlot(effort, effortCatalog) === e.uiId;
+              return (
+                <button
+                  key={e.uiId}
+                  type="button"
+                  className={"cmm__opt" + (active ? " is-active" : "")}
+                  onClick={() => {
+                    onEffort(e.spawnId);
+                    setNested(null);
+                  }}
+                >
+                  <span className="cmm__opt-main">
+                    <span className="cmm__opt-title">
+                      {effortDisplayLabel(e.uiId, effortI18n(labels))}
+                    </span>
                   </span>
-                </span>
-                {e.id === effort && (
-                  <span className="cmm__opt-check" aria-hidden>
-                    <IconCheck size={16} />
-                  </span>
-                )}
-              </button>
-            ))}
+                  {active ? (
+                    <span className="cmm__opt-check" aria-hidden>
+                      <IconCheck size={16} />
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
         </div>
       )}
     </MenuShell>

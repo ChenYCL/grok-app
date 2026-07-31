@@ -3,10 +3,12 @@ import {
   DEFAULT_EFFORT,
   GROK_BUILD_EFFORTS,
   effortDisplayLabel,
+  effortUiOptionsForCatalog,
   effortsForModel,
   isValidEffort,
   mapEffortToTargetCatalog,
   pickDefaultEffort,
+  spawnIdToEffortUiSlot,
   type EffortOption,
   type ModelOption,
 } from "./grokCatalog";
@@ -104,7 +106,7 @@ describe("pickDefaultEffort", () => {
   });
 });
 
-describe("mapEffortToTargetCatalog", () => {
+describe("effort UI ladder", () => {
   const deepseek: EffortOption[] = [
     { id: "low" },
     { id: "high" },
@@ -112,7 +114,39 @@ describe("mapEffortToTargetCatalog", () => {
     { id: "max" },
   ];
 
-  it("maps DeepSeek 4-tier onto Grok 3-tier (semantic high≠high)", () => {
+  it("orders Grok as 低/中/高 without 极高", () => {
+    expect(effortUiOptionsForCatalog(GROK_BUILD_EFFORTS).map((o) => o.uiId)).toEqual(
+      ["low", "medium", "high"],
+    );
+    expect(
+      effortUiOptionsForCatalog(GROK_BUILD_EFFORTS).map((o) => o.spawnId),
+    ).toEqual(["low", "medium", "high"]);
+  });
+
+  it("orders DeepSeek as 低/中/高/极高 with real spawn ids", () => {
+    const opts = effortUiOptionsForCatalog(deepseek);
+    expect(opts.map((o) => o.uiId)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+    expect(opts.map((o) => o.spawnId)).toEqual([
+      "low",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+  });
+
+  it("maps spawn ids onto UI slots", () => {
+    expect(spawnIdToEffortUiSlot("high", deepseek)).toBe("medium");
+    expect(spawnIdToEffortUiSlot("xhigh", deepseek)).toBe("high");
+    expect(spawnIdToEffortUiSlot("max", deepseek)).toBe("xhigh");
+    expect(spawnIdToEffortUiSlot("medium", GROK_BUILD_EFFORTS)).toBe("medium");
+  });
+
+  it("maps DeepSeek 4-tier onto Grok 3-tier via ladder", () => {
     expect(
       mapEffortToTargetCatalog("low", GROK_BUILD_EFFORTS, deepseek),
     ).toBe("low");
@@ -122,12 +156,13 @@ describe("mapEffortToTargetCatalog", () => {
     expect(
       mapEffortToTargetCatalog("xhigh", GROK_BUILD_EFFORTS, deepseek),
     ).toBe("high");
+    // 极高 clamps to 高 on 3-tier
     expect(
       mapEffortToTargetCatalog("max", GROK_BUILD_EFFORTS, deepseek),
     ).toBe("high");
   });
 
-  it("maps Grok 3-tier onto DeepSeek 4-tier", () => {
+  it("maps Grok 3-tier onto DeepSeek 4-tier via ladder", () => {
     expect(mapEffortToTargetCatalog("low", deepseek, GROK_BUILD_EFFORTS)).toBe(
       "low",
     );
@@ -136,21 +171,7 @@ describe("mapEffortToTargetCatalog", () => {
     ).toBe("high");
     expect(
       mapEffortToTargetCatalog("high", deepseek, GROK_BUILD_EFFORTS),
-    ).toBe("max");
-  });
-
-  it("keeps the id when same-kind catalog already contains it", () => {
-    expect(
-      mapEffortToTargetCatalog("medium", GROK_BUILD_EFFORTS, GROK_BUILD_EFFORTS),
-    ).toBe("medium");
-    expect(mapEffortToTargetCatalog("xhigh", deepseek, deepseek)).toBe(
-      "xhigh",
-    );
-  });
-
-  it("still maps xhigh/max onto Grok without source catalog", () => {
-    expect(mapEffortToTargetCatalog("xhigh", GROK_BUILD_EFFORTS)).toBe("high");
-    expect(mapEffortToTargetCatalog("max", GROK_BUILD_EFFORTS)).toBe("high");
+    ).toBe("xhigh");
   });
 });
 
@@ -193,15 +214,15 @@ describe("effortDisplayLabel", () => {
     expect(
       effortDisplayLabel(
         { id: "xhigh", label: "xhigh" },
-        { xhigh: "极高", max: "最高" },
+        { xhigh: "极高", max: "极高" },
       ),
     ).toBe("极高");
     expect(
       effortDisplayLabel(
         { id: "max", label: "Max" },
-        { xhigh: "极高", max: "最高" },
+        { xhigh: "极高" },
       ),
-    ).toBe("最高");
+    ).toBe("极高");
   });
 
   it("strips shared Effort suffix on non-standard catalog labels", () => {

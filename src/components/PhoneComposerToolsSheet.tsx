@@ -24,7 +24,9 @@ import {
   PERMISSION_POLICIES,
   SESSION_MODES,
   effortDisplayLabel,
+  effortUiOptionsForCatalog,
   effortsForModel,
+  spawnIdToEffortUiSlot,
   type EffortOption,
   type ModelOption,
   type PermissionPolicyId,
@@ -127,17 +129,17 @@ export type PhoneComposerToolsSheetProps = {
 };
 
 function effortLabel(
-  id: string,
+  spawnId: string,
   labels: PhoneComposerToolsSheetProps["labels"],
-  effortList?: EffortOption[],
+  catalog?: EffortOption[] | null,
 ): string {
-  const entry = effortList?.find((e) => e.id === id);
-  return effortDisplayLabel(entry ?? id, {
+  const slot = spawnIdToEffortUiSlot(spawnId, catalog);
+  return effortDisplayLabel(slot ?? spawnId, {
     high: labels.effortHigh,
     medium: labels.effortMedium,
     low: labels.effortLow,
     xhigh: labels.effortXhigh,
-    max: labels.effortMax,
+    max: labels.effortMax ?? labels.effortXhigh,
   });
 }
 
@@ -258,10 +260,11 @@ export function PhoneComposerToolsSheet({
     activeSource === "custom"
       ? providers.find((x) => x.id === activeProviderId)?.model ?? null
       : null;
-  const effortList =
+  const effortCatalog =
     activeSource === "custom" && channelEfforts && channelEfforts.length > 0
       ? effortsForModel(null, channelEfforts)
       : GROK_BUILD_EFFORTS;
+  const effortUiList = effortUiOptionsForCatalog(effortCatalog);
   const officialLabel =
     modelList.find((m) => m.id === modelId)?.label ?? modelId;
   const modelLabel = composerModelChipLabel({
@@ -389,7 +392,7 @@ export function PhoneComposerToolsSheet({
               <SheetRow
                 icon={<IconBolt size={20} />}
                 label={labels.model}
-                value={`${modelLabel} ${effortLabel(effort, labels, effortList)}`}
+                value={`${modelLabel} ${effortLabel(effort, labels, effortCatalog)}`}
                 chevron
                 onClick={() => setPanel("model")}
               />
@@ -495,7 +498,7 @@ export function PhoneComposerToolsSheet({
               <SheetRow
                 icon={<IconActivity size={20} />}
                 label={labels.effort}
-                value={effortLabel(effort, labels, effortList)}
+                value={effortLabel(effort, labels, effortCatalog)}
                 chevron
                 onClick={() => setPanel("effort")}
               />
@@ -503,28 +506,39 @@ export function PhoneComposerToolsSheet({
           )}
 
           {panel === "effort" &&
-            effortList.map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                className={
-                  "phone-sheet__row" + (e.id === effort ? " is-active" : "")
-                }
-                onClick={() => {
-                  onEffort(e.id);
-                  setPanel("model");
-                }}
-              >
-                <span className="phone-sheet__row-label">
-                  {effortLabel(e.id, labels, effortList)}
-                </span>
-                {e.id === effort ? (
-                  <span className="phone-sheet__row-value" aria-hidden>
-                    <IconCheck size={18} />
+            effortUiList.map((e) => {
+              const active =
+                e.spawnId === effort ||
+                spawnIdToEffortUiSlot(effort, effortCatalog) === e.uiId;
+              return (
+                <button
+                  key={e.uiId}
+                  type="button"
+                  className={
+                    "phone-sheet__row" + (active ? " is-active" : "")
+                  }
+                  onClick={() => {
+                    onEffort(e.spawnId);
+                    setPanel("model");
+                  }}
+                >
+                  <span className="phone-sheet__row-label">
+                    {effortDisplayLabel(e.uiId, {
+                      high: labels.effortHigh,
+                      medium: labels.effortMedium,
+                      low: labels.effortLow,
+                      xhigh: labels.effortXhigh,
+                      max: labels.effortMax ?? labels.effortXhigh,
+                    })}
                   </span>
-                ) : null}
-              </button>
-            ))}
+                  {active ? (
+                    <span className="phone-sheet__row-value" aria-hidden>
+                      <IconCheck size={18} />
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
 
           {panel === "access" && (
             <>

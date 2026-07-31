@@ -921,7 +921,7 @@ export const zhTW: Record<MessageKey, string> = {
   "effort.medium": "中",
   "effort.low": "低",
   "effort.xhigh": "極高",
-  "effort.max": "最高",
+  "effort.max": "極高",
   "mode.agent": "Agent",
   "mode.plan": "Plan",
   "mode.ask": "Ask",

@@ -25,20 +25,25 @@ Flags **必须在** `stdio` 之前。连接后 `session/set_model` 再对齐一�
 
 CLI `models_cache.json` 每模型可带 `info.reasoning_efforts: [{id,value,label,description,default}]`。Host 经 `AvailableModel.reasoningEfforts`（`isDefault`）下发。
 
-Composer 列表解析顺序：
+Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极高**。  
+3 档模型（Grok）不展示「极高」；选中后映射为该模型真实 spawn / `reasoning_effort` 值。
 
-1. **自定义通道 active** → 该提供商的 `efforts`（`app_efforts`，用户可配）
-2. 否则官方 catalog 模型的 `reasoningEfforts`
-3. 再回退静态 `GROK_BUILD_EFFORTS`（`low` | `medium` | `high`）
+| UI 阶梯 | Grok spawn | DeepSeek spawn |
+|---------|------------|----------------|
+| 低 | `low` | `low` |
+| 中 | `medium` | `high` |
+| 高 | `high` | `xhigh` |
+| 极高 | —（不展示） | `max` |
 
-| 通道 | 默认档位 |
-|------|----------|
-| 官方 / Grok 类 | `low` · `medium` · `high`（默认 medium） |
-| DeepSeek 预设 | `low` · `high` · `xhigh` · `max`（默认 high；对齐 [DeepSeek 思考模式](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode) 映射表） |
+解析顺序（真实可选值）：
 
-展示标签：标准 id（`high`/`medium`/`low`/`xhigh`/`max`）优先 i18n；其他用配置的 `name` 或 raw id。
+1. **自定义通道 active** → 该提供商的 `efforts`（`app_efforts`）
+2. 否则官方 catalog 的 `reasoningEfforts`
+3. 再回退 `GROK_BUILD_EFFORTS`（`low` · `medium` · `high`，默认 medium）
 
-Spawn：`--reasoning-effort <id>`（原样传递）。切换官方 ↔ 自定义时，若当前 effort 不在新列表中，落到该列表默认/首项。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
+展示标签走 UI 阶梯 i18n（`effort.low|medium|high|xhigh`），不直接用上游 id 文案。
+
+Spawn：`--reasoning-effort <spawnId>`。切换通道时按阶梯对齐（极高在 3 档上钳到「高」）。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
 
 ### 连接加速（Host）
 

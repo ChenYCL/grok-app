@@ -26,10 +26,10 @@ describe("providerPresets", () => {
     expect(PROVIDER_PRESETS.some((p) => p.id === "deepseek")).toBe(true);
   });
 
-  it("defaults blank custom channels to Grok low/medium/high", () => {
+  it("defaults blank custom channels to Grok low/medium/high (ladder order)", () => {
     expect(defaultCustomChannelEfforts().map((e) => e.id)).toEqual([
-      "medium",
       "low",
+      "medium",
       "high",
     ]);
   });

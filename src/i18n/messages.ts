@@ -976,7 +976,8 @@ const en = {
   "effort.medium": "Medium",
   "effort.low": "Low",
   "effort.xhigh": "Extra high",
-  "effort.max": "Max",
+  /** Alias for top ladder slot when spawn id is `max` (DeepSeek). */
+  "effort.max": "Extra high",
   "mode.agent": "Agent",
   "mode.plan": "Plan",
   "mode.ask": "Ask",
@@ -6051,7 +6052,8 @@ const zh: Record<MessageKey, string> = {
   "effort.medium": "中",
   "effort.low": "低",
   "effort.xhigh": "极高",
-  "effort.max": "最高",
+  /** 与四档阶梯「极高」对齐（DeepSeek spawn id `max`）。 */
+  "effort.max": "极高",
   "mode.agent": "Agent",
   "mode.plan": "Plan",
   "mode.ask": "Ask",
