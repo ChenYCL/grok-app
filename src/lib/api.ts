@@ -546,6 +546,8 @@ export type {
   GitPrHubViewResult,
   GitPrCheckEntry,
   GitPrChecksResult,
+  GitPrCommentEntry,
+  GitPrCommentsResult,
   PrChecksSummary,
   PrChecksOverall,
 } from "./gitPrHub";
@@ -573,6 +575,17 @@ export async function gitPrView(projectPath: string, number: number) {
 /** List CI checks for a PR via `gh pr checks <n> --json`. Soft-fails when gh/git missing. */
 export async function gitPrChecks(projectPath: string, number: number) {
   return invoke<import("./gitPrHub").GitPrChecksResult>("git_pr_checks", {
+    projectPath,
+    number,
+  });
+}
+
+/**
+ * Recent conversation comments + reviews for a PR via
+ * `gh pr view <n> --json comments,reviews,url,number`. Soft-fails when gh/git missing.
+ */
+export async function gitPrComments(projectPath: string, number: number) {
+  return invoke<import("./gitPrHub").GitPrCommentsResult>("git_pr_comments", {
     projectPath,
     number,
   });

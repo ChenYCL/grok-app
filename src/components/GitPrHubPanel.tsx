@@ -1,6 +1,6 @@
 /**
  * Settings → Runtime → Tools: project-level GitHub PR hub
- * (`gh pr list` / optional `gh pr checks`). Soft-fails when gh/git missing.
+ * (`gh pr list` / `gh pr checks` / `gh pr view` comments). Soft-fails when gh/git missing.
  */
 
 import {
@@ -17,6 +17,7 @@ import {
   formatChecksSummaryLine,
   normalizeMergeable,
   type GitPrCheckEntry,
+  type GitPrCommentEntry,
   type GitPrHubEntry,
   type PrChecksSummary,
 } from "@/lib/gitPrHub";
@@ -113,6 +114,19 @@ function EmptyState({
   );
 }
 
+function reviewStateLabel(
+  state: string | null | undefined,
+  tr: (key: MessageKey, vars?: Record<string, string | number>) => string,
+): string | null {
+  const s = (state ?? "").trim().toUpperCase();
+  if (!s) return null;
+  if (s === "APPROVED") return tr("prHub.review.approved");
+  if (s === "CHANGES_REQUESTED") return tr("prHub.review.changesRequested");
+  if (s === "COMMENTED") return tr("prHub.review.commented");
+  if (s === "DISMISSED") return tr("prHub.review.dismissed");
+  return state ?? null;
+}
+
 function ChecksDetail({
   checks,
   loading,
@@ -126,52 +140,150 @@ function ChecksDetail({
 }) {
   if (loading) {
     return (
-      <div className="pr-hub__checks-detail pr-hub__muted">
+      <div className="pr-hub__section-body pr-hub__muted">
         {tr("prHub.checks.loading")}
       </div>
     );
   }
   if (error) {
     return (
-      <div className="pr-hub__checks-detail pr-hub__error" role="alert">
+      <div className="pr-hub__section-body pr-hub__error" role="alert">
         {error}
       </div>
     );
   }
   if (!checks || checks.length === 0) {
     return (
-      <div className="pr-hub__checks-detail pr-hub__muted">
+      <div className="pr-hub__section-body pr-hub__muted">
         {tr("prHub.checks.none")}
       </div>
     );
   }
   return (
-    <ul className="pr-hub__checks-list">
-      {checks.map((c) => (
-        <li key={`${c.name}:${c.workflow ?? ""}`} className="pr-hub__check-row">
-          <span
-            className={`pr-hub__check-dot pr-hub__check-dot--${c.bucket || "muted"}`}
-            aria-hidden
-          />
-          <span className="pr-hub__check-name">{c.name}</span>
-          {c.workflow ? (
-            <span className="pr-hub__check-workflow">{c.workflow}</span>
-          ) : null}
-          <span className="pr-hub__check-state">{c.state || c.bucket}</span>
-          {c.link ? (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm pr-hub__check-link"
-              onClick={() => void openUrl(c.link!)}
-              title={c.link}
-              aria-label={tr("prHub.openCheck")}
-            >
-              <IconExternalLink size={12} />
-            </button>
-          ) : null}
-        </li>
-      ))}
-    </ul>
+    <div className="pr-hub__section-body">
+      <table className="pr-hub__checks-table">
+        <thead>
+          <tr>
+            <th scope="col">{tr("prHub.checks.colName")}</th>
+            <th scope="col">{tr("prHub.checks.colState")}</th>
+            <th scope="col" className="pr-hub__checks-col-link">
+              <span className="sr-only">{tr("prHub.openCheck")}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {checks.map((c) => (
+            <tr key={`${c.name}:${c.workflow ?? ""}:${c.state}`}>
+              <td className="pr-hub__check-name-cell">
+                <span
+                  className={`pr-hub__check-dot pr-hub__check-dot--${c.bucket || "muted"}`}
+                  aria-hidden
+                />
+                <span className="pr-hub__check-name" title={c.name}>
+                  {c.name}
+                </span>
+                {c.workflow ? (
+                  <span className="pr-hub__check-workflow">{c.workflow}</span>
+                ) : null}
+              </td>
+              <td className="pr-hub__check-state">{c.state || c.bucket}</td>
+              <td className="pr-hub__checks-col-link">
+                {c.link ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm pr-hub__check-link"
+                    onClick={() => void openUrl(c.link!)}
+                    title={c.link}
+                    aria-label={tr("prHub.openCheck")}
+                  >
+                    <IconExternalLink size={12} />
+                  </button>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CommentsDetail({
+  comments,
+  loading,
+  error,
+  conversationUrl,
+  tr,
+}: {
+  comments: GitPrCommentEntry[] | null;
+  loading: boolean;
+  error: string | null;
+  conversationUrl?: string | null;
+  tr: (key: MessageKey, vars?: Record<string, string | number>) => string;
+}) {
+  if (loading) {
+    return (
+      <div className="pr-hub__section-body pr-hub__muted">
+        {tr("prHub.comments.loading")}
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="pr-hub__section-body pr-hub__error" role="alert">
+        {error}
+      </div>
+    );
+  }
+  if (!comments || comments.length === 0) {
+    return (
+      <div className="pr-hub__section-body pr-hub__muted">
+        {tr("prHub.comments.none")}
+      </div>
+    );
+  }
+  return (
+    <div className="pr-hub__section-body">
+      <ul className="pr-hub__comments-list">
+        {comments.map((c) => {
+          const stateLabel =
+            c.kind === "review" ? reviewStateLabel(c.state, tr) : null;
+          const openTarget = c.url || conversationUrl || null;
+          return (
+            <li key={c.id} className="pr-hub__comment-row">
+              <div className="pr-hub__comment-head">
+                <span className="pr-hub__comment-author">
+                  {c.author || tr("prHub.comments.unknownAuthor")}
+                </span>
+                {c.kind === "review" ? (
+                  <span className="pr-hub__badge pr-hub__badge--muted">
+                    {stateLabel || tr("prHub.comments.review")}
+                  </span>
+                ) : (
+                  <span className="pr-hub__badge pr-hub__badge--muted">
+                    {tr("prHub.comments.comment")}
+                  </span>
+                )}
+                {openTarget ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm pr-hub__comment-link"
+                    onClick={() => void openUrl(openTarget)}
+                    title={openTarget}
+                    aria-label={tr("prHub.comments.open")}
+                  >
+                    <IconExternalLink size={12} />
+                  </button>
+                ) : null}
+              </div>
+              <p className="pr-hub__comment-excerpt" title={c.body || undefined}>
+                {c.excerpt || tr("prHub.comments.emptyBody")}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -209,6 +321,18 @@ export function GitPrHubPanel({
   const [checksError, setChecksError] = useState<Record<number, string | null>>(
     {},
   );
+  const [commentsByPr, setCommentsByPr] = useState<
+    Record<number, GitPrCommentEntry[] | null>
+  >({});
+  const [commentsLoading, setCommentsLoading] = useState<
+    Record<number, boolean>
+  >({});
+  const [commentsError, setCommentsError] = useState<
+    Record<number, string | null>
+  >({});
+  const [conversationUrlByPr, setConversationUrlByPr] = useState<
+    Record<number, string | null>
+  >({});
 
   const refresh = useCallback(async () => {
     if (!cwd) {
@@ -257,6 +381,10 @@ export function GitPrHubPanel({
     setChecksByPr({});
     setChecksLoading({});
     setChecksError({});
+    setCommentsByPr({});
+    setCommentsLoading({});
+    setCommentsError({});
+    setConversationUrlByPr({});
   }, [cwd]);
 
   const loadChecks = useCallback(
@@ -290,11 +418,48 @@ export function GitPrHubPanel({
     [cwd, tr],
   );
 
+  const loadComments = useCallback(
+    async (n: number) => {
+      if (!cwd || !api.isTauri()) return;
+      setCommentsLoading((prev) => ({ ...prev, [n]: true }));
+      setCommentsError((prev) => ({ ...prev, [n]: null }));
+      try {
+        const res = await api.gitPrComments(cwd, n);
+        if (!res.available) {
+          setCommentsByPr((prev) => ({ ...prev, [n]: [] }));
+          setCommentsError((prev) => ({
+            ...prev,
+            [n]: res.reason?.trim() || tr("prHub.comments.failed"),
+          }));
+          setConversationUrlByPr((prev) => ({ ...prev, [n]: null }));
+          return;
+        }
+        setCommentsByPr((prev) => ({
+          ...prev,
+          [n]: Array.isArray(res.comments) ? res.comments : [],
+        }));
+        setConversationUrlByPr((prev) => ({
+          ...prev,
+          [n]: res.url?.trim() || null,
+        }));
+      } catch (e) {
+        setCommentsError((prev) => ({
+          ...prev,
+          [n]: e instanceof Error ? e.message : String(e),
+        }));
+      } finally {
+        setCommentsLoading((prev) => ({ ...prev, [n]: false }));
+      }
+    },
+    [cwd, tr],
+  );
+
   const toggleExpand = (n: number) => {
     setExpanded((prev) => {
       const next = !prev[n];
-      if (next && checksByPr[n] === undefined) {
-        void loadChecks(n);
+      if (next) {
+        if (checksByPr[n] === undefined) void loadChecks(n);
+        if (commentsByPr[n] === undefined) void loadComments(n);
       }
       return { ...prev, [n]: next };
     });
@@ -358,6 +523,8 @@ export function GitPrHubPanel({
       <ul className="pr-hub__list" data-testid="pr-hub-list">
         {prs.map((pr) => {
           const open = Boolean(expanded[pr.number]);
+          const conversationUrl =
+            conversationUrlByPr[pr.number] || pr.url || null;
           return (
             <li key={pr.number} className="pr-hub__row">
               <div className="pr-hub__row-main">
@@ -367,7 +534,7 @@ export function GitPrHubPanel({
                   onClick={() => toggleExpand(pr.number)}
                   aria-expanded={open}
                   title={
-                    open ? tr("prHub.collapseChecks") : tr("prHub.expandChecks")
+                    open ? tr("prHub.collapseDetails") : tr("prHub.expandDetails")
                   }
                 >
                   {open ? (
@@ -421,12 +588,47 @@ export function GitPrHubPanel({
                 </div>
               </div>
               {open ? (
-                <ChecksDetail
-                  checks={checksByPr[pr.number] ?? null}
-                  loading={Boolean(checksLoading[pr.number])}
-                  error={checksError[pr.number] ?? null}
-                  tr={tr}
-                />
+                <div className="pr-hub__detail">
+                  <section className="pr-hub__section">
+                    <div className="pr-hub__section-head">
+                      <h4 className="pr-hub__section-title">
+                        {tr("prHub.checks.title")}
+                      </h4>
+                    </div>
+                    <ChecksDetail
+                      checks={checksByPr[pr.number] ?? null}
+                      loading={Boolean(checksLoading[pr.number])}
+                      error={checksError[pr.number] ?? null}
+                      tr={tr}
+                    />
+                  </section>
+                  <section className="pr-hub__section">
+                    <div className="pr-hub__section-head">
+                      <h4 className="pr-hub__section-title">
+                        {tr("prHub.comments.title")}
+                      </h4>
+                      {conversationUrl ? (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => void openUrl(conversationUrl)}
+                          title={tr("prHub.openConversation")}
+                          aria-label={tr("prHub.openConversation")}
+                        >
+                          <IconExternalLink size={12} />
+                          <span>{tr("prHub.openConversation")}</span>
+                        </button>
+                      ) : null}
+                    </div>
+                    <CommentsDetail
+                      comments={commentsByPr[pr.number] ?? null}
+                      loading={Boolean(commentsLoading[pr.number])}
+                      error={commentsError[pr.number] ?? null}
+                      conversationUrl={conversationUrl}
+                      tr={tr}
+                    />
+                  </section>
+                </div>
               ) : null}
             </li>
           );
