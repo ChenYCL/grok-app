@@ -45,7 +45,7 @@
 5. UI 监听 `automation://ran` / `automation://error` 做 toast；**不再**用 WebView `setInterval` 双触发。
 6. 手动「立即执行」仍走前端 `runAutomation`。
 
-### 托盘与「退出后」诚实模型（AUTO-RUNNER）
+### 托盘与「退出后」诚实模型（AUTO-RUNNER + AUTO-HEADLESS-LITE）
 
 | 能力 | 行为 | 不是 |
 |------|------|------|
@@ -55,8 +55,16 @@
 | **macOS LaunchAgent helper**（可选） | 用户开启后：在 app data 生成脚本+plist，安装用户级 LaunchAgent；登录启动完整 App；**仅崩溃**后 KeepAlive 重启（`SuccessfulExit=false`） | headless daemon；正常 Quit 不强制拉起 |
 | Launch at login | 系统登录项重启 App | 同上 |
 
+**AUTO-HEADLESS-LITE（诚实 UI，无假 daemon）**
+
+| 表面 | 内容 |
+|------|------|
+| 诚实矩阵 | 托盘/窗口 · 完全退出 · LaunchAgent 三行产品真相（`automationsHonestyMatrix`） |
+| 调度状态行 | Host 是否 running、`lastTickAt`、暂停/风险原因（`deriveAutomationsRunnerSurface`：`process_bound` / `close_exits` / `awaiting_tick` / …） |
+| LaunchAgent 失败 | 安装/卸载/Reveal **soft-fail**：`GlassModal` + 明细；开关保持上次成功状态；文案重申非守护进程 |
+
 命令：`automation_runner_status` · `schedules_launch_agent_status` / `_set_enabled` / `_reveal_helper`。  
-实现：`automation_runner.rs` · `schedules_launch_agent.rs` · `AutomationsPage` 背景面板。
+实现：`automation_runner.rs` · `schedules_launch_agent.rs` · `AutomationsPage` 背景面板 · `src/lib/automationsHeadlessHonesty.ts`。
 
 与 Build 的 `/loop`、`scheduler_*` 可并存：用户也可在会话里让 Agent 直接调度；壳层清单是独立 SoT。
 
@@ -88,5 +96,6 @@
 - [x] **Keep tray for schedules** 设置 + 关窗策略（有启用任务时 hide→tray）
 - [x] `automation_runner_status` + 已安排页背景面板（诚实文案；无假 daemon 宣称）
 - [x] 可选 macOS LaunchAgent **助手**（app data 生成；登录/崩溃拉起完整 App；非 headless）
+- [x] **AUTO-HEADLESS-LITE**：诚实矩阵（托盘 vs 退出 vs LaunchAgent）+ runner 状态面（last tick / paused reason）+ LaunchAgent 安装失败 GlassModal soft-fail；纯 helpers + 单测
 - [ ] 与 CLI scheduler 双向同步（可选 P2）
 - [ ] 无 UI 进程的真正 headless runner（可选 P2；当前明确不做假宣称）
