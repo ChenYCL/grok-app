@@ -1900,6 +1900,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.messageTimestampsDesc":
     "在訊息操作區顯示傳送時間。關閉後對話更簡潔。",
   "settings.showUsageEstimates": "顯示用量估算",
+  "settings.goalOrchUi": "目標編排面板",
+  "settings.goalOrchUiDesc":
+    "在可靠性中心顯示「目標編排」區塊（僅當 CLI 發出 goal_updated 時有內容）。僅控制顯示 — 不啟停 CLI 目標系統。無事件時保持空態。",
   "settings.showUsageEstimatesDesc":
     "在上下文晶片選單中，當模型在粗略費率表內時顯示可選美元費用估算。始終標註為估算，非帳單。預設開啟。",
   "settings.exportLogo": "分享卡片 Logo",
@@ -2484,6 +2487,22 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.openFromSettings": "開啟可靠性中心",
   "reliability.settingsDesc":
     "彙總忙碌工作階段、停滯訊號與最近錯誤卡片；可匯出支援包。",
+  "reliability.goal.title": "目標編排",
+  "reliability.goal.count": "{count}",
+  "reliability.goal.lead":
+    "僅在 CLI 發出 goal_updated（classifier / planner / strategist / verifier）時展示階段，絕不虛構進度。",
+  "reliability.goal.empty":
+    "本工作階段尚無目標事件。CLI 目標系統可用時在對話中使用 /goal — 在真實事件到達前此處保持為空。",
+  "reliability.goal.progress": "交付 {progress}",
+  "reliability.goal.id": "id {id}",
+  "reliability.goal.phase.planner": "規劃",
+  "reliability.goal.phase.strategist": "策略",
+  "reliability.goal.phase.classifier": "分類器",
+  "reliability.goal.phase.verifier": "驗證",
+  "reliability.goal.phase.summarizer": "摘要",
+  "reliability.goal.phase.worker": "執行",
+  "reliability.goal.phase.status": "狀態",
+  "reliability.goal.phase.unknown": "目標",
 
   "costRollup.title": "費用彙總",
   "costRollup.settingsDesc":

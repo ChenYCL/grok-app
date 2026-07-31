@@ -266,6 +266,15 @@ import {
   type ReliabilityErrorEntry,
   type ReliabilityStallSignal,
 } from "@/lib/reliabilityCenter";
+import {
+  GOAL_ORCH_EVENT_MAX,
+  goalEventFromHostPayload,
+  loadGoalOrchUiEnabled,
+  prependGoalOrchEvent,
+  saveGoalOrchUiEnabled,
+  type GoalOrchEvent,
+  type GoalOrchHostPayload,
+} from "@/lib/goalOrch";
 import * as api from "@/lib/api";
 import {
   SANDBOX_PROFILES,
@@ -1124,6 +1133,12 @@ export default function App() {
   const [showUsageEstimates, setShowUsageEstimates] = useState(() =>
     loadShowUsageEstimatesPref(localStorage),
   );
+  /** Display-only: Reliability “Goal orchestration” section (default on). */
+  const [goalOrchUiEnabled, setGoalOrchUiEnabled] = useState(() =>
+    loadGoalOrchUiEnabled(localStorage),
+  );
+  /** In-memory ring of CLI goal_updated / goal phase events (never invented). */
+  const [goalOrchEvents, setGoalOrchEvents] = useState<GoalOrchEvent[]>([]);
   const [messageTimeFormat, setMessageTimeFormat] = useState<MessageTimeFormat>(
     () => loadMessageTimeFormatPref(localStorage),
   );
@@ -4223,6 +4238,17 @@ export default function App() {
             if (cancelled || !p) return;
             // Structured ACP hook_execution / hook_annotation from Host.
             ingestHostHookPayload(p);
+          }),
+        );
+        await track(
+          api.listen<GoalOrchHostPayload>("session://goal", (p) => {
+            if (cancelled || !p) return;
+            // CLI 0.2.117+ goal_updated — soft-fail when CLI never emits.
+            const ev = goalEventFromHostPayload(p);
+            if (!ev) return;
+            setGoalOrchEvents((prev) =>
+              prependGoalOrchEvent(prev, ev, GOAL_ORCH_EVENT_MAX),
+            );
           }),
         );
         await track(
@@ -14743,6 +14769,11 @@ export default function App() {
             saveShowUsageEstimatesPref(v, localStorage);
             setShowUsageEstimates(v);
           }}
+          goalOrchUiEnabled={goalOrchUiEnabled}
+          onGoalOrchUiEnabled={(v) => {
+            saveGoalOrchUiEnabled(v, localStorage);
+            setGoalOrchUiEnabled(v);
+          }}
           messageTimeFormat={messageTimeFormat}
           onMessageTimeFormat={(v) => {
             saveMessageTimeFormatPref(v, localStorage);
@@ -18628,6 +18659,8 @@ export default function App() {
         onClose={() => setShowReliability(false)}
         locale={locale}
         view={reliabilityView}
+        goalOrchUiEnabled={goalOrchUiEnabled}
+        goalOrchEvents={goalOrchEvents}
         onOpenDoctor={() => void openDoctor()}
         onSelectSession={(id) => {
           setShowReliability(false);
