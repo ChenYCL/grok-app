@@ -4022,7 +4022,26 @@ const en = {
   "voice.ready": "Voice ready",
   "voice.micDenied": "Microphone permission denied",
   "voice.error": "Voice error: {message}",
-  "voice.toolRan": "Tool finished: {name}",
+  "voice.toolRunning": "Build tool running: {name}\u2026",
+  "voice.toolRan": "Build tool finished: {name}",
+  "voice.toolSoftFail":
+    "Build tool soft-failed ({name}): {reason}. Voice stays open — fix CLI/mic and retry.",
+  "voice.toolFailed": "Build tool failed: {name}",
+  "voice.err.mic_denied":
+    "Microphone permission denied. Live Voice can still play audio and run Build tools without capture.",
+  "voice.err.mic_missing":
+    "No microphone found. Live Voice can still play audio and run Build tools without capture.",
+  "voice.err.cli_missing":
+    "Grok Build CLI not found. Install Grok Build or set the path under Settings \u2192 Runtime.",
+  "voice.err.auth":
+    "Voice auth failed. Sign in with Grok CLI (`grok login`) or add an official API key under Account.",
+  "voice.err.network":
+    "Could not reach the voice service. Check network and try again.",
+  "voice.err.timeout": "Voice request timed out. Try again.",
+  "voice.err.tool_failed": "A Build tool call failed. See the tool status line.",
+  "voice.err.not_available":
+    "Live Voice is not available with the current auth or provider setup.",
+  "voice.err.unknown": "Live Voice failed for an unknown reason.",
   "voice.connecting": "Connecting\u2026",
   "voice.speaking": "Speaking\u2026",
   "voice.thinking": "Thinking\u2026",
@@ -8245,7 +8264,24 @@ const zh: Record<MessageKey, string> = {
   "voice.ready": "语音已就绪",
   "voice.micDenied": "麦克风权限被拒绝",
   "voice.error": "语音错误：{message}",
-  "voice.toolRan": "工具已完成：{name}",
+  "voice.toolRunning": "Build 工具运行中：{name}…",
+  "voice.toolRan": "Build 工具已完成：{name}",
+  "voice.toolSoftFail":
+    "Build 工具软失败（{name}）：{reason}。语音会话保持开启 — 请修复 CLI/麦克风后重试。",
+  "voice.toolFailed": "Build 工具失败：{name}",
+  "voice.err.mic_denied":
+    "麦克风权限被拒绝。实时语音仍可播放音频并运行 Build 工具（无采集）。",
+  "voice.err.mic_missing":
+    "未检测到麦克风。实时语音仍可播放音频并运行 Build 工具（无采集）。",
+  "voice.err.cli_missing":
+    "未找到 Grok Build CLI。请安装 Grok Build，或在 设置 → 运行时 中配置路径。",
+  "voice.err.auth":
+    "语音鉴权失败。请用 Grok CLI 登录（`grok login`），或在账户中添加官方 API key。",
+  "voice.err.network": "无法连接语音服务，请检查网络后重试。",
+  "voice.err.timeout": "语音请求超时，请重试。",
+  "voice.err.tool_failed": "Build 工具调用失败，请查看工具状态行。",
+  "voice.err.not_available": "当前鉴权或供应商配置下不可用实时语音。",
+  "voice.err.unknown": "实时语音因未知原因失败。",
   "voice.connecting": "连接中…",
   "voice.speaking": "正在说话…",
   "voice.thinking": "思考中…",

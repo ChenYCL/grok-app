@@ -43,6 +43,7 @@ See `docs/llm-wiki/release.md`.
 
 #### Composer & chat
 - **Worktree Ship / Open PR**: from the branch menu, WT/CLI session menu, or Changes → Workspace — GlassModal for PR title/body/draft; host `git_push_branch` (`git push -u origin HEAD`, soft-fail) then optional `gh_pr_create` (fork-aware `--repo` / `--head owner:branch`); never `window.confirm`; never fake success when `gh` fails; pure `wtShipFlow` helpers + tests
+- **Live Voice → Build tool loop** (VOX-BUILD-LOOP): host emits tool **running → ok / soft_fail / error** on `voice://tool` with `activeTool` on state; overlay shows Build tool chip + system lines; **mic missing/denied soft-fails** (warn, keep session for playback/tools); **CLI missing soft-fails** tool results (`ok: false, reason: cli_missing`) so voice stays open; classified errors (`voice.err.*`) en/zh/zh-TW; pure helpers + tests
 - **Live Voice delegate status** (VOX-DELEG): overlay shows listening / thinking / speaking from host `voice://` events, **Stop**, honest empty transcript (no fake STT), delegated session chips, and optional **Send transcript to active session** when a chat is open
 - **Send queue** edit / reorder · **composer min height** · **cross-session recent prompts**
 - **Chat width** · **chat / code font** · **tool auto-collapse** · **transcript filter** (hide tool steps)

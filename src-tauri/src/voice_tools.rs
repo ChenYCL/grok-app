@@ -207,6 +207,96 @@ pub fn parse_list_sessions_args(raw: &str) -> Result<ListSessionsArgs, String> {
     Ok(ListSessionsArgs { limit })
 }
 
+/// Stable error class tokens for voice → Build tool failures (UI / model).
+pub fn classify_tool_error(raw: &str) -> &'static str {
+    let s = raw.to_lowercase();
+    if s.contains("cli not found")
+        || s.contains("cli_missing")
+        || s.contains("grok build not found")
+        || s.contains("grok build cli not found")
+        || s.contains("install grok build")
+        || s.contains("install or set the cli path")
+        || s.contains("install or set cli path")
+    {
+        return "cli_missing";
+    }
+    if s.contains("permission")
+        || s.contains("denied")
+        || s.contains("notallowed")
+        || s.contains("mic_denied")
+    {
+        return "mic_denied";
+    }
+    if s.contains("no microphone")
+        || s.contains("mic_missing")
+        || s.contains("no device")
+        || s.contains("device not found")
+    {
+        return "mic_missing";
+    }
+    if s.contains("timeout") || s.contains("timed out") || s.contains("deadline") {
+        return "timeout";
+    }
+    if s.contains("network")
+        || s.contains("connection")
+        || s.contains("websocket")
+        || s.contains("econn")
+        || s.contains("dns")
+    {
+        return "network";
+    }
+    if s.contains("401")
+        || s.contains("403")
+        || s.contains("unauthor")
+        || s.contains("credential")
+        || s.contains("no xai")
+        || s.contains("bearer")
+        || s.contains("auth")
+    {
+        return "auth";
+    }
+    if s.contains("not available") || s.contains("not_available") {
+        return "not_available";
+    }
+    if s.contains("unknown tool") || s.contains("tool ") {
+        return "tool_failed";
+    }
+    "unknown"
+}
+
+/// Soft-fail classes: return structured tool result instead of killing the loop.
+pub fn is_soft_tool_error(class: &str) -> bool {
+    matches!(class, "cli_missing")
+}
+
+/// Honest soft-fail payload for the voice model (never invent success).
+pub fn soft_fail_result(reason: &str, message: &str) -> Value {
+    json!({
+        "ok": false,
+        "reason": reason,
+        "message": message,
+    })
+}
+
+/// Read soft-fail reason from a tool result object (`ok: false` only).
+pub fn soft_fail_reason(result: &Value) -> Option<String> {
+    if result.get("ok").and_then(|x| x.as_bool()) == Some(false) {
+        let reason = result
+            .get("reason")
+            .and_then(|x| x.as_str())
+            .unwrap_or("unknown")
+            .trim()
+            .to_string();
+        Some(if reason.is_empty() {
+            "unknown".into()
+        } else {
+            reason
+        })
+    } else {
+        None
+    }
+}
+
 /// Mock tool executor for tests / GROK_APP_VOICE=mock without a live agent.
 pub fn mock_execute_tool(name: &str, args_json: &str) -> Result<Value, String> {
     let tool = VoiceToolName::parse(name).ok_or_else(|| format!("unknown tool: {name}"))?;
@@ -286,5 +376,31 @@ mod tests {
         let s = live_voice_instructions(Some("/tmp/app"), Some("app"));
         assert!(s.contains("app"));
         assert!(s.contains("create_agent_session"));
+    }
+
+    #[test]
+    fn classifies_cli_missing_as_soft() {
+        assert_eq!(
+            classify_tool_error("Grok Build CLI not found. Install Grok Build or set path in Settings."),
+            "cli_missing"
+        );
+        assert!(is_soft_tool_error("cli_missing"));
+        assert!(!is_soft_tool_error("auth"));
+        let out = soft_fail_result("cli_missing", "missing");
+        assert_eq!(out["ok"], false);
+        assert_eq!(soft_fail_reason(&out).as_deref(), Some("cli_missing"));
+        assert_eq!(soft_fail_reason(&json!({ "session_id": "x" })), None);
+    }
+
+    #[test]
+    fn classifies_auth_and_network() {
+        assert_eq!(
+            classify_tool_error("No xAI credentials found"),
+            "auth"
+        );
+        assert_eq!(
+            classify_tool_error("voice websocket connect failed"),
+            "network"
+        );
     }
 }

@@ -3883,7 +3883,24 @@ export const zhTW: Record<MessageKey, string> = {
   "voice.ready": "語音已就緒",
   "voice.micDenied": "麥克風權限被拒絕",
   "voice.error": "語音錯誤：{message}",
-  "voice.toolRan": "工具已完成：{name}",
+  "voice.toolRunning": "Build 工具執行中：{name}…",
+  "voice.toolRan": "Build 工具已完成：{name}",
+  "voice.toolSoftFail":
+    "Build 工具軟失敗（{name}）：{reason}。語音工作階段保持開啟 — 請修復 CLI/麥克風後重試。",
+  "voice.toolFailed": "Build 工具失敗：{name}",
+  "voice.err.mic_denied":
+    "麥克風權限被拒絕。即時語音仍可播放音訊並執行 Build 工具（無擷取）。",
+  "voice.err.mic_missing":
+    "未偵測到麥克風。即時語音仍可播放音訊並執行 Build 工具（無擷取）。",
+  "voice.err.cli_missing":
+    "未找到 Grok Build CLI。請安裝 Grok Build，或在 設定 → 執行階段 中設定路徑。",
+  "voice.err.auth":
+    "語音驗證失敗。請用 Grok CLI 登入（`grok login`），或在帳戶中新增官方 API key。",
+  "voice.err.network": "無法連線語音服務，請檢查網路後重試。",
+  "voice.err.timeout": "語音請求逾時，請重試。",
+  "voice.err.tool_failed": "Build 工具呼叫失敗，請查看工具狀態列。",
+  "voice.err.not_available": "目前驗證或供應商設定下無法使用即時語音。",
+  "voice.err.unknown": "即時語音因未知原因失敗。",
   "voice.connecting": "連線中…",
   "voice.speaking": "正在說話…",
   "voice.thinking": "思考中…",
