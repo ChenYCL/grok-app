@@ -9,7 +9,7 @@ Install and manage Grok Build plugins from Settings → Extensions without dropp
 | List installed | Extensions → Plugins | `grok plugin list --json` + inspect enrich |
 | Enable / disable | Same | CLI + `~/.grok/config.toml` |
 | Details / uninstall / update | Same | CLI; GlassModal confirms uninstall |
-| **Validate** | Installed row **Validate**, or advanced install **Validate** on a local path | `grok plugin validate [path]`; multi-line messages in-row (not only toast); soft-fail if CLI too old |
+| **Validate** | Installed row **Validate**, or advanced install **Validate** on a local path | `grok plugin validate [path]`; classified outcomes (kind chip + hint) in **GlassModal** + in-row summary; soft-fail if CLI too old / missing (warn, no hard banner) |
 | Browse catalog | Extensions → Marketplace | `plugin list --json --available` (cached) |
 | Install from catalog | Marketplace row → confirm | `plugin install --trust` then `plugin enable` + soft-respawn |
 | Manual install | Plugins → “Install from path or git…” | Same install path (path / git / `owner/repo`); optional pre-install validate for local folders |

@@ -110,6 +110,7 @@ See `docs/llm-wiki/release.md`.
 - **Install failure recovery**: last install error stays on that plugin row with **Retry**; cleared on success
 - Installed **Details** shows structured marketplace/provides summary when available (plus CLI `plugin details` body)
 - **Plugin validate** (`grok plugin validate`): **Validate** on installed plugin rows and on a local path before advanced install; multi-line CLI messages stay in an in-panel result (not only toast); soft-fail when the CLI is too old
+- **Plugin validate pro**: classify outcomes (CLI too old / missing, path-only, parse/missing-field, not found, …) with severity chips + actionable hints in a **GlassModal** result (no `window.confirm`); soft-fail capability gaps stay warn (no hard action banner); pure `pluginValidate` helpers + tests; en/zh/zh-TW
 - **Delete CLI sessions from disk** (Settings → Agent / CLI sessions): per-row delete + delete all unlinked; path-scoped under active `GROK_HOME/sessions`; linked App chats stay
 - **Hooks Try / override**: validate sample stdin JSON (object only, ~32 KB cap), record synthetic dry-run activity (does **not** execute shell hooks); activity outcome filter chips (all/ok/fail/skip) + clear activity (in-app confirm)
 - **MCP status modal depth**: search filter, status chips (all / ok / warn / error / unknown) from inspect `compatibilityStatus`/`transport`, count summary, refresh while open, copy name/target — host list only (no fake servers)
@@ -166,6 +167,7 @@ See `docs/llm-wiki/release.md`.
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**新建技能脚手架**（名称/描述/用户或项目作用域 → 默认 SKILL.md + 打开编辑器）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Agents** 页列出定义文件并支持 **新建 Agent** 脚手架（用户/项目作用域、`Name.md` 模板、覆盖确认、打开/显示）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**插件校验**（`plugin validate`：已安装行 + 本地路径安装前；行内结果面板；旧 CLI 软失败）
+- **扩展/市场**：**插件校验 pro**（分类结果 + GlassModal 提示；CLI 过旧/缺失 soft-fail；纯 helpers + 测试；en/zh/zh-TW）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**项目检查深度**（分区芯片、钩子/技能名清单、展开列表、分节复制 JSON/路径）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP doctor** 诊断结果列表（`mcp_doctor` + 扁平 findings；斜杠 MCP 弹窗可运行/筛选；与 inspect 刷新共存）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑**（仅 hooks 目录内脚本、可选 JSON stdin、超时、脱敏输出；目录外拒绝；仅 exit 0 成功）

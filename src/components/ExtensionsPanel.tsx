@@ -40,10 +40,18 @@ import {
   type PluginFilter,
 } from "@/lib/extensionsUi";
 import {
+  buildPluginValidateExceptionPresentation,
+  buildPluginValidatePreflightError,
+  buildPluginValidatePresentation,
   formatPluginValidateMessages,
-  isLocalPluginPath,
-  isPluginValidateCliTooOld,
+  normalizePluginValidateResult,
+  pluginValidateBadgeTone,
+  pluginValidateHint,
+  pluginValidateKindLabel,
+  pluginValidateRowTone,
   pluginValidateTarget,
+  type PluginValidateKind,
+  type PluginValidatePresentation,
   type PluginValidateResult,
 } from "@/lib/pluginValidate";
 import {
@@ -118,6 +126,56 @@ export function ExtensionsPanel({
   onSkillsPrefsChanged,
 }: ExtensionsPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
+
+  const pluginValidateKindLabels = useMemo(
+    (): Partial<Record<PluginValidateKind, string>> => ({
+      ok: tr("ext.plugins.validate.kind.ok"),
+      cli_too_old: tr("ext.plugins.validate.kind.cliTooOld"),
+      cli_missing: tr("ext.plugins.validate.kind.cliMissing"),
+      empty_source: tr("ext.plugins.validate.kind.emptySource"),
+      path_only: tr("ext.plugins.validate.kind.pathOnly"),
+      not_found: tr("ext.plugins.validate.kind.notFound"),
+      not_a_directory: tr("ext.plugins.validate.kind.notADirectory"),
+      no_manifest: tr("ext.plugins.validate.kind.noManifest"),
+      parse_error: tr("ext.plugins.validate.kind.parseError"),
+      missing_field: tr("ext.plugins.validate.kind.missingField"),
+      invalid_manifest: tr("ext.plugins.validate.kind.invalidManifest"),
+      host_only: tr("ext.plugins.validate.kind.hostOnly"),
+      host_error: tr("ext.plugins.validate.kind.hostError"),
+      other: tr("ext.plugins.validate.kind.other"),
+    }),
+    [tr],
+  );
+
+  const pluginValidateKindHints = useMemo(
+    (): Partial<Record<PluginValidateKind, string>> => ({
+      ok: tr("ext.plugins.validate.hint.ok"),
+      cli_too_old: tr("ext.plugins.validate.hint.cliTooOld"),
+      cli_missing: tr("ext.plugins.validate.hint.cliMissing"),
+      empty_source: tr("ext.plugins.validate.hint.emptySource"),
+      path_only: tr("ext.plugins.validate.hint.pathOnly"),
+      not_found: tr("ext.plugins.validate.hint.notFound"),
+      not_a_directory: tr("ext.plugins.validate.hint.notADirectory"),
+      no_manifest: tr("ext.plugins.validate.hint.noManifest"),
+      parse_error: tr("ext.plugins.validate.hint.parseError"),
+      missing_field: tr("ext.plugins.validate.hint.missingField"),
+      invalid_manifest: tr("ext.plugins.validate.hint.invalidManifest"),
+      host_only: tr("ext.plugins.validate.hint.hostOnly"),
+      host_error: tr("ext.plugins.validate.hint.hostError"),
+      other: tr("ext.plugins.validate.hint.other"),
+    }),
+    [tr],
+  );
+
+  const openPluginValidatePresentation = useCallback(
+    (
+      presentation: PluginValidatePresentation,
+      pluginName: string | null,
+    ) => {
+      setValidateModal({ open: true, presentation, pluginName });
+    },
+    [],
+  );
   const [skills, setSkills] = useState<api.SkillDto[]>([]);
   const [skillRoots, setSkillRoots] = useState<string[]>([]);
   const [servers, setServers] = useState<api.McpDto[]>([]);
@@ -152,9 +210,22 @@ export function ExtensionsPanel({
   const [validateByKey, setValidateByKey] = useState<
     Record<string, PluginValidateResult>
   >({});
+  /** Per-row classified presentation for kind chips / soft-fail tone. */
+  const [validatePresByKey, setValidatePresByKey] = useState<
+    Record<string, PluginValidatePresentation>
+  >({});
   /** Pre-install validate for advanced path/git install field. */
   const [installValidate, setInstallValidate] =
     useState<PluginValidateResult | null>(null);
+  const [installValidatePres, setInstallValidatePres] =
+    useState<PluginValidatePresentation | null>(null);
+  /** GlassModal result for last validate (row or advanced install). */
+  const [validateModal, setValidateModal] = useState<{
+    open: boolean;
+    presentation: PluginValidatePresentation | null;
+    /** Installed plugin display name, or null for pre-install path. */
+    pluginName: string | null;
+  }>({ open: false, presentation: null, pluginName: null });
   /** In-app SKILL.md light editor (Settings → Extensions → Skills). */
   const [skillEditor, setSkillEditor] = useState<SkillEditorState | null>(null);
   const [skillDiscardOpen, setSkillDiscardOpen] = useState(false);
@@ -637,45 +708,104 @@ export function ExtensionsPanel({
 
   const applyValidateResult = (
     res: api.PluginValidateResult,
-  ): PluginValidateResult => ({
-    ok: !!res.ok,
-    messages: Array.isArray(res.messages)
-      ? res.messages.filter((m): m is string => typeof m === "string")
-      : [],
-    path: res.path ?? null,
-    reason: res.reason ?? null,
-  });
+  ): PluginValidateResult => normalizePluginValidateResult(res);
 
-  /** Validate an installed plugin (path preferred) — result stays on the row. */
+  const presentValidateResult = (
+    res: PluginValidateResult,
+  ): PluginValidatePresentation =>
+    buildPluginValidatePresentation(res, {
+      kinds: pluginValidateKindLabels,
+      okTitle: tr("ext.plugins.validateOk"),
+      failTitle: tr("ext.plugins.validateFailed"),
+    });
+
+  /** Validate an installed plugin (path preferred) — row + GlassModal soft-fail. */
   const validatePlugin = (p: api.PluginDto) => {
-    if (!api.isTauri() || actionBusy || cliMissing) return;
+    if (actionBusy) return;
     const key = pluginRowKey(p);
     const target = pluginValidateTarget(p);
+
+    if (!api.isTauri()) {
+      const presentation = buildPluginValidateExceptionPresentation(
+        tr("ext.needTauri"),
+        { kinds: pluginValidateKindLabels },
+      );
+      // Force host_only if message didn't classify (needTauri string varies).
+      const forced: PluginValidatePresentation = {
+        ...presentation,
+        kind: "host_only",
+        severity: "warn",
+        softFail: true,
+        title: pluginValidateKindLabel("host_only", pluginValidateKindLabels),
+      };
+      setValidateByKey((prev) => ({
+        ...prev,
+        [key]: {
+          ok: false,
+          messages: forced.messages,
+          reason: "host_only",
+        },
+      }));
+      setValidatePresByKey((prev) => ({ ...prev, [key]: forced }));
+      openPluginValidatePresentation(forced, p.name);
+      return;
+    }
+
+    if (cliMissing) {
+      const presentation = presentValidateResult({
+        ok: false,
+        reason: "cli_missing",
+        messages: [tr("ext.plugins.validate.kind.cliMissing")],
+      });
+      setValidateByKey((prev) => ({
+        ...prev,
+        [key]: {
+          ok: false,
+          reason: "cli_missing",
+          messages: presentation.messages,
+        },
+      }));
+      setValidatePresByKey((prev) => ({ ...prev, [key]: presentation }));
+      openPluginValidatePresentation(presentation, p.name);
+      return;
+    }
+
     setActionBusy(`validate:${key}`);
     setActionError(null);
     setActionErrorSource(null);
     void (async () => {
       try {
         const res = applyValidateResult(await api.pluginValidate(target));
+        const presentation = presentValidateResult(res);
         setValidateByKey((prev) => ({ ...prev, [key]: res }));
-        // Soft-fail (CLI too old) also surfaces in the top action panel for visibility.
-        if (!res.ok && isPluginValidateCliTooOld(res)) {
+        setValidatePresByKey((prev) => ({ ...prev, [key]: presentation }));
+        openPluginValidatePresentation(presentation, p.name);
+        // Soft-fail (cli too old / missing): modal + row only — not hard action error.
+        if (!res.ok && !presentation.softFail) {
           setActionError(
             formatPluginValidateMessages(
               res.messages,
-              tr("ext.plugins.validateCliTooOld"),
+              tr("ext.plugins.validateFailed"),
             ),
           );
           setActionErrorSource("plugin");
         }
       } catch (e) {
-        const msg = String(e);
-        setValidateByKey((prev) => ({
-          ...prev,
-          [key]: { ok: false, messages: [msg] },
-        }));
-        setActionError(msg);
-        setActionErrorSource("plugin");
+        const presentation = buildPluginValidateExceptionPresentation(e, {
+          kinds: pluginValidateKindLabels,
+        });
+        const envelope: PluginValidateResult = {
+          ok: false,
+          messages: presentation.messages,
+          reason: presentation.reason,
+        };
+        setValidateByKey((prev) => ({ ...prev, [key]: envelope }));
+        setValidatePresByKey((prev) => ({ ...prev, [key]: presentation }));
+        openPluginValidatePresentation(presentation, p.name);
+        if (!presentation.softFail) {
+          setActionError(presentation.summary || String(e));
+          setActionErrorSource("plugin");
+        }
       } finally {
         setActionBusy(null);
       }
@@ -684,20 +814,39 @@ export function ExtensionsPanel({
 
   /** Pre-install validate for a local path in the advanced install field. */
   const validateInstallSource = () => {
-    if (!api.isTauri() || actionBusy || cliMissing) return;
+    if (actionBusy) return;
     const source = normalizePluginInstallSource(installSource);
-    if (!source) {
-      setInstallValidate({
+    const preflight = buildPluginValidatePreflightError(source, {
+      isTauri: api.isTauri(),
+      emptyMessage: tr("ext.plugins.installEmpty"),
+      pathOnlyMessage: tr("ext.plugins.validatePathOnly"),
+      hostOnlyMessage: tr("ext.needTauri"),
+      labels: { kinds: pluginValidateKindLabels },
+    });
+    if (preflight) {
+      const envelope: PluginValidateResult = {
         ok: false,
-        messages: [tr("ext.plugins.installEmpty")],
-      });
+        messages: preflight.messages,
+        reason: preflight.reason,
+      };
+      setInstallValidate(envelope);
+      setInstallValidatePres(preflight);
+      openPluginValidatePresentation(preflight, null);
       return;
     }
-    if (!isLocalPluginPath(source)) {
+    if (cliMissing) {
+      const presentation = presentValidateResult({
+        ok: false,
+        reason: "cli_missing",
+        messages: [tr("ext.plugins.validate.kind.cliMissing")],
+      });
       setInstallValidate({
         ok: false,
-        messages: [tr("ext.plugins.validatePathOnly")],
+        reason: "cli_missing",
+        messages: presentation.messages,
       });
+      setInstallValidatePres(presentation);
+      openPluginValidatePresentation(presentation, null);
       return;
     }
     setActionBusy("validate:install");
@@ -706,21 +855,34 @@ export function ExtensionsPanel({
     void (async () => {
       try {
         const res = applyValidateResult(await api.pluginValidate(source));
+        const presentation = presentValidateResult(res);
         setInstallValidate(res);
-        if (!res.ok && isPluginValidateCliTooOld(res)) {
+        setInstallValidatePres(presentation);
+        openPluginValidatePresentation(presentation, null);
+        if (!res.ok && !presentation.softFail) {
           setActionError(
             formatPluginValidateMessages(
               res.messages,
-              tr("ext.plugins.validateCliTooOld"),
+              tr("ext.plugins.validateFailed"),
             ),
           );
           setActionErrorSource("plugin");
         }
       } catch (e) {
-        const msg = String(e);
-        setInstallValidate({ ok: false, messages: [msg] });
-        setActionError(msg);
-        setActionErrorSource("plugin");
+        const presentation = buildPluginValidateExceptionPresentation(e, {
+          kinds: pluginValidateKindLabels,
+        });
+        setInstallValidate({
+          ok: false,
+          messages: presentation.messages,
+          reason: presentation.reason,
+        });
+        setInstallValidatePres(presentation);
+        openPluginValidatePresentation(presentation, null);
+        if (!presentation.softFail) {
+          setActionError(presentation.summary || String(e));
+          setActionErrorSource("plugin");
+        }
       } finally {
         setActionBusy(null);
       }
@@ -1113,6 +1275,18 @@ export function ExtensionsPanel({
               const meta = pluginMetaLine(p);
               const provides = pluginProvidesLine(p);
               const vResult = validateByKey[key] ?? null;
+              const vPres =
+                validatePresByKey[key] ??
+                (vResult
+                  ? presentValidateResult(vResult)
+                  : null);
+              const vTone = vPres
+                ? pluginValidateRowTone(vPres.severity)
+                : vResult
+                  ? vResult.ok
+                    ? "ok"
+                    : "err"
+                  : null;
               return (
                 <li
                   key={key}
@@ -1184,7 +1358,7 @@ export function ExtensionsPanel({
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"
-                      disabled={busy || !!actionBusy || cliMissing}
+                      disabled={busy || !!actionBusy}
                       onClick={() => validatePlugin(p)}
                     >
                       {validating
@@ -1209,41 +1383,71 @@ export function ExtensionsPanel({
                       <span>{tr("ext.plugins.uninstall")}</span>
                     </button>
                   </div>
-                  {vResult ? (
+                  {vResult && vPres ? (
                     <div
                       className={
                         "ext-item__validate" +
-                        (vResult.ok
-                          ? " ext-item__validate--ok"
-                          : " ext-item__validate--err")
+                        (vTone ? ` ext-item__validate--${vTone}` : "")
                       }
-                      role={vResult.ok ? "status" : "alert"}
+                      role={vPres.ok || vPres.softFail ? "status" : "alert"}
                     >
-                      <div className="ext-item__validate-title">
-                        {vResult.ok
-                          ? tr("ext.plugins.validateOk")
-                          : isPluginValidateCliTooOld(vResult)
-                            ? tr("ext.plugins.validateCliTooOld")
-                            : tr("ext.plugins.validateFailed")}
+                      <div className="ext-item__validate-head">
+                        <span
+                          className={
+                            "ext-badge ext-badge--" +
+                            pluginValidateBadgeTone(vPres.severity)
+                          }
+                        >
+                          {pluginValidateKindLabel(
+                            vPres.kind,
+                            pluginValidateKindLabels,
+                          )}
+                        </span>
+                        <div className="ext-item__validate-title">
+                          {vPres.ok
+                            ? tr("ext.plugins.validateOk")
+                            : vPres.softFail
+                              ? pluginValidateKindLabel(
+                                  vPres.kind,
+                                  pluginValidateKindLabels,
+                                )
+                              : tr("ext.plugins.validateFailed")}
+                        </div>
                       </div>
                       {vResult.messages.length > 0 ? (
                         <pre className="ext-item__validate-body">
                           {formatPluginValidateMessages(vResult.messages)}
                         </pre>
                       ) : null}
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        onClick={() =>
-                          setValidateByKey((prev) => {
-                            const next = { ...prev };
-                            delete next[key];
-                            return next;
-                          })
-                        }
-                      >
-                        {tr("common.close")}
-                      </button>
+                      <div className="ext-item__validate-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() =>
+                            openPluginValidatePresentation(vPres, p.name)
+                          }
+                        >
+                          {tr("ext.plugins.validate.viewResult")}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => {
+                            setValidateByKey((prev) => {
+                              const next = { ...prev };
+                              delete next[key];
+                              return next;
+                            });
+                            setValidatePresByKey((prev) => {
+                              const next = { ...prev };
+                              delete next[key];
+                              return next;
+                            });
+                          }}
+                        >
+                          {tr("common.close")}
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                 </li>
@@ -1276,6 +1480,7 @@ export function ExtensionsPanel({
                   onChange={(e) => {
                     setInstallSource(e.target.value);
                     if (installValidate) setInstallValidate(null);
+                    if (installValidatePres) setInstallValidatePres(null);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -1287,11 +1492,7 @@ export function ExtensionsPanel({
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
-                  disabled={
-                    !!actionBusy ||
-                    cliMissing ||
-                    !normalizePluginInstallSource(installSource)
-                  }
+                  disabled={!!actionBusy}
                   title={tr("ext.plugins.validateHint")}
                   onClick={() => validateInstallSource()}
                 >
@@ -1318,35 +1519,73 @@ export function ExtensionsPanel({
                 {tr("ext.plugins.installHint")}
               </p>
               {installValidate ? (
-                <div
-                  className={
-                    "ext-item__validate" +
-                    (installValidate.ok
-                      ? " ext-item__validate--ok"
-                      : " ext-item__validate--err")
-                  }
-                  role={installValidate.ok ? "status" : "alert"}
-                >
-                  <div className="ext-item__validate-title">
-                    {installValidate.ok
-                      ? tr("ext.plugins.validateOk")
-                      : isPluginValidateCliTooOld(installValidate)
-                        ? tr("ext.plugins.validateCliTooOld")
-                        : tr("ext.plugins.validateFailed")}
-                  </div>
-                  {installValidate.messages.length > 0 ? (
-                    <pre className="ext-item__validate-body">
-                      {formatPluginValidateMessages(installValidate.messages)}
-                    </pre>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => setInstallValidate(null)}
-                  >
-                    {tr("common.close")}
-                  </button>
-                </div>
+                (() => {
+                  const iPres =
+                    installValidatePres ??
+                    presentValidateResult(installValidate);
+                  const iTone = pluginValidateRowTone(iPres.severity);
+                  return (
+                    <div
+                      className={
+                        "ext-item__validate" +
+                        ` ext-item__validate--${iTone}`
+                      }
+                      role={iPres.ok || iPres.softFail ? "status" : "alert"}
+                    >
+                      <div className="ext-item__validate-head">
+                        <span
+                          className={
+                            "ext-badge ext-badge--" +
+                            pluginValidateBadgeTone(iPres.severity)
+                          }
+                        >
+                          {pluginValidateKindLabel(
+                            iPres.kind,
+                            pluginValidateKindLabels,
+                          )}
+                        </span>
+                        <div className="ext-item__validate-title">
+                          {iPres.ok
+                            ? tr("ext.plugins.validateOk")
+                            : iPres.softFail
+                              ? pluginValidateKindLabel(
+                                  iPres.kind,
+                                  pluginValidateKindLabels,
+                                )
+                              : tr("ext.plugins.validateFailed")}
+                        </div>
+                      </div>
+                      {installValidate.messages.length > 0 ? (
+                        <pre className="ext-item__validate-body">
+                          {formatPluginValidateMessages(
+                            installValidate.messages,
+                          )}
+                        </pre>
+                      ) : null}
+                      <div className="ext-item__validate-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() =>
+                            openPluginValidatePresentation(iPres, null)
+                          }
+                        >
+                          {tr("ext.plugins.validate.viewResult")}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => {
+                            setInstallValidate(null);
+                            setInstallValidatePres(null);
+                          }}
+                        >
+                          {tr("common.close")}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
               ) : null}
             </div>
           </details>
@@ -1702,6 +1941,118 @@ export function ExtensionsPanel({
             name: uninstallTarget?.name ?? "",
           })}
         </p>
+      </GlassModal>
+
+      <GlassModal
+        open={validateModal.open && !!validateModal.presentation}
+        onClose={() =>
+          setValidateModal((prev) => ({ ...prev, open: false }))
+        }
+        title={
+          validateModal.pluginName
+            ? tr("ext.plugins.validate.resultTitleNamed", {
+                name: validateModal.pluginName,
+              })
+            : tr("ext.plugins.validate.resultTitle")
+        }
+        size="lg"
+        closeLabel={tr("common.close")}
+        wrapBody
+        bodyClassName="ext-plugin-result-modal"
+        footer={
+          <button
+            type="button"
+            className="btn btn--solid"
+            onClick={() =>
+              setValidateModal((prev) => ({ ...prev, open: false }))
+            }
+          >
+            {tr("common.close")}
+          </button>
+        }
+      >
+        {validateModal.presentation ? (
+          <div className="ext-plugin-result">
+            <div className="ext-plugin-result__meta">
+              <span
+                className={
+                  "ext-badge ext-badge--" +
+                  pluginValidateBadgeTone(validateModal.presentation.severity)
+                }
+              >
+                {pluginValidateKindLabel(
+                  validateModal.presentation.kind,
+                  pluginValidateKindLabels,
+                )}
+              </span>
+              {validateModal.presentation.softFail ? (
+                <span className="ext-badge ext-badge--muted">
+                  {tr("ext.plugins.validate.softFail")}
+                </span>
+              ) : null}
+              {validateModal.presentation.ok ? (
+                <span className="ext-badge ext-badge--ok">
+                  {tr("ext.plugins.validateOk")}
+                </span>
+              ) : null}
+            </div>
+            <p
+              className={
+                "ext-plugin-result__summary" +
+                (validateModal.presentation.severity === "ok"
+                  ? " ext-plugin-result__summary--ok"
+                  : validateModal.presentation.severity === "err"
+                    ? " ext-plugin-result__summary--err"
+                    : " ext-plugin-result__summary--warn")
+              }
+            >
+              {validateModal.presentation.summary}
+            </p>
+            {pluginValidateHint(
+              validateModal.presentation.kind,
+              pluginValidateKindHints,
+            ) ? (
+              <p className="ext-plugin-result__hint">
+                {pluginValidateHint(
+                  validateModal.presentation.kind,
+                  pluginValidateKindHints,
+                )}
+              </p>
+            ) : null}
+            {validateModal.presentation.detail &&
+            validateModal.presentation.detail !==
+              validateModal.presentation.summary ? (
+              <pre className="ext-plugin-result__detail">
+                {validateModal.presentation.detail}
+              </pre>
+            ) : validateModal.presentation.messages.length > 1 ? (
+              <pre className="ext-plugin-result__detail">
+                {formatPluginValidateMessages(
+                  validateModal.presentation.messages,
+                )}
+              </pre>
+            ) : null}
+            {validateModal.presentation.reason ? (
+              <p className="ext-plugin-result__reason">
+                <span className="ext-plugin-result__label">
+                  {tr("ext.plugins.validate.reason")}
+                </span>
+                <code>{validateModal.presentation.reason}</code>
+              </p>
+            ) : null}
+            {validateModal.presentation.path ? (
+              <p
+                className="ext-plugin-result__path"
+                title={validateModal.presentation.path}
+              >
+                <span className="ext-plugin-result__label">
+                  {tr("ext.plugins.validate.path")}
+                </span>
+                <code>{validateModal.presentation.path}</code>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </GlassModal>
 
       <GlassModal
