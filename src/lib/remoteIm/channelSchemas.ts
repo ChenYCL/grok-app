@@ -582,6 +582,8 @@ const WEIBO_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.weibo.appIdHelp",
+    placeholderKey: "settings.remoteIm.weibo.appIdPlaceholder",
   },
   {
     key: "app_secret",
@@ -590,19 +592,27 @@ const WEIBO_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.weibo.appSecretHelp",
   },
-  ACL_ALLOW_FROM,
+  {
+    ...ACL_ALLOW_FROM,
+    helpKey: "settings.remoteIm.weibo.allowFromHelp",
+  },
   {
     key: "token_endpoint",
     labelKey: "settings.remoteIm.field.tokenEndpoint",
     control: "text",
     section: "advanced",
+    helpKey: "settings.remoteIm.weibo.tokenEndpointHelp",
+    placeholderKey: "settings.remoteIm.weibo.tokenEndpointPlaceholder",
   },
   {
     key: "ws_endpoint",
     labelKey: "settings.remoteIm.field.wsEndpoint",
     control: "text",
     section: "advanced",
+    helpKey: "settings.remoteIm.weibo.wsEndpointHelp",
+    placeholderKey: "settings.remoteIm.weibo.wsEndpointPlaceholder",
   },
 ];
 

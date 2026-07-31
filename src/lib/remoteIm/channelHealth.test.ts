@@ -260,4 +260,77 @@ describe("classifyChannelHealth", () => {
     expect(r.ready).toBe(true);
     expect(r.missingKeys).not.toContain("corp_secret");
   });
+
+  it("weibo: websocket deep health with paste-first + endpoint hints", () => {
+    expect(channelHasDeepHealth("weibo")).toBe(true);
+    const bare = inst("weibo", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("websocket");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("weiboWs"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weiboNoPublicUrl"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weiboPasteFirst"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weiboMissingKeys"))).toBe(true);
+
+    const ready = inst("weibo", {
+      hasCredentials: true,
+      enabled: true,
+      options: {
+        app_id: "1234567890",
+        token_endpoint: "https://api.weibo.com/oauth2/access_token",
+        ws_endpoint: "wss://api.weibo.com/chat",
+      },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("websocket");
+    expect(h1.modeLabel).toContain("mode=ws");
+    expect(h1.modeLabel).toContain("token=custom");
+    expect(h1.modeLabel).toContain("ws=custom");
+    expect(h1.hintKeys.some((k) => k.includes("weiboWs"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("weiboTokenEndpoint"))).toBe(
+      true,
+    );
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid form app_id shape → not ready (never claims WS live)
+    const h2 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+      secretKeysFilled: new Set(["app_secret"]),
+      draftOptions: { app_id: "x" },
+      appIdValue: "x",
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.hintKeys.some((k) => k.includes("weiboAppIdFormat"))).toBe(true);
+
+    // Bridge not linked → never "connected" even with credentials
+    const h3 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: false,
+    });
+    expect(h3.credentialsReady).toBe(true);
+    expect(h3.tone).toBe("configured");
+    expect(h3.tone).not.toBe("connected");
+  });
 });

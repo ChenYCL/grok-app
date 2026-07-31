@@ -65,6 +65,14 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).not.toMatch(/window\.prompt/);
   });
 
+  it("ChannelPanel Weibo guide + paste-first bind without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-weibo-guide");
+    expect(src).toContain("validateWeiboConfig");
+    expect(src).toContain('channelId === "weibo"');
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
   it("Overview has local event timeline without window.confirm", () => {
     const src = readFileSync(join(ROOT, "RemoteImOverview.tsx"), "utf8");
     expect(src).toContain("loadRimEventTimeline");

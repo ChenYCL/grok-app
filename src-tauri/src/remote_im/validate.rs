@@ -50,6 +50,7 @@ pub async fn test_connection(
             })
         }
         "wecom" => test_wecom(&creds),
+        "weibo" => Ok(test_weibo(&creds)),
         "weixin" => {
             let ok = creds.contains_key("token")
                 || creds.contains_key("bot_token")
@@ -399,6 +400,115 @@ async fn test_slack(
     }
 }
 
+/// Soft App ID / App Key shape (numeric or alphanumeric). Empty = missing.
+fn is_weibo_app_id_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() || t.len() < 3 || t.len() > 128 {
+        return false;
+    }
+    if t.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    let mut chars = t.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+}
+
+/// Token HTTP endpoint: empty OK; otherwise absolute http(s) with host.
+fn is_weibo_token_endpoint_url(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let Ok(u) = url::Url::parse(t) else {
+        return false;
+    };
+    matches!(u.scheme(), "http" | "https") && u.host_str().is_some_and(|h| !h.is_empty())
+}
+
+/// WS endpoint: empty OK; ws(s) or http(s) with host.
+fn is_weibo_ws_endpoint_url(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let Ok(u) = url::Url::parse(t) else {
+        return false;
+    };
+    matches!(u.scheme(), "ws" | "wss" | "http" | "https")
+        && u.host_str().is_some_and(|h| !h.is_empty())
+}
+
+/// Weibo credential posture only — never claims WebSocket is live.
+/// Success means App ID + App Secret present with valid shapes; Bridge link required for WS.
+fn test_weibo(creds: &HashMap<String, String>) -> TestConnectionDto {
+    let app_id = cred_get(creds, &["app_id", "app_key", "appId"]);
+    let app_secret = cred_get(creds, &["app_secret", "appSecret", "secret"]);
+    let token_endpoint = cred_get(creds, &["token_endpoint"]);
+    let ws_endpoint = {
+        let a = cred_get(creds, &["ws_endpoint"]);
+        if a.is_empty() {
+            cred_get(creds, &["ws_url"])
+        } else {
+            a
+        }
+    };
+
+    if app_id.is_empty() && app_secret.is_empty() {
+        return TestConnectionDto {
+            ok: false,
+            message: "missing_weibo_credentials".into(),
+            mock: false,
+        };
+    }
+    if app_id.is_empty() {
+        return TestConnectionDto {
+            ok: false,
+            message: "missing_weibo_fields:app_id".into(),
+            mock: false,
+        };
+    }
+    if app_secret.is_empty() {
+        return TestConnectionDto {
+            ok: false,
+            message: "missing_weibo_fields:app_secret".into(),
+            mock: false,
+        };
+    }
+    if !is_weibo_app_id_format(app_id) {
+        return TestConnectionDto {
+            ok: false,
+            message: "invalid_weibo_app_id_format".into(),
+            mock: false,
+        };
+    }
+    if !is_weibo_token_endpoint_url(token_endpoint) {
+        return TestConnectionDto {
+            ok: false,
+            message: "invalid_weibo_token_endpoint".into(),
+            mock: false,
+        };
+    }
+    if !is_weibo_ws_endpoint_url(ws_endpoint) {
+        return TestConnectionDto {
+            ok: false,
+            message: "invalid_weibo_ws_endpoint".into(),
+            mock: false,
+        };
+    }
+    TestConnectionDto {
+        ok: true,
+        // Honest: presence only — WS requires Bridge + linked instance
+        message: "weibo_ws_credentials_present".into(),
+        mock: false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -468,5 +578,72 @@ mod tests {
         let r = test_wecom(&c).unwrap();
         assert!(r.ok);
         assert_eq!(r.message, "wecom_ws_credentials_present");
+    }
+
+    #[test]
+    fn weibo_app_id_format_accepts_numeric_and_alnum() {
+        assert!(is_weibo_app_id_format("1234567890"));
+        assert!(is_weibo_app_id_format("wb_app_key_01"));
+        assert!(!is_weibo_app_id_format(""));
+        assert!(!is_weibo_app_id_format("ab"));
+        assert!(!is_weibo_app_id_format("has space"));
+    }
+
+    #[test]
+    fn weibo_soft_fails_missing_and_bad_shape() {
+        let empty = HashMap::new();
+        let r = test_weibo(&empty);
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_weibo_credentials");
+        assert!(!r.mock);
+
+        let mut only_id = HashMap::new();
+        only_id.insert("app_id".into(), "1234567890".into());
+        let r2 = test_weibo(&only_id);
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "missing_weibo_fields:app_secret");
+
+        let mut bad_id = HashMap::new();
+        bad_id.insert("app_id".into(), "x".into());
+        bad_id.insert("app_secret".into(), "sec".into());
+        let r3 = test_weibo(&bad_id);
+        assert!(!r3.ok);
+        assert_eq!(r3.message, "invalid_weibo_app_id_format");
+    }
+
+    #[test]
+    fn weibo_accepts_credentials_and_valid_endpoints() {
+        let mut c = HashMap::new();
+        c.insert("app_id".into(), "1234567890".into());
+        c.insert("app_secret".into(), "secret-not-logged".into());
+        c.insert(
+            "token_endpoint".into(),
+            "https://api.weibo.com/oauth2/access_token".into(),
+        );
+        c.insert("ws_endpoint".into(), "wss://api.weibo.com/chat".into());
+        let r = test_weibo(&c);
+        assert!(r.ok);
+        assert_eq!(r.message, "weibo_ws_credentials_present");
+        assert!(!r.mock);
+    }
+
+    #[test]
+    fn weibo_soft_fails_invalid_endpoints() {
+        let mut c = HashMap::new();
+        c.insert("app_id".into(), "1234567890".into());
+        c.insert("app_secret".into(), "sec".into());
+        c.insert("token_endpoint".into(), "not-a-url".into());
+        let r = test_weibo(&c);
+        assert!(!r.ok);
+        assert_eq!(r.message, "invalid_weibo_token_endpoint");
+
+        c.insert(
+            "token_endpoint".into(),
+            "https://api.weibo.com/oauth2/access_token".into(),
+        );
+        c.insert("ws_endpoint".into(), "ftp://bad".into());
+        let r2 = test_weibo(&c);
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_weibo_ws_endpoint");
     }
 }

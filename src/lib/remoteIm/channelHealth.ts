@@ -18,6 +18,10 @@ import {
   feishuHealthHintKeys,
   validateFeishuConfig,
 } from "./feishuConfig";
+import {
+  validateWeiboConfig,
+  weiboHealthHintKeys,
+} from "./weiboConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -98,6 +102,7 @@ const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
+const WEIBO_LIKE: RemoteChannelId[] = ["weibo"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -108,6 +113,8 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   dingtalk: ["client_secret"],
   discord: ["token"],
   slack: ["bot_token", "app_token"],
+  // Weibo secrets validated via weiboConfig
+  weibo: ["app_secret"],
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
   weixin: ["token"],
   matrix: ["access_token"],
@@ -119,6 +126,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   lark: ["app_id"],
   telegram: [],
   dingtalk: ["client_id"],
+  weibo: ["app_id"],
 };
 
 
@@ -252,6 +260,17 @@ export function channelModeLabel(
   if (channel === "dingtalk") {
     return "mode=stream";
   }
+  if (channel === "weibo") {
+    const parts: string[] = ["mode=ws"];
+    if (optionString(options, "token_endpoint")) parts.push("token=custom");
+    if (
+      optionString(options, "ws_endpoint") ||
+      optionString(options, "ws_url")
+    ) {
+      parts.push("ws=custom");
+    }
+    return parts.join(" · ");
+  }
   return null;
 }
 
@@ -332,6 +351,16 @@ export function credentialReadiness(
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
 
+  if (WEIBO_LIKE.includes(channel)) {
+    const v = validateWeiboConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
   const missing: string[] = [];
 
   for (const k of NON_SECRET_REQUIRED[channel] ?? []) {
@@ -384,6 +413,8 @@ export function classifyChannelHealth(
     readinessInstance,
     input.secretKeysFilled,
     savedOpts,
+    input.tokenValue,
+    input.appIdValue,
   );
 
   // Honest status: incomplete mode-switch / missing keys cannot look "connected".
@@ -499,6 +530,20 @@ export function classifyChannelHealth(
     }
   }
 
+  if (WEIBO_LIKE.includes(channel)) {
+    const weiboV = validateWeiboConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue: input.appIdValue,
+    });
+    for (const k of weiboHealthHintKeys(weiboV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
   // Dedup preserve order
   const seen = new Set<string>();
   const uniqueHints = hintKeys.filter((k) => {
@@ -532,6 +577,7 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     FEISHU_LIKE.includes(channel) ||
     TELEGRAM_LIKE.includes(channel) ||
     WECOM_LIKE.includes(channel) ||
-    DINGTALK_LIKE.includes(channel)
+    DINGTALK_LIKE.includes(channel) ||
+    WEIBO_LIKE.includes(channel)
   );
 }
