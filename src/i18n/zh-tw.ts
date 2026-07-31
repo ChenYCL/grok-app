@@ -2083,9 +2083,41 @@ export const zhTW: Record<MessageKey, string> = {
   // Managed configuration (`grok setup`)
   "managedSetup.title": "託管設定安裝",
   "managedSetup.desc":
-    "擷取並安裝組織託管設定（`grok setup`）。預覽顯示去敏摘要；安裝會寫入 ~/.grok。",
+    "擷取並安裝組織託管設定（`grok setup`）。步驟：CLI → 團隊鑑權 → 可選預覽 → 安裝 → 校驗本機簽名產物。CLI 或 inspect 不可用時 soft-fail。",
   "managedSetup.authHint":
     "需要團隊登入（`grok login`）或部署金鑰 GROK_DEPLOYMENT_KEY（環境變數，或 ~/.grok/config.toml 中 [endpoints] deployment_key）。",
+  "managedSetup.stepsHint":
+    "企業路徑為可選。不會刪除個人 config.toml。App 從不展示簽名檔案內容。",
+  "managedSetup.step.cli": "CLI 就緒",
+  "managedSetup.step.auth": "團隊登入或部署金鑰",
+  "managedSetup.step.preview": "預覽託管設定（可選）",
+  "managedSetup.step.install": "安裝到 GROK_HOME",
+  "managedSetup.step.verify": "校驗本機狀態 / 簽名",
+  "managedSetup.stepState.done": "完成",
+  "managedSetup.stepState.current": "目前",
+  "managedSetup.stepState.todo": "待辦",
+  "managedSetup.stepState.blocked": "受阻",
+  "managedSetup.stepState.soft": "部分",
+  "managedSetup.statusTitle": "本機託管狀態",
+  "managedSetup.refreshStatus": "重新整理狀態",
+  "managedSetup.refreshing": "重新整理中…",
+  "managedSetup.sig.none": "無託管產物",
+  "managedSetup.sig.artifacts": "已有託管檔案",
+  "managedSetup.sig.sigFiles": "簽名檔案存在",
+  "managedSetup.sig.active": "託管設定已生效",
+  "managedSetup.sig.rejected": "簽名被拒絕",
+  "managedSetup.sig.unknown": "狀態未知",
+  "managedSetup.sigHint":
+    "狀態僅反映本機檔案與 inspect 旗標——App 不會重新做密碼學驗簽。CLI 會在寫入前拒絕錯誤簽名。",
+  "managedSetup.chip.managedActive": "Inspect：託管已生效",
+  "managedSetup.chip.configToml": "managed_config.toml",
+  "managedSetup.chip.configSig": "managed_config.sig.json",
+  "managedSetup.chip.identitySig": "managed_identity.sig.json",
+  "managedSetup.chip.requirements": "requirements.toml",
+  "managedSetup.chip.systemConfig": "系統 managed_config",
+  "managedSetup.grokHome": "GROK_HOME：{path}",
+  "managedSetup.managedSettingsPath": "託管設定路徑：{path}",
+  "managedSetup.preview.sigBlock": "存在（已去敏）",
   "managedSetup.preview": "預覽",
   "managedSetup.previewing": "正在取得預覽…",
   "managedSetup.previewOk": "預覽已就緒（未寫入任何檔案）。",
@@ -2095,7 +2127,7 @@ export const zhTW: Record<MessageKey, string> = {
   "managedSetup.installOk": "已套用託管設定。",
   "managedSetup.confirmTitle": "安裝託管設定？",
   "managedSetup.confirmBody":
-    "將執行 `grok setup`，可能覆寫 ~/.grok 下的託管檔案（例如 managed_config.toml）。不會刪除你的個人 config.toml。是否繼續？",
+    "將執行 `grok setup`，可能覆寫 ~/.grok 下的託管檔案（例如 managed_config.toml 與簽名 sidecar）。不會刪除你的個人 config.toml。是否繼續？",
   "managedSetup.openAccount": "開啟帳戶",
   "managedSetup.needTauri": "託管設定安裝需要桌面應用程式。",
   "managedSetup.sections": "區段：{list}",
@@ -2111,6 +2143,9 @@ export const zhTW: Record<MessageKey, string> = {
   "managedSetup.error.rejectedTitle": "部署金鑰被拒絕",
   "managedSetup.error.rejected":
     "部署金鑰無效或已過期，請與管理員確認。",
+  "managedSetup.error.signatureRejectedTitle": "託管簽名被拒絕",
+  "managedSetup.error.signatureRejected":
+    "CLI 拒絕了託管設定簽名或信封。請聯絡管理員；App 不會寫入未驗證原則。",
   "settings.aboutApp": "關於 Grok App",
   "settings.checkUpdate": "檢查更新",
   "settings.checkUpdateDesc":

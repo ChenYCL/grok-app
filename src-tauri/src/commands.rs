@@ -3316,6 +3316,8 @@ fn build_project_inspect_summary(
                 "loaded": 0,
                 "sourcesCount": 0,
                 "managedSettingsActive": false,
+                "managedSettingsExists": null,
+                "managedSettingsPath": null,
             },
             "error": error,
         });
@@ -3510,6 +3512,15 @@ fn build_project_inspect_summary(
         .and_then(|p| p.get("managedSettingsActive"))
         .and_then(|x| x.as_bool())
         .unwrap_or(false);
+    let managed_exists = perm
+        .and_then(|p| p.get("managedSettingsExists"))
+        .and_then(|x| x.as_bool());
+    let managed_path = perm
+        .and_then(|p| p.get("managedSettingsPath"))
+        .and_then(|x| x.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| store::redact_text(s).trim().chars().take(400).collect::<String>());
 
     // Models hints from inspect when present.
     if let Some(arr) = v.get("models").and_then(|x| x.as_array()) {
@@ -3573,6 +3584,8 @@ fn build_project_inspect_summary(
             "loaded": loaded,
             "sourcesCount": sources_count,
             "managedSettingsActive": managed_active,
+            "managedSettingsExists": managed_exists,
+            "managedSettingsPath": managed_path,
         },
     });
     if let Some(err) = error {
@@ -9599,6 +9612,17 @@ fn setup_error_kind(msg: &str) -> &'static str {
     {
         return "missing_auth";
     }
+    // Managed-config signature / envelope verification failures.
+    if m.contains("signature rejected")
+        || m.contains("signature was rejected")
+        || m.contains("did not verify")
+        || m.contains("could not be verified")
+        || m.contains("is-managed claim")
+        || m.contains("managed config signature")
+        || m.contains("server envelope rejected")
+    {
+        return "signature_rejected";
+    }
     if m.contains("deployment key was rejected")
         || m.contains("key was rejected")
         || m.contains("hasn't expired")
@@ -9610,6 +9634,17 @@ fn setup_error_kind(msg: &str) -> &'static str {
         return "parse";
     }
     "other"
+}
+
+// from MANAGED-SETUP-PRO
+
+/// Soft-fail local managed-config / signature artifact probe for Settings.
+/// Always returns Ok; see [`crate::managed_setup::ManagedSetupStatus`].
+#[tauri::command]
+pub async fn managed_setup_status() -> Result<crate::managed_setup::ManagedSetupStatus, String> {
+    tauri::async_runtime::spawn_blocking(crate::managed_setup::probe_managed_setup_status)
+        .await
+        .map_err(|e| format!("managed_setup_status: {e}"))
 }
 
 // from PR #79

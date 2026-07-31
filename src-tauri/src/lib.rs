@@ -50,6 +50,7 @@ mod tool_heartbeat;
 mod cli_sessions;
 mod cli_worktrees;
 mod git_pr_hub;
+mod managed_setup;
 mod turn_complete;
 mod store_lock;
 mod automation_runner;
@@ -446,6 +447,7 @@ pub fn run() {
             commands::hooks_try_run,
             commands::setup_preview,
             commands::setup_install,
+            commands::managed_setup_status,
             commands::marketplace_list,
             commands::marketplace_available,
             commands::marketplace_add,
