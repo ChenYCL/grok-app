@@ -27,6 +27,14 @@ import {
   isFsWriteConflict,
   isResourceDraftDirty,
 } from "@/lib/resourceEdit";
+import {
+  filterProjectRulesList,
+  presentProjectRulesSoftFail,
+  projectRuleKindChipLetter,
+  projectRuleKindLabelKey,
+  summarizeProjectRules,
+  validateProjectRuleDraft,
+} from "@/lib/rulesPromptPro";
 
 export type ProjectRulesModalProps = {
   open: boolean;
@@ -105,16 +113,20 @@ export function ProjectRulesModal({
   const contentSeq = useRef(0);
 
   const dirty = isResourceDraftDirty(draft?.draftText, draft?.baselineText);
+  const draftValidation = useMemo(
+    () =>
+      validateProjectRuleDraft({
+        draftText: draft?.draftText,
+        baselineText: draft?.baselineText,
+        truncated: draft?.truncated,
+        loading: draft?.loading,
+        saving: draft?.saving,
+      }),
+    [draft],
+  );
 
   const ruleKindLabel = useCallback(
-    (kind: string) => {
-      const k = (kind || "").trim();
-      if (k === "agents_md") return tr("rules.kind.agents_md");
-      if (k === "claude_md") return tr("rules.kind.claude_md");
-      if (k === "grok_rules") return tr("rules.kind.grok_rules");
-      if (k === "nested_agents") return tr("rules.kind.nested_agents");
-      return k || tr("rules.title");
-    },
+    (kind: string) => tr(projectRuleKindLabelKey(kind)),
     [tr],
   );
 
@@ -124,8 +136,11 @@ export function ProjectRulesModal({
       setRules([]);
       setHasAgentsMd(false);
       setLoading(false);
-      if (!projectPath) setListError(tr("rules.needProject"));
-      else setListError(tr("rules.needTauri"));
+      const soft = presentProjectRulesSoftFail(null, {
+        needProject: !projectPath,
+        needTauri: Boolean(projectPath) && !api.isTauri(),
+      });
+      setListError(tr(soft.messageKey));
       return;
     }
     const seq = ++loadSeq.current;
@@ -141,7 +156,12 @@ export function ProjectRulesModal({
       if (seq !== loadSeq.current) return;
       setRules([]);
       setHasAgentsMd(false);
-      setListError(String(e) || tr("rules.actionError"));
+      const soft = presentProjectRulesSoftFail(e);
+      setListError(
+        soft.detail.trim()
+          ? `${tr(soft.messageKey)}: ${soft.detail}`
+          : tr(soft.messageKey),
+      );
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
@@ -162,20 +182,23 @@ export function ProjectRulesModal({
     void refreshRules();
   }, [open, refreshRules]);
 
-  const filteredRules = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rules;
-    return rules.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.relativePath.toLowerCase().includes(q) ||
-        r.kind.toLowerCase().includes(q),
-    );
-  }, [rules, query]);
+  const filteredRules = useMemo(
+    () => filterProjectRulesList(rules, query),
+    [rules, query],
+  );
+
+  const rulesSummary = useMemo(
+    () => summarizeProjectRules(rules, hasAgentsMd),
+    [rules, hasAgentsMd],
+  );
 
   const loadRuleContent = useCallback(
     async (rule: RuleRow) => {
       if (!projectPath || !api.isTauri()) {
+        const soft = presentProjectRulesSoftFail(null, {
+          needProject: !projectPath,
+          needTauri: Boolean(projectPath) && !api.isTauri(),
+        });
         setDraft({
           relativePath: rule.relativePath,
           absolutePath: rule.absolutePath,
@@ -186,7 +209,7 @@ export function ProjectRulesModal({
           truncated: false,
           loading: false,
           saving: false,
-          error: tr("rules.needTauri"),
+          error: tr(soft.messageKey),
         });
         return;
       }
@@ -238,6 +261,7 @@ export function ProjectRulesModal({
         });
       } catch (e) {
         if (seq !== contentSeq.current) return;
+        const soft = presentProjectRulesSoftFail(e);
         setDraft({
           relativePath: rule.relativePath,
           absolutePath: rule.absolutePath,
@@ -248,7 +272,9 @@ export function ProjectRulesModal({
           truncated: false,
           loading: false,
           saving: false,
-          error: String(e) || tr("rules.openFailed"),
+          error: soft.detail.trim()
+            ? `${tr(soft.messageKey)}: ${soft.detail}`
+            : tr(soft.messageKey),
         });
       }
     },
@@ -294,9 +320,25 @@ export function ProjectRulesModal({
     async (opts?: { force?: boolean }) => {
       if (!draft || draft.draftText == null) return;
       if (!api.isTauri()) {
+        const soft = presentProjectRulesSoftFail(null, { needTauri: true });
         setDraft((d) =>
-          d ? { ...d, error: tr("rules.needTauri") } : d,
+          d ? { ...d, error: tr(soft.messageKey) } : d,
         );
+        return;
+      }
+      const pre = validateProjectRuleDraft({
+        draftText: draft.draftText,
+        baselineText: draft.baselineText,
+        truncated: draft.truncated,
+        loading: draft.loading,
+        saving: draft.saving,
+      });
+      if (!opts?.force && !pre.canSave) {
+        if (pre.truncated) {
+          setDraft((d) =>
+            d ? { ...d, error: tr("rules.truncatedReadonly") } : d,
+          );
+        }
         return;
       }
       if (
@@ -351,12 +393,15 @@ export function ProjectRulesModal({
           setConflictOpen(true);
           return;
         }
+        const soft = presentProjectRulesSoftFail(e);
         setDraft((d) =>
           d
             ? {
                 ...d,
                 saving: false,
-                error: String(e) || tr("resources.saveFailed"),
+                error: soft.detail.trim()
+                  ? `${tr(soft.messageKey)}: ${soft.detail}`
+                  : tr(soft.messageKey),
               }
             : d,
         );
@@ -379,7 +424,11 @@ export function ProjectRulesModal({
 
   const ensureAgentsTemplate = useCallback(async () => {
     if (!projectPath || !api.isTauri()) {
-      setListError(tr("rules.needProject"));
+      const soft = presentProjectRulesSoftFail(null, {
+        needProject: !projectPath,
+        needTauri: Boolean(projectPath) && !api.isTauri(),
+      });
+      setListError(tr(soft.messageKey));
       return;
     }
     setHint(null);
@@ -404,21 +453,36 @@ export function ProjectRulesModal({
         });
       });
     } catch (e) {
-      setListError(String(e) || tr("rules.actionError"));
+      const soft = presentProjectRulesSoftFail(e);
+      setListError(
+        soft.detail.trim()
+          ? `${tr(soft.messageKey)}: ${soft.detail}`
+          : tr(soft.messageKey),
+      );
     }
   }, [loadRuleContent, projectPath, refreshRules, runOrConfirmDiscard, tr]);
 
   const revealRule = useCallback(
     async (rule: RuleRow) => {
       const p = (rule.absolutePath || rule.relativePath || "").trim();
-      if (!p || !api.isTauri()) return;
+      if (!p || !api.isTauri()) {
+        if (!api.isTauri()) {
+          setListError(tr("rules.needTauri"));
+        }
+        return;
+      }
       try {
         await api.pathReveal(p);
       } catch (e) {
-        setListError(String(e));
+        const soft = presentProjectRulesSoftFail(e);
+        setListError(
+          soft.detail.trim()
+            ? `${tr(soft.messageKey)}: ${soft.detail}`
+            : tr(soft.messageKey),
+        );
       }
     },
-    [],
+    [tr],
   );
 
   const title = projectName
@@ -498,6 +562,34 @@ export function ProjectRulesModal({
             />
           </div>
 
+          {rulesSummary.total > 0 ? (
+            <div className="prm__summary" aria-live="polite">
+              <span className="prm__summary-count">
+                {tr("rules.count", { n: String(rulesSummary.total) })}
+              </span>
+              {rulesSummary.hasAgentsMd ? (
+                <span className="prm__summary-chip" data-kind="agents_md">
+                  A · {tr("rules.kind.agents_md")}
+                </span>
+              ) : null}
+              {rulesSummary.hasClaudeMd ? (
+                <span className="prm__summary-chip" data-kind="claude_md">
+                  C · {tr("rules.kind.claude_md")}
+                </span>
+              ) : null}
+              {rulesSummary.hasGrokRules ? (
+                <span className="prm__summary-chip" data-kind="grok_rules">
+                  G · {tr("rules.kind.grok_rules")}
+                </span>
+              ) : null}
+              {rulesSummary.hasNestedAgents ? (
+                <span className="prm__summary-chip" data-kind="nested_agents">
+                  N · {tr("rules.kind.nested_agents")}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
           {hint ? (
             <div className="prm__hint" role="status">
               {hint}
@@ -542,8 +634,15 @@ export function ProjectRulesModal({
                               <IconChevronRight size={14} />
                             )}
                           </span>
-                          <span className="prm__kind-chip" aria-hidden>
-                            M
+                          <span
+                            className={
+                              "prm__kind-chip prm__kind-chip--" +
+                              ((rule.kind || "other").replace(/[^a-z0-9_]/gi, "") ||
+                                "other")
+                            }
+                            aria-hidden
+                          >
+                            {projectRuleKindChipLetter(rule.kind)}
                           </span>
                           <span className="prm__row-meta">
                             <span className="prm__row-name">{rule.name}</span>
@@ -605,14 +704,9 @@ export function ProjectRulesModal({
                               type="button"
                               className={
                                 "rp-editor__tool-btn rp-editor__tool-btn--save" +
-                                (dirty ? " is-dirty" : "")
+                                (draftValidation.canSave ? " is-dirty" : "")
                               }
-                              disabled={
-                                !!draft.saving ||
-                                draft.loading ||
-                                !dirty ||
-                                draft.truncated
-                              }
+                              disabled={!draftValidation.canSave}
                               onClick={() => void saveDraft()}
                             >
                               {draft.saving
@@ -621,8 +715,19 @@ export function ProjectRulesModal({
                             </button>
                           </div>
                           {draft.truncated ? (
-                            <div className="rp-editor__banner" role="status">
-                              {tr("resources.truncated")}
+                            <div
+                              className="rp-editor__banner prm__banner--warn"
+                              role="status"
+                            >
+                              {tr("rules.truncatedReadonly")}
+                            </div>
+                          ) : null}
+                          {draftValidation.emptyWarn ? (
+                            <div
+                              className="prm__banner prm__banner--warn"
+                              role="status"
+                            >
+                              {tr("rules.draftEmptyWarn")}
                             </div>
                           ) : null}
                           {draft.error ? (

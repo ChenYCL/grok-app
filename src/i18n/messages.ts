@@ -153,6 +153,19 @@ const en = {
   "session.rulesSaved": "Session rules saved — agent will reload on next turn",
   "session.rulesCleared": "Session rules cleared",
   "session.rulesChars": "{n}/{max}",
+  "session.promptStatus.empty": "Empty — save clears the override",
+  "session.promptStatus.willClear":
+    "Save will clear the stored value for this chat",
+  "session.promptStatus.nearCap": "Approaching character limit",
+  "session.promptStatus.atCap": "Character limit reached",
+  "session.promptStatus.nulStripped":
+    "Null characters were removed from the draft",
+  "session.promptError.needTauri":
+    "Session prompt/rules require the desktop app.",
+  "session.promptError.host": "Could not save — host rejected the change",
+  "session.promptError.other": "Could not save session prompt/rules",
+  "session.promptDiscardBody":
+    "Discard unsaved changes to this session prompt or rules?",
   "session.maxTurns": "Max agent turns",
   "session.maxTurnsCount": "Max agent turns ({n})",
   "session.maxTurnsTitle": "Session max agent turns",
@@ -563,6 +576,13 @@ const en = {
   "rules.actionError": "Rules action failed",
   "rules.openFailed": "Could not open rule file",
   "rules.noAgentsHint": "No root AGENTS.md yet — create a stub to guide agents.",
+  "rules.truncatedReadonly":
+    "This file is truncated in the preview — open it externally to edit the full contents.",
+  "rules.draftEmptyWarn":
+    "Draft is empty. Saving will write an empty rules file.",
+  "rules.permissionDenied": "Permission denied for this rules path",
+  "rules.notFound": "Rule file not found",
+  "rules.emptyPath": "No path available for this rule",
   "changes.workspace.empty": "No workspace git changes",
   "changes.workspace.emptyHint":
     "Modified, added, and untracked files in this project appear here when git is available.",
@@ -5064,6 +5084,15 @@ const zh: Record<MessageKey, string> = {
   "session.rulesSaved": "会话规则已保存 — 下一回合将重新加载 Agent",
   "session.rulesCleared": "已清除会话规则",
   "session.rulesChars": "{n}/{max}",
+  "session.promptStatus.empty": "为空 — 保存将清除覆盖",
+  "session.promptStatus.willClear": "保存将清除本会话已存储的值",
+  "session.promptStatus.nearCap": "接近字符上限",
+  "session.promptStatus.atCap": "已达字符上限",
+  "session.promptStatus.nulStripped": "草稿中的空字符（NUL）已移除",
+  "session.promptError.needTauri": "会话系统提示词/规则需要桌面端应用。",
+  "session.promptError.host": "无法保存 — 主机拒绝了更改",
+  "session.promptError.other": "无法保存会话系统提示词/规则",
+  "session.promptDiscardBody": "放弃此会话系统提示词或规则的未保存更改？",
   "session.maxTurns": "最大 Agent 轮次",
   "session.maxTurnsCount": "最大 Agent 轮次（{n}）",
   "session.maxTurnsTitle": "会话最大 Agent 轮次",
@@ -5451,6 +5480,12 @@ const zh: Record<MessageKey, string> = {
   "rules.actionError": "规则操作失败",
   "rules.openFailed": "无法打开规则文件",
   "rules.noAgentsHint": "尚无根目录 AGENTS.md — 可创建模板以引导 agent。",
+  "rules.truncatedReadonly":
+    "此文件在预览中被截断 — 请用外部编辑器打开完整内容。",
+  "rules.draftEmptyWarn": "草稿为空。保存将写入空规则文件。",
+  "rules.permissionDenied": "无权访问此规则路径",
+  "rules.notFound": "找不到规则文件",
+  "rules.emptyPath": "此规则没有可用路径",
   "changes.workspace.empty": "工作区无 git 变更",
   "changes.workspace.emptyHint":
     "当 git 可用时，项目中已修改、新增与未跟踪文件会显示在此。",
