@@ -452,6 +452,12 @@ import {
   shouldPreferCliMarkdownExport,
 } from "@/lib/sessionExport";
 import {
+  buildStreamSessionNdjson,
+  streamSessionExportFilename,
+  streamSessionExportMimeType,
+  type StreamSessionExportFormat,
+} from "@/lib/streamSessionExport";
+import {
   blobToBase64 as pngBlobToBase64,
   buildExportImagePipeline,
   copyPngBlob,
@@ -14702,6 +14708,85 @@ export default function App() {
     ],
   );
 
+  /**
+   * Download session journal as redacted ACP streaming NDJSON
+   * (`streaming-json` or `streaming-messages-json`). Soft-empty toast when
+   * the journal has no exportable rows.
+   */
+  const exportSessionStreamNdjson = useCallback(
+    async (
+      format: StreamSessionExportFormat,
+      sessionMeta?: {
+        id: string;
+        title: string;
+        projectId?: string | null;
+      },
+    ) => {
+      const id = sessionMeta?.id ?? session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportFail"));
+        return;
+      }
+      const title =
+        sessionMeta?.title ||
+        sessions.find((s) => s.id === id)?.title ||
+        session.title ||
+        tr("session.untitled");
+      const projectId =
+        sessionMeta?.projectId ??
+        sessions.find((s) => s.id === id)?.projectId ??
+        null;
+      const proj =
+        projects.find((p) => p.id === projectId) || activeProject || null;
+      try {
+        let msgs = messages;
+        if (id !== session.sessionId) {
+          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        }
+        const result = buildStreamSessionNdjson(format, {
+          title,
+          projectName: proj?.name,
+          projectPath: proj?.path,
+          sessionId: id,
+          options: { includeThoughts: true, includeToolSummary: true },
+          messages: msgs.map((m) => ({
+            role: m.role,
+            content: m.content,
+            thought: m.thought,
+            createdAt: m.createdAt,
+            marker: m.marker,
+          })),
+        });
+        if (result.empty || !result.body) {
+          showToast(tr("session.exportStreamEmpty"));
+          return;
+        }
+        const blob = new Blob([result.body], {
+          type: streamSessionExportMimeType(format),
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = streamSessionExportFilename(format, title, id);
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(tr("session.exportStreamDone", { format, n: result.lineCount }));
+      } catch (e) {
+        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+      }
+    },
+    [
+      session.sessionId,
+      session.title,
+      sessions,
+      messages,
+      projects,
+      activeProject,
+      showToast,
+      tr,
+    ],
+  );
+
   /** Full diagnostic zip (messages + agent trail + logs) for bug reports. */
   const exportSessionDiagnostic = useCallback(
     async (sessionId?: string | null) => {
@@ -22930,6 +23015,30 @@ export default function App() {
                 icon: <IconCopy size={16} />,
                 onClick: () => {
                   void exportSessionHtml({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
+              {
+                id: "export-stream-json",
+                label: tr("session.exportStreamJson"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportSessionStreamNdjson("streaming-json", {
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
+              {
+                id: "export-stream-messages-json",
+                label: tr("session.exportStreamMessagesJson"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportSessionStreamNdjson("streaming-messages-json", {
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,

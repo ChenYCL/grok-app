@@ -14,6 +14,11 @@ import * as api from "@/lib/api";
 import { isDesktopHost } from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import {
+  exportRawStreamNdjson,
+  streamSessionExportFilename,
+  streamSessionExportMimeType,
+} from "@/lib/streamSessionExport";
+import {
   STREAMING_MESSAGES_JSON_FORMAT,
   STREAMING_MESSAGES_JSON_MIN_CLI,
   exportSmjPreviewText,
@@ -174,11 +179,16 @@ export function StreamingMessagesJsonPanel({
   };
 
   const onExportNdjson = () => {
-    if (!source) return;
+    const result = exportRawStreamNdjson(source, "streaming-messages-json");
+    if (result.empty || !result.body) return;
     downloadText(
-      "streaming-messages.jsonl",
-      source.endsWith("\n") ? source : `${source}\n`,
-      "application/x-ndjson;charset=utf-8",
+      streamSessionExportFilename(
+        "streaming-messages-json",
+        "smj-capture",
+        null,
+      ),
+      result.body,
+      streamSessionExportMimeType("streaming-messages-json"),
     );
     onToast?.(t("smj.exportedNdjson"), 1800);
   };

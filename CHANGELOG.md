@@ -14,6 +14,10 @@ See `docs/llm-wiki/release.md`.
 ### Changed
 
 - **Agent-home config write layer**: shared Host helpers in `agent_home_config` for independent-only `config.toml` path resolve (shared mode refuses), pure top-level / table bool+string upserts, and soft-skip sync. Migrated TodoGate, workflows, auto-wake, two-pass compaction, and subagent worktree snapshot writers off duplicated TOML edit/write paths. Product defaults and independent-only write behavior unchanged.
+### Added
+
+#### Sessions & diagnostics
+- **Session / diagnostics NDJSON export** (`streaming-json` · `streaming-messages-json`): pure `streamSessionExport` helpers synthesize redacted ACP session/update or Anthropic Messages wire NDJSON from the App journal, or re-export diagnostics paste/probe with secrets scrubbed; soft-empty when no rows. Session Export menu adds both formats; Streaming ACP NDJSON panel gains **Save / Copy NDJSON**; SMJ export uses the same redacted path. Never writes unredacted tokens to disk. en/zh/zh-TW + tests
 
 ### Fixed
 
