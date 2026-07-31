@@ -119,6 +119,11 @@ export function ProvidersPanel({
   const [busy, setBusy] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [remoteModels, setRemoteModels] = useState<string[]>([]);
+  /** Status under the fetch-models control (loaded / empty / error). */
+  const [fetchHint, setFetchHint] = useState<string | null>(null);
+  const [fetchHintTone, setFetchHintTone] = useState<"ok" | "err" | "muted">(
+    "muted",
+  );
   /** Draft row for manually adding a model. */
   const [draftModelId, setDraftModelId] = useState("");
   const [draftModelName, setDraftModelName] = useState("");
@@ -201,6 +206,7 @@ export function ProvidersPanel({
     setDraftModelId("");
     setDraftModelName("");
     setRemoteModels([]);
+    setFetchHint(null);
     setHint(null);
     setShowKey(false);
     setRightMode("create");
@@ -370,6 +376,7 @@ export function ProvidersPanel({
     setDraftModelId("");
     setDraftModelName("");
     setRemoteModels([]);
+    setFetchHint(null);
     setHint(null);
     setShowKey(false);
     setRightMode("edit");
@@ -381,6 +388,7 @@ export function ProvidersPanel({
     setEditingId(null);
     setHint(null);
     setRemoteModels([]);
+    setFetchHint(null);
     setDraftModelId("");
     setDraftModelName("");
   };
@@ -537,12 +545,12 @@ export function ProvidersPanel({
 
   const fetchModels = async () => {
     if (!form.baseUrl.trim()) {
-      setHint(tr("prov.err.needBase"));
-      setHintTone("err");
+      setFetchHint(tr("prov.err.needBase"));
+      setFetchHintTone("err");
       return;
     }
-    setHint(tr("prov.fetching"));
-    setHintTone("muted");
+    setFetchHint(tr("prov.fetching"));
+    setFetchHintTone("muted");
     try {
       const r = await api.providersListModels({
         baseUrl: form.baseUrl.trim(),
@@ -551,15 +559,15 @@ export function ProvidersPanel({
       });
       setRemoteModels(r.models.map((m) => m.id));
       if (r.models.length) {
-        setHint(tr("prov.loaded", { n: r.models.length }));
-        setHintTone("ok");
+        setFetchHint(tr("prov.loaded", { n: r.models.length }));
+        setFetchHintTone("ok");
       } else {
-        setHint(tr("prov.emptyList"));
-        setHintTone("muted");
+        setFetchHint(tr("prov.emptyList"));
+        setFetchHintTone("muted");
       }
     } catch (e) {
-      setHint(String(e));
-      setHintTone("err");
+      setFetchHint(String(e));
+      setFetchHintTone("err");
     }
   };
 
@@ -969,6 +977,50 @@ export function ProvidersPanel({
                   </span>
                   <p className="prov-field__hint">{tr("prov.modelsHint")}</p>
 
+                  {/* Fetch results sit directly under the fetch control */}
+                  {remoteModels.length > 0 ? (
+                    <div className="prov-models__remote">
+                      <div className="prov-models__remote-label">
+                        {tr("prov.remoteModels")}
+                      </div>
+                      <div className="prov-models__chips">
+                        {remoteModels.map((mid) => {
+                          const added = form.models.some((m) => m.id === mid);
+                          return (
+                            <button
+                              key={mid}
+                              type="button"
+                              className={
+                                "prov-models__chip" +
+                                (added ? " is-added" : "")
+                              }
+                              disabled={busy || added}
+                              onClick={() => addModelToForm(mid, mid)}
+                              title={mid}
+                            >
+                              {mid}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                  {fetchHint ? (
+                    <div
+                      className={
+                        "prov-form__hint prov-models__fetch-hint" +
+                        (fetchHintTone === "ok"
+                          ? " is-ok"
+                          : fetchHintTone === "err"
+                            ? " is-err"
+                            : "")
+                      }
+                      role="status"
+                    >
+                      {fetchHint}
+                    </div>
+                  ) : null}
+
                   <div
                     className="prov-models"
                     role="group"
@@ -1093,34 +1145,6 @@ export function ProvidersPanel({
                       </button>
                     </div>
                   </div>
-
-                  {remoteModels.length > 0 ? (
-                    <div className="prov-models__remote">
-                      <div className="prov-models__remote-label">
-                        {tr("prov.remoteModels")}
-                      </div>
-                      <div className="prov-models__chips">
-                        {remoteModels.map((mid) => {
-                          const added = form.models.some((m) => m.id === mid);
-                          return (
-                            <button
-                              key={mid}
-                              type="button"
-                              className={
-                                "prov-models__chip" +
-                                (added ? " is-added" : "")
-                              }
-                              disabled={busy || added}
-                              onClick={() => addModelToForm(mid, mid)}
-                              title={mid}
-                            >
-                              {mid}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               </div>
 

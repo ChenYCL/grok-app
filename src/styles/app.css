@@ -14095,10 +14095,15 @@ textarea::-webkit-scrollbar-thumb:active,
 }
 
 .prov-models__remote {
-  margin-top: 12px;
+  margin-top: 10px;
+  margin-bottom: 4px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.prov-models__fetch-hint {
+  margin: 8px 0 10px;
 }
 
 .prov-models__remote-label {
