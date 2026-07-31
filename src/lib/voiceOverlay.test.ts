@@ -1,13 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   canSendTranscriptAsPrompt,
+  classifyLiveVoiceError,
   deriveVoiceDelegatePhase,
   formatTranscriptAsPrompt,
   hasDelegatedSessions,
+  initialToolLoopState,
   isConversationalRole,
+  isFatalLiveVoiceError,
+  isSoftMicFailure,
+  isToolLoopBusy,
+  liveVoiceErrorMessageKey,
   mergeTranscriptLine,
   nextAwaitingResponse,
+  parseToolLoopEvent,
+  reduceToolLoopState,
+  softFailReasonFromToolResult,
   toolEventName,
+  toolLoopStatusMessageKey,
   transcriptEmptyKind,
   type VoiceTranscriptLine,
 } from "./voiceOverlay";
@@ -28,16 +38,38 @@ describe("deriveVoiceDelegatePhase", () => {
     ).toBe("ended");
   });
 
-  it("surfaces error from ui or host", () => {
+  it("surfaces fatal error from ui or host", () => {
     expect(
       deriveVoiceDelegatePhase({
-        uiError: "mic denied",
+        uiError: "auth failed",
         state: { active: true, listening: true },
       }),
     ).toBe("error");
     expect(
       deriveVoiceDelegatePhase({
         state: { active: true, error: "ws down", listening: true },
+      }),
+    ).toBe("error");
+  });
+
+  it("soft-fails mic: keeps listening while host is active", () => {
+    expect(
+      deriveVoiceDelegatePhase({
+        softMicWarning: "mic_denied",
+        state: { active: true, listening: true },
+      }),
+    ).toBe("listening");
+    expect(
+      deriveVoiceDelegatePhase({
+        softMicWarning: "mic_missing",
+        state: { active: true, thinking: true },
+      }),
+    ).toBe("thinking");
+    // No host yet → still show error so the user sees the mic issue.
+    expect(
+      deriveVoiceDelegatePhase({
+        softMicWarning: "mic_denied",
+        state: { active: false },
       }),
     ).toBe("error");
   });
@@ -86,6 +118,11 @@ describe("deriveVoiceDelegatePhase", () => {
     ).toBe("thinking");
     expect(
       deriveVoiceDelegatePhase({
+        state: { active: true, activeTool: "create_agent_session", listening: true },
+      }),
+    ).toBe("thinking");
+    expect(
+      deriveVoiceDelegatePhase({
         awaitingResponse: true,
         state: { active: true, listening: true },
       }),
@@ -103,6 +140,127 @@ describe("deriveVoiceDelegatePhase", () => {
         state: { active: true, listening: false, speaking: false },
       }),
     ).toBe("thinking");
+  });
+});
+
+describe("classifyLiveVoiceError / soft mic", () => {
+  it("classifies cli_missing and auth", () => {
+    expect(classifyLiveVoiceError("Grok Build CLI not found")).toBe(
+      "cli_missing",
+    );
+    expect(classifyLiveVoiceError(null, "cli_missing")).toBe("cli_missing");
+    expect(classifyLiveVoiceError("No xAI credentials found")).toBe("auth");
+    expect(classifyLiveVoiceError("websocket connect failed")).toBe("network");
+    expect(classifyLiveVoiceError("tool create_agent_session: boom")).toBe(
+      "tool_failed",
+    );
+  });
+
+  it("treats mic as soft, others as fatal", () => {
+    expect(isSoftMicFailure("mic_denied")).toBe(true);
+    expect(isSoftMicFailure("mic_missing")).toBe(true);
+    expect(isSoftMicFailure("cli_missing")).toBe(false);
+    expect(isFatalLiveVoiceError("mic_denied")).toBe(false);
+    expect(isFatalLiveVoiceError("cli_missing")).toBe(true);
+    expect(isFatalLiveVoiceError("auth")).toBe(true);
+  });
+
+  it("maps to i18n keys", () => {
+    expect(liveVoiceErrorMessageKey("cli_missing")).toBe(
+      "voice.err.cli_missing",
+    );
+    expect(liveVoiceErrorMessageKey("mic_denied")).toBe("voice.err.mic_denied");
+  });
+});
+
+describe("voice → Build tool loop", () => {
+  it("parses running / ok / soft_fail / error events", () => {
+    expect(
+      parseToolLoopEvent({ name: "create_agent_session", status: "running" }),
+    ).toEqual({
+      status: "running",
+      name: "create_agent_session",
+      reason: null,
+      sessionId: null,
+    });
+    expect(
+      parseToolLoopEvent({
+        name: "prompt_agent",
+        status: "ok",
+        result: { session_id: "abc", state: "streaming" },
+      }),
+    ).toEqual({
+      status: "ok",
+      name: "prompt_agent",
+      reason: null,
+      sessionId: "abc",
+    });
+    expect(
+      parseToolLoopEvent({
+        name: "create_agent_session",
+        status: "soft_fail",
+        reason: "cli_missing",
+        result: { ok: false, reason: "cli_missing" },
+      })?.status,
+    ).toBe("soft_fail");
+    expect(
+      parseToolLoopEvent({
+        name: "cancel_agent",
+        status: "error",
+        message: "unknown tool",
+        errorClass: "tool_failed",
+      })?.reason,
+    ).toBe("tool_failed");
+  });
+
+  it("never invents a tool name", () => {
+    expect(parseToolLoopEvent({ status: "running" })).toBeNull();
+    expect(parseToolLoopEvent(null)).toBeNull();
+  });
+
+  it("treats legacy finish-with-result as ok (or soft_fail)", () => {
+    expect(
+      parseToolLoopEvent({
+        name: "list_sessions",
+        result: { sessions: [] },
+      })?.status,
+    ).toBe("ok");
+    expect(
+      parseToolLoopEvent({
+        name: "create_agent_session",
+        result: { ok: false, reason: "cli_missing" },
+      }),
+    ).toMatchObject({ status: "soft_fail", reason: "cli_missing" });
+  });
+
+  it("reduces busy state and status keys", () => {
+    let loop = initialToolLoopState();
+    expect(isToolLoopBusy(loop)).toBe(false);
+    loop = reduceToolLoopState(
+      loop,
+      parseToolLoopEvent({ name: "prompt_agent", status: "running" }),
+    );
+    expect(isToolLoopBusy(loop)).toBe(true);
+    expect(toolLoopStatusMessageKey(loop)).toBe("voice.toolRunning");
+    loop = reduceToolLoopState(
+      loop,
+      parseToolLoopEvent({
+        name: "prompt_agent",
+        status: "ok",
+        result: { session_id: "s1" },
+      }),
+    );
+    expect(isToolLoopBusy(loop)).toBe(false);
+    expect(toolLoopStatusMessageKey(loop)).toBe("voice.toolRan");
+    expect(toolLoopStatusMessageKey(initialToolLoopState())).toBeNull();
+  });
+
+  it("reads soft-fail reason only when ok:false", () => {
+    expect(softFailReasonFromToolResult({ ok: false, reason: "cli_missing" })).toBe(
+      "cli_missing",
+    );
+    expect(softFailReasonFromToolResult({ session_id: "x" })).toBeNull();
+    expect(softFailReasonFromToolResult(null)).toBeNull();
   });
 });
 

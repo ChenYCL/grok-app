@@ -1,9 +1,10 @@
 /**
  * Pure helpers for Live Voice overlay — delegate phase, transcript merge,
- * and optional “send transcript as prompt” gating.
+ * Build tool-loop status (VOX-BUILD-LOOP), and optional “send transcript
+ * as prompt” gating.
  *
  * Sources: host `voice://state` / transcript / tool events only.
- * Never invent STT partials or fake speech text.
+ * Never invent STT partials, fake tool results, or speech text.
  */
 
 /** High-level UI phase for the Live Voice overlay status line. */
@@ -16,6 +17,40 @@ export type VoiceDelegatePhase =
   | "error"
   | "ended";
 
+/**
+ * Stable error classes for Live Voice + Build tool loop (i18n keys).
+ * Mic failures are soft when the host session is otherwise alive.
+ */
+export type VoiceLiveErrorClass =
+  | "mic_denied"
+  | "mic_missing"
+  | "cli_missing"
+  | "auth"
+  | "network"
+  | "timeout"
+  | "tool_failed"
+  | "not_available"
+  | "unknown";
+
+/** Host Build tool lifecycle for voice → agent delegation. */
+export type VoiceToolLoopStatus =
+  | "idle"
+  | "running"
+  | "ok"
+  | "soft_fail"
+  | "error";
+
+/** Client-side tool-loop snapshot (from host events only). */
+export type VoiceToolLoopState = {
+  status: VoiceToolLoopStatus;
+  /** Tool name when known; null when idle / absent. */
+  name: string | null;
+  /** Soft-fail / error reason token when present (e.g. cli_missing). */
+  reason: string | null;
+  /** Delegated session id from tool result when present. */
+  sessionId: string | null;
+};
+
 /** Subset of host VoiceSessionState used for phase derivation. */
 export type VoiceHostStateLike = {
   active?: boolean | null;
@@ -25,6 +60,8 @@ export type VoiceHostStateLike = {
   speaking?: boolean | null;
   thinking?: boolean | null;
   error?: string | null;
+  /** Host-reported in-flight tool name (optional). */
+  activeTool?: string | null;
   delegatedSessionIds?: string[] | null;
   mock?: boolean | null;
 };
@@ -42,13 +79,21 @@ export type DeriveVoiceDelegatePhaseInput = {
   connecting?: boolean;
   /** Overlay closed after stop. */
   ended?: boolean;
-  /** Local UI error (mic denied, start failure). */
+  /**
+   * Fatal UI/host error text. Soft mic warnings should not be passed here
+   * when the host session is still active (use softMicWarning instead).
+   */
   uiError?: string | null;
+  /**
+   * Soft mic failure class (denied / missing). Does not force error phase
+   * while the host session remains active — voice can still play / tools run.
+   */
+  softMicWarning?: VoiceLiveErrorClass | null;
   /** Host snapshot from voice_state / voice://state. */
   state?: VoiceHostStateLike | null;
   /**
    * True while a host tool is in-flight (from events). Prefer host
-   * `thinking` when present; this is a client-side supplement.
+   * `thinking` / `activeTool` when present; this is a client-side supplement.
    */
   toolBusy?: boolean;
   /**
@@ -58,9 +103,271 @@ export type DeriveVoiceDelegatePhaseInput = {
   awaitingResponse?: boolean;
 };
 
+const KNOWN_LIVE_ERRORS: readonly VoiceLiveErrorClass[] = [
+  "mic_denied",
+  "mic_missing",
+  "cli_missing",
+  "auth",
+  "network",
+  "timeout",
+  "tool_failed",
+  "not_available",
+  "unknown",
+] as const;
+
+function isLiveErrorClass(s: string): s is VoiceLiveErrorClass {
+  return (KNOWN_LIVE_ERRORS as readonly string[]).includes(s);
+}
+
+/**
+ * Map host/UI failure text (or stable errorClass token) to a Live Voice class.
+ * Never invents success — unknown stays unknown.
+ */
+export function classifyLiveVoiceError(
+  raw: string | null | undefined,
+  errorClass?: string | null,
+): VoiceLiveErrorClass {
+  const token = (errorClass ?? "").trim().toLowerCase();
+  if (token && isLiveErrorClass(token)) return token;
+
+  const s = (raw ?? "").trim().toLowerCase();
+  if (!s) return "unknown";
+  if (isLiveErrorClass(s)) return s;
+
+  if (
+    s.includes("cli not found") ||
+    s.includes("cli_missing") ||
+    s.includes("grok build not found") ||
+    s.includes("grok build cli not found") ||
+    s.includes("install grok build")
+  ) {
+    return "cli_missing";
+  }
+  if (
+    s.includes("not_available") ||
+    s.includes("not available") ||
+    s.includes("no speech auth")
+  ) {
+    return "not_available";
+  }
+  if (
+    s.includes("permission") ||
+    s.includes("denied") ||
+    s.includes("notallowed") ||
+    s.includes("mic_denied")
+  ) {
+    return "mic_denied";
+  }
+  if (
+    s.includes("notfound") ||
+    s.includes("no device") ||
+    s.includes("no microphone") ||
+    s.includes("mic_missing") ||
+    s.includes("device not found")
+  ) {
+    return "mic_missing";
+  }
+  if (
+    s.includes("timeout") ||
+    s.includes("timed out") ||
+    s.includes("deadline")
+  ) {
+    return "timeout";
+  }
+  if (
+    s.includes("network") ||
+    s.includes("fetch") ||
+    s.includes("connection") ||
+    s.includes("websocket") ||
+    s.includes("ws ") ||
+    s.includes("dns") ||
+    s.includes("econn")
+  ) {
+    return "network";
+  }
+  if (
+    s.includes("401") ||
+    s.includes("403") ||
+    s.includes("unauthor") ||
+    s.includes("auth") ||
+    s.includes("bearer") ||
+    s.includes("credential")
+  ) {
+    return "auth";
+  }
+  if (s.includes("tool ") || s.includes("tool_failed") || s.includes("unknown tool")) {
+    return "tool_failed";
+  }
+  return "unknown";
+}
+
+/** Mic denied / missing — soft when host is otherwise alive. */
+export function isSoftMicFailure(cls: VoiceLiveErrorClass | null | undefined): boolean {
+  return cls === "mic_denied" || cls === "mic_missing";
+}
+
+/**
+ * Whether a Live Voice error should force the overlay error phase.
+ * Soft mic failures do not, so playback / tool loop can continue.
+ */
+export function isFatalLiveVoiceError(
+  cls: VoiceLiveErrorClass | null | undefined,
+): boolean {
+  if (!cls) return false;
+  if (isSoftMicFailure(cls)) return false;
+  return true;
+}
+
+/** i18n MessageKey fragment for a classified Live Voice error. */
+export function liveVoiceErrorMessageKey(
+  cls: VoiceLiveErrorClass,
+): `voice.err.${VoiceLiveErrorClass}` {
+  return `voice.err.${cls}`;
+}
+
+export function initialToolLoopState(): VoiceToolLoopState {
+  return { status: "idle", name: null, reason: null, sessionId: null };
+}
+
+/**
+ * Normalize a host `voice://tool` payload. Returns null when name is absent
+ * (never invents a tool). Status defaults: result present → ok, else running
+ * when status omitted for backward compatibility with finish-only events.
+ */
+export function parseToolLoopEvent(payload: {
+  name?: string | null;
+  status?: string | null;
+  reason?: string | null;
+  message?: string | null;
+  sessionId?: string | null;
+  session_id?: string | null;
+  result?: unknown;
+  errorClass?: string | null;
+} | null | undefined): VoiceToolLoopState | null {
+  const name = toolEventName(payload);
+  if (!name) return null;
+
+  const statusRaw = (payload?.status ?? "").trim().toLowerCase();
+  let status: VoiceToolLoopStatus;
+  if (
+    statusRaw === "running" ||
+    statusRaw === "ok" ||
+    statusRaw === "soft_fail" ||
+    statusRaw === "error" ||
+    statusRaw === "idle"
+  ) {
+    status = statusRaw;
+  } else if (payload?.result !== undefined && payload?.result !== null) {
+    // Legacy finish event with result but no status.
+    const soft = softFailReasonFromToolResult(payload.result);
+    status = soft ? "soft_fail" : "ok";
+  } else if (statusRaw === "failed" || statusRaw === "err") {
+    status = "error";
+  } else {
+    // Name-only without status: treat as in-flight (start event).
+    status = "running";
+  }
+
+  let reason =
+    (payload?.reason ?? "").trim() ||
+    softFailReasonFromToolResult(payload?.result) ||
+    null;
+  if (!reason && status === "error") {
+    const cls = classifyLiveVoiceError(
+      payload?.message,
+      payload?.errorClass,
+    );
+    reason = cls === "unknown" ? null : cls;
+  }
+
+  const sessionId =
+    (payload?.sessionId ?? payload?.session_id ?? "").trim() ||
+    sessionIdFromToolResult(payload?.result) ||
+    null;
+
+  return {
+    status,
+    name,
+    reason,
+    sessionId,
+  };
+}
+
+/** Reduce tool-loop state from a parsed event (host order only). */
+export function reduceToolLoopState(
+  prev: VoiceToolLoopState,
+  next: VoiceToolLoopState | null,
+): VoiceToolLoopState {
+  if (!next) return prev;
+  if (next.status === "idle") return initialToolLoopState();
+  return {
+    status: next.status,
+    name: next.name ?? prev.name,
+    reason: next.reason,
+    sessionId: next.sessionId ?? prev.sessionId,
+  };
+}
+
+/** True while a Build tool is in-flight. */
+export function isToolLoopBusy(loop: VoiceToolLoopState | null | undefined): boolean {
+  return loop?.status === "running";
+}
+
+/**
+ * Extract soft-fail reason from a host tool result object.
+ * Only trusts explicit `ok: false` + `reason` — never invents failures.
+ */
+export function softFailReasonFromToolResult(
+  result: unknown,
+): string | null {
+  if (!result || typeof result !== "object") return null;
+  const r = result as Record<string, unknown>;
+  if (r.ok === false) {
+    const reason = typeof r.reason === "string" ? r.reason.trim() : "";
+    return reason || "unknown";
+  }
+  return null;
+}
+
+function sessionIdFromToolResult(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const r = result as Record<string, unknown>;
+  const sid = r.session_id ?? r.sessionId;
+  if (typeof sid === "string" && sid.trim()) return sid.trim();
+  return null;
+}
+
+/**
+ * i18n key for the tool-loop status line. Null when idle (no chrome).
+ * Callers interpolate `{name}` / `{reason}` as needed.
+ */
+export function toolLoopStatusMessageKey(
+  loop: VoiceToolLoopState | null | undefined,
+):
+  | "voice.toolRunning"
+  | "voice.toolRan"
+  | "voice.toolSoftFail"
+  | "voice.toolFailed"
+  | null {
+  if (!loop || loop.status === "idle" || !loop.name) return null;
+  switch (loop.status) {
+    case "running":
+      return "voice.toolRunning";
+    case "ok":
+      return "voice.toolRan";
+    case "soft_fail":
+      return "voice.toolSoftFail";
+    case "error":
+      return "voice.toolFailed";
+    default:
+      return null;
+  }
+}
+
 /**
  * Derive overlay status: speaking > thinking > listening > connecting/idle.
  * Prefers explicit host `phase` / `thinking` when present.
+ * Soft mic warnings do not force error while the host session is active.
  */
 export function deriveVoiceDelegatePhase(
   input: DeriveVoiceDelegatePhaseInput,
@@ -73,7 +380,13 @@ export function deriveVoiceDelegatePhase(
   if (hostErr || uiErr) return "error";
 
   const st = input.state;
-  if (!st?.active) return "idle";
+  if (!st?.active) {
+    // Soft mic only and no host yet → still surface error so the user sees it.
+    if (input.softMicWarning && isSoftMicFailure(input.softMicWarning)) {
+      return "error";
+    }
+    return "idle";
+  }
 
   const phaseRaw = (st.phase ?? "").trim().toLowerCase();
   if (
@@ -88,7 +401,8 @@ export function deriveVoiceDelegatePhase(
   }
 
   if (st.speaking) return "speaking";
-  if (st.thinking || input.toolBusy || input.awaitingResponse) {
+  const hostToolBusy = Boolean(st.activeTool?.trim());
+  if (st.thinking || input.toolBusy || hostToolBusy || input.awaitingResponse) {
     return "thinking";
   }
   if (st.listening) return "listening";

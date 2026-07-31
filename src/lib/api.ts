@@ -3708,6 +3708,8 @@ export interface VoiceSessionState {
   speaking?: boolean;
   /** Host: model / tool turn in progress (from voice://state). */
   thinking?: boolean;
+  /** Host: in-flight Build tool name while voice → agent loop runs. */
+  activeTool?: string | null;
 }
 
 export async function voiceState(): Promise<VoiceSessionState> {
@@ -3738,11 +3740,19 @@ export async function voicePushPcm(pcmBase64: string): Promise<void> {
   return invoke<void>("voice_push_pcm", { pcmBase64 });
 }
 
+/**
+ * Invoke a Live Voice host tool (mock / debug / demo delegate).
+ * Host expects `argsJson` string; objects are serialized.
+ */
 export async function voiceInvokeTool(
   name: string,
-  args?: any,
+  args?: string | Record<string, unknown> | null,
 ): Promise<unknown> {
-  return invoke<unknown>("voice_invoke_tool", { name, args: args ?? {} });
+  const argsJson =
+    typeof args === "string"
+      ? args
+      : JSON.stringify(args ?? {});
+  return invoke<unknown>("voice_invoke_tool", { name, argsJson });
 }
 
 

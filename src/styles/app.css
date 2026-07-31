@@ -21485,6 +21485,21 @@ div.composer__input:empty::before {
   font-weight: 600;
   cursor: pointer;
 }
+.voice-overlay__tool-chip {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  opacity: 0.85;
+  font-weight: 500;
+}
+.voice-overlay__warn {
+  margin: 0.5rem 1rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #fde68a;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
 .voice-overlay__error {
   font-size: 0.8rem;
   color: #fda4af;
