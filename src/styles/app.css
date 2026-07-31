@@ -14003,7 +14003,7 @@ textarea::-webkit-scrollbar-thumb:active,
 
 /* Multi-model catalog: one table shell, shared column headers, compact rows */
 .prov-models {
-  margin-top: 10px;
+  margin-top: 0;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -14096,14 +14096,19 @@ textarea::-webkit-scrollbar-thumb:active,
 
 .prov-models__remote {
   margin-top: 10px;
-  margin-bottom: 4px;
+  margin-bottom: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.prov-models__fetch-hint {
-  margin: 8px 0 10px;
+/* Table sits under hint / remote chips with consistent vertical rhythm */
+.prov-field--full > .prov-models {
+  margin-top: 10px;
+}
+
+.prov-field--full > .prov-models__remote + .prov-models {
+  margin-top: 0;
 }
 
 .prov-models__remote-label {

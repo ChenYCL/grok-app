@@ -35,6 +35,8 @@ export interface ProvidersPanelProps {
   officialAvailable?: boolean;
   /** Called after switching official/custom so host can reconnect Grok Build. */
   onProviderActivated?: () => void;
+  /** Ephemeral feedback (e.g. fetch models result). */
+  onToast?: (msg: string, ms?: number) => void;
 }
 
 type FormModel = {
@@ -107,6 +109,7 @@ export function ProvidersPanel({
   locale,
   officialAvailable = false,
   onProviderActivated,
+  onToast,
 }: ProvidersPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [list, setList] = useState<api.ProvidersListResult | null>(null);
@@ -119,11 +122,8 @@ export function ProvidersPanel({
   const [busy, setBusy] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [remoteModels, setRemoteModels] = useState<string[]>([]);
-  /** Status under the fetch-models control (loaded / empty / error). */
-  const [fetchHint, setFetchHint] = useState<string | null>(null);
-  const [fetchHintTone, setFetchHintTone] = useState<"ok" | "err" | "muted">(
-    "muted",
-  );
+  /** Busy flag for fetch-models only (disables button while in flight). */
+  const [fetchingModels, setFetchingModels] = useState(false);
   /** Draft row for manually adding a model. */
   const [draftModelId, setDraftModelId] = useState("");
   const [draftModelName, setDraftModelName] = useState("");
@@ -206,7 +206,6 @@ export function ProvidersPanel({
     setDraftModelId("");
     setDraftModelName("");
     setRemoteModels([]);
-    setFetchHint(null);
     setHint(null);
     setShowKey(false);
     setRightMode("create");
@@ -376,7 +375,6 @@ export function ProvidersPanel({
     setDraftModelId("");
     setDraftModelName("");
     setRemoteModels([]);
-    setFetchHint(null);
     setHint(null);
     setShowKey(false);
     setRightMode("edit");
@@ -388,7 +386,6 @@ export function ProvidersPanel({
     setEditingId(null);
     setHint(null);
     setRemoteModels([]);
-    setFetchHint(null);
     setDraftModelId("");
     setDraftModelName("");
   };
@@ -545,12 +542,10 @@ export function ProvidersPanel({
 
   const fetchModels = async () => {
     if (!form.baseUrl.trim()) {
-      setFetchHint(tr("prov.err.needBase"));
-      setFetchHintTone("err");
+      onToast?.(tr("prov.err.needBase"), 3200);
       return;
     }
-    setFetchHint(tr("prov.fetching"));
-    setFetchHintTone("muted");
+    setFetchingModels(true);
     try {
       const r = await api.providersListModels({
         baseUrl: form.baseUrl.trim(),
@@ -559,15 +554,14 @@ export function ProvidersPanel({
       });
       setRemoteModels(r.models.map((m) => m.id));
       if (r.models.length) {
-        setFetchHint(tr("prov.loaded", { n: r.models.length }));
-        setFetchHintTone("ok");
+        onToast?.(tr("prov.loaded", { n: r.models.length }), 2800);
       } else {
-        setFetchHint(tr("prov.emptyList"));
-        setFetchHintTone("muted");
+        onToast?.(tr("prov.emptyList"), 2800);
       }
     } catch (e) {
-      setFetchHint(String(e));
-      setFetchHintTone("err");
+      onToast?.(String(e), 4000);
+    } finally {
+      setFetchingModels(false);
     }
   };
 
@@ -969,15 +963,16 @@ export function ProvidersPanel({
                       type="button"
                       className="btn btn--ghost btn--sm"
                       onClick={() => void fetchModels()}
-                      disabled={busy}
+                      disabled={busy || fetchingModels}
                     >
                       <IconRefresh size={14} />
-                      {tr("prov.fetchModels")}
+                      {fetchingModels
+                        ? tr("prov.fetching")
+                        : tr("prov.fetchModels")}
                     </button>
                   </span>
                   <p className="prov-field__hint">{tr("prov.modelsHint")}</p>
 
-                  {/* Fetch results sit directly under the fetch control */}
                   {remoteModels.length > 0 ? (
                     <div className="prov-models__remote">
                       <div className="prov-models__remote-label">
@@ -1003,21 +998,6 @@ export function ProvidersPanel({
                           );
                         })}
                       </div>
-                    </div>
-                  ) : null}
-                  {fetchHint ? (
-                    <div
-                      className={
-                        "prov-form__hint prov-models__fetch-hint" +
-                        (fetchHintTone === "ok"
-                          ? " is-ok"
-                          : fetchHintTone === "err"
-                            ? " is-err"
-                            : "")
-                      }
-                      role="status"
-                    >
-                      {fetchHint}
                     </div>
                   ) : null}
 

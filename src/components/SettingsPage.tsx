@@ -5600,6 +5600,7 @@ export function SettingsPage({
                   )
                 }
                 onProviderActivated={onProviderActivated}
+                onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2800)}
               />
             ) : (
           <AccountPanel
