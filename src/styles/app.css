@@ -17594,6 +17594,11 @@ textarea::-webkit-scrollbar-thumb:active,
   color: var(--text-tertiary);
 }
 
+.auto-page__bg-row-desc--muted {
+  opacity: 0.88;
+  font-size: 11.5px;
+}
+
 .auto-page__bg-row-actions {
   margin-top: 6px;
 }

@@ -5034,6 +5034,9 @@ const en = {
   "automations.honesty.launchAgentTitle": "macOS LaunchAgent helper",
   "automations.honesty.launchAgentBody":
     "Optional: starts the full app at login and after a crash only — not a headless schedule daemon.",
+  "automations.honesty.oneShotTitle": "One-shot fire helper",
+  "automations.honesty.oneShotBody":
+    "After full Quit: run the app with --fire-due-schedules (or fire-due-schedules.sh). Fires at most one due task, then exits. Soft-fails when nothing is due or CLI is missing — not a KeepAlive daemon.",
   "automations.launchAgent.title": "macOS LaunchAgent helper",
   "automations.launchAgent.desc":
     "Optional: generate a helper under app data and install a user LaunchAgent that starts the full Grok App at login and restarts it after a crash only. Not a headless schedule daemon — tasks still tick inside the app (window or tray).",
@@ -5069,6 +5072,22 @@ const en = {
   "automations.history.clearBody":
     "Removes the local observed run list on this device. This cannot be undone. Schedules themselves are unchanged.",
   "automations.history.clearConfirm": "Clear",
+  "automations.oneshot.title": "One-shot schedule fire",
+  "automations.oneshot.desc":
+    "Tray residency keeps continuous ticks while the process is alive. After full Quit, invoke {flag} (helper script {script} under app data) to fire at most one due task without opening the full UI, then exit.",
+  "automations.oneshot.honesty":
+    "Not a KeepAlive daemon and not continuous background scheduling. Soft-fails when nothing is due, the CLI is missing, or the project is untrusted. Does not auto-approve tools (no YOLO invent).",
+  "automations.oneshot.reveal": "Show one-shot helper files",
+  "automations.oneshot.outcome.fired": "One-shot fired a due scheduled task.",
+  "automations.oneshot.outcome.noneDue":
+    "One-shot found no due scheduled task (nothing to run).",
+  "automations.oneshot.outcome.busy":
+    "One-shot skipped — an agent turn is already in progress.",
+  "automations.oneshot.outcome.error":
+    "One-shot could not fire (CLI missing, project untrusted, or connect failed). Soft-failed.",
+  "automations.oneshot.outcome.alreadyClaimed":
+    "One-shot skipped — this due slot was already claimed in this process.",
+  "automations.oneshot.outcome.unknown": "One-shot finished with an unknown result.",
   "automations.aiComposerHint":
     "Describe what to run and how often — Grok will schedule it for you when ready.",
   "automations.createdToast": "Scheduled: {title}",
@@ -10950,6 +10969,9 @@ const zh: Record<MessageKey, string> = {
   "automations.honesty.launchAgentTitle": "macOS LaunchAgent 助手",
   "automations.honesty.launchAgentBody":
     "可选：仅在登录与崩溃后启动完整应用——不是无界面调度守护进程。",
+  "automations.honesty.oneShotTitle": "一次性触发助手",
+  "automations.honesty.oneShotBody":
+    "完全退出后：使用 --fire-due-schedules（或 fire-due-schedules.sh）启动应用。最多触发一个到期任务后退出；无到期任务或 CLI 缺失时软失败——不是 KeepAlive 守护进程。",
   "automations.launchAgent.title": "macOS LaunchAgent 助手",
   "automations.launchAgent.desc":
     "可选：在应用数据目录生成助手脚本，并安装用户级 LaunchAgent，在登录时启动完整 Grok 应用，并在崩溃后重启。不是无界面调度守护进程——任务仍在应用进程内（窗口或托盘）触发。",
@@ -10985,6 +11007,22 @@ const zh: Record<MessageKey, string> = {
   "automations.history.clearBody":
     "将删除本机已观察到的运行列表，且无法撤销。已安排任务本身不受影响。",
   "automations.history.clearConfirm": "清空",
+  "automations.oneshot.title": "一次性触发已安排任务",
+  "automations.oneshot.desc":
+    "托盘驻留可在进程存活期间持续检查。完全退出后，可用 {flag}（应用数据目录中的助手脚本 {script}）最多触发一个到期任务（无需完整交互界面），然后退出。",
+  "automations.oneshot.honesty":
+    "不是 KeepAlive 守护进程，也不是持续后台调度。无到期任务、CLI 缺失或项目未信任时软失败。不会自动批准工具（不发明 YOLO）。",
+  "automations.oneshot.reveal": "显示一次性助手文件",
+  "automations.oneshot.outcome.fired": "一次性助手已触发到期的已安排任务。",
+  "automations.oneshot.outcome.noneDue":
+    "一次性助手未找到到期任务（无需运行）。",
+  "automations.oneshot.outcome.busy":
+    "一次性助手已跳过——当前已有 Agent 回合进行中。",
+  "automations.oneshot.outcome.error":
+    "一次性助手无法触发（CLI 缺失、项目未信任或连接失败）。已软失败。",
+  "automations.oneshot.outcome.alreadyClaimed":
+    "一次性助手已跳过——此到期槽位已在本进程中认领。",
+  "automations.oneshot.outcome.unknown": "一次性助手以未知结果结束。",
   "automations.aiComposerHint":
     "用自然语言描述要做什么、多久一次——准备好后 Grok 会自动创建已安排任务。",
   "automations.createdToast": "已安排：{title}",

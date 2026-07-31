@@ -3127,6 +3127,8 @@ export interface AutomationRunnerStatusDto {
   processRequired: boolean;
   enabledCount: number;
   keepTrayForSchedules: boolean;
+  /** True when process launched with `--fire-due-schedules` (one-shot). */
+  oneshotMode?: boolean;
   honesty: string;
 }
 
@@ -3140,8 +3142,9 @@ export async function automationRunnerStatus(): Promise<AutomationRunnerStatusDt
       processRequired: true,
       enabledCount: 0,
       keepTrayForSchedules: true,
+      oneshotMode: false,
       honesty:
-        "Schedules tick only while this app process is alive (main window or tray). There is no separate background daemon.",
+        "Schedules tick only while this app process is alive (main window or tray). There is no separate background daemon. Optional one-shot: --fire-due-schedules fires at most one due task then exits.",
     };
   }
   return invoke<AutomationRunnerStatusDto>("automation_runner_status");

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   automationsHonestyMatrix,
+  automationsOneShotHelperSurface,
   deriveAutomationsRunnerSurface,
+  FIRE_DUE_SCHEDULES_FLAG,
+  fireDueOutcomeMessageKey,
   formatLaunchAgentSoftFailDetail,
   launchAgentSoftFail,
+  wantsFireDueSchedules,
 } from "./automationsHeadlessHonesty";
 
 describe("deriveAutomationsRunnerSurface", () => {
@@ -107,14 +111,71 @@ describe("deriveAutomationsRunnerSurface", () => {
 });
 
 describe("automationsHonestyMatrix", () => {
-  it("includes tray, quit, and launchAgent by default", () => {
+  it("includes tray, quit, launchAgent, and oneShot by default", () => {
     const rows = automationsHonestyMatrix();
-    expect(rows.map((r) => r.id)).toEqual(["tray", "quit", "launchAgent"]);
+    expect(rows.map((r) => r.id)).toEqual([
+      "tray",
+      "quit",
+      "launchAgent",
+      "oneShot",
+    ]);
   });
 
-  it("can omit LaunchAgent row when unsupported", () => {
+  it("can omit LaunchAgent row when unsupported (oneShot remains)", () => {
     const rows = automationsHonestyMatrix({ launchAgentSupported: false });
-    expect(rows.map((r) => r.id)).toEqual(["tray", "quit"]);
+    expect(rows.map((r) => r.id)).toEqual(["tray", "quit", "oneShot"]);
+  });
+
+  it("can omit oneShot row", () => {
+    const rows = automationsHonestyMatrix({ includeOneShot: false });
+    expect(rows.map((r) => r.id)).toEqual(["tray", "quit", "launchAgent"]);
+  });
+});
+
+describe("wantsFireDueSchedules / fireDueOutcomeMessageKey", () => {
+  it("detects flag and env", () => {
+    expect(
+      wantsFireDueSchedules({ argv: ["grok-app", FIRE_DUE_SCHEDULES_FLAG] }),
+    ).toBe(true);
+    expect(wantsFireDueSchedules({ argv: ["grok-app"], envVal: "1" })).toBe(
+      true,
+    );
+    expect(wantsFireDueSchedules({ argv: ["grok-app"], envVal: "true" })).toBe(
+      true,
+    );
+    expect(wantsFireDueSchedules({ argv: ["grok-app"] })).toBe(false);
+    expect(wantsFireDueSchedules({ argv: ["grok-app"], envVal: "0" })).toBe(
+      false,
+    );
+  });
+
+  it("maps stable outcome kinds", () => {
+    expect(fireDueOutcomeMessageKey("fired")).toBe(
+      "automations.oneshot.outcome.fired",
+    );
+    expect(fireDueOutcomeMessageKey("none_due")).toBe(
+      "automations.oneshot.outcome.noneDue",
+    );
+    expect(fireDueOutcomeMessageKey("busy")).toBe(
+      "automations.oneshot.outcome.busy",
+    );
+    expect(fireDueOutcomeMessageKey("error")).toBe(
+      "automations.oneshot.outcome.error",
+    );
+    expect(fireDueOutcomeMessageKey("already_claimed")).toBe(
+      "automations.oneshot.outcome.alreadyClaimed",
+    );
+    expect(fireDueOutcomeMessageKey("weird")).toBe(
+      "automations.oneshot.outcome.unknown",
+    );
+  });
+
+  it("exposes honest one-shot surface (not KeepAlive daemon)", () => {
+    const s = automationsOneShotHelperSurface();
+    expect(s.flagHint).toBe(FIRE_DUE_SCHEDULES_FLAG);
+    expect(s.scriptName).toBe("fire-due-schedules.sh");
+    expect(s.titleKey).toBe("automations.oneshot.title");
+    expect(s.honestyKey).toBe("automations.oneshot.honesty");
   });
 });
 
