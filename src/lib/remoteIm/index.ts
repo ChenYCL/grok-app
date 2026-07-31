@@ -11,3 +11,4 @@ export * from "./wecomConfig";
 export * from "./resilience";
 export * from "./dingtalkConfig";
 export * from "./telegramConfig";
+export * from "./feishuConfig";

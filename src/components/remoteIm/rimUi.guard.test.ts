@@ -69,6 +69,11 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("data-telegram-guide");
     expect(src).toContain("draftOptions");
     expect(src).toContain("validateTelegramConfig");
+  it("ChannelPanel Feishu/Lark guide + draft health without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-feishu-guide");
+    expect(src).toContain("draftOptions");
+    expect(src).toContain("validateFeishuConfig");
     expect(src).not.toMatch(/window\.confirm/);
     expect(src).not.toMatch(/window\.alert/);
     expect(src).not.toMatch(/window\.prompt/);

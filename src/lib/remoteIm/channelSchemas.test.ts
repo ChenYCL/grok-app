@@ -33,10 +33,14 @@ describe("remoteIm channelSchemas", () => {
     const secret = feishu?.fields.find((f) => f.key === "app_secret");
     expect(secret?.control).toBe("password");
     expect(secret?.secret).toBe(true);
-    expect(feishu?.fields.some((f) => f.key === "app_id")).toBe(true);
+    expect(secret?.helpKey).toBe("settings.remoteIm.feishu.appSecretHelp");
+    const appId = feishu?.fields.find((f) => f.key === "app_id");
+    expect(appId?.helpKey).toBe("settings.remoteIm.feishu.appIdHelp");
     expect(feishu?.fields.some((f) => f.key === "enable_feishu_card")).toBe(
       true,
     );
+    const card = feishu?.fields.find((f) => f.key === "enable_feishu_card");
+    expect(card?.helpKey).toBe("settings.remoteIm.feishu.enableCardHelp");
   });
 
   it("wecom switches fields by connect_mode", () => {

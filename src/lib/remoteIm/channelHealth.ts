@@ -28,6 +28,10 @@ import {
   telegramHealthHintKeys,
   validateTelegramConfig,
 } from "./telegramConfig";
+  feishuHealthHintKeys,
+  normalizeFeishuDomain,
+  validateFeishuConfig,
+} from "./feishuConfig";
 
 /** Health tone for badges / callouts (maps to RimBadge). */
 export type RimChannelHealthTone = "ok" | "warn" | "err" | "neutral";
@@ -102,6 +106,14 @@ export type ClassifyChannelHealthInput = {
    * only (never stored by health helpers).
    */
   tokenValue?: string | null;
+   * Draft options from the open form (e.g. cleared app_id / domain).
+   * Merged over instance.options for readiness / transport — never secrets.
+   */
+  draftOptions?: Record<string, unknown>;
+  /**
+   * When the form has a non-empty app_id, pass for format check only.
+   */
+  appIdValue?: string | null;
 };
 
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
@@ -111,8 +123,7 @@ const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
-  feishu: ["app_secret"],
-  lark: ["app_secret"],
+  // Feishu/Lark secrets are validated via feishuConfig
   telegram: ["token"],
   // DingTalk secrets are validated via dingtalkConfig
   discord: ["token"],
@@ -124,8 +135,6 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
 };
 
 const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
-  feishu: ["app_id"],
-  lark: ["app_id"],
   telegram: [],
 };
 
@@ -218,13 +227,8 @@ export function channelModeLabel(
   options: Record<string, unknown>,
 ): string | null {
   if (FEISHU_LIKE.includes(channel)) {
-    const domain = String(options.domain ?? "feishu");
-    if (domain === "lark") return "domain=lark";
-    if (domain === "custom") {
-      const custom = String(options.custom_domain ?? "").trim();
-      return custom ? `domain=custom` : "domain=custom";
-    }
-    return "domain=feishu";
+    const { kind } = normalizeFeishuDomain(options, channel);
+    return `ws;domain=${kind}`;
   }
   if (TELEGRAM_LIKE.includes(channel)) {
     const proxy = String(options.proxy ?? "").trim();
@@ -260,6 +264,7 @@ function optionString(
  *
  * WeCom is mode-aware (websocket vs webhook) via {@link validateWecomConfig}.
  * DingTalk is Stream-mode-aware via {@link validateDingtalkConfig}.
+ * Feishu/Lark is WS-aware via {@link validateFeishuConfig}.
  */
 export function credentialReadiness(
   channel: RemoteChannelId,
@@ -303,6 +308,21 @@ export function credentialReadiness(
       secretKeysFilled,
       hasCredentials: instance.hasCredentials,
       tokenValue,
+  appIdValue?: string | null,
+): { ready: boolean; missingKeys: string[] } {
+  const opts = isRecord(instance.options) ? instance.options : {};
+
+  if (FEISHU_LIKE.includes(channel)) {
+    const idFromForm =
+      appIdValue != null && String(appIdValue).trim()
+        ? String(appIdValue).trim()
+        : optionString(opts, "app_id") || null;
+    const v = validateFeishuConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue: idFromForm,
+      channel,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -320,11 +340,6 @@ export function credentialReadiness(
         missing.push(k);
       }
     }
-  }
-
-  // Feishu needs app_id always when binding
-  if (FEISHU_LIKE.includes(channel) && !optionString(opts, "app_id")) {
-    if (!missing.includes("app_id")) missing.push("app_id");
   }
 
   const ready =
@@ -373,6 +388,7 @@ export function classifyChannelHealth(
   // Readiness evaluates against draft-merged options for honest mode switches.
   // Readiness evaluates against draft-merged options for honest form edits.
   // Readiness evaluates against draft-merged options for honest soft status.
+  // Readiness evaluates against draft-merged options for honest form edits.
   const readinessInstance: ChannelInstance = {
     ...instance,
     options: opts,
@@ -382,6 +398,11 @@ export function classifyChannelHealth(
     !instance.acl?.allowFrom ||
     String(instance.acl.allowFrom).trim() === "" ||
     String(instance.acl.allowFrom).trim() === "*";
+
+  const appIdForCheck =
+    input.appIdValue != null && String(input.appIdValue).trim()
+      ? String(input.appIdValue).trim()
+      : optionString(opts, "app_id") || null;
 
   const { ready: credentialsReady, missingKeys } = credentialReadiness(
     channel,
@@ -404,6 +425,13 @@ export function classifyChannelHealth(
   const credsUsable =
     !!instance.hasCredentials &&
     (credentialsReady || channel !== "telegram");
+    appIdForCheck,
+  );
+
+  // Honest status: incomplete bind (e.g. Feishu missing app_id) cannot look "connected".
+  const credsUsable =
+    !!instance.hasCredentials &&
+    (credentialsReady || !FEISHU_LIKE.includes(channel));
 
   let tone: ChannelStatusTone = "unconfigured";
   if (instance.lastError) {
@@ -424,6 +452,7 @@ export function classifyChannelHealth(
     // Saved vault but current mode incomplete (e.g. WeCom mode switch)
     // Vault present but current form incomplete (cleared client_id, etc.)
     // Saved vault but current form incomplete / invalid
+    // Vault present but current form incomplete (cleared app_id, bad format, …)
     tone = "configured";
   }
 
@@ -447,15 +476,26 @@ export function classifyChannelHealth(
   // Channel-specific depth (shippable for Feishu / Telegram / WeCom)
   // Channel-specific depth (shippable for Feishu / Telegram / DingTalk)
   // Channel-specific depth (Feishu / Telegram)
+  // Channel-specific depth (shippable for Feishu / Lark / Telegram)
   if (FEISHU_LIKE.includes(channel)) {
-    if (!optionString(opts, "app_id") && !instance.hasCredentials) {
-      hintKeys.push("settings.remoteIm.health.hint.feishuAppId");
+    const feishuV = validateFeishuConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue: appIdForCheck,
+      channel,
+    });
+    const enableCard =
+      opts.enable_feishu_card === undefined
+        ? true
+        : opts.enable_feishu_card === true ||
+          opts.enable_feishu_card === "true";
+    for (const k of feishuHealthHintKeys(feishuV, {
+      openAcl: openAcl && instance.hasCredentials,
+      enableFeishuCard: enableCard,
+    })) {
+      hintKeys.push(k);
     }
-    const domain = String(opts.domain ?? "feishu");
-    if (domain === "lark") {
-      hintKeys.push("settings.remoteIm.health.hint.feishuLarkDomain");
-    }
-    hintKeys.push("settings.remoteIm.health.hint.feishuWs");
   }
 
   if (TELEGRAM_LIKE.includes(channel)) {

@@ -31,6 +31,7 @@ import {
   toggleSecretReveal,
   validateBindFields,
   validateTelegramConfig,
+  validateFeishuConfig,
 } from "@/lib/remoteIm";
 import type { TestConnectionResult } from "@/lib/remoteIm/bridgeClient";
 import {
@@ -227,11 +228,30 @@ export function RemoteImChannelPanel({
           }
           if (tg.softStatus === "invalid_proxy") {
             setFormError(t("settings.remoteIm.telegram.err.proxy"));
+      // Feishu/Lark: honest format / domain soft-fail before write (pure, no I/O)
+      if (channelId === "feishu" || channelId === "lark") {
+        const appId =
+          String(nextValues.app_id ?? merged.app_id ?? "").trim() || "";
+        const fe = validateFeishuConfig({
+          options: nextValues,
+          secretKeysFilled: filled,
+          hasCredentials: instance.hasCredentials,
+          appIdValue: appId || null,
+          channel: channelId,
+        });
+        if (!fe.ok) {
+          if (fe.softStatus === "invalid_app_id_format") {
+            setFormError(t("settings.remoteIm.feishu.err.appIdFormat"));
+            return false;
+          }
+          if (fe.softStatus === "missing_custom_domain") {
+            setFormError(t("settings.remoteIm.feishu.err.customDomain"));
             return false;
           }
           setFormError(
             t("settings.remoteIm.err.missingFields", {
               fields: tg.missing.join(", "),
+              fields: fe.missing.join(", "),
             }),
           );
           return false;
@@ -540,6 +560,8 @@ export function RemoteImChannelPanel({
     );
     const tokenValue =
       secrets.token?.trim() || secrets.bot_token?.trim() || null;
+    const appIdValue =
+      String(values.app_id ?? "").trim() || null;
     return classifyChannelHealth({
       instance,
       bridgeRunning,
@@ -551,6 +573,9 @@ export function RemoteImChannelPanel({
       // Live form options (e.g. Telegram proxy) for honest soft status
       draftOptions: values,
       tokenValue,
+      // Live form options (e.g. domain / cleared app_id) for honest soft status
+      draftOptions: values,
+      appIdValue,
     });
   }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
 
@@ -887,6 +912,19 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.telegram.guide.softFail")}
+      {channelId === "feishu" || channelId === "lark" ? (
+        <div className="rim-callout" data-feishu-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.feishu.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.feishu.guide.step1")}</li>
+            <li>{t("settings.remoteIm.feishu.guide.step2")}</li>
+            <li>{t("settings.remoteIm.feishu.guide.step3")}</li>
+            <li>{t("settings.remoteIm.feishu.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.feishu.guide.softFail")}
           </p>
         </div>
       ) : null}
