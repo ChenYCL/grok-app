@@ -2573,6 +2573,9 @@ const en = {
     "Official DeepSeek API — V4 Flash + Pro, thinking low/high/xhigh/max",
   "prov.preset.amux.blurb":
     "Amux relay — Grok 4.5, reasoning low/medium/high",
+  "prov.preset.yunApi.blurb":
+    "Yun API (yunyi) — Grok 4.5, reasoning low/medium/high",
+  "prov.getApiKey": "Get API Key",
   "prov.efforts": "Reasoning levels",
   "prov.effortsHint":
     "Options shown in the composer effort menu for this channel. Values are sent as reasoning_effort.",
@@ -7597,6 +7600,9 @@ const zh: Record<MessageKey, string> = {
     "DeepSeek 官方 API — V4 Flash + Pro，思考 low/high/xhigh/max",
   "prov.preset.amux.blurb":
     "Amux 中转 — Grok 4.5，推理 low/medium/high",
+  "prov.preset.yunApi.blurb":
+    "Yun API（云驿）— Grok 4.5，推理 low/medium/high",
+  "prov.getApiKey": "获取 API Key",
   "prov.efforts": "思考深度",
   "prov.effortsHint":
     "出现在输入框推理强度菜单中；取值作为 reasoning_effort 传给上游。",

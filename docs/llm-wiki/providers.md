@@ -47,9 +47,15 @@ Add flow opens a **preset gallery** (`providerPresets.ts`):
 | **Custom** | empty (user fills) | Grok `low`/`medium`/`high` |
 | **DeepSeek** | `deepseek-v4-flash`, `deepseek-v4-pro` | `low` / `high` / `xhigh` / `max` (docs mapping table; default `high`) |
 | **Amux** | `grok-4.5` (display **Grok 4.5**) | Grok `low`/`medium`/`high` |
+| **Yun API** | `grok-4.5` (display **Grok 4.5**) | Grok `low`/`medium`/`high` |
 
-DeepSeek base: `https://api.deepseek.com/v1`, `chat_completions`.  
-Amux base: `https://api.amux.ai/v1`, `responses`. User still pastes API key. More presets can be registered without Host schema changes.
+| Preset | Base | Get API Key |
+|--------|------|-------------|
+| DeepSeek | `https://api.deepseek.com/v1` (`chat_completions`) | https://platform.deepseek.com/ |
+| Amux | `https://api.amux.ai/v1` (`responses`) | https://api.amux.ai/register?aff=Vccp |
+| Yun API | `https://api.yunyi.ai/v1` (`responses`) | https://api.yunyi.ai/register/?aff_code=W0iw |
+
+Form shows a **Get API Key** text control under the key field when the channel matches a preset (by id or base host). Opens the URL via `open_external_url`.
 
 CPA / sub2api / grok-go remain generic OpenAI-compatible relays.
 

@@ -4,8 +4,10 @@ import {
   DEEPSEEK_EFFORTS,
   DEEPSEEK_MODELS,
   PROVIDER_PRESETS,
+  YUN_API_MODELS,
   defaultCustomChannelEfforts,
   findProviderPreset,
+  resolveProviderApiKeyUrl,
 } from "./providerPresets";
 
 describe("providerPresets", () => {
@@ -35,6 +37,32 @@ describe("providerPresets", () => {
     expect(AMUX_MODELS).toEqual([{ id: "grok-4.5", name: "Grok 4.5" }]);
     expect(amux!.models).toEqual(AMUX_MODELS);
     expect(amux!.efforts.map((e) => e.id)).toEqual(["low", "medium", "high"]);
+    expect(amux!.apiKeyUrl).toContain("api.amux.ai/register");
+  });
+
+  it("ships Yun API with grok-4.5 and yunyi register link", () => {
+    const yun = findProviderPreset("yun-api");
+    expect(yun).toBeDefined();
+    expect(yun!.baseUrl).toBe("https://api.yunyi.ai/v1");
+    expect(YUN_API_MODELS).toEqual([{ id: "grok-4.5", name: "Grok 4.5" }]);
+    expect(yun!.apiKeyUrl).toBe(
+      "https://api.yunyi.ai/register/?aff_code=W0iw",
+    );
+  });
+
+  it("resolves get-api-key URLs by id or base host", () => {
+    expect(
+      resolveProviderApiKeyUrl({ providerId: "deepseek" }),
+    ).toBe("https://platform.deepseek.com/");
+    expect(
+      resolveProviderApiKeyUrl({ baseUrl: "https://api.amux.ai/v1" }),
+    ).toContain("amux.ai/register");
+    expect(
+      resolveProviderApiKeyUrl({ baseUrl: "https://api.yunyi.ai/v1" }),
+    ).toContain("aff_code=W0iw");
+    expect(resolveProviderApiKeyUrl({ baseUrl: "https://example.com" })).toBe(
+      null,
+    );
   });
 
   it("defaults blank custom channels to Grok low/medium/high (ladder order)", () => {

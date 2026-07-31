@@ -2463,6 +2463,9 @@ export const zhTW: Record<MessageKey, string> = {
     "DeepSeek 官方 API — V4 Flash + Pro，思考 low/high/xhigh/max",
   "prov.preset.amux.blurb":
     "Amux 中轉 — Grok 4.5，推理 low/medium/high",
+  "prov.preset.yunApi.blurb":
+    "Yun API（雲驛）— Grok 4.5，推理 low/medium/high",
+  "prov.getApiKey": "取得 API Key",
   "prov.efforts": "思考深度",
   "prov.effortsHint":
     "出現在輸入框推理強度選單中；取值作為 reasoning_effort 傳給上游。",

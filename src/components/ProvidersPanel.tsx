@@ -31,6 +31,7 @@ import {
 import {
   PROVIDER_PRESETS,
   defaultCustomChannelEfforts,
+  resolveProviderApiKeyUrl,
   type ProviderPreset,
 } from "@/lib/providerPresets";
 
@@ -70,6 +71,8 @@ type FormState = {
   apiBackend: string;
   models: FormModel[];
   efforts: FormEffort[];
+  /** External signup URL for “Get API Key” (from preset). */
+  apiKeyUrl: string | null;
 };
 
 type RightMode = "empty" | "pick" | "create" | "edit" | "official";
@@ -87,6 +90,7 @@ const emptyForm = (): FormState => ({
     name: e.name || e.id,
     isDefault: !!e.isDefault,
   })),
+  apiKeyUrl: null,
 });
 
 function modelsFromProvider(p: api.CustomProvider): FormModel[] {
@@ -132,6 +136,7 @@ function formFromPreset(preset: ProviderPreset): FormState {
       name: e.name || e.id,
       isDefault: !!e.isDefault,
     })),
+    apiKeyUrl: preset.apiKeyUrl ?? null,
   };
 }
 
@@ -464,6 +469,10 @@ export function ProvidersPanel({
       apiBackend: p.apiBackend || "responses",
       models: modelsFromProvider(p),
       efforts: effortsFromProvider(p),
+      apiKeyUrl: resolveProviderApiKeyUrl({
+        providerId: p.id,
+        baseUrl: p.baseUrl,
+      }),
     });
     setDraftModelId("");
     setDraftModelName("");
@@ -1138,7 +1147,7 @@ export function ProvidersPanel({
                   />
                 </div>
 
-                <label className="prov-field">
+                <div className="prov-field">
                   <span className="prov-field__label">{tr("prov.apiKey")}</span>
                   <div className="prov-key-row">
                     <input
@@ -1162,7 +1171,22 @@ export function ProvidersPanel({
                       {showKey ? tr("prov.keyHide") : tr("prov.keyShow")}
                     </button>
                   </div>
-                </label>
+                  {form.apiKeyUrl ? (
+                    <button
+                      type="button"
+                      className="prov-field__text-link"
+                      onClick={() => {
+                        const url = form.apiKeyUrl;
+                        if (!url) return;
+                        void api.openExternalUrl(url).catch((e) => {
+                          onToast?.(String(e), 4000);
+                        });
+                      }}
+                    >
+                      {tr("prov.getApiKey")}
+                    </button>
+                  ) : null}
+                </div>
 
                 <div className="prov-field prov-field--full">
                   <span className="prov-field__label-row">
