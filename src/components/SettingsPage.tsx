@@ -213,6 +213,19 @@ import {
 } from "@/lib/composerSpellcheck";
 import type { AccountStatus, DetectedEditor } from "@/lib/api";
 import * as api from "@/lib/api";
+import {
+  classifyProbeResult,
+  isValidProxyUrl,
+  manualProxyUrlSoftFail,
+  normalizeProxyMode,
+  probeOutcomeMessageKey,
+  probeTargetClassMessageKey,
+  probeToneClass,
+  proxyApplyHonestyScopes,
+  proxyApplyMessageKey,
+  proxySoftFailMessageKey,
+  type ClassifiedProbeResult,
+} from "@/lib/networkProxy";
 import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
@@ -732,22 +745,30 @@ function formatSessionWhen(iso: string, locale: string): string {
 /** Probe Grok endpoints through the effective proxy (path only, not auth). */
 function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
   const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState<api.NetworkProbeResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [classified, setClassified] = useState<ClassifiedProbeResult | null>(
+    null,
+  );
 
   const runTest = async () => {
-    if (!api.isTauri()) return;
+    if (!api.isTauri()) {
+      setClassified(classifyProbeResult(null, { available: false }));
+      return;
+    }
     setTesting(true);
-    setResult(null);
-    setError(null);
+    setClassified(null);
     try {
-      setResult(await api.networkProbe());
+      const raw = await api.networkProbe();
+      setClassified(classifyProbeResult(raw));
     } catch (e) {
-      setError(String(e));
+      setClassified(
+        classifyProbeResult(null, { invokeError: String(e) }),
+      );
     } finally {
       setTesting(false);
     }
   };
+
+  const summaryTone = classified ? probeToneClass(classified.tone) : "";
 
   return (
     <div className="settings-row settings-row--stack">
@@ -755,6 +776,7 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
         <div className="settings-row__label">{t("settings.netProbe")}</div>
         <div className="settings-row__desc">{t("settings.netProbeDesc")}</div>
       </div>
+      <div className="settings-row__hint">{t("settings.netProbeHonesty")}</div>
       <div className="settings-netprobe">
         <div className="settings-netprobe__actions">
           <button
@@ -765,15 +787,34 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
           >
             {testing ? t("settings.netProbeTesting") : t("settings.netProbeRun")}
           </button>
+          {classified ? (
+            <div
+              className={"settings-acp-chip settings-netprobe__chip " + summaryTone}
+              role="status"
+            >
+              <span className="settings-acp-chip__dot" aria-hidden />
+              <span className="settings-acp-chip__label">
+                {t(probeOutcomeMessageKey(classified.outcome) as MessageKey)}
+              </span>
+              {classified.targets.length > 0 ? (
+                <span className="settings-acp-chip__meta">
+                  {t("settings.netProbe.summaryCounts", {
+                    ok: classified.okCount,
+                    fail: classified.failCount,
+                  })}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-        {error ? (
+        {classified?.invokeError ? (
           <div className="settings-row__hint is-danger" role="alert">
-            {error}
+            {classified.invokeError}
           </div>
         ) : null}
-        {result ? (
+        {classified && classified.targets.length > 0 ? (
           <ul className="settings-netprobe__list" role="list">
-            {result.targets.map((tg) => (
+            {classified.targets.map((tg) => (
               <li
                 key={tg.key}
                 className={
@@ -785,10 +826,21 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
                 </span>
                 <span className="settings-netprobe__key">{tg.key}</span>
                 <span className="settings-netprobe__url">{tg.url}</span>
-                <span className="settings-netprobe__meta">
-                  {tg.ok
-                    ? `${tg.status ?? ""} · ${tg.millis}ms`
-                    : tg.error || t("settings.netProbeFailed")}
+                <span
+                  className={
+                    "settings-acp-chip settings-netprobe__target-chip " +
+                    (tg.ok ? "is-ok" : "is-fail")
+                  }
+                >
+                  <span className="settings-acp-chip__dot" aria-hidden />
+                  <span className="settings-acp-chip__label">
+                    {t(probeTargetClassMessageKey(tg.klass) as MessageKey)}
+                  </span>
+                  <span className="settings-acp-chip__meta">
+                    {tg.ok
+                      ? `${tg.status ?? ""} · ${tg.millis}ms`
+                      : tg.error || t("settings.netProbeFailed")}
+                  </span>
                 </span>
               </li>
             ))}
@@ -6279,8 +6331,8 @@ export function SettingsPage({
                   <Select
                     className="settings-select"
                     aria-label={t("settings.proxyMode")}
-                    value={proxyMode}
-                    onChange={(v) => onProxyMode?.(v)}
+                    value={normalizeProxyMode(proxyMode)}
+                    onChange={(v) => onProxyMode?.(normalizeProxyMode(v))}
                     options={[
                       {
                         value: "system",
@@ -6296,11 +6348,25 @@ export function SettingsPage({
                       },
                     ]}
                   />
-                  <div className="settings-row__hint">
-                    {t("settings.proxyRestartHint")}
-                  </div>
+                  <ul className="settings-proxy-apply" role="list">
+                    {proxyApplyHonestyScopes(proxyMode, proxyUrl).map(
+                      (scope) => (
+                        <li
+                          key={scope}
+                          className={
+                            "settings-row__hint" +
+                            (scope === "manual_invalid_inherit"
+                              ? " is-danger"
+                              : "")
+                          }
+                        >
+                          {t(proxyApplyMessageKey(scope) as MessageKey)}
+                        </li>
+                      ),
+                    )}
+                  </ul>
                 </div>
-                {proxyMode === "manual" && (
+                {normalizeProxyMode(proxyMode) === "manual" && (
                   <>
                     <div className="settings-row settings-row--stack">
                       <div className="settings-row__text">
@@ -6311,25 +6377,56 @@ export function SettingsPage({
                           {t("settings.proxyUrlDesc")}
                         </div>
                       </div>
-                      <input
-                        className="settings-input"
-                        value={proxyUrl}
-                        placeholder="http://127.0.0.1:7890"
-                        autoComplete="off"
-                        spellCheck={false}
-                        onChange={(e) => onProxyUrl?.(e.target.value)}
-                      />
-                      {proxyUrl.trim() !== "" &&
-                        !/^(https?|socks5h?):\/\/[^\s]+$/i.test(
-                          proxyUrl.trim(),
-                        ) && (
-                          <div
-                            className="settings-row__hint is-danger"
-                            role="alert"
-                          >
-                            {t("settings.proxyUrlInvalid")}
-                          </div>
-                        )}
+                      {(() => {
+                        const urlSoft = manualProxyUrlSoftFail(
+                          proxyMode,
+                          proxyUrl,
+                        );
+                        const softKey = proxySoftFailMessageKey(
+                          proxyMode,
+                          proxyUrl,
+                        );
+                        const showInvalid =
+                          proxyUrl.trim() !== "" && !isValidProxyUrl(proxyUrl);
+                        const showEmptyManual =
+                          proxyUrl.trim() === "" && urlSoft === "empty";
+                        return (
+                          <>
+                            <input
+                              className={
+                                "settings-input" +
+                                (showInvalid || showEmptyManual
+                                  ? " is-invalid"
+                                  : "")
+                              }
+                              value={proxyUrl}
+                              placeholder="http://127.0.0.1:7890"
+                              autoComplete="off"
+                              spellCheck={false}
+                              aria-invalid={
+                                showInvalid || showEmptyManual
+                                  ? true
+                                  : undefined
+                              }
+                              aria-describedby={
+                                softKey
+                                  ? "settings-proxy-url-softfail"
+                                  : undefined
+                              }
+                              onChange={(e) => onProxyUrl?.(e.target.value)}
+                            />
+                            {softKey ? (
+                              <div
+                                id="settings-proxy-url-softfail"
+                                className="settings-row__hint is-danger"
+                                role="alert"
+                              >
+                                {t(softKey as MessageKey)}
+                              </div>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
                     <div className="settings-row settings-row--stack">
                       <div className="settings-row__text">
