@@ -259,6 +259,17 @@ pub struct AppSettings {
     /// Changing the list soft-respawns agents.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed_tools: Vec<String>,
+    /// Enable CLI TodoGate (turn-end nudge when todos are still pending /
+    /// in_progress). Default **false** (CLI built-in default). When true, spawn
+    /// passes top-level `--todo-gate` (CLI 0.2.117+; overrides remote
+    /// `todo_gate_enabled`). Independent mode also writes agent-home
+    /// `todo_gate_enabled` / `todo_gate_max_fires_per_prompt`. Soft-respawns.
+    #[serde(default)]
+    pub todo_gate_enabled: bool,
+    /// Cap TodoGate fires per prompt (1–20). Default 3. Written to independent
+    /// agent-home config as `todo_gate_max_fires_per_prompt`. Soft-respawns.
+    #[serde(default = "default_todo_gate_max_fires")]
+    pub todo_gate_max_fires_per_prompt: u32,
     /// Reopen the last active chat once after launch (default **false** —
     /// start on a draft new-chat page; opt-in via Settings).
     #[serde(default = "default_reopen_last_session")]
@@ -406,6 +417,10 @@ fn default_proxy_mode() -> String {
     "system".into()
 }
 
+fn default_todo_gate_max_fires() -> u32 {
+    crate::agent_todo_gate::DEFAULT_TODO_GATE_MAX_FIRES
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -437,6 +452,8 @@ impl Default for AppSettings {
             disable_web_search: false,
             disallowed_tools: Vec::new(),
             allowed_tools: Vec::new(),
+            todo_gate_enabled: false,
+            todo_gate_max_fires_per_prompt: default_todo_gate_max_fires(),
             reopen_last_session: default_reopen_last_session(),
             last_session_id: None,
             last_project_id: None,

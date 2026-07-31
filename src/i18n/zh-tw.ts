@@ -1312,6 +1312,12 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.subagentsEnabledDesc": "關閉時啟動加上 --no-subagents，無法拉起巢狀 Agent / 任務。變更後 soft-respawn。",
   "settings.planEnabled": "允許計畫模式",
   "settings.planEnabledDesc": "關閉時啟動加上 --no-plan，Agent 無法進入計畫模式。變更後 soft-respawn。",
+  "settings.todoGate": "Todo 門控",
+  "settings.todoGateDesc":
+    "當 Agent 在待辦仍為 pending / in_progress 時嘗試結束回合，Grok Build 可先催促再交還控制（CLI --todo-gate，0.2.117+）。會覆蓋遠端 todo_gate_enabled；預設關閉。獨立模式同時寫入 agent-home 的 todo_gate_enabled。變更後 soft-respawn。",
+  "settings.todoGateMaxFires": "Todo 門控最大觸發次數",
+  "settings.todoGateMaxFiresDesc":
+    "每個 prompt 最多觸發 TodoGate 次數（1–20，預設 3）。獨立模式寫入 agent-home config.toml 的 todo_gate_max_fires_per_prompt。變更後 soft-respawn。",
   "settings.useLeader": "共用 Agent 後端（leader）",
   "settings.useLeaderDesc": "使用 --leader 讓多個用戶端共用一個後端行程；關閉則 --no-leader（預設）。變更後 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",
