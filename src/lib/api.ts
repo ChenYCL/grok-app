@@ -1636,8 +1636,10 @@ export interface AppSettings {
    */
   todoGateEnabled?: boolean;
   /**
-   * Max TodoGate fires per prompt (1–20, default 3). Independent agent-home
-   * writes `todo_gate_max_fires_per_prompt`. Soft-respawns on change.
+   * Max TodoGate fires per prompt (1–20, default 3). Config-only key
+   * `todo_gate_max_fires_per_prompt` (no CLI flag). Independent agent-home
+   * writes apply; shared mode stores the App setting only (never rewrites
+   * `~/.grok`). Soft-respawns on change.
    */
   todoGateMaxFiresPerPrompt?: number;
   /**

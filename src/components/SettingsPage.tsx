@@ -80,6 +80,15 @@ import {
   sandboxSoftFailMessageKey,
 } from "@/lib/sandboxProfile";
 import {
+  DEFAULT_TODO_GATE_MAX_FIRES,
+  MAX_TODO_GATE_MAX_FIRES,
+  MIN_TODO_GATE_MAX_FIRES,
+  TODO_GATE_MIN_CLI,
+  describeTodoGateSettings,
+  normalizeTodoGateMaxFires,
+  type TodoGateFireSignal,
+} from "@/lib/todoGate";
+import {
   SHORTCUTS,
   detectShortcutPlatform,
   filterShortcutGroups,
@@ -642,6 +651,11 @@ export interface SettingsPageProps {
   /** Max TodoGate fires per prompt (1–20). */
   todoGateMaxFiresPerPrompt?: number;
   onTodoGateMaxFiresPerPrompt?: (v: number) => void;
+  /**
+   * Optional host signal for TodoGate fire activity (Settings status line).
+   * When omitted / null, UI shows honest N/A — App never invents fire counts.
+   */
+  todoGateFireSignal?: TodoGateFireSignal | null;
   subagentsEnabled?: boolean;
   onSubagentsEnabled?: (v: boolean) => void;
   /** CLI subagent worktree snapshot (config 0.2.117+). */
@@ -1343,6 +1357,7 @@ export function SettingsPage({
   onTodoGateEnabled,
   todoGateMaxFiresPerPrompt = 3,
   onTodoGateMaxFiresPerPrompt,
+  todoGateFireSignal = null,
   disableWebSearch = false,
   onDisableWebSearch,
   noAskUser = false,
@@ -3486,64 +3501,154 @@ export function SettingsPage({
                 </div>
               ) : null}
               {onTodoGateEnabled ? (
-                <div
-                  className={"settings-row" + rowHighlight("settings-anchor-todoGate")}
-                  id="settings-anchor-todoGate"
-                >
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.todoGate")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.todoGateDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={!!todoGateEnabled}
-                    onChange={() => onTodoGateEnabled(!todoGateEnabled)}
-                    ariaLabel={t("settings.todoGate")}
-                  />
-                </div>
-              ) : null}
-              {onTodoGateEnabled && onTodoGateMaxFiresPerPrompt ? (
-                <div
-                  className={
-                    "settings-row settings-row--stack" +
-                    rowHighlight("settings-anchor-todoGate")
-                  }
-                  id="settings-anchor-todoGateMaxFires"
-                >
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.todoGateMaxFires")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.todoGateMaxFiresDesc")}
-                    </div>
-                  </div>
-                  <input
-                    className="settings-input"
-                    type="number"
-                    min={1}
-                    max={20}
-                    step={1}
-                    disabled={!todoGateEnabled}
-                    value={todoGateMaxFiresPerPrompt}
-                    onChange={(e) => {
-                      const raw = e.target.value.trim();
-                      if (!raw) {
-                        onTodoGateMaxFiresPerPrompt(3);
-                        return;
-                      }
-                      const n = Number(raw);
-                      if (!Number.isFinite(n)) return;
-                      onTodoGateMaxFiresPerPrompt(
-                        Math.min(20, Math.max(1, Math.round(n))),
-                      );
-                    }}
-                    aria-label={t("settings.todoGateMaxFires")}
-                  />
-                </div>
+                (() => {
+                  const todoGateView = describeTodoGateSettings({
+                    enabled: todoGateEnabled,
+                    maxFires: todoGateMaxFiresPerPrompt,
+                    maxFiresRaw: todoGateMaxFiresPerPrompt,
+                    sessionDataMode,
+                    cliVersion: cliInfo.version,
+                    fireSignal: todoGateFireSignal,
+                  });
+                  return (
+                    <>
+                      <div
+                        className={
+                          "settings-row settings-row--stack" +
+                          rowHighlight("settings-anchor-todoGate")
+                        }
+                        id="settings-anchor-todoGate"
+                      >
+                        <div className="settings-row__text">
+                          <div className="settings-row__label">
+                            {t("settings.todoGate")}
+                          </div>
+                          <div className="settings-row__desc">
+                            {t("settings.todoGateDesc")}
+                          </div>
+                        </div>
+                        <UiCheck
+                          checked={!!todoGateEnabled}
+                          onChange={() => onTodoGateEnabled(!todoGateEnabled)}
+                          ariaLabel={t("settings.todoGate")}
+                        />
+                        <div
+                          className="settings-row__hint"
+                          role="status"
+                          style={{ marginTop: 6 }}
+                        >
+                          {t(todoGateView.softRespawnKey)}
+                        </div>
+                        {todoGateView.cliSoftFailKey ? (
+                          <div
+                            className="settings-row__hint is-danger"
+                            role="status"
+                            style={{ marginTop: 4 }}
+                          >
+                            {t(todoGateView.cliSoftFailKey, {
+                              min: TODO_GATE_MIN_CLI,
+                            })}
+                          </div>
+                        ) : null}
+                        <div
+                          className={
+                            "settings-row__hint" +
+                            (todoGateView.activity.tone === "warn"
+                              ? " is-danger"
+                              : "")
+                          }
+                          role="status"
+                          style={{ marginTop: 4 }}
+                          data-todo-gate-activity={todoGateView.activity.kind}
+                        >
+                          {t(
+                            todoGateView.activity.messageKey,
+                            todoGateView.activity.vars,
+                          )}
+                        </div>
+                      </div>
+                      {onTodoGateMaxFiresPerPrompt ? (
+                        <div
+                          className={
+                            "settings-row settings-row--stack" +
+                            rowHighlight("settings-anchor-todoGate")
+                          }
+                          id="settings-anchor-todoGateMaxFires"
+                        >
+                          <div className="settings-row__text">
+                            <div className="settings-row__label">
+                              {t("settings.todoGateMaxFires")}
+                            </div>
+                            <div className="settings-row__desc">
+                              {t("settings.todoGateMaxFiresDesc")}
+                            </div>
+                          </div>
+                          <input
+                            className="settings-input"
+                            type="number"
+                            min={MIN_TODO_GATE_MAX_FIRES}
+                            max={MAX_TODO_GATE_MAX_FIRES}
+                            step={1}
+                            disabled={!todoGateEnabled}
+                            value={todoGateView.maxFires}
+                            onChange={(e) => {
+                              const raw = e.target.value.trim();
+                              if (!raw) {
+                                onTodoGateMaxFiresPerPrompt(
+                                  DEFAULT_TODO_GATE_MAX_FIRES,
+                                );
+                                return;
+                              }
+                              const n = Number(raw);
+                              if (!Number.isFinite(n)) return;
+                              onTodoGateMaxFiresPerPrompt(
+                                normalizeTodoGateMaxFires(n),
+                              );
+                            }}
+                            aria-label={t("settings.todoGateMaxFires")}
+                          />
+                          <div
+                            className="settings-row__hint"
+                            role="status"
+                            style={{ marginTop: 6 }}
+                          >
+                            {t(todoGateView.effectiveKey, {
+                              n: todoGateView.maxFires,
+                              min: MIN_TODO_GATE_MAX_FIRES,
+                              max: MAX_TODO_GATE_MAX_FIRES,
+                              default: DEFAULT_TODO_GATE_MAX_FIRES,
+                            })}
+                          </div>
+                          <div
+                            className={
+                              "settings-row__hint" +
+                              (todoGateView.applyPath === "shared_app_only"
+                                ? " is-danger"
+                                : "")
+                            }
+                            role="status"
+                            style={{ marginTop: 4 }}
+                          >
+                            {t(todoGateView.applyPathKey)}
+                          </div>
+                          {todoGateView.clampedKey ? (
+                            <div
+                              className="settings-row__hint"
+                              role="status"
+                              style={{ marginTop: 4 }}
+                            >
+                              {t(todoGateView.clampedKey, {
+                                min: MIN_TODO_GATE_MAX_FIRES,
+                                max: MAX_TODO_GATE_MAX_FIRES,
+                                default: DEFAULT_TODO_GATE_MAX_FIRES,
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </>
+                  );
+                })()
               ) : null}
               {onDisableWebSearch ? (
                 <div
