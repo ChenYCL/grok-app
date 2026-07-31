@@ -9799,6 +9799,9 @@ export default function App() {
         const error = tr("ext.needTauri");
         setMcpDoctorError(error);
         return { report: null, error };
+        // Soft-fail: modal classifies host_only; no window.alert.
+        setMcpDoctorError("need_tauri");
+        return;
       }
       const focus = name?.trim() || null;
       setMcpDoctorFocus(focus);
@@ -9810,6 +9813,7 @@ export default function App() {
         return { report, error: null };
       } catch (e) {
         const error = String(e);
+        // Soft-fail CLI missing / too old / timeout is classified in the modal.
         setMcpDoctorReport(null);
         setMcpDoctorError(error);
         return { report: null, error };
@@ -9817,7 +9821,7 @@ export default function App() {
         setMcpDoctorLoading(false);
       }
     },
-    [tr],
+    [],
   );
 
   const showToast = useCallback((msg: string, ms = 3200) => {
