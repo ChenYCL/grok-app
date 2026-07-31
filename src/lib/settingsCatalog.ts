@@ -451,6 +451,32 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "超时",
     ],
   },
+  {
+    id: "general.askUserTimeout",
+    section: "general",
+    tab: "permissions",
+    anchorId: "settings-anchor-askUserTimeout",
+    labelKey: "settings.askUserTimeout",
+    descKeys: [
+      "settings.askUserTimeoutDesc",
+      "settings.askUserTimeout.off",
+      "settings.section.permissions",
+      "askUser.title",
+    ],
+    keywords: [
+      "ask user",
+      "ask question",
+      "questionnaire",
+      "timeout",
+      "auto-dismiss",
+      "auto cancel",
+      "ask_user_question",
+      "提问超时",
+      "问卷",
+      "自动忽略",
+      "超时",
+    ],
+  },
   // ── general / agent ──
   {
     id: "general.maxAgentTurns",

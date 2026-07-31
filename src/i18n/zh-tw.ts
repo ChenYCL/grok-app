@@ -1262,6 +1262,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.permissionTimeout.60": "1 分鐘",
   "settings.permissionTimeout.120": "2 分鐘",
   "settings.permissionTimeout.300": "5 分鐘",
+  "settings.askUserTimeout": "提問逾時",
+  "settings.askUserTimeoutDesc":
+    "若在時限內未回答 Agent 問卷，將自動略過（取消）。由應用強制執行，預設關閉。與 CLI 0.2.117 [toolset.ask_user_question] 概念對齊（獨立於 CLI 更長的預設逾時）。",
+  "settings.askUserTimeout.off": "關閉",
+  "settings.askUserTimeout.30": "30 秒",
+  "settings.askUserTimeout.60": "1 分鐘",
+  "settings.askUserTimeout.120": "2 分鐘",
+  "settings.askUserTimeout.300": "5 分鐘",
   "settings.sandboxProfile": "沙箱設定檔",
   "settings.sandboxProfileDesc":
     "對 Agent 行程施加作業系統級檔案系統/網路隔離（Linux Landlock / macOS Seatbelt）。在新啟動 Agent 時生效——變更後請重新連線工作階段。可在專案選單中為單一專案覆寫。",
@@ -2954,6 +2962,7 @@ export const zhTW: Record<MessageKey, string> = {
   "askUser.otherPlaceholder": "輸入你的回答…",
   "askUser.freeTextHint": "或輸入自訂回答",
   "askUser.multiHint": "可多選",
+  "askUser.autoCancelCountdown": "{seconds} 秒後自動略過",
 
   "message.interjectionTag": "引導",
   "message.copy": "複製",

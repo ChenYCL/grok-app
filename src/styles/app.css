@@ -8414,6 +8414,16 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   gap: 16px;
 }
 
+.ask-user__countdown {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-right: auto;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+
 .ask-user__q {
   display: flex;
   flex-direction: column;

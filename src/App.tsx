@@ -117,6 +117,11 @@ import {
   permissionTimeoutRemainingSec,
   savePermissionTimeoutSec,
 } from "@/lib/permissionTimeout";
+import {
+  ASK_USER_TIMEOUT_CHANGE_EVENT,
+  loadAskUserTimeoutSec,
+  saveAskUserTimeoutSec,
+} from "@/lib/askUserTimeout";
 import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
 import {
   ASIDE_WIDTH_MIN,
@@ -1994,6 +1999,9 @@ export default function App() {
   const [permissionTimeoutSec, setPermissionTimeoutSec] = useState(() =>
     loadPermissionTimeoutSec(localStorage),
   );
+  const [askUserTimeoutSec, setAskUserTimeoutSec] = useState(() =>
+    loadAskUserTimeoutSec(localStorage),
+  );
   const [askUser, setAskUser] = useState<AskUserPayload | null>(null);
   /**
    * Unanswered gates per session (`sessionId` → payload).
@@ -3425,6 +3433,21 @@ export default function App() {
     window.addEventListener(PERMISSION_TIMEOUT_CHANGE_EVENT, onChange);
     return () =>
       window.removeEventListener(PERMISSION_TIMEOUT_CHANGE_EVENT, onChange);
+  }, []);
+
+  // Ask User Question auto-cancel timeout (localStorage; Settings dispatches change).
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<unknown>).detail;
+      if (typeof detail === "number" && Number.isFinite(detail)) {
+        setAskUserTimeoutSec(detail);
+        return;
+      }
+      setAskUserTimeoutSec(loadAskUserTimeoutSec(localStorage));
+    };
+    window.addEventListener(ASK_USER_TIMEOUT_CHANGE_EVENT, onChange);
+    return () =>
+      window.removeEventListener(ASK_USER_TIMEOUT_CHANGE_EVENT, onChange);
   }, []);
 
   // Phone layout flag: mirror client + ≤820px only (desktop ≥821px unchanged).
@@ -14678,6 +14701,11 @@ export default function App() {
             savePermissionTimeoutSec(v, localStorage);
             setPermissionTimeoutSec(v);
           }}
+          askUserTimeoutSec={askUserTimeoutSec}
+          onAskUserTimeoutSec={(v) => {
+            saveAskUserTimeoutSec(v, localStorage);
+            setAskUserTimeoutSec(v);
+          }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           onOpenReliability={() => openReliability()}
@@ -18459,6 +18487,7 @@ export default function App() {
       />
       <AskUserModal
         payload={askUser}
+        timeoutSec={askUserTimeoutSec}
         labels={{
           title: tr("askUser.title"),
           submit: tr("askUser.submit"),
@@ -18467,6 +18496,7 @@ export default function App() {
           freeTextHint: tr("askUser.freeTextHint"),
           multiHint: tr("askUser.multiHint"),
           close: tr("common.close"),
+          autoCancelCountdown: tr("askUser.autoCancelCountdown"),
         }}
         onSubmit={async (answers) => {
           if (!askUser) return;

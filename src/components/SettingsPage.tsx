@@ -505,6 +505,12 @@ export interface SettingsPageProps {
    */
   permissionTimeoutSec?: number;
   onPermissionTimeoutSec?: (v: number) => void;
+  /**
+   * Auto-cancel Ask User Question modal after N seconds (localStorage; 0 = off).
+   * App-enforced; presets: 0 / 30 / 60 / 120 / 300.
+   */
+  askUserTimeoutSec?: number;
+  onAskUserTimeoutSec?: (v: number) => void;
   planEnabled?: boolean;
   onPlanEnabled?: (v: boolean) => void;
   subagentsEnabled?: boolean;
@@ -1141,6 +1147,8 @@ export function SettingsPage({
   onNotifySound,
   permissionTimeoutSec = 0,
   onPermissionTimeoutSec,
+  askUserTimeoutSec = 0,
+  onAskUserTimeoutSec,
   cliInfo,
   onDoctor,
   onOpenReliability,
@@ -2407,6 +2415,63 @@ export function SettingsPage({
                         },
                       ];
                       const cur = Math.max(0, Math.round(permissionTimeoutSec ?? 0));
+                      if (
+                        cur > 0 &&
+                        !presets.some((o) => o.value === String(cur))
+                      ) {
+                        return [
+                          ...presets,
+                          { value: String(cur), label: `${cur}s` },
+                        ];
+                      }
+                      return presets;
+                    })()}
+                  />
+                </div>
+              ) : null}
+              {onAskUserTimeoutSec ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-askUserTimeout")
+                  }
+                  id="settings-anchor-askUserTimeout"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.askUserTimeout")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.askUserTimeoutDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={String(askUserTimeoutSec ?? 0)}
+                    onChange={(v) => onAskUserTimeoutSec(Number(v))}
+                    options={(() => {
+                      const presets = [
+                        {
+                          value: "0",
+                          label: t("settings.askUserTimeout.off"),
+                        },
+                        {
+                          value: "30",
+                          label: t("settings.askUserTimeout.30"),
+                        },
+                        {
+                          value: "60",
+                          label: t("settings.askUserTimeout.60"),
+                        },
+                        {
+                          value: "120",
+                          label: t("settings.askUserTimeout.120"),
+                        },
+                        {
+                          value: "300",
+                          label: t("settings.askUserTimeout.300"),
+                        },
+                      ];
+                      const cur = Math.max(0, Math.round(askUserTimeoutSec ?? 0));
                       if (
                         cur > 0 &&
                         !presets.some((o) => o.value === String(cur))

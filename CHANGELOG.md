@@ -185,6 +185,7 @@ See `docs/llm-wiki/release.md`.
 - **Collapse all activity** in the current chat (top-bar + session menu; streaming thoughts stay open)
 - **Sidebar session relative time** (on by default; about once a minute)
 - **Permission auto-deny timeout** (Settings → General → Permissions): Off / 30s / 1m / 2m / 5m with countdown on the bar
+- **Ask User Question timeout** (Settings → General → Permissions): Off / 30s / 1m / 2m / 5m with countdown on the questionnaire modal; auto-dismisses (cancel) when the timer ends. **App-enforced** (localStorage); aligns with Grok Build CLI **0.2.117** `[toolset.ask_user_question]` `timeout_enabled` / `timeout_secs` conceptually — does not rewrite `~/.grok/config.toml`
 
 ### Changed
 
@@ -206,7 +207,7 @@ See `docs/llm-wiki/release.md`.
 - 侧栏多选：选择改为清单图标；项目行操作仅 hover 显示；支持二次确认后永久删除
 - 禅模式、记住上次设置页、始终显示回到底部、窗口置顶
 - 快捷键筛选；⌘/Ctrl+B 切换侧栏；⌘/Ctrl+Shift+C 复制上一条助手回复
-- 收起全部活动；侧栏相对时间；权限超时自动拒绝
+- 收起全部活动；侧栏相对时间；权限超时自动拒绝；Agent 提问超时自动忽略
 
 **中文 · 变更**
 
