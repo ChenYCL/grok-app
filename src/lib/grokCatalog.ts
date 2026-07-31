@@ -21,7 +21,7 @@ export interface ModelOption {
   label: string;
   /** True if CLI lists as default */
   isDefault?: boolean;
-  /** Catalog source; composer only shows official model IDs (not providers). */
+  /** Catalog source; official list is one group in the composer model menu. */
   source?: string;
   /** Per-model reasoning efforts from CLI cache; empty/undefined → static fallback. */
   reasoningEfforts?: EffortOption[];
