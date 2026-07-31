@@ -18,6 +18,9 @@ See `docs/llm-wiki/release.md`.
 
 #### Sessions & diagnostics
 - **Session / diagnostics NDJSON export** (`streaming-json` · `streaming-messages-json`): pure `streamSessionExport` helpers synthesize redacted ACP session/update or Anthropic Messages wire NDJSON from the App journal, or re-export diagnostics paste/probe with secrets scrubbed; soft-empty when no rows. Session Export menu adds both formats; Streaming ACP NDJSON panel gains **Save / Copy NDJSON**; SMJ export uses the same redacted path. Never writes unredacted tokens to disk. en/zh/zh-TW + tests
+### Added
+
+- **Cost usage hub pro** (Settings → Runtime → Tools → Cost rollup): project/session filter chips + day window, contextual empty states (no samples / empty window / no matches), clear-sample plan with GlassModal confirm (count honesty, no `window.confirm`), classified export soft-fail toasts (empty · clipboard · download · other). Pure `costRollup` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
 
 ### Fixed
 
