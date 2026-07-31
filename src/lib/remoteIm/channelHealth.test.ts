@@ -260,4 +260,62 @@ describe("classifyChannelHealth", () => {
     expect(r.ready).toBe(true);
     expect(r.missingKeys).not.toContain("corp_secret");
   });
+
+  it("weixin: deep health is long-poll / ilink honest", () => {
+    expect(channelHasDeepHealth("weixin")).toBe(true);
+    expect(transportForChannel("weixin")).toBe("long_poll");
+
+    const bare = inst("weixin", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("long_poll");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("weixinPoll"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weixinNoPublicUrl"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weixinMissingToken"))).toBe(
+      true,
+    );
+
+    const ready = inst("weixin", {
+      hasCredentials: true,
+      enabled: true,
+      options: { account_id: "default", proxy: "socks5://127.0.0.1:1" },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.modeLabel).toContain("mode=ilink");
+    expect(h1.modeLabel).toContain("proxy=set");
+    expect(h1.hintKeys.some((k) => k.includes("weixinTextMenu"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+  });
+
+  it("weixin credentialReadiness needs token or vault", () => {
+    const bare = inst("weixin", { hasCredentials: false });
+    expect(credentialReadiness("weixin", bare).ready).toBe(false);
+    expect(
+      credentialReadiness("weixin", bare, new Set(["token"])).ready,
+    ).toBe(true);
+    expect(
+      credentialReadiness("weixin", inst("weixin", { hasCredentials: true }))
+        .ready,
+    ).toBe(true);
+  });
 });

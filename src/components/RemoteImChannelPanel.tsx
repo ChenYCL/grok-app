@@ -844,6 +844,22 @@ export function RemoteImChannelPanel({
           </p>
         </div>
       ) : null}
+      {channelId === "weixin" ? (
+        <div className="rim-callout" data-weixin-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.weixin.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.weixin.guide.step1")}</li>
+            <li>{t("settings.remoteIm.weixin.guide.step2")}</li>
+            <li>{t("settings.remoteIm.weixin.guide.step3")}</li>
+            <li>{t("settings.remoteIm.weixin.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.weixin.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
 {channelId === "telegram" ? (
         <div className="rim-callout" data-telegram-guide="1">
           <div className="rim-callout__title">
@@ -918,12 +934,20 @@ export function RemoteImChannelPanel({
                 <span>
                   {scanPhase === "done"
                     ? t("settings.remoteIm.scan.done")
-                    : t("settings.remoteIm.scan.placeholder")}
+                    : t(
+                        channelId === "weixin"
+                          ? "settings.remoteIm.weixin.scan.placeholder"
+                          : "settings.remoteIm.scan.placeholder",
+                      )}
                 </span>
               )}
             </div>
             <div className="settings-row__hint">
-              {t("settings.remoteIm.scan.hint")}
+              {t(
+                channelId === "weixin"
+                  ? "settings.remoteIm.weixin.scan.hint"
+                  : "settings.remoteIm.scan.hint",
+              )}
             </div>
             {scanError ? (
               <div className="rim-callout rim-callout--error">{scanError}</div>

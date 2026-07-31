@@ -18,6 +18,10 @@ import {
   feishuHealthHintKeys,
   validateFeishuConfig,
 } from "./feishuConfig";
+import {
+  weixinHealthHintKeys,
+  validateWeixinConfig,
+} from "./weixinConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -98,6 +102,7 @@ const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
+const WEIXIN_LIKE: RemoteChannelId[] = ["weixin"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -109,6 +114,7 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   discord: ["token"],
   slack: ["bot_token", "app_token"],
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
+  // Weixin secrets validated via weixinConfig
   weixin: ["token"],
   matrix: ["access_token"],
   line: ["channel_secret", "channel_access_token"],
@@ -119,6 +125,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   lark: ["app_id"],
   telegram: [],
   dingtalk: ["client_id"],
+  weixin: [],
 };
 
 
@@ -252,6 +259,13 @@ export function channelModeLabel(
   if (channel === "dingtalk") {
     return "mode=stream";
   }
+  if (channel === "weixin") {
+    const parts: string[] = ["mode=ilink"];
+    if (optionString(options, "proxy")) parts.push("proxy=set");
+    if (optionString(options, "base_url")) parts.push("base=custom");
+    if (optionString(options, "chat_id")) parts.push("chat=bound");
+    return parts.join(",");
+  }
   return null;
 }
 
@@ -328,6 +342,15 @@ export function credentialReadiness(
       hasCredentials: instance.hasCredentials,
       appIdValue,
       channel,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (WEIXIN_LIKE.includes(channel)) {
+    const v = validateWeixinConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -499,6 +522,19 @@ export function classifyChannelHealth(
     }
   }
 
+  if (WEIXIN_LIKE.includes(channel)) {
+    const wxV = validateWeixinConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    for (const k of weixinHealthHintKeys(wxV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
   // Dedup preserve order
   const seen = new Set<string>();
   const uniqueHints = hintKeys.filter((k) => {
@@ -532,6 +568,7 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     FEISHU_LIKE.includes(channel) ||
     TELEGRAM_LIKE.includes(channel) ||
     WECOM_LIKE.includes(channel) ||
-    DINGTALK_LIKE.includes(channel)
+    DINGTALK_LIKE.includes(channel) ||
+    WEIXIN_LIKE.includes(channel)
   );
 }
