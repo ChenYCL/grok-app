@@ -3058,6 +3058,72 @@ export const zhTW: Record<MessageKey, string> = {
     "此 SKILL.md 已在應用外被修改。可重新載入檔案，或用目前草稿覆寫。",
   "ext.skills.editConflictReload": "重新載入",
   "ext.skills.editConflictOverwrite": "覆寫",
+  "ext.skills.editValidate": "驗證",
+  "ext.skills.feedback.validateOk": "SKILL.md 看起來有效",
+  "ext.skills.feedback.validateFail": "SKILL.md 存在問題",
+  "ext.skills.feedback.viewDetails": "詳情",
+  "ext.skills.feedback.resultValidateTitle": "技能驗證",
+  "ext.skills.feedback.resultLoadTitle": "無法開啟技能",
+  "ext.skills.feedback.resultSaveTitle": "儲存結果",
+  "ext.skills.feedback.resultCreateTitle": "建立技能",
+  "ext.skills.feedback.reason": "原因",
+  "ext.skills.feedback.path": "路徑",
+  "ext.skills.feedback.sizeBytes": "{n} 位元組",
+  "ext.skills.feedback.kind.ok": "正常",
+  "ext.skills.feedback.kind.empty": "檔案為空",
+  "ext.skills.feedback.kind.tooLarge": "檔案過大",
+  "ext.skills.feedback.kind.missingFrontmatter": "缺少前置中繼資料",
+  "ext.skills.feedback.kind.unclosedFrontmatter": "前置中繼資料未閉合",
+  "ext.skills.feedback.kind.invalidFrontmatter": "前置中繼資料無效",
+  "ext.skills.feedback.kind.missingName": "缺少 name",
+  "ext.skills.feedback.kind.invalidName": "name 無效",
+  "ext.skills.feedback.kind.nameMismatch": "名稱不一致",
+  "ext.skills.feedback.kind.missingDescription": "缺少 description",
+  "ext.skills.feedback.kind.emptyBody": "正文為空",
+  "ext.skills.feedback.kind.conflict": "檔案衝突",
+  "ext.skills.feedback.kind.pathDenied": "路徑被拒絕",
+  "ext.skills.feedback.kind.pathOutside": "不在技能根目錄內",
+  "ext.skills.feedback.kind.bundledReadonly": "內建（唯讀）",
+  "ext.skills.feedback.kind.notFound": "找不到",
+  "ext.skills.feedback.kind.notAFile": "不是檔案",
+  "ext.skills.feedback.kind.alreadyExists": "已存在",
+  "ext.skills.feedback.kind.hostOnly": "需要桌面主機",
+  "ext.skills.feedback.kind.hostError": "主機錯誤",
+  "ext.skills.feedback.kind.other": "錯誤",
+  "ext.skills.feedback.hint.ok": "前置中繼資料看起來有效。準備好後即可儲存。",
+  "ext.skills.feedback.hint.empty":
+    "請貼上或撰寫含 YAML 前置中繼資料與正文的 SKILL.md。",
+  "ext.skills.feedback.hint.tooLarge": "應用內編輯要求 SKILL.md 不超過 2 MiB。",
+  "ext.skills.feedback.hint.missingFrontmatter":
+    "檔案以 --- 開頭，寫入 name: / description:，再以 --- 結束前置區塊。",
+  "ext.skills.feedback.hint.unclosedFrontmatter":
+    "在前置欄位後加入一行閉合的 ---。",
+  "ext.skills.feedback.hint.invalidFrontmatter":
+    "前置中繼資料請使用簡單的單行 key: value（不支援巢狀 YAML）。",
+  "ext.skills.feedback.hint.missingName":
+    "在前置中繼資料中加入 name:（斜線指令風格）。",
+  "ext.skills.feedback.hint.invalidName":
+    "名稱須為小寫 a-z、數字、連字號；2–64 字元；以字母或數字開頭結尾。",
+  "ext.skills.feedback.hint.nameMismatch":
+    "前置 name 與技能資料夾不一致 — 仍可儲存，但 CLI 可能優先使用資料夾名。",
+  "ext.skills.feedback.hint.missingDescription":
+    "加入 description: 說明用途與觸發片語。",
+  "ext.skills.feedback.hint.emptyBody":
+    "在前置中繼資料下補充 Markdown 步驟，便於代理執行。",
+  "ext.skills.feedback.hint.conflict": "可從磁碟重新載入，或用目前草稿覆寫。",
+  "ext.skills.feedback.hint.pathDenied":
+    "僅可編輯使用者 / agent-home / 專案技能根目錄下的 SKILL.md。",
+  "ext.skills.feedback.hint.pathOutside":
+    "路徑不在已知技能根目錄內 — 請開啟使用者或專案技能。",
+  "ext.skills.feedback.hint.bundledReadonly":
+    "內建/供應商技能為唯讀。請複製到使用者技能目錄後再編輯。",
+  "ext.skills.feedback.hint.notFound": "檔案不存在 — 重新整理列表或重新建立技能。",
+  "ext.skills.feedback.hint.notAFile": "目標不是 SKILL.md 檔案。",
+  "ext.skills.feedback.hint.alreadyExists":
+    "同名技能已存在 — 請開啟它或換一個名稱。",
+  "ext.skills.feedback.hint.hostOnly": "請在桌面應用（Tauri）中讀寫技能。",
+  "ext.skills.feedback.hint.hostError": "主機呼叫失敗 — 見詳情。",
+  "ext.skills.feedback.hint.other": "意外結果 — 見詳情。",
   "ext.skills.new": "新增技能",
   "ext.skills.newTitle": "新增技能",
   "ext.skills.newSubmit": "建立",

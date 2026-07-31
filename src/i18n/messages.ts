@@ -3177,6 +3177,77 @@ const en = {
     "This SKILL.md was modified outside the app. Reload the file or overwrite with your draft.",
   "ext.skills.editConflictReload": "Reload",
   "ext.skills.editConflictOverwrite": "Overwrite",
+  "ext.skills.editValidate": "Validate",
+  "ext.skills.feedback.validateOk": "SKILL.md looks valid",
+  "ext.skills.feedback.validateFail": "SKILL.md has problems",
+  "ext.skills.feedback.viewDetails": "Details",
+  "ext.skills.feedback.resultValidateTitle": "Skill validation",
+  "ext.skills.feedback.resultLoadTitle": "Could not open skill",
+  "ext.skills.feedback.resultSaveTitle": "Save result",
+  "ext.skills.feedback.resultCreateTitle": "Create skill",
+  "ext.skills.feedback.reason": "Reason",
+  "ext.skills.feedback.path": "Path",
+  "ext.skills.feedback.sizeBytes": "{n} bytes",
+  "ext.skills.feedback.kind.ok": "OK",
+  "ext.skills.feedback.kind.empty": "Empty file",
+  "ext.skills.feedback.kind.tooLarge": "Too large",
+  "ext.skills.feedback.kind.missingFrontmatter": "Missing frontmatter",
+  "ext.skills.feedback.kind.unclosedFrontmatter": "Unclosed frontmatter",
+  "ext.skills.feedback.kind.invalidFrontmatter": "Invalid frontmatter",
+  "ext.skills.feedback.kind.missingName": "Missing name",
+  "ext.skills.feedback.kind.invalidName": "Invalid name",
+  "ext.skills.feedback.kind.nameMismatch": "Name mismatch",
+  "ext.skills.feedback.kind.missingDescription": "Missing description",
+  "ext.skills.feedback.kind.emptyBody": "Empty body",
+  "ext.skills.feedback.kind.conflict": "File conflict",
+  "ext.skills.feedback.kind.pathDenied": "Path denied",
+  "ext.skills.feedback.kind.pathOutside": "Outside skills roots",
+  "ext.skills.feedback.kind.bundledReadonly": "Bundled (read-only)",
+  "ext.skills.feedback.kind.notFound": "Not found",
+  "ext.skills.feedback.kind.notAFile": "Not a file",
+  "ext.skills.feedback.kind.alreadyExists": "Already exists",
+  "ext.skills.feedback.kind.hostOnly": "Desktop host required",
+  "ext.skills.feedback.kind.hostError": "Host error",
+  "ext.skills.feedback.kind.other": "Error",
+  "ext.skills.feedback.hint.ok":
+    "Frontmatter looks valid. You can save when ready.",
+  "ext.skills.feedback.hint.empty":
+    "Paste or write a SKILL.md with YAML frontmatter and body.",
+  "ext.skills.feedback.hint.tooLarge":
+    "Keep SKILL.md under 2 MiB for in-app edit.",
+  "ext.skills.feedback.hint.missingFrontmatter":
+    "Start the file with --- then name: / description: fields, then closing ---.",
+  "ext.skills.feedback.hint.unclosedFrontmatter":
+    "Add a closing --- line after the frontmatter fields.",
+  "ext.skills.feedback.hint.invalidFrontmatter":
+    "Use simple one-line key: value pairs in the frontmatter (no nested YAML).",
+  "ext.skills.feedback.hint.missingName":
+    "Add a name: field in the frontmatter (slash-command style).",
+  "ext.skills.feedback.hint.invalidName":
+    "Name must be lowercase a-z, digits, hyphens; 2–64 chars; start/end alnum.",
+  "ext.skills.feedback.hint.nameMismatch":
+    "Frontmatter name differs from the skill folder — save still works, but CLI may prefer the folder name.",
+  "ext.skills.feedback.hint.missingDescription":
+    "Add a description: with what the skill does and trigger phrases.",
+  "ext.skills.feedback.hint.emptyBody":
+    "Add markdown steps under the frontmatter so the agent has instructions.",
+  "ext.skills.feedback.hint.conflict":
+    "Reload from disk or overwrite with your draft.",
+  "ext.skills.feedback.hint.pathDenied":
+    "Only SKILL.md under user/agent-home/project skills roots can be edited.",
+  "ext.skills.feedback.hint.pathOutside":
+    "This path is outside known skills roots — open a user or project skill.",
+  "ext.skills.feedback.hint.bundledReadonly":
+    "Bundled/vendor skills are read-only. Copy into user skills to edit.",
+  "ext.skills.feedback.hint.notFound":
+    "File missing — refresh the skills list or recreate the skill.",
+  "ext.skills.feedback.hint.notAFile": "Target is not a SKILL.md file.",
+  "ext.skills.feedback.hint.alreadyExists":
+    "A skill with this name already exists — open it or pick another name.",
+  "ext.skills.feedback.hint.hostOnly":
+    "Open the desktop app (Tauri) to read or save skills.",
+  "ext.skills.feedback.hint.hostError": "Host invoke failed — see detail.",
+  "ext.skills.feedback.hint.other": "Unexpected outcome — see detail.",
   "ext.skills.new": "New skill",
   "ext.skills.newTitle": "New skill",
   "ext.skills.newSubmit": "Create",
@@ -7191,6 +7262,72 @@ const zh: Record<MessageKey, string> = {
     "此 SKILL.md 已在应用外被修改。可重新加载文件，或用当前草稿覆盖。",
   "ext.skills.editConflictReload": "重新加载",
   "ext.skills.editConflictOverwrite": "覆盖",
+  "ext.skills.editValidate": "校验",
+  "ext.skills.feedback.validateOk": "SKILL.md 看起来有效",
+  "ext.skills.feedback.validateFail": "SKILL.md 存在问题",
+  "ext.skills.feedback.viewDetails": "详情",
+  "ext.skills.feedback.resultValidateTitle": "技能校验",
+  "ext.skills.feedback.resultLoadTitle": "无法打开技能",
+  "ext.skills.feedback.resultSaveTitle": "保存结果",
+  "ext.skills.feedback.resultCreateTitle": "创建技能",
+  "ext.skills.feedback.reason": "原因",
+  "ext.skills.feedback.path": "路径",
+  "ext.skills.feedback.sizeBytes": "{n} 字节",
+  "ext.skills.feedback.kind.ok": "正常",
+  "ext.skills.feedback.kind.empty": "文件为空",
+  "ext.skills.feedback.kind.tooLarge": "文件过大",
+  "ext.skills.feedback.kind.missingFrontmatter": "缺少前置元数据",
+  "ext.skills.feedback.kind.unclosedFrontmatter": "前置元数据未闭合",
+  "ext.skills.feedback.kind.invalidFrontmatter": "前置元数据无效",
+  "ext.skills.feedback.kind.missingName": "缺少 name",
+  "ext.skills.feedback.kind.invalidName": "name 无效",
+  "ext.skills.feedback.kind.nameMismatch": "名称不一致",
+  "ext.skills.feedback.kind.missingDescription": "缺少 description",
+  "ext.skills.feedback.kind.emptyBody": "正文为空",
+  "ext.skills.feedback.kind.conflict": "文件冲突",
+  "ext.skills.feedback.kind.pathDenied": "路径被拒绝",
+  "ext.skills.feedback.kind.pathOutside": "不在技能根目录内",
+  "ext.skills.feedback.kind.bundledReadonly": "内置（只读）",
+  "ext.skills.feedback.kind.notFound": "未找到",
+  "ext.skills.feedback.kind.notAFile": "不是文件",
+  "ext.skills.feedback.kind.alreadyExists": "已存在",
+  "ext.skills.feedback.kind.hostOnly": "需要桌面宿主",
+  "ext.skills.feedback.kind.hostError": "宿主错误",
+  "ext.skills.feedback.kind.other": "错误",
+  "ext.skills.feedback.hint.ok": "前置元数据看起来有效。准备好后即可保存。",
+  "ext.skills.feedback.hint.empty":
+    "请粘贴或编写带 YAML 前置元数据与正文的 SKILL.md。",
+  "ext.skills.feedback.hint.tooLarge": "应用内编辑要求 SKILL.md 不超过 2 MiB。",
+  "ext.skills.feedback.hint.missingFrontmatter":
+    "文件以 --- 开头，写入 name: / description:，再以 --- 结束前置块。",
+  "ext.skills.feedback.hint.unclosedFrontmatter":
+    "在前置字段后添加一行闭合的 ---。",
+  "ext.skills.feedback.hint.invalidFrontmatter":
+    "前置元数据请使用简单的单行 key: value（不支持嵌套 YAML）。",
+  "ext.skills.feedback.hint.missingName":
+    "在前置元数据中添加 name:（斜杠命令风格）。",
+  "ext.skills.feedback.hint.invalidName":
+    "名称须为小写 a-z、数字、连字符；2–64 字符；以字母或数字开头结尾。",
+  "ext.skills.feedback.hint.nameMismatch":
+    "前置 name 与技能文件夹不一致 — 仍可保存，但 CLI 可能优先使用文件夹名。",
+  "ext.skills.feedback.hint.missingDescription":
+    "添加 description: 说明用途与触发短语。",
+  "ext.skills.feedback.hint.emptyBody":
+    "在前置元数据下补充 Markdown 步骤，便于代理执行。",
+  "ext.skills.feedback.hint.conflict": "可从磁盘重新加载，或用当前草稿覆盖。",
+  "ext.skills.feedback.hint.pathDenied":
+    "仅可编辑用户 / agent-home / 项目技能根目录下的 SKILL.md。",
+  "ext.skills.feedback.hint.pathOutside":
+    "路径不在已知技能根目录内 — 请打开用户或项目技能。",
+  "ext.skills.feedback.hint.bundledReadonly":
+    "内置/供应商技能为只读。请复制到用户技能目录后再编辑。",
+  "ext.skills.feedback.hint.notFound": "文件不存在 — 刷新列表或重新创建技能。",
+  "ext.skills.feedback.hint.notAFile": "目标不是 SKILL.md 文件。",
+  "ext.skills.feedback.hint.alreadyExists":
+    "同名技能已存在 — 请打开它或换一个名称。",
+  "ext.skills.feedback.hint.hostOnly": "请在桌面应用（Tauri）中读写技能。",
+  "ext.skills.feedback.hint.hostError": "宿主调用失败 — 见详情。",
+  "ext.skills.feedback.hint.other": "意外结果 — 见详情。",
   "ext.skills.new": "新建技能",
   "ext.skills.newTitle": "新建技能",
   "ext.skills.newSubmit": "创建",

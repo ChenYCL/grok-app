@@ -62,6 +62,17 @@ import {
 } from "@/lib/skillEditPath";
 import { sanitizeSkillFolderName } from "@/lib/skillScaffold";
 import {
+  buildSkillHostErrorPresentation,
+  buildSkillSaveOkPresentation,
+  buildSkillSavePreflightError,
+  buildSkillValidatePresentation,
+  skillEditBadgeTone,
+  skillEditHint,
+  skillEditKindLabel,
+  type SkillEditKind,
+  type SkillEditPresentation,
+} from "@/lib/skillEditFeedback";
+import {
   isFsWriteConflict,
   isResourceDraftDirty,
 } from "@/lib/resourceEdit";
@@ -159,6 +170,10 @@ export function ExtensionsPanel({
   const [skillEditor, setSkillEditor] = useState<SkillEditorState | null>(null);
   const [skillDiscardOpen, setSkillDiscardOpen] = useState(false);
   const [skillConflictOpen, setSkillConflictOpen] = useState(false);
+  /** Classified validate / load / save feedback (GlassModal — no window.confirm). */
+  const [skillFeedback, setSkillFeedback] =
+    useState<SkillEditPresentation | null>(null);
+  const [skillFeedbackOpen, setSkillFeedbackOpen] = useState(false);
   const skillEditorSeq = useRef(0);
   /** New skill scaffold modal (Extensions → Skills). */
   const [skillNewOpen, setSkillNewOpen] = useState(false);
@@ -357,11 +372,73 @@ export function ExtensionsPanel({
     skillEditor?.baselineText,
   );
 
+  const skillKindLabels = useMemo((): Partial<Record<SkillEditKind, string>> => {
+    return {
+      ok: tr("ext.skills.feedback.kind.ok"),
+      empty: tr("ext.skills.feedback.kind.empty"),
+      too_large: tr("ext.skills.feedback.kind.tooLarge"),
+      missing_frontmatter: tr("ext.skills.feedback.kind.missingFrontmatter"),
+      unclosed_frontmatter: tr("ext.skills.feedback.kind.unclosedFrontmatter"),
+      invalid_frontmatter: tr("ext.skills.feedback.kind.invalidFrontmatter"),
+      missing_name: tr("ext.skills.feedback.kind.missingName"),
+      invalid_name: tr("ext.skills.feedback.kind.invalidName"),
+      name_mismatch: tr("ext.skills.feedback.kind.nameMismatch"),
+      missing_description: tr("ext.skills.feedback.kind.missingDescription"),
+      empty_body: tr("ext.skills.feedback.kind.emptyBody"),
+      conflict: tr("ext.skills.feedback.kind.conflict"),
+      path_denied: tr("ext.skills.feedback.kind.pathDenied"),
+      path_outside: tr("ext.skills.feedback.kind.pathOutside"),
+      bundled_readonly: tr("ext.skills.feedback.kind.bundledReadonly"),
+      not_found: tr("ext.skills.feedback.kind.notFound"),
+      not_a_file: tr("ext.skills.feedback.kind.notAFile"),
+      already_exists: tr("ext.skills.feedback.kind.alreadyExists"),
+      host_only: tr("ext.skills.feedback.kind.hostOnly"),
+      host_error: tr("ext.skills.feedback.kind.hostError"),
+      other: tr("ext.skills.feedback.kind.other"),
+    };
+  }, [tr]);
+
+  const skillKindHints = useMemo((): Partial<Record<SkillEditKind, string>> => {
+    return {
+      ok: tr("ext.skills.feedback.hint.ok"),
+      empty: tr("ext.skills.feedback.hint.empty"),
+      too_large: tr("ext.skills.feedback.hint.tooLarge"),
+      missing_frontmatter: tr("ext.skills.feedback.hint.missingFrontmatter"),
+      unclosed_frontmatter: tr("ext.skills.feedback.hint.unclosedFrontmatter"),
+      invalid_frontmatter: tr("ext.skills.feedback.hint.invalidFrontmatter"),
+      missing_name: tr("ext.skills.feedback.hint.missingName"),
+      invalid_name: tr("ext.skills.feedback.hint.invalidName"),
+      name_mismatch: tr("ext.skills.feedback.hint.nameMismatch"),
+      missing_description: tr("ext.skills.feedback.hint.missingDescription"),
+      empty_body: tr("ext.skills.feedback.hint.emptyBody"),
+      conflict: tr("ext.skills.feedback.hint.conflict"),
+      path_denied: tr("ext.skills.feedback.hint.pathDenied"),
+      path_outside: tr("ext.skills.feedback.hint.pathOutside"),
+      bundled_readonly: tr("ext.skills.feedback.hint.bundledReadonly"),
+      not_found: tr("ext.skills.feedback.hint.notFound"),
+      not_a_file: tr("ext.skills.feedback.hint.notAFile"),
+      already_exists: tr("ext.skills.feedback.hint.alreadyExists"),
+      host_only: tr("ext.skills.feedback.hint.hostOnly"),
+      host_error: tr("ext.skills.feedback.hint.hostError"),
+      other: tr("ext.skills.feedback.hint.other"),
+    };
+  }, [tr]);
+
+  const openSkillFeedback = useCallback(
+    (presentation: SkillEditPresentation) => {
+      setSkillFeedback(presentation);
+      setSkillFeedbackOpen(true);
+    },
+    [],
+  );
+
   const closeSkillEditor = useCallback(() => {
     skillEditorSeq.current += 1;
     setSkillEditor(null);
     setSkillDiscardOpen(false);
     setSkillConflictOpen(false);
+    setSkillFeedbackOpen(false);
+    setSkillFeedback(null);
   }, []);
 
   const requestCloseSkillEditor = useCallback(() => {
@@ -376,6 +453,15 @@ export function ExtensionsPanel({
   const openSkillEditor = useCallback(
     async (skill: api.SkillDto, opts?: { force?: boolean }) => {
       if (!api.isTauri()) {
+        const presentation = buildSkillHostErrorPresentation(
+          tr("ext.needTauri"),
+          "load",
+          {
+            labels: skillKindLabels,
+            fallbackTitle: tr("ext.skills.editLoadError"),
+          },
+        );
+        openSkillFeedback(presentation);
         setPathHint(tr("ext.needTauri"));
         return;
       }
@@ -386,6 +472,8 @@ export function ExtensionsPanel({
       const seq = ++skillEditorSeq.current;
       setSkillDiscardOpen(false);
       setSkillConflictOpen(false);
+      setSkillFeedbackOpen(false);
+      setSkillFeedback(null);
       setSkillEditor({
         skill,
         path: mdPath,
@@ -416,6 +504,11 @@ export function ExtensionsPanel({
         });
       } catch (e) {
         if (seq !== skillEditorSeq.current) return;
+        const presentation = buildSkillHostErrorPresentation(e, "load", {
+          path: mdPath,
+          labels: skillKindLabels,
+          fallbackTitle: tr("ext.skills.editLoadError"),
+        });
         setSkillEditor({
           skill,
           path: mdPath,
@@ -424,29 +517,72 @@ export function ExtensionsPanel({
           mtimeMs: null,
           loading: false,
           saving: false,
-          error: String(e) || tr("ext.skills.editLoadError"),
+          error: presentation.summary || tr("ext.skills.editLoadError"),
           savedHint: null,
         });
+        openSkillFeedback(presentation);
       }
     },
-    [projectPath, skillRoots, tr],
+    [openSkillFeedback, projectPath, skillKindLabels, skillRoots, tr],
   );
+
+  const validateSkillEditor = useCallback(() => {
+    if (!skillEditor || skillEditor.loading) return;
+    const presentation = buildSkillValidatePresentation(skillEditor.draftText, {
+      expectedName: skillEditor.skill.name,
+      path: skillEditor.path,
+      labels: skillKindLabels,
+      titles: {
+        ok: tr("ext.skills.feedback.validateOk"),
+        fail: tr("ext.skills.feedback.validateFail"),
+      },
+    });
+    setSkillEditor((s) =>
+      s
+        ? {
+            ...s,
+            error: presentation.blocking ? presentation.summary : null,
+            savedHint: presentation.blocking
+              ? null
+              : presentation.summary || tr("ext.skills.feedback.validateOk"),
+          }
+        : s,
+    );
+    openSkillFeedback(presentation);
+  }, [openSkillFeedback, skillEditor, skillKindLabels, tr]);
 
   const saveSkillEditor = useCallback(
     async (opts?: { force?: boolean }) => {
       if (!skillEditor || skillEditor.loading || skillEditor.saving) return;
-      if (!api.isTauri()) {
-        setSkillEditor((s) =>
-          s ? { ...s, error: tr("ext.needTauri") } : s,
-        );
-        return;
-      }
       if (
         !isResourceDraftDirty(skillEditor.draftText, skillEditor.baselineText) &&
         !opts?.force
       ) {
         return;
       }
+
+      // Client-side SKILL.md validate before host write (force overwrite still validates).
+      const preflight = buildSkillSavePreflightError(skillEditor.draftText, {
+        isTauri: api.isTauri(),
+        expectedName: skillEditor.skill.name,
+        path: skillEditor.path,
+        labels: skillKindLabels,
+        hostOnlyTitle: tr("ext.needTauri"),
+      });
+      if (preflight) {
+        setSkillEditor((s) =>
+          s
+            ? {
+                ...s,
+                error: preflight.summary,
+                savedHint: null,
+              }
+            : s,
+        );
+        openSkillFeedback(preflight);
+        return;
+      }
+
       setSkillEditor((s) =>
         s ? { ...s, saving: true, error: null, savedHint: null } : s,
       );
@@ -459,6 +595,13 @@ export function ExtensionsPanel({
           projectPath,
         );
         const saved = skillEditor.draftText;
+        const okPresentation = buildSkillSaveOkPresentation({
+          path: w.path || skillEditor.path,
+          name: skillEditor.skill.name,
+          sizeBytes: w.size,
+          labels: skillKindLabels,
+          title: tr("ext.skills.editSaved"),
+        });
         setSkillEditor((s) =>
           s
             ? {
@@ -473,6 +616,7 @@ export function ExtensionsPanel({
               }
             : s,
         );
+        setSkillFeedback(okPresentation);
         // Reload Extensions list + composer skills picker.
         await refresh();
         onSkillsPrefsChanged?.();
@@ -482,18 +626,32 @@ export function ExtensionsPanel({
           setSkillConflictOpen(true);
           return;
         }
+        const presentation = buildSkillHostErrorPresentation(e, "save", {
+          path: skillEditor.path,
+          labels: skillKindLabels,
+          fallbackTitle: tr("ext.skills.editSaveError"),
+        });
         setSkillEditor((s) =>
           s
             ? {
                 ...s,
                 saving: false,
-                error: String(e) || tr("ext.skills.editSaveError"),
+                error: presentation.summary || tr("ext.skills.editSaveError"),
               }
             : s,
         );
+        openSkillFeedback(presentation);
       }
     },
-    [onSkillsPrefsChanged, projectPath, refresh, skillEditor, tr],
+    [
+      onSkillsPrefsChanged,
+      openSkillFeedback,
+      projectPath,
+      refresh,
+      skillEditor,
+      skillKindLabels,
+      tr,
+    ],
   );
 
   const skillNewSanitized = useMemo(
@@ -551,7 +709,12 @@ export function ExtensionsPanel({
       // Roots React state may lag one frame after refresh — force open by path.
       void openSkillEditor(dto, { force: true });
     } catch (e) {
-      setSkillNewError(String(e) || tr("ext.skills.newError"));
+      const presentation = buildSkillHostErrorPresentation(e, "create", {
+        labels: skillKindLabels,
+        fallbackTitle: tr("ext.skills.newError"),
+      });
+      setSkillNewError(presentation.summary || tr("ext.skills.newError"));
+      openSkillFeedback(presentation);
     } finally {
       setActionBusy(null);
     }
@@ -559,8 +722,10 @@ export function ExtensionsPanel({
     actionBusy,
     onSkillsPrefsChanged,
     openSkillEditor,
+    openSkillFeedback,
     projectPath,
     refresh,
+    skillKindLabels,
     skillNewDesc,
     skillNewName,
     skillNewScope,
@@ -2291,6 +2456,16 @@ export function ExtensionsPanel({
             </button>
             <button
               type="button"
+              className="btn btn--ghost"
+              disabled={
+                !skillEditor || skillEditor.loading || skillEditor.saving
+              }
+              onClick={validateSkillEditor}
+            >
+              {tr("ext.skills.editValidate")}
+            </button>
+            <button
+              type="button"
               className="btn btn--solid"
               disabled={
                 !skillEditor ||
@@ -2353,14 +2528,170 @@ export function ExtensionsPanel({
             {skillEditor.error && skillEditor.baselineText ? (
               <p className="ext-skill-editor__error" role="alert">
                 {skillEditor.error}
+                {skillFeedback ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm ext-skill-editor__details-btn"
+                      onClick={() => setSkillFeedbackOpen(true)}
+                    >
+                      {tr("ext.skills.feedback.viewDetails")}
+                    </button>
+                  </>
+                ) : null}
               </p>
             ) : null}
             {skillEditor.savedHint ? (
-              <p className="ext-skill-editor__saved" role="status">
+              <p
+                className={
+                  "ext-skill-editor__saved" +
+                  (skillFeedback && !skillFeedback.blocking
+                    ? skillFeedback.severity === "warn"
+                      ? " ext-skill-editor__status--warn"
+                      : skillFeedback.severity === "ok"
+                        ? " ext-skill-editor__status--ok"
+                        : ""
+                    : " ext-skill-editor__status--ok")
+                }
+                role="status"
+              >
                 {skillEditor.savedHint}
+                {skillFeedback && !skillFeedback.blocking ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm ext-skill-editor__details-btn"
+                      onClick={() => setSkillFeedbackOpen(true)}
+                    >
+                      {tr("ext.skills.feedback.viewDetails")}
+                    </button>
+                  </>
+                ) : null}
               </p>
             ) : null}
           </>
+        ) : null}
+      </GlassModal>
+
+      <GlassModal
+        open={skillFeedbackOpen && !!skillFeedback}
+        onClose={() => setSkillFeedbackOpen(false)}
+        title={
+          skillFeedback?.phase === "validate"
+            ? tr("ext.skills.feedback.resultValidateTitle")
+            : skillFeedback?.phase === "load"
+              ? tr("ext.skills.feedback.resultLoadTitle")
+              : skillFeedback?.phase === "create"
+                ? tr("ext.skills.feedback.resultCreateTitle")
+                : tr("ext.skills.feedback.resultSaveTitle")
+        }
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        bodyClassName="ext-skill-feedback"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={() => setSkillFeedbackOpen(false)}
+            >
+              {tr("common.close")}
+            </button>
+          </>
+        }
+      >
+        {skillFeedback ? (
+          <div className="ext-skill-feedback__body">
+            <div className="ext-skill-feedback__meta">
+              <span
+                className={
+                  "ext-badge ext-badge--" +
+                  skillEditBadgeTone(skillFeedback.severity)
+                }
+              >
+                {skillEditKindLabel(skillFeedback.kind, skillKindLabels)}
+              </span>
+              {skillFeedback.name ? (
+                <span className="ext-badge ext-badge--muted">
+                  /{skillFeedback.name}
+                </span>
+              ) : null}
+              {skillFeedback.sizeBytes != null ? (
+                <span className="ext-badge ext-badge--muted">
+                  {tr("ext.skills.feedback.sizeBytes", {
+                    n: String(skillFeedback.sizeBytes),
+                  })}
+                </span>
+              ) : null}
+            </div>
+            <p
+              className={
+                "ext-skill-feedback__summary" +
+                (skillFeedback.severity === "ok"
+                  ? " ext-skill-feedback__summary--ok"
+                  : skillFeedback.severity === "err"
+                    ? " ext-skill-feedback__summary--err"
+                    : skillFeedback.severity === "warn"
+                      ? " ext-skill-feedback__summary--warn"
+                      : "")
+              }
+            >
+              {skillFeedback.summary}
+            </p>
+            {skillEditHint(skillFeedback.kind, skillKindHints) ? (
+              <p className="ext-skill-feedback__hint">
+                {skillEditHint(skillFeedback.kind, skillKindHints)}
+              </p>
+            ) : null}
+            {skillFeedback.detail &&
+            skillFeedback.detail !== skillFeedback.summary ? (
+              <p className="ext-skill-feedback__detail">
+                {skillFeedback.detail}
+              </p>
+            ) : null}
+            {skillFeedback.issues.length > 1 ? (
+              <ul className="ext-skill-feedback__issues">
+                {skillFeedback.issues.map((issue, idx) => (
+                  <li key={`${issue.kind}-${idx}`}>
+                    <span
+                      className={
+                        "ext-badge ext-badge--" +
+                        skillEditBadgeTone(issue.severity)
+                      }
+                    >
+                      {skillEditKindLabel(issue.kind, skillKindLabels)}
+                    </span>
+                    {issue.detail ? (
+                      <span className="ext-skill-feedback__issue-detail">
+                        {issue.detail}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {skillFeedback.reason ? (
+              <p className="ext-skill-feedback__reason">
+                <span className="ext-skill-feedback__label">
+                  {tr("ext.skills.feedback.reason")}
+                </span>
+                <code>{skillFeedback.reason}</code>
+              </p>
+            ) : null}
+            {skillFeedback.path ? (
+              <p className="ext-skill-feedback__path" title={skillFeedback.path}>
+                <span className="ext-skill-feedback__label">
+                  {tr("ext.skills.feedback.path")}
+                </span>
+                <code>
+                  {shortPathLabel(skillFeedback.path, 64) || skillFeedback.path}
+                </code>
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </GlassModal>
 
