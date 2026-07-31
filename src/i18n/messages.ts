@@ -1376,6 +1376,9 @@ const en = {
   "settings.subagentsEnabledDesc": "When off, spawn with --no-subagents so nested Agent / task tools cannot start child sessions. Soft-respawns after change.",
   "settings.planEnabled": "Allow plan mode",
   "settings.planEnabledDesc": "When off, spawn with --no-plan so the agent cannot enter plan mode. Soft-respawns after change.",
+  "settings.noAskUser": "Disable ask-user questions",
+  "settings.noAskUserDesc":
+    "Spawn with top-level --no-ask-user (CLI ≥ 0.2.117) so the agent does not show ask_user_question questionnaires. Off = CLI default (agent may still ask). Soft-respawns after change. Per-chat override available via session API.",
   "settings.useLeader": "Share agent backend (leader)",
   "settings.useLeaderDesc": "Connect with --leader so multiple clients can share one backend process. Off uses --no-leader (default). Soft-respawns after change.",
   "settings.leader.title": "Agent leader / serve",
@@ -5054,6 +5057,9 @@ const zh: Record<MessageKey, string> = {
   "settings.subagentsEnabledDesc": "关闭时启动加上 --no-subagents，无法拉起嵌套 Agent / 任务。更改后 soft-respawn。",
   "settings.planEnabled": "允许计划模式",
   "settings.planEnabledDesc": "关闭时启动加上 --no-plan，Agent 无法进入计划模式。更改后 soft-respawn。",
+  "settings.noAskUser": "禁用向用户提问",
+  "settings.noAskUserDesc":
+    "启动时加上顶层 --no-ask-user（CLI ≥ 0.2.117），Agent 不再弹出 ask_user_question 问卷。关闭 = CLI 默认（仍可能提问）。更改后 soft-respawn。支持会话级覆盖（session API）。",
   "settings.useLeader": "共享 Agent 后端（leader）",
   "settings.useLeaderDesc": "使用 --leader 让多个客户端共用一个后端进程；关闭则 --no-leader（默认）。更改后 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",

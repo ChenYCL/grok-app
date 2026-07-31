@@ -263,6 +263,9 @@ pub struct SpawnOptions {
     /// `grok --system-prompt-override <TEXT>` (before `agent`).
     /// Never log the full value (may contain secrets / PII).
     pub system_prompt_override: Option<String>,
+    /// Per-session override for top-level `grok --no-ask-user` (CLI ≥ 0.2.117).
+    /// `Some(true|false)` wins over `AppSettings.no_ask_user`; `None` inherits.
+    pub no_ask_user: Option<bool>,
     /// CLI `--fork-session` semantics: on open, fork the resume agent session
     /// into a **new** agent id (ACP `session/fork`) instead of `session/load`.
     /// Host sets this from `SessionMeta.fork_agent_session` for one-shot connect.
@@ -473,6 +476,21 @@ pub fn max_turns_cli_args(raw: Option<u32>) -> Option<Vec<String>> {
 pub fn disable_web_search_spawn_flags(disable: bool) -> Vec<&'static str> {
     if disable {
         vec!["--disable-web-search"]
+    } else {
+        vec![]
+    }
+}
+
+/// Session override wins when `Some`; else global Settings.
+/// When effective true, spawn passes top-level `--no-ask-user` (CLI ≥ 0.2.117).
+pub fn resolve_no_ask_user(session: Option<bool>, global: bool) -> bool {
+    session.unwrap_or(global)
+}
+
+/// Top-level CLI flags for `--no-ask-user`. Empty when off (CLI default).
+pub fn no_ask_user_spawn_flags(enabled: bool) -> Vec<&'static str> {
+    if enabled {
+        vec!["--no-ask-user"]
     } else {
         vec![]
     }
@@ -715,6 +733,8 @@ impl AcpClient {
         let use_leader = settings.use_leader;
         let plan_enabled = settings.plan_enabled;
         let disable_web = settings.disable_web_search;
+        // Session override wins when set; else global Settings.
+        let no_ask_user = resolve_no_ask_user(opts.no_ask_user, settings.no_ask_user);
         let disallowed_tools = settings.disallowed_tools.clone();
         let allowed_tools = settings.allowed_tools.clone();
         let spawn_policy = opts.permission_policy.as_deref().unwrap_or("ask");
@@ -769,6 +789,11 @@ impl AcpClient {
             cmd.arg(a);
         }
         for f in disable_web_search_spawn_flags(disable_web) {
+            cmd.arg(f);
+        }
+        // Top-level `grok --no-ask-user` (before `agent`) — disables ask-user
+        // questionnaires for this process (CLI ≥ 0.2.117).
+        for f in no_ask_user_spawn_flags(no_ask_user) {
             cmd.arg(f);
         }
         for a in allowed_tools_spawn_flags(&allowed_tools) {
@@ -838,12 +863,13 @@ impl AcpClient {
             cmd.env(k, v);
         }
         tracing::info!(
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} leader={} subagents={} memory={} agent_profile={:?} agents_json={}",
+            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} no_ask_user={} leader={} subagents={} memory={} agent_profile={:?} agents_json={}",
             grok_home.display(),
             session_data_mode,
             sandbox.as_ref().map(|s| s.profile.as_str()),
             max_turns.as_ref().map(|m| m.turns),
             opts.fork_session,
+            no_ask_user,
             use_leader,
             subagents_enabled,
             memory_enabled,
@@ -4126,6 +4152,25 @@ mod max_turns_spawn_tests {
         );
         assert!(max_turns_cli_args(None).is_none());
         assert!(max_turns_cli_args(Some(0)).is_none());
+    }
+}
+
+#[cfg(test)]
+mod no_ask_user_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn flags_only_when_enabled() {
+        assert!(no_ask_user_spawn_flags(false).is_empty());
+        assert_eq!(no_ask_user_spawn_flags(true), vec!["--no-ask-user"]);
+    }
+
+    #[test]
+    fn session_override_wins_over_global() {
+        assert!(!resolve_no_ask_user(None, false));
+        assert!(resolve_no_ask_user(None, true));
+        assert!(resolve_no_ask_user(Some(true), false));
+        assert!(!resolve_no_ask_user(Some(false), true));
     }
 }
 

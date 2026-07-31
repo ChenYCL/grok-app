@@ -178,6 +178,11 @@ pub struct SessionMeta {
     /// Requires `agent_session_id` as the source; cleared after connect attempt.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fork_agent_session: bool,
+    /// Optional per-session override for CLI top-level `--no-ask-user`
+    /// (disables `ask_user_question` for the agent process; CLI ≥ 0.2.117).
+    /// `None` → inherit global `AppSettings.no_ask_user`. Soft-respawn on change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_ask_user: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,6 +252,12 @@ pub struct AppSettings {
     /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
     #[serde(default)]
     pub disable_web_search: bool,
+    /// When true, spawn agents with top-level `--no-ask-user` so the agent
+    /// does not emit `ask_user_question` questionnaires (CLI ≥ 0.2.117).
+    /// Default false (CLI default — agent may still ask). Soft-respawn on change.
+    /// Per-session override: [`SessionMeta::no_ask_user`].
+    #[serde(default)]
+    pub no_ask_user: bool,
     /// Built-in tool ids to deny via top-level `grok --disallowed-tools a,b`.
     /// Default empty (CLI default — all tools available). Coexists with
     /// [`Self::disable_web_search`]; changing the list soft-respawns agents.
@@ -435,6 +446,7 @@ impl Default for AppSettings {
             experimental_memory: false,
             max_agent_turns: None,
             disable_web_search: false,
+            no_ask_user: false,
             disallowed_tools: Vec::new(),
             allowed_tools: Vec::new(),
             reopen_last_session: default_reopen_last_session(),
@@ -1060,6 +1072,7 @@ pub fn create_session(
         max_agent_turns: None,
         system_prompt_override: None,
         fork_agent_session: false,
+        no_ask_user: None,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -1341,6 +1354,24 @@ pub fn set_session_max_agent_turns(
 /// Set or clear per-session system prompt override
 /// (`grok --system-prompt-override` on next spawn).
 /// Pass `None` or empty/whitespace to clear. Soft-respawn is handled by the command.
+/// Set or clear per-session `--no-ask-user` override.
+/// `None` inherits global `AppSettings.no_ask_user`.
+pub fn set_session_no_ask_user(
+    id: &str,
+    no_ask_user: Option<bool>,
+) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.no_ask_user = no_ask_user;
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
 pub fn set_session_system_prompt_override(
     id: &str,
     system_prompt_override: Option<String>,
@@ -1516,6 +1547,7 @@ pub fn fork_session(
     meta.extra_rules = source.extra_rules.clone();
     meta.max_agent_turns = source.max_agent_turns;
     meta.system_prompt_override = source.system_prompt_override.clone();
+    meta.no_ask_user = source.no_ask_user;
     // CLI --fork-session: resume parent agent context under a new agent id.
     let source_agent = source
         .agent_session_id
@@ -2211,6 +2243,7 @@ mod tests {
         assert!(!s.experimental_memory);
         assert_eq!(s.max_agent_turns, None);
         assert!(!s.disable_web_search);
+        assert!(!s.no_ask_user);
         assert!(s.disallowed_tools.is_empty());
         assert!(s.allowed_tools.is_empty());
         assert!(s.plan_enabled);
@@ -2315,6 +2348,19 @@ mod tests {
     fn disable_web_search_defaults_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.disable_web_search);
+    }
+
+    #[test]
+    fn no_ask_user_defaults_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.no_ask_user);
+    }
+
+    #[test]
+    fn session_no_ask_user_defaults_none_when_missing() {
+        let raw = r#"{"id":"s1","projectId":null,"title":"t","agentSessionId":null,"createdAt":"2020-01-01T00:00:00Z","updatedAt":"2020-01-01T00:00:00Z"}"#;
+        let m: SessionMeta = serde_json::from_str(raw).expect("legacy session without noAskUser");
+        assert!(m.no_ask_user.is_none());
     }
 
     #[test]
@@ -2439,6 +2485,7 @@ mod tests {
             max_agent_turns: None,
             system_prompt_override: None,
             fork_agent_session: false,
+            no_ask_user: None,
         }
     }
 
@@ -2649,6 +2696,7 @@ mod tests {
                 max_agent_turns: None,
                 system_prompt_override: None,
                 fork_agent_session: false,
+                no_ask_user: None,
             },
         );
         write_json(&sessions_index_file(), &sessions).expect("seed sessions");

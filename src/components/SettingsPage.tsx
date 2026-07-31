@@ -465,6 +465,12 @@ export interface SettingsPageProps {
   onExperimentalMemory?: (v: boolean) => void;
   disableWebSearch?: boolean;
   onDisableWebSearch?: (v: boolean) => void;
+  /**
+   * Spawn with top-level `--no-ask-user` (CLI ≥ 0.2.117) to disable
+   * ask-user questionnaires. Soft-respawns on change.
+   */
+  noAskUser?: boolean;
+  onNoAskUser?: (v: boolean) => void;
   /** Built-in tool denylist (`--disallowed-tools`). */
   disallowedTools?: string[];
   onDisallowedTools?: (v: string[]) => void;
@@ -1109,6 +1115,8 @@ export function SettingsPage({
   onPlanEnabled,
   disableWebSearch = false,
   onDisableWebSearch,
+  noAskUser = false,
+  onNoAskUser,
   disallowedTools = [],
   onDisallowedTools,
   allowedTools = [],
@@ -2765,6 +2773,26 @@ export function SettingsPage({
                     checked={!!disableWebSearch}
                     onChange={() => onDisableWebSearch(!disableWebSearch)}
                     ariaLabel={t("settings.disableWebSearch")}
+                  />
+                </div>
+              ) : null}
+              {onNoAskUser ? (
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-noAskUser")}
+                  id="settings-anchor-noAskUser"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.noAskUser")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.noAskUserDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!noAskUser}
+                    onChange={() => onNoAskUser(!noAskUser)}
+                    ariaLabel={t("settings.noAskUser")}
                   />
                 </div>
               ) : null}

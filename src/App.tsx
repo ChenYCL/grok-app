@@ -2158,6 +2158,7 @@ export default function App() {
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [planEnabled, setPlanEnabled] = useState(true);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
+  const [noAskUser, setNoAskUser] = useState(false);
   const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
   const [allowedTools, setAllowedTools] = useState<string[]>([]);
   const [useLeader, setUseLeader] = useState(false);
@@ -2982,6 +2983,7 @@ export default function App() {
       setSubagentsEnabled(settings.subagentsEnabled !== false);
       setPlanEnabled(settings.planEnabled !== false);
       setDisableWebSearch(!!settings.disableWebSearch);
+      setNoAskUser(!!settings.noAskUser);
       setDisallowedTools(
         Array.isArray(settings.disallowedTools)
           ? settings.disallowedTools.filter(
@@ -14588,6 +14590,13 @@ export default function App() {
             setDisableWebSearch(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, disableWebSearch: v }),
+            );
+          }}
+          noAskUser={noAskUser}
+          onNoAskUser={(v) => {
+            setNoAskUser(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, noAskUser: v }),
             );
           }}
           disallowedTools={disallowedTools}

@@ -869,6 +869,23 @@ pub async fn session_set_system_prompt_override(
     Ok(meta)
 }
 
+/// Set or clear per-session `--no-ask-user` override (CLI ≥ 0.2.117).
+/// `None` inherits global Settings. Soft-respawns the live agent for this chat.
+#[tauri::command]
+pub async fn session_set_no_ask_user(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    no_ask_user: Option<bool>,
+) -> Result<SessionMeta, String> {
+    let meta = store::set_session_no_ask_user(&id, no_ask_user)?;
+    let snap = mgr.snapshot();
+    if snap.session_id.as_deref() == Some(meta.id.as_str()) {
+        mgr.soft_respawn_with_reason(&app, "session_no_ask_user").await;
+    }
+    Ok(meta)
+}
+
 #[tauri::command]
 pub async fn session_messages(
     id: String,
@@ -1120,6 +1137,7 @@ pub async fn settings_set(
         prev.session_data_mode != settings.session_data_mode;
     let memory_flip = prev.experimental_memory != settings.experimental_memory;
     let web_search_flip = prev.disable_web_search != settings.disable_web_search;
+    let no_ask_user_flip = prev.no_ask_user != settings.no_ask_user;
     let disallowed_tools_flip = !crate::acp_client::disallowed_tools_equal(
         &prev.disallowed_tools,
         &settings.disallowed_tools,
@@ -1234,6 +1252,7 @@ pub async fn settings_set(
         need_soft_respawn = true;
     }
     if web_search_flip
+        || no_ask_user_flip
         || disallowed_tools_flip
         || allowed_tools_flip
         || plan_enabled_flip
