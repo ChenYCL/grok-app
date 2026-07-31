@@ -2185,9 +2185,18 @@ const en = {
   "settings.themeDark": "Dark",
   "settings.themeSchedule": "Schedule light / dark",
   "settings.themeScheduleDesc":
-    "When Theme is System, switch light and dark by local clock instead of the OS. Forced Light or Dark ignore this schedule.",
+    "When Theme is System, switch by local clock: Light from → Dark from is the light window (may wrap midnight). Equal or invalid times soft-fail to the default theme. Forced Light or Dark ignore this schedule.",
   "settings.themeScheduleLightFrom": "Light from",
   "settings.themeScheduleDarkFrom": "Dark from",
+  "settings.themeSchedule.nextSwitch": "Next switch at {time} → {theme}",
+  "settings.themeSchedule.nextSwitchTomorrow":
+    "Next switch tomorrow at {time} → {theme}",
+  "settings.themeSchedule.invalidEqual":
+    "Light and dark start at the same time — schedule soft-fails to the default theme until the times differ.",
+  "settings.themeSchedule.invalidTimes":
+    "One or both times are invalid — schedule soft-fails to the default theme.",
+  "settings.themeSchedule.inactivePref":
+    "Schedule is on, but Theme is locked to Light or Dark. Switch Theme to System to use the clock.",
   "settings.thinkingExpand": "Thinking blocks",
   "settings.thinkingExpandDesc":
     "After a reply finishes, keep reasoning expanded or collapse it automatically. Streaming still opens live.",
@@ -7208,9 +7217,17 @@ const zh: Record<MessageKey, string> = {
   "settings.themeDark": "深色",
   "settings.themeSchedule": "按时切换浅色 / 深色",
   "settings.themeScheduleDesc":
-    "主题为「跟随系统」时，按本地时间在浅色与深色之间切换，而不是跟随系统外观。固定浅色或深色时忽略此计划。",
+    "主题为「跟随系统」时按本地时钟切换：浅色开始 → 深色开始为浅色时段（可跨午夜）。起止时间相同或无效时 soft-fail 回退默认主题。固定浅色或深色时忽略此计划。",
   "settings.themeScheduleLightFrom": "浅色开始",
   "settings.themeScheduleDarkFrom": "深色开始",
+  "settings.themeSchedule.nextSwitch": "下次切换 {time} → {theme}",
+  "settings.themeSchedule.nextSwitchTomorrow": "下次切换 明天 {time} → {theme}",
+  "settings.themeSchedule.invalidEqual":
+    "浅色与深色开始时间相同 — 计划 soft-fail，回退默认主题，直到两个时间不同。",
+  "settings.themeSchedule.invalidTimes":
+    "时间无效 — 计划 soft-fail，回退默认主题。",
+  "settings.themeSchedule.inactivePref":
+    "计划已开启，但主题已固定为浅色或深色。将主题改为「跟随系统」后才会按时钟切换。",
   "settings.thinkingExpand": "思考过程",
   "settings.thinkingExpandDesc":
     "回复完成后，思考/推理块保持展开，或自动折叠。流式生成时仍会实时展开。",

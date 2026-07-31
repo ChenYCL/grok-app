@@ -18,6 +18,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Appearance
+- **Theme schedule pro** (Settings → Appearance → Theme): clock-based light/dark schedule gains pure helpers for HH:mm parse/validate, equal/invalid range soft-fail, and next-switch time; Settings shows a **next switch** preview line under the time inputs and soft-fail honesty when times are equal/invalid or Theme is locked; clearer schedule description; pure `themeSchedule` helpers + tests; `settingsCatalog`; en/zh/zh-TW
+
 #### Runtime / workflows
 - **Sandbox profile pro** (Settings → General → Permissions): polish OS sandbox presets (`off` / `workspace` / `read-only` / `strict` / `devbox`) with pure `sandboxProfile` helpers (spawn args/env, project resolve, danger confirm keys), **honest soft-fail** when CLI is missing/too old for `--sandbox` (flag omitted) or when the platform has no kernel enforcement (Windows honesty; Linux-only child-network note on macOS), Settings banners + recommended-workspace tip; Host soft-gates spawn flags on known-old CLI; i18n en/zh/zh-TW; `settingsCatalog`; tests
 - **Grok Build workflows** (Settings → Runtime → Tools): opt-in `workflowsEnabled` AppSettings toggle writes top-level `workflows_enabled` into independent agent-home `config.toml` (shared mode never rewrites `~/.grok`); honest copy that workflows run via CLI / Rhai (`workflow` tool, `/workflow`, `/workflows`) — **no in-app runner/editor**; read-only soft-fail discovery of `~/.grok/workflows` + project `.grok/workflows` names; command palette **Open workflows docs** / jump to settings; pure helpers + tests; `settingsCatalog` + en/zh/zh-TW

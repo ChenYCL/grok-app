@@ -112,7 +112,10 @@ import {
   type ShortcutRemapMap,
 } from "@/lib/shortcutRemap";
 import type { Theme, ThemePreference } from "@/lib/theme";
-import type { ThemeScheduleConfig } from "@/lib/themeSchedule";
+import {
+  deriveThemeScheduleHonesty,
+  type ThemeScheduleConfig,
+} from "@/lib/themeSchedule";
 import {
   DEFAULT_WALLPAPER_FOCUS,
   THEME_SKINS,
@@ -1584,6 +1587,25 @@ export function SettingsPage({
     lightFrom: "07:00",
     darkFrom: "19:00",
   };
+  /** Clock honesty for schedule soft-fail / next-switch preview (local wall clock). */
+  const [themeScheduleClock, setThemeScheduleClock] = useState(
+    () => new Date(),
+  );
+  useEffect(() => {
+    if (!themeSchedule.enabled) return;
+    setThemeScheduleClock(new Date());
+    const id = window.setInterval(() => setThemeScheduleClock(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, [themeSchedule.enabled, themeSchedule.lightFrom, themeSchedule.darkFrom]);
+  const themeScheduleHonesty = useMemo(
+    () =>
+      deriveThemeScheduleHonesty({
+        preference: themePreference,
+        schedule: themeSchedule,
+        now: themeScheduleClock,
+      }),
+    [themePreference, themeSchedule, themeScheduleClock],
+  );
 
   const workspaceCwd = (projectPath || "").trim() || null;
   const showSettingsToast = useCallback((msg: string, ms = 3500) => {
@@ -4500,6 +4522,34 @@ export function SettingsPage({
                               />
                             </label>
                           </div>
+                          {themeScheduleHonesty.statusKey ? (
+                            <div
+                              className={
+                                "settings-tray-notify__status" +
+                                (themeScheduleHonesty.severity === "warn"
+                                  ? " is-warn"
+                                  : themeScheduleHonesty.severity === "info"
+                                    ? " is-info"
+                                    : "")
+                              }
+                              role="status"
+                            >
+                              {themeScheduleHonesty.next &&
+                              (themeScheduleHonesty.statusKey ===
+                                "settings.themeSchedule.nextSwitch" ||
+                                themeScheduleHonesty.statusKey ===
+                                  "settings.themeSchedule.nextSwitchTomorrow")
+                                ? t(themeScheduleHonesty.statusKey, {
+                                    time: themeScheduleHonesty.next.atHHmm,
+                                    theme:
+                                      themeScheduleHonesty.next.toTheme ===
+                                      "light"
+                                        ? t("settings.themeLight")
+                                        : t("settings.themeDark"),
+                                  })
+                                : t(themeScheduleHonesty.statusKey)}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </>
