@@ -18,6 +18,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Runtime / privacy
+- **Privacy center pro** (Settings → Runtime → Privacy): classified `privacy_config` probe soft-fail (host-only · shared write refused · path not allowed · I/O · empty patch · other) with en/zh/zh-TW copy instead of raw dumps; clearer unset defaults (summary chips, per-key CLI-default hints, “unset ≠ off” banner — **never invents telemetry off**); apply honesty (soft-respawn · independent-only); pure `privacyConfig` helpers + tests; `settingsCatalog` entries for mixpanel / workspace teleport
+
 #### Runtime / workflows
 - **Sandbox profile pro** (Settings → General → Permissions): polish OS sandbox presets (`off` / `workspace` / `read-only` / `strict` / `devbox`) with pure `sandboxProfile` helpers (spawn args/env, project resolve, danger confirm keys), **honest soft-fail** when CLI is missing/too old for `--sandbox` (flag omitted) or when the platform has no kernel enforcement (Windows honesty; Linux-only child-network note on macOS), Settings banners + recommended-workspace tip; Host soft-gates spawn flags on known-old CLI; i18n en/zh/zh-TW; `settingsCatalog`; tests
 - **Grok Build workflows** (Settings → Runtime → Tools): opt-in `workflowsEnabled` AppSettings toggle writes top-level `workflows_enabled` into independent agent-home `config.toml` (shared mode never rewrites `~/.grok`); honest copy that workflows run via CLI / Rhai (`workflow` tool, `/workflow`, `/workflows`) — **no in-app runner/editor**; read-only soft-fail discovery of `~/.grok/workflows` + project `.grok/workflows` names; command palette **Open workflows docs** / jump to settings; pure helpers + tests; `settingsCatalog` + en/zh/zh-TW

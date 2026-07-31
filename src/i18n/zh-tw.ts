@@ -1191,6 +1191,44 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.privacy.save": "儲存隱私鍵",
   "settings.privacy.saving": "儲存中…",
   "settings.privacy.needTauri": "隱私中心需要桌面應用程式。",
+  "settings.privacy.unsetNotOff":
+    "「未設定」不等於「關閉」。缺失的隱私鍵保持未設定——本應用不會把遙測或上傳虛構為已停用。",
+  "settings.privacy.summary.allUnset":
+    "全部 {total} 個隱私鍵未設定（{unset} 未設定 · {set} 已設定）",
+  "settings.privacy.summary.partial":
+    "已設定 {set}/{total} 個隱私鍵 · 仍有 {unset} 個未設定",
+  "settings.privacy.summary.allSet":
+    "全部 {total} 個隱私鍵已在設定中（{set} 已設定）",
+  "settings.privacy.default.telemetry":
+    "未設定 — 由 CLI / 環境變數決定產品遙測。本應用不會虛構為「關」。",
+  "settings.privacy.default.traceUpload":
+    "未設定 — 缺失時 CLI 跟隨 telemetry 開關（不是強制關閉）。",
+  "settings.privacy.default.mixpanel":
+    "未設定 — 由 CLI / 環境變數決定 Mixpanel。本應用不會虛構為「關」。",
+  "settings.privacy.default.disableCodebaseUpload":
+    "未設定 — 使用 CLI harness 預設。本應用不會虛構為已停用。",
+  "settings.privacy.default.disableWorkspaceTeleport":
+    "未設定 — 使用 CLI harness 預設。本應用不會虛構為已停用。",
+  "settings.privacy.probe.okMissing":
+    "設定檔尚不存在 — 鍵均為未設定（軟成功，不宣稱已關閉）",
+  "settings.privacy.probe.okAllUnset":
+    "設定已載入 — 尚未設定任何隱私鍵（未設定 ≠ 關閉）",
+  "settings.privacy.probe.okPartial": "設定已載入 — 部分隱私鍵已設定",
+  "settings.privacy.probe.okAllSet": "設定已載入 — 全部隱私鍵均已存在",
+  "settings.privacy.probe.hostOnly":
+    "隱私中心需要桌面應用程式（主機探測不可用）。",
+  "settings.privacy.probe.sharedMode":
+    "共用模式無法寫入隱私鍵 — 請切換到獨立 agent-home。",
+  "settings.privacy.probe.pathNotAllowed":
+    "路徑不允許 — 僅可編輯獨立 agent-home 的 config.toml。",
+  "settings.privacy.probe.io": "無法讀寫隱私設定檔（I/O 軟失敗）。",
+  "settings.privacy.probe.emptyPatch": "沒有可儲存的隱私鍵變更。",
+  "settings.privacy.probe.other": "無法載入或更新隱私設定。",
+  "settings.privacy.probe.error": "隱私設定探測失敗",
+  "settings.privacy.apply.softRespawn":
+    "儲存會寫入白名單鍵並 soft-respawn agent，使下一輪重新載入 config.toml。",
+  "settings.privacy.apply.independentOnly":
+    "僅在獨立 agent-home 模式下可寫。共用模式是對 ~/.grok 的唯讀探測。",
   "settings.tab.remoteIm": "IM 通訊",
   "settings.tab.phoneMirror": "手機鏡像",
   "settings.searchResults": "相符的設定",
