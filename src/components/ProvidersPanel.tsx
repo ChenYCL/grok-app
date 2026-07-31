@@ -1081,6 +1081,7 @@ export function ProvidersPanel({
               </div>
 
               <div className="prov-form__grid">
+                {/* Row: display name | config id */}
                 <label className="prov-field">
                   <span className="prov-field__label">{tr("prov.name")}</span>
                   <input
@@ -1100,27 +1101,28 @@ export function ProvidersPanel({
                   <span className="prov-field__hint">{tr("prov.nameChipHint")}</span>
                 </label>
 
-                {!editingId && (
-                  <label className="prov-field">
-                    <span className="prov-field__label">
-                      {tr("prov.displayName")}
-                    </span>
-                    <input
-                      className="settings-input"
-                      value={form.id}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          id: slugifyProviderId(e.target.value),
-                        }))
-                      }
-                      placeholder={tr("prov.idPh")}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                  </label>
-                )}
+                <label className="prov-field">
+                  <span className="prov-field__label">
+                    {tr("prov.displayName")}
+                  </span>
+                  <input
+                    className="settings-input"
+                    value={form.id}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        id: slugifyProviderId(e.target.value),
+                      }))
+                    }
+                    placeholder={tr("prov.idPh")}
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={!!editingId}
+                    readOnly={!!editingId}
+                  />
+                </label>
 
+                {/* Base URL full — typically long */}
                 <label className="prov-field prov-field--full">
                   <span className="prov-field__label">{tr("prov.baseUrl")}</span>
                   <input
@@ -1135,28 +1137,18 @@ export function ProvidersPanel({
                   />
                 </label>
 
-                {/* Side-by-side: protocol | API key. Shared control-row so Select
-                    width matches the key input (not the input+显示 button). */}
+                {/* Row: protocol | API key — equal grid columns */}
                 <div className="prov-field">
                   <span className="prov-field__label">{tr("prov.protocol")}</span>
-                  <div className="prov-control-row">
-                    <Select
-                      value={form.apiBackend}
-                      onChange={(v) =>
-                        setForm((f) => ({ ...f, apiBackend: v }))
-                      }
-                      options={protocolOptions}
-                      aria-label={tr("prov.protocol")}
-                      className="prov-control-row__main"
-                    />
-                    {/* Invisible twin of the key “Show” button keeps column widths equal. */}
-                    <span
-                      className="btn btn--ghost btn--sm prov-control-row__trail"
-                      aria-hidden
-                    >
-                      {tr("prov.keyShow")}
-                    </span>
-                  </div>
+                  <Select
+                    value={form.apiBackend}
+                    onChange={(v) =>
+                      setForm((f) => ({ ...f, apiBackend: v }))
+                    }
+                    options={protocolOptions}
+                    aria-label={tr("prov.protocol")}
+                    className="prov-field__select"
+                  />
                 </div>
 
                 <div className="prov-field">
@@ -1178,9 +1170,9 @@ export function ProvidersPanel({
                       </button>
                     ) : null}
                   </span>
-                  <div className="prov-control-row">
+                  <div className="prov-key-row">
                     <input
-                      className="settings-input prov-control-row__main"
+                      className="settings-input"
                       type={showKey ? "text" : "password"}
                       value={form.apiKey}
                       onChange={(e) =>
@@ -1202,7 +1194,8 @@ export function ProvidersPanel({
                   </div>
                 </div>
 
-                <div className="prov-field prov-field--full">
+                {/* Models — full-width section, 2 equal columns inside */}
+                <div className="prov-field prov-field--full prov-section">
                   <span className="prov-field__label-row">
                     <span className="prov-field__label">
                       {tr("prov.requestModel")}
@@ -1375,7 +1368,8 @@ export function ProvidersPanel({
                   </div>
                 </div>
 
-                <div className="prov-field prov-field--full">
+                {/* Efforts — full-width section, 2 equal columns inside */}
+                <div className="prov-field prov-field--full prov-section">
                   <span className="prov-field__label-row">
                     <span className="prov-field__label">
                       {tr("prov.efforts")}

@@ -13970,10 +13970,13 @@ textarea::-webkit-scrollbar-thumb:active,
   border-bottom: 1px solid var(--border-subtle);
 }
 
+/* Strict 2-column form: equal track widths, consistent gutters */
 .prov-form__grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 14px;
+  align-items: start;
 }
 
 .prov-field {
@@ -13988,14 +13991,17 @@ textarea::-webkit-scrollbar-thumb:active,
 }
 
 .prov-field__label {
+  display: block;
+  min-height: 18px;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--text-secondary);
+  line-height: 18px;
 }
 
 .prov-field__hint {
   display: block;
-  margin-top: 4px;
+  margin: 0;
   font-size: 12px;
   color: var(--text-tertiary);
   line-height: 1.35;
@@ -14008,10 +14014,12 @@ textarea::-webkit-scrollbar-thumb:active,
   justify-content: space-between;
   gap: 8px;
   width: 100%;
+  min-height: 18px;
 }
 
 .prov-field__label-row .prov-field__label {
   margin: 0;
+  min-height: 0;
 }
 
 .prov-field__text-link {
@@ -14022,7 +14030,7 @@ textarea::-webkit-scrollbar-thumb:active,
   color: var(--accent, #6b8cff);
   font-size: 12.5px;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 18px;
   cursor: pointer;
   text-decoration: none;
 }
@@ -14030,6 +14038,33 @@ textarea::-webkit-scrollbar-thumb:active,
 .prov-field__text-link:hover {
   text-decoration: underline;
   color: var(--text-primary);
+}
+
+/* Select fills its grid cell like .settings-input */
+.prov-field__select,
+.prov-field > .c-select.prov-field__select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.prov-field__select .c-select__trigger {
+  display: flex;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  justify-content: space-between;
+}
+
+.prov-field .settings-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.prov-section {
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 2px;
 }
 
 /* Preset gallery (add provider) */
@@ -14090,9 +14125,9 @@ textarea::-webkit-scrollbar-thumb:active,
   white-space: nowrap;
 }
 
-/* Multi-model catalog: one table shell, shared column headers, compact rows */
+/* Multi-model / efforts table: equal 1fr + 1fr + action */
 .prov-models {
-  margin-top: 0;
+  margin-top: 8px;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -14106,8 +14141,8 @@ textarea::-webkit-scrollbar-thumb:active,
 .prov-models__row,
 .prov-models__add-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) 36px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px;
+  gap: 10px;
   align-items: center;
   padding: 8px 10px;
 }
@@ -14169,35 +14204,25 @@ textarea::-webkit-scrollbar-thumb:active,
   margin-top: 2px;
 }
 
-/* Wide enough for two fields + icon button on one line */
-@media (min-width: 640px) {
-  .prov-models__add-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto;
-  }
+/* Add row: two equal inputs + action button */
+.prov-models__add-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
 
-  .prov-models__add-btn {
-    grid-column: auto;
-    margin-top: 0;
-    justify-self: stretch;
-    white-space: nowrap;
-  }
+.prov-models__add-btn {
+  grid-column: auto;
+  margin-top: 0;
+  justify-self: stretch;
+  white-space: nowrap;
+  height: 34px;
 }
 
 .prov-models__remote {
-  margin-top: 10px;
-  margin-bottom: 12px;
+  margin-top: 8px;
+  margin-bottom: 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-/* Table sits under hint / remote chips with consistent vertical rhythm */
-.prov-field--full > .prov-models {
-  margin-top: 10px;
-}
-
-.prov-field--full > .prov-models__remote + .prov-models {
-  margin-top: 0;
 }
 
 .prov-models__remote-label {
@@ -14284,42 +14309,14 @@ textarea::-webkit-scrollbar-thumb:active,
   min-width: 0;
 }
 
-/**
- * Shared row for protocol Select + API key: [ main control | trailing btn ].
- * Protocol uses an invisible trail twin so Select width == key input width.
- */
-.prov-control-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-}
+@media (max-width: 640px) {
+  .prov-form__grid {
+    grid-template-columns: 1fr;
+  }
 
-.prov-control-row__main {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-
-.prov-control-row > .c-select {
-  display: block;
-  width: 100%;
-  min-width: 0;
-}
-
-.prov-control-row > .c-select .c-select__trigger {
-  display: flex;
-  width: 100%;
-  max-width: none;
-  box-sizing: border-box;
-  justify-content: space-between;
-}
-
-.prov-control-row__trail {
-  visibility: hidden;
-  pointer-events: none;
-  user-select: none;
+  .prov-field--full {
+    grid-column: auto;
+  }
 }
 
 .prov-check {
