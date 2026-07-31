@@ -462,12 +462,22 @@ export interface ConversationThreadProps {
    */
   showReplyLength?: boolean;
   /**
-   * When true, completed assistant replies get a structured-output panel
-   * (session JSON Schema mode): parse + light schema check, copy/export.
+   * When true, assistant replies get a structured-output panel
+   * (session JSON Schema mode): progressive parse + light schema check while
+   * streaming, copy/export when complete.
    */
   structuredOutputActive?: boolean;
   /** Active session schema text for required-field validation. */
   structuredOutputSchema?: string | null;
+  /**
+   * Optional known token usage from agent events (session-level).
+   * Shown only on the latest assistant turn — never invents zeros.
+   */
+  structuredOutputUsage?: {
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    totalTokens?: number | null;
+  } | null;
   structuredOutputLabels?: {
     title: string;
     badge: string;
@@ -479,6 +489,13 @@ export interface ConversationThreadProps {
     valid: string;
     schemaMismatch: string;
     missingRequired: string;
+    streaming?: string;
+    partial?: string;
+    partialKeys?: string;
+    timeline?: string;
+    usage?: string;
+    usageIo?: string;
+    usageTotal?: string;
   };
 }
 
@@ -519,6 +536,7 @@ export function ConversationThread({
   showReplyLength = false,
   structuredOutputActive = false,
   structuredOutputSchema = null,
+  structuredOutputUsage = null,
   structuredOutputLabels,
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -572,6 +590,20 @@ export function ConversationThread({
     () => lastRegenerableAssistantId(messages),
     [messages],
   );
+
+  /**
+   * Latest assistant body message — only this turn shows known usage on the
+   * structured panel (session-level usage is not attributed to older turns).
+   */
+  const structuredUsageMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!m || m.role !== "assistant") continue;
+      if (m.marker) continue;
+      return m.id;
+    }
+    return null;
+  }, [messages]);
 
   const {
     viewportRef: scrollRef,
@@ -1612,13 +1644,18 @@ export function ConversationThread({
                       />
                     ) : null}
                     {structuredOutputActive &&
-                    !m.streaming &&
-                    !!m.content.trim() &&
-                    structuredOutputLabels ? (
+                    structuredOutputLabels &&
+                    (m.streaming || !!m.content.trim()) ? (
                       <StructuredJsonPanel
                         content={m.content}
                         schemaText={structuredOutputSchema}
                         labels={structuredOutputLabels}
+                        streaming={!!m.streaming}
+                        usage={
+                          m.id === structuredUsageMessageId
+                            ? structuredOutputUsage
+                            : null
+                        }
                       />
                     ) : null}
                     {(() => {

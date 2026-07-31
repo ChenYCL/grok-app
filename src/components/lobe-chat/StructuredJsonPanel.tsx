@@ -2,17 +2,26 @@
  * Structured JSON panel under an assistant reply when the session has an
  * optional JSON Schema (structured output mode).
  *
- * Always renders when mounted: valid JSON → pretty view + schema check;
- * invalid JSON → honest failure (no crash).
+ * Progressive: while streaming, shows partial JSON + validation timeline;
+ * when complete, pretty view + schema check + copy/export; optional known
+ * usage from agent events. Honest failure when finished content is not JSON.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IconAlertTriangle, IconCheck, IconCopy, IconFileText } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import {
-  assessStructuredReply,
-  type StructuredReplyAssessment,
-} from "@/lib/jsonSchema";
+  appendValidationTimeline,
+  assessStreamStructured,
+  buildStructuredExport,
+  formatValidationTimelinePath,
+  hasKnownStructuredUsage,
+  pickKnownStructuredUsage,
+  streamPhaseTone,
+  type StreamJsonPhase,
+  type StructuredUsageKnown,
+  type ValidationTimelineEntry,
+} from "@/lib/streamJsonPipe";
 import { cn } from "@/lib/utils";
 
 export type StructuredJsonPanelLabels = {
@@ -23,7 +32,7 @@ export type StructuredJsonPanelLabels = {
   export: string;
   /** Shown when the reply is not parseable JSON. */
   invalidJson: string;
-  /** Shown when reply is empty. */
+  /** Shown when reply is empty (finished). */
   empty: string;
   /** Schema checks pass. */
   valid: string;
@@ -31,31 +40,81 @@ export type StructuredJsonPanelLabels = {
   schemaMismatch: string;
   /** Missing required fields; `{fields}` = comma-separated names. */
   missingRequired: string;
+  /** While streaming before complete JSON. */
+  streaming?: string;
+  /** Partial JSON mid-stream. */
+  partial?: string;
+  /** Seen keys hint; `{keys}` = comma-separated. */
+  partialKeys?: string;
+  /** Validation path label. */
+  timeline?: string;
+  /** Usage line; `{detail}` filled by panel. */
+  usage?: string;
+  /** `{input}` / `{output}` token counts. */
+  usageIo?: string;
+  /** `{total}` token count. */
+  usageTotal?: string;
 };
 
 export function StructuredJsonPanel({
   content,
   schemaText,
   labels,
+  streaming = false,
+  usage = null,
   className,
 }: {
   content: string;
   /** Active session JSON Schema text (optional; enables required-field checks). */
   schemaText?: string | null;
   labels: StructuredJsonPanelLabels;
+  /** When true, incomplete JSON is progressive (not hard failure). */
+  streaming?: boolean;
+  /** Optional known usage from agent events (never invent). */
+  usage?: StructuredUsageKnown | null;
   className?: string;
 }) {
   const assessment = useMemo(
-    () => assessStructuredReply(content, schemaText),
-    [content, schemaText],
+    () => assessStreamStructured(content, schemaText, { streaming }),
+    [content, schemaText, streaming],
   );
-  const [copied, setCopied] = useState(false);
 
-  const statusLabel = statusText(assessment, labels);
-  const canExport = !!assessment.pretty;
+  const [timeline, setTimeline] = useState<ValidationTimelineEntry[]>([]);
+  const contentLen = (content ?? "").length;
+  const phaseKey = `${assessment.phase}:${assessment.missingRequired.join(",")}`;
+
+  // Progressive validation timeline for this mount (stream + finished).
+  useEffect(() => {
+    setTimeline((prev) =>
+      appendValidationTimeline(prev, assessment, {
+        contentLength: contentLen,
+        atMs: Date.now(),
+      }),
+    );
+    // phaseKey captures phase + missing fields; contentLen for length updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- assessment object is recreated; phaseKey is the signal
+  }, [phaseKey, contentLen, assessment]);
+
+  // Reset timeline when the turn content is replaced (new message content start).
+  const prevStreamingRef = useRef(streaming);
+  useEffect(() => {
+    if (streaming && !prevStreamingRef.current) {
+      setTimeline([]);
+    }
+    prevStreamingRef.current = streaming;
+  }, [streaming]);
+
+  const [copied, setCopied] = useState(false);
+  const knownUsage = useMemo(() => pickKnownStructuredUsage(usage), [usage]);
+  const statusLabel = statusText(assessment.phase, assessment.missingRequired, labels);
+  const exportPayload = buildStructuredExport(assessment.pretty);
+  const canExport = !!exportPayload;
+  const tone = streamPhaseTone(assessment.phase);
+  const timelinePath = formatValidationTimelinePath(timeline);
+  const showTimeline = timeline.length > 1 && !!timelinePath;
 
   const onCopy = async () => {
-    const text = assessment.pretty;
+    const text = exportPayload?.json;
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -67,14 +126,15 @@ export function StructuredJsonPanel({
   };
 
   const onExport = () => {
-    const text = assessment.pretty;
-    if (!text) return;
+    if (!exportPayload) return;
     try {
-      const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+      const blob = new Blob([exportPayload.json], {
+        type: "application/json;charset=utf-8",
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "structured-output.json";
+      a.download = exportPayload.filename;
       a.rel = "noopener";
       document.body.appendChild(a);
       a.click();
@@ -85,18 +145,24 @@ export function StructuredJsonPanel({
     }
   };
 
-  const tone =
-    assessment.status === "valid"
-      ? "ok"
-      : assessment.status === "schema_mismatch"
-        ? "warn"
-        : "err";
+  const partialKeys = assessment.frame.partialKeys;
+  const bodyPreview =
+    assessment.pretty ??
+    (assessment.phase === "partial" && assessment.frame.raw
+      ? assessment.frame.raw
+      : null);
 
   return (
     <div
-      className={cn("struct-json", `struct-json--${tone}`, className)}
+      className={cn(
+        "struct-json",
+        `struct-json--${tone}`,
+        streaming && "struct-json--live",
+        className,
+      )}
       data-testid="struct-json-panel"
-      data-status={assessment.status}
+      data-status={assessment.phase}
+      data-streaming={streaming ? "1" : "0"}
     >
       <div className="struct-json__bar">
         <div className="struct-json__bar-left">
@@ -110,11 +176,23 @@ export function StructuredJsonPanel({
           >
             {tone === "ok" ? (
               <IconCheck size={12} />
+            ) : tone === "stream" ? (
+              <span className="struct-json__pulse" aria-hidden />
             ) : (
               <IconAlertTriangle size={12} />
             )}
             <span>{statusLabel}</span>
           </span>
+          {assessment.phase === "partial" &&
+          partialKeys.length > 0 &&
+          labels.partialKeys ? (
+            <span
+              className="struct-json__keys"
+              data-testid="struct-json-partial-keys"
+            >
+              {labels.partialKeys.replace("{keys}", partialKeys.join(", "))}
+            </span>
+          ) : null}
         </div>
         <div className="struct-json__actions">
           {canExport ? (
@@ -145,9 +223,42 @@ export function StructuredJsonPanel({
           ) : null}
         </div>
       </div>
-      {assessment.pretty ? (
-        <pre className="struct-json__pre">
-          <code>{assessment.pretty}</code>
+
+      {showTimeline ? (
+        <div
+          className="struct-json__timeline"
+          data-testid="struct-json-timeline"
+          title={timelinePath}
+        >
+          {labels.timeline ? (
+            <span className="struct-json__timeline-label">{labels.timeline}</span>
+          ) : null}
+          <ol className="struct-json__timeline-list">
+            {timeline.map((e, i) => (
+              <li
+                key={`${e.phase}-${i}-${e.contentLength}`}
+                className={cn(
+                  "struct-json__timeline-step",
+                  `struct-json__timeline-step--${streamPhaseTone(e.phase)}`,
+                  i === timeline.length - 1 && "is-current",
+                )}
+                data-phase={e.phase}
+              >
+                {phaseShortLabel(e.phase, labels)}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+
+      {bodyPreview ? (
+        <pre
+          className={cn(
+            "struct-json__pre",
+            assessment.phase === "partial" && "struct-json__pre--partial",
+          )}
+        >
+          <code>{bodyPreview}</code>
         </pre>
       ) : (
         <div
@@ -155,32 +266,110 @@ export function StructuredJsonPanel({
           role="status"
           data-testid="struct-json-fail"
         >
-          {assessment.status === "empty" ? labels.empty : labels.invalidJson}
+          {failText(assessment.phase, streaming, labels)}
         </div>
       )}
+
+      {knownUsage && labels.usage && hasKnownStructuredUsage(knownUsage) ? (
+        <div className="struct-json__usage" data-testid="struct-json-usage">
+          {labels.usage.replace(
+            "{detail}",
+            formatUsageDetail(knownUsage, labels),
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function statusText(
-  assessment: StructuredReplyAssessment,
+  phase: StreamJsonPhase,
+  missingRequired: string[],
   labels: StructuredJsonPanelLabels,
 ): string {
-  switch (assessment.status) {
+  switch (phase) {
     case "valid":
       return labels.valid;
     case "empty":
-      return labels.empty;
+      return streamingEmptyLabel(labels);
+    case "partial":
+      return labels.partial ?? labels.streaming ?? labels.invalidJson;
     case "invalid_json":
       return labels.invalidJson;
     case "schema_mismatch": {
-      const missing = assessment.schema?.missingRequired ?? [];
-      if (missing.length > 0) {
-        return labels.missingRequired.replace("{fields}", missing.join(", "));
+      if (missingRequired.length > 0) {
+        return labels.missingRequired.replace(
+          "{fields}",
+          missingRequired.join(", "),
+        );
       }
       return labels.schemaMismatch;
     }
     default:
       return labels.invalidJson;
   }
+}
+
+function streamingEmptyLabel(labels: StructuredJsonPanelLabels): string {
+  return labels.streaming ?? labels.empty;
+}
+
+function failText(
+  phase: StreamJsonPhase,
+  streaming: boolean,
+  labels: StructuredJsonPanelLabels,
+): string {
+  if (phase === "empty") {
+    return streaming ? streamingEmptyLabel(labels) : labels.empty;
+  }
+  if (phase === "partial") {
+    return labels.partial ?? labels.streaming ?? labels.invalidJson;
+  }
+  return labels.invalidJson;
+}
+
+function phaseShortLabel(
+  phase: StreamJsonPhase,
+  labels: StructuredJsonPanelLabels,
+): string {
+  switch (phase) {
+    case "valid":
+      return labels.valid;
+    case "empty":
+      return labels.streaming ?? labels.empty;
+    case "partial":
+      return labels.partial ?? labels.streaming ?? "…";
+    case "schema_mismatch":
+      return labels.schemaMismatch;
+    case "invalid_json":
+      return labels.invalidJson;
+    default:
+      return phase;
+  }
+}
+
+function formatUsageDetail(
+  u: NonNullable<ReturnType<typeof pickKnownStructuredUsage>>,
+  labels: StructuredJsonPanelLabels,
+): string {
+  if (
+    u.inputTokens != null &&
+    u.outputTokens != null &&
+    labels.usageIo
+  ) {
+    return labels.usageIo
+      .replace("{input}", String(u.inputTokens))
+      .replace("{output}", String(u.outputTokens));
+  }
+  if (u.totalTokens != null && labels.usageTotal) {
+    return labels.usageTotal.replace("{total}", String(u.totalTokens));
+  }
+  if (u.inputTokens != null && labels.usageTotal) {
+    return labels.usageTotal.replace("{total}", String(u.inputTokens));
+  }
+  if (u.outputTokens != null && labels.usageTotal) {
+    return labels.usageTotal.replace("{total}", String(u.outputTokens));
+  }
+  if (u.totalTokens != null) return String(u.totalTokens);
+  return "";
 }

@@ -16825,6 +16825,15 @@ export default function App() {
             showReplyLength={showReplyLength}
             structuredOutputActive={!!sessionJsonSchema}
             structuredOutputSchema={sessionJsonSchema}
+            structuredOutputUsage={
+              contextUsage.knownUsage
+                ? {
+                    inputTokens: contextUsage.knownUsage.inputTokens,
+                    outputTokens: contextUsage.knownUsage.outputTokens,
+                    totalTokens: contextUsage.knownUsage.totalTokens,
+                  }
+                : null
+            }
             structuredOutputLabels={{
               title: tr("message.structuredJson"),
               badge: tr("message.structuredJsonBadge"),
@@ -16836,6 +16845,13 @@ export default function App() {
               valid: tr("message.structuredJsonValid"),
               schemaMismatch: tr("message.structuredJsonSchemaMismatch"),
               missingRequired: tr("message.structuredJsonMissingRequired"),
+              streaming: tr("message.structuredJsonStreaming"),
+              partial: tr("message.structuredJsonPartial"),
+              partialKeys: tr("message.structuredJsonPartialKeys"),
+              timeline: tr("message.structuredJsonTimeline"),
+              usage: tr("message.structuredJsonUsage"),
+              usageIo: tr("message.structuredJsonUsageIo"),
+              usageTotal: tr("message.structuredJsonUsageTotal"),
             }}
           />
           </UiErrorBoundary>
