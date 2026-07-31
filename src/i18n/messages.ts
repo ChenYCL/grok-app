@@ -743,9 +743,53 @@ const en = {
   "tasks.collapseChildren": "Collapse nested tools",
   "tasks.parent": "Parent",
   "tasks.searchPlaceholder": "Filter tasks…",
+  "tasks.filter.statusLabel": "Filter by status",
+  "tasks.filter.all": "All",
+  "tasks.filter.running": "Running",
+  "tasks.filter.done": "Done",
+  "tasks.filterEmpty": "No tasks match these filters",
+  "tasks.filterEmptyHint":
+    "Clear the search or pick another status to see more tasks.",
+  "tasks.clearFilters": "Clear filters",
   "tasks.subagentWtSnapNote":
     "Subagent worktree snapshot is on (CLI 0.2.117+). Nested agents may use isolated worktree snapshots.",
   "tasks.openDashboard": "Agent dashboard",
+  "tasks.activity.stopErr.host_only": "Stop needs the desktop app",
+  "tasks.activity.stopErr.host_onlyHint":
+    "Session stop is only available in the Tauri host — not in the browser preview.",
+  "tasks.activity.stopErr.not_found": "Session not found",
+  "tasks.activity.stopErr.not_foundHint":
+    "That session may already be closed. Refresh the list or open another chat.",
+  "tasks.activity.stopErr.already_stopped": "Already idle",
+  "tasks.activity.stopErr.already_stoppedHint":
+    "Nothing to stop — the session is not busy right now.",
+  "tasks.activity.stopErr.timeout": "Stop timed out",
+  "tasks.activity.stopErr.timeoutHint":
+    "The host did not confirm stop in time. Try again or disconnect the session.",
+  "tasks.activity.stopErr.permission": "Stop not allowed",
+  "tasks.activity.stopErr.permissionHint":
+    "The host denied stopping this session. Check permissions and try again.",
+  "tasks.activity.stopErr.other": "Could not stop session",
+  "tasks.activity.stopErr.otherHint":
+    "Stop failed. Try again, or open the session and stop the turn from the composer.",
+  "tasks.cwdBindErr.empty_path": "No folder path",
+  "tasks.cwdBindErr.empty_pathHint":
+    "This tool row has no worktree path to open as the chat folder.",
+  "tasks.cwdBindErr.already_active": "Already this chat’s folder",
+  "tasks.cwdBindErr.already_activeHint":
+    "The chat is already bound to this path.",
+  "tasks.cwdBindErr.host_only": "Switch folder needs the desktop app",
+  "tasks.cwdBindErr.host_onlyHint":
+    "Binding a chat folder requires the Tauri host.",
+  "tasks.cwdBindErr.not_worktree": "Not a usable worktree path",
+  "tasks.cwdBindErr.not_worktreeHint":
+    "The path is missing or not a project folder the app can open.",
+  "tasks.cwdBindErr.switch_failed": "Could not switch chat folder",
+  "tasks.cwdBindErr.switch_failedHint":
+    "Project bind failed. Check the path exists and try again.",
+  "tasks.cwdBindErr.other": "Could not use as chat folder",
+  "tasks.cwdBindErr.otherHint":
+    "Binding failed. Reveal the path or copy it and open the project manually.",
   "dashboard.title": "Agent dashboard",
   "dashboard.hint":
     "Active and recent sessions across the app. Open a row to focus that chat. Distinct from Tasks (tools for the current turn).",
@@ -6453,9 +6497,47 @@ const zh: Record<MessageKey, string> = {
   "tasks.collapseChildren": "收起子工具",
   "tasks.parent": "父级",
   "tasks.searchPlaceholder": "筛选任务…",
+  "tasks.filter.statusLabel": "按状态筛选",
+  "tasks.filter.all": "全部",
+  "tasks.filter.running": "进行中",
+  "tasks.filter.done": "已完成",
+  "tasks.filterEmpty": "没有符合筛选条件的任务",
+  "tasks.filterEmptyHint": "清空搜索或换一个状态以查看更多任务。",
+  "tasks.clearFilters": "清除筛选",
   "tasks.subagentWtSnapNote":
     "子代理 worktree 快照已开启（CLI 0.2.117+）。嵌套 Agent 可能使用隔离 worktree 快照。",
   "tasks.openDashboard": "Agent 仪表盘",
+  "tasks.activity.stopErr.host_only": "停止会话需要桌面端应用",
+  "tasks.activity.stopErr.host_onlyHint":
+    "会话停止仅在 Tauri 桌面端可用，浏览器预览中不可用。",
+  "tasks.activity.stopErr.not_found": "找不到该会话",
+  "tasks.activity.stopErr.not_foundHint":
+    "会话可能已关闭。请刷新列表或打开其他对话。",
+  "tasks.activity.stopErr.already_stopped": "已空闲",
+  "tasks.activity.stopErr.already_stoppedHint":
+    "无需停止 — 该会话当前不在忙碌状态。",
+  "tasks.activity.stopErr.timeout": "停止超时",
+  "tasks.activity.stopErr.timeoutHint":
+    "主机未在时限内确认停止。请重试或断开该会话。",
+  "tasks.activity.stopErr.permission": "无权停止",
+  "tasks.activity.stopErr.permissionHint":
+    "主机拒绝停止此会话。请检查权限后重试。",
+  "tasks.activity.stopErr.other": "无法停止会话",
+  "tasks.activity.stopErr.otherHint":
+    "停止失败。请重试，或打开该会话并从输入框停止本轮。",
+  "tasks.cwdBindErr.empty_path": "没有可用路径",
+  "tasks.cwdBindErr.empty_pathHint": "此工具行没有可绑定为对话目录的 worktree 路径。",
+  "tasks.cwdBindErr.already_active": "已是当前对话目录",
+  "tasks.cwdBindErr.already_activeHint": "对话已绑定到该路径。",
+  "tasks.cwdBindErr.host_only": "切换目录需要桌面端应用",
+  "tasks.cwdBindErr.host_onlyHint": "绑定对话目录需要 Tauri 桌面端。",
+  "tasks.cwdBindErr.not_worktree": "不是可用的 worktree 路径",
+  "tasks.cwdBindErr.not_worktreeHint": "路径缺失，或应用无法打开为项目目录。",
+  "tasks.cwdBindErr.switch_failed": "无法切换对话目录",
+  "tasks.cwdBindErr.switch_failedHint": "项目绑定失败。请确认路径存在后重试。",
+  "tasks.cwdBindErr.other": "无法用作对话目录",
+  "tasks.cwdBindErr.otherHint":
+    "绑定失败。可显示路径或复制后手动打开项目。",
   "dashboard.title": "Agent 仪表盘",
   "dashboard.hint":
     "应用内活跃与最近会话。点击一行可聚焦该对话。与「任务」面板（当前回合工具）不同。",

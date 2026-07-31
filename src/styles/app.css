@@ -25049,8 +25049,55 @@ html[data-theme="light"] .rim-sidebar {
   border-radius: 6px;
   background: color-mix(in srgb, var(--fg, #e8e8e8) 6%, transparent);
 }
+.agent-tasks__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+.agent-tasks__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.agent-tasks__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.35));
+  background: transparent;
+  color: var(--text-secondary, inherit);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+}
+.agent-tasks__chip:hover {
+  background: var(--hover-bg, rgba(127, 127, 127, 0.1));
+  color: var(--text-primary, inherit);
+}
+.agent-tasks__chip.is-active {
+  border-color: color-mix(in srgb, var(--accent, #5b8def) 30%, transparent);
+  background: color-mix(in srgb, var(--accent, #5b8def) 14%, transparent);
+  color: var(--text-primary, inherit);
+  font-weight: 560;
+}
+.agent-tasks__chip-count {
+  font-size: 10px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+.agent-tasks__chip.is-active .agent-tasks__chip-count {
+  opacity: 0.9;
+}
 .agent-tasks__search {
-  padding: 4px 12px 8px;
+  padding: 0;
 }
 .agent-tasks__search-input {
   width: 100%;
@@ -25257,9 +25304,18 @@ html[data-theme="light"] .rim-sidebar {
 }
 .agent-tasks__empty {
   padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.agent-tasks__empty--filter {
+  margin: 4px 0 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fg, #e8e8e8) 5%, transparent);
 }
 .agent-tasks__empty-title {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 13px;
   font-weight: 600;
 }
@@ -25282,6 +25338,10 @@ html[data-theme="light"] .rim-sidebar {
   font-size: 12px;
   opacity: 0.7;
   line-height: 1.45;
+}
+.agent-tasks__hint--soft {
+  padding: 0 10px 8px 28px;
+  opacity: 0.72;
 }
 
 /* —— Agent dashboard (cross-session status modal) —— */

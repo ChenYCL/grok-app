@@ -699,9 +699,48 @@ export const zhTW: Record<MessageKey, string> = {
   "tasks.collapseChildren": "收合子工具",
   "tasks.parent": "父級",
   "tasks.searchPlaceholder": "篩選任務…",
+  "tasks.filter.statusLabel": "依狀態篩選",
+  "tasks.filter.all": "全部",
+  "tasks.filter.running": "進行中",
+  "tasks.filter.done": "已完成",
+  "tasks.filterEmpty": "沒有符合篩選條件的任務",
+  "tasks.filterEmptyHint": "清空搜尋或換一個狀態以查看更多任務。",
+  "tasks.clearFilters": "清除篩選",
   "tasks.subagentWtSnapNote":
     "子代理 worktree 快照已開啟（CLI 0.2.117+）。巢狀 Agent 可能使用隔離 worktree 快照。",
   "tasks.openDashboard": "Agent 儀表板",
+  "tasks.activity.stopErr.host_only": "停止工作階段需要桌面端應用程式",
+  "tasks.activity.stopErr.host_onlyHint":
+    "工作階段停止僅在 Tauri 桌面端可用，瀏覽器預覽中不可用。",
+  "tasks.activity.stopErr.not_found": "找不到該工作階段",
+  "tasks.activity.stopErr.not_foundHint":
+    "工作階段可能已關閉。請重新整理列表或開啟其他對話。",
+  "tasks.activity.stopErr.already_stopped": "已閒置",
+  "tasks.activity.stopErr.already_stoppedHint":
+    "無需停止 — 該工作階段目前不在忙碌狀態。",
+  "tasks.activity.stopErr.timeout": "停止逾時",
+  "tasks.activity.stopErr.timeoutHint":
+    "主機未在時限內確認停止。請重試或中斷該工作階段。",
+  "tasks.activity.stopErr.permission": "無權停止",
+  "tasks.activity.stopErr.permissionHint":
+    "主機拒絕停止此工作階段。請檢查權限後重試。",
+  "tasks.activity.stopErr.other": "無法停止工作階段",
+  "tasks.activity.stopErr.otherHint":
+    "停止失敗。請重試，或開啟該工作階段並從輸入框停止本回合。",
+  "tasks.cwdBindErr.empty_path": "沒有可用路徑",
+  "tasks.cwdBindErr.empty_pathHint":
+    "此工具列沒有可綁定為對話目錄的 worktree 路徑。",
+  "tasks.cwdBindErr.already_active": "已是目前對話目錄",
+  "tasks.cwdBindErr.already_activeHint": "對話已綁定到該路徑。",
+  "tasks.cwdBindErr.host_only": "切換目錄需要桌面端應用程式",
+  "tasks.cwdBindErr.host_onlyHint": "綁定對話目錄需要 Tauri 桌面端。",
+  "tasks.cwdBindErr.not_worktree": "不是可用的 worktree 路徑",
+  "tasks.cwdBindErr.not_worktreeHint": "路徑缺失，或應用程式無法開啟為專案目錄。",
+  "tasks.cwdBindErr.switch_failed": "無法切換對話目錄",
+  "tasks.cwdBindErr.switch_failedHint": "專案綁定失敗。請確認路徑存在後重試。",
+  "tasks.cwdBindErr.other": "無法用作對話目錄",
+  "tasks.cwdBindErr.otherHint":
+    "綁定失敗。可顯示路徑或複製後手動開啟專案。",
   "dashboard.title": "Agent 儀表板",
   "dashboard.hint":
     "應用程式內活躍與最近工作階段。點一列可聚焦該對話。與「任務」面板（目前回合工具）不同。",
