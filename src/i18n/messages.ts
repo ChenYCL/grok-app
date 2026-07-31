@@ -1863,6 +1863,60 @@ const en = {
     "This Grok Build CLI version does not expose agent leader / leader management commands. Update the CLI under Runtime → CLI, or manage the process outside the app. The use-leader client toggle is still available.",
   "settings.leader.serveHint":
     "WebSocket serve is managed in the section below (`grok agent serve`). Secrets are masked after start.",
+  "settings.leader.field.pid": "PID",
+  "settings.leader.field.socketPath": "Socket",
+  "settings.leader.field.lockPath": "Lock",
+  "settings.leader.field.version": "Version",
+  "settings.leader.field.protocolVersion": "Protocol",
+  "settings.leader.field.classification": "Classification",
+  "settings.leader.field.uptime": "Uptime",
+  "settings.leader.field.activeToolCalls": "Active tools",
+  "settings.leader.field.wsUrlSuffix": "WS suffix",
+  "settings.leader.field.raw": "Raw",
+  "settings.leader.class.reachable": "Reachable",
+  "settings.leader.class.running": "Running",
+  "settings.leader.class.unreachable": "Unreachable",
+  "settings.leader.class.stale": "Stale",
+  "settings.leader.class.unknown": "Unknown",
+  "settings.leader.err.cliMissing": "CLI missing",
+  "settings.leader.err.unsupported": "Unsupported",
+  "settings.leader.err.timeout": "Timeout",
+  "settings.leader.err.parse": "Parse error",
+  "settings.leader.err.socketStale": "Stale socket",
+  "settings.leader.err.listFailed": "List failed",
+  "settings.leader.err.infoFailed": "Details failed",
+  "settings.leader.err.unreachable": "Unreachable",
+  "settings.leader.err.other": "Error",
+  "settings.leader.hint.cliMissing":
+    "Install Grok Build CLI or set the path under Runtime → CLI. Leader management needs a working `grok` binary.",
+  "settings.leader.hint.unsupported":
+    "Update Grok Build CLI under Runtime → CLI. Older builds may lack `grok leader list|info|kill`.",
+  "settings.leader.hint.timeout":
+    "The CLI timed out. Retry Refresh; if it keeps failing, check a stuck `grok` process.",
+  "settings.leader.hint.parse":
+    "Could not parse CLI JSON. Update the CLI, or copy the raw error for support.",
+  "settings.leader.hint.socketStale":
+    "A leader socket file exists but no reachable process is listed. Start a new leader, or Stop to clear stale leaders, then remove a leftover socket if needed.",
+  "settings.leader.hint.listFailed":
+    "Soft-fail: `grok leader list` did not succeed. Status may still allow Start; Refresh after fixing the CLI.",
+  "settings.leader.hint.infoFailed":
+    "Soft-fail: `grok leader info` did not return details. The process may still be running — try Refresh on the list.",
+  "settings.leader.hint.unreachable":
+    "Leader process was listed as unreachable. Stop all leaders and Start again, or inspect the socket path.",
+  "settings.leader.hint.other":
+    "See the message above. Refresh status after fixing the underlying CLI or process issue.",
+  "settings.leader.fleetEmptyUnsupported":
+    "Fleet list unavailable — this CLI does not expose `grok leader list`.",
+  "settings.leader.fleetEmptyCliMissing":
+    "Fleet list unavailable — Grok Build CLI was not found.",
+  "settings.leader.fleetEmptySoft":
+    "No leaders listed (list probe soft-failed). Start may still work; see diagnostic below.",
+  "settings.leader.honesty.useLeaderNotRunning":
+    "Share agent backend is on, but no reachable leader is listed. Agents will try `--leader` and may fail until you Start leader (or turn the setting off).",
+  "settings.leader.honesty.runningNoUseLeader":
+    "A leader process is running, but this app still uses `--no-leader` unless you enable Share agent backend.",
+  "settings.leader.honesty.useLeaderNoCli":
+    "Share agent backend is on, but this CLI cannot manage leader processes. Agents may still pass `--leader`; update the CLI or manage the process outside the app.",
   "settings.serve.title": "Agent serve (WebSocket)",
   "settings.serve.desc":
     "Run `grok agent serve` as a local WebSocket ACP server. Default bind 127.0.0.1:2419. Optional `--remote` for proxy mode. Secret is auto-generated; full token is shown only once on start for copy.",
@@ -6506,6 +6560,60 @@ const zh: Record<MessageKey, string> = {
     "当前 Grok Build CLI 版本没有 agent leader / leader 管理命令。请在「运行时 → CLI」更新，或在应用外管理进程。客户端 use-leader 开关仍可用。",
   "settings.leader.serveHint":
     "WebSocket serve 由下方区块管理（`grok agent serve`）。启动后密钥仅显示掩码。",
+  "settings.leader.field.pid": "PID",
+  "settings.leader.field.socketPath": "套接字",
+  "settings.leader.field.lockPath": "锁文件",
+  "settings.leader.field.version": "版本",
+  "settings.leader.field.protocolVersion": "协议",
+  "settings.leader.field.classification": "分类",
+  "settings.leader.field.uptime": "运行时长",
+  "settings.leader.field.activeToolCalls": "进行中的工具",
+  "settings.leader.field.wsUrlSuffix": "WS 后缀",
+  "settings.leader.field.raw": "原始数据",
+  "settings.leader.class.reachable": "可达",
+  "settings.leader.class.running": "运行中",
+  "settings.leader.class.unreachable": "不可达",
+  "settings.leader.class.stale": "陈旧",
+  "settings.leader.class.unknown": "未知",
+  "settings.leader.err.cliMissing": "缺少 CLI",
+  "settings.leader.err.unsupported": "不支持",
+  "settings.leader.err.timeout": "超时",
+  "settings.leader.err.parse": "解析错误",
+  "settings.leader.err.socketStale": "陈旧套接字",
+  "settings.leader.err.listFailed": "列表失败",
+  "settings.leader.err.infoFailed": "详情失败",
+  "settings.leader.err.unreachable": "不可达",
+  "settings.leader.err.other": "错误",
+  "settings.leader.hint.cliMissing":
+    "请安装 Grok Build CLI，或在「运行时 → CLI」设置路径。Leader 管理需要可用的 `grok` 可执行文件。",
+  "settings.leader.hint.unsupported":
+    "请在「运行时 → CLI」更新 Grok Build CLI。旧版本可能没有 `grok leader list|info|kill`。",
+  "settings.leader.hint.timeout":
+    "CLI 超时。请重试刷新；若持续失败，检查是否有卡住的 `grok` 进程。",
+  "settings.leader.hint.parse":
+    "无法解析 CLI JSON。请更新 CLI，或复制原始错误以便排查。",
+  "settings.leader.hint.socketStale":
+    "存在 leader 套接字文件，但列表中没有可达进程。可启动新的 leader，或先停止以清理陈旧进程，必要时删除残留套接字。",
+  "settings.leader.hint.listFailed":
+    "软失败：`grok leader list` 未成功。状态仍可能允许启动；修复 CLI 后请刷新。",
+  "settings.leader.hint.infoFailed":
+    "软失败：`grok leader info` 未返回详情。进程可能仍在运行 — 请在列表上刷新后重试。",
+  "settings.leader.hint.unreachable":
+    "列表中的 leader 标记为不可达。请停止全部后重新启动，或检查套接字路径。",
+  "settings.leader.hint.other":
+    "请查看上方消息。修复 CLI 或进程问题后刷新状态。",
+  "settings.leader.fleetEmptyUnsupported":
+    "无法显示 fleet — 当前 CLI 没有 `grok leader list`。",
+  "settings.leader.fleetEmptyCliMissing":
+    "无法显示 fleet — 未找到 Grok Build CLI。",
+  "settings.leader.fleetEmptySoft":
+    "未列出 leader（列表探测软失败）。启动可能仍可用；见下方诊断。",
+  "settings.leader.honesty.useLeaderNotRunning":
+    "已开启「共享 Agent 后端」，但列表中没有可达 leader。Agent 会尝试 `--leader`，在启动 leader（或关闭该开关）前可能失败。",
+  "settings.leader.honesty.runningNoUseLeader":
+    "已有 leader 进程在运行，但本应用仍使用 `--no-leader`，除非你开启「共享 Agent 后端」。",
+  "settings.leader.honesty.useLeaderNoCli":
+    "已开启「共享 Agent 后端」，但当前 CLI 无法管理 leader 进程。Agent 仍可能传 `--leader`；请更新 CLI 或在应用外管理进程。",
   "settings.serve.title": "Agent serve（WebSocket）",
   "settings.serve.desc":
     "将 `grok agent serve` 作为本地 WebSocket ACP 服务运行。默认监听 127.0.0.1:2419。可选 `--remote` 代理模式。密钥自动生成；完整令牌仅在启动时提供一次以便复制。",

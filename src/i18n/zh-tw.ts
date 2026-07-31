@@ -1775,6 +1775,60 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.leader.openUseLeader": "開啟 use-leader 開關",
   "settings.leader.unsupportedBody":
     "目前 Grok Build CLI 版本沒有 agent leader / leader 管理命令。請在「執行環境 → CLI」更新，或在應用外管理行程。用戶端 use-leader 開關仍可用。",
+  "settings.leader.field.pid": "PID",
+  "settings.leader.field.socketPath": "Socket",
+  "settings.leader.field.lockPath": "鎖檔",
+  "settings.leader.field.version": "版本",
+  "settings.leader.field.protocolVersion": "通訊協定",
+  "settings.leader.field.classification": "分類",
+  "settings.leader.field.uptime": "運行時長",
+  "settings.leader.field.activeToolCalls": "進行中的工具",
+  "settings.leader.field.wsUrlSuffix": "WS 後綴",
+  "settings.leader.field.raw": "原始資料",
+  "settings.leader.class.reachable": "可達",
+  "settings.leader.class.running": "執行中",
+  "settings.leader.class.unreachable": "不可達",
+  "settings.leader.class.stale": "陳舊",
+  "settings.leader.class.unknown": "未知",
+  "settings.leader.err.cliMissing": "缺少 CLI",
+  "settings.leader.err.unsupported": "不支援",
+  "settings.leader.err.timeout": "逾時",
+  "settings.leader.err.parse": "解析錯誤",
+  "settings.leader.err.socketStale": "陳舊 socket",
+  "settings.leader.err.listFailed": "列表失敗",
+  "settings.leader.err.infoFailed": "詳情失敗",
+  "settings.leader.err.unreachable": "不可達",
+  "settings.leader.err.other": "錯誤",
+  "settings.leader.hint.cliMissing":
+    "請安裝 Grok Build CLI，或在「執行環境 → CLI」設定路徑。Leader 管理需要可用的 `grok` 可執行檔。",
+  "settings.leader.hint.unsupported":
+    "請在「執行環境 → CLI」更新 Grok Build CLI。舊版本可能沒有 `grok leader list|info|kill`。",
+  "settings.leader.hint.timeout":
+    "CLI 逾時。請重試重新整理；若持續失敗，檢查是否有卡住的 `grok` 行程。",
+  "settings.leader.hint.parse":
+    "無法解析 CLI JSON。請更新 CLI，或複製原始錯誤以便排查。",
+  "settings.leader.hint.socketStale":
+    "存在 leader socket 檔，但列表中沒有可達行程。可啟動新的 leader，或先停止以清理陳舊行程，必要時刪除殘留 socket。",
+  "settings.leader.hint.listFailed":
+    "軟失敗：`grok leader list` 未成功。狀態仍可能允許啟動；修復 CLI 後請重新整理。",
+  "settings.leader.hint.infoFailed":
+    "軟失敗：`grok leader info` 未回傳詳情。行程可能仍在執行 — 請在列表上重新整理後重試。",
+  "settings.leader.hint.unreachable":
+    "列表中的 leader 標記為不可達。請停止全部後重新啟動，或檢查 socket 路徑。",
+  "settings.leader.hint.other":
+    "請查看上方訊息。修復 CLI 或行程問題後重新整理狀態。",
+  "settings.leader.fleetEmptyUnsupported":
+    "無法顯示 fleet — 目前 CLI 沒有 `grok leader list`。",
+  "settings.leader.fleetEmptyCliMissing":
+    "無法顯示 fleet — 找不到 Grok Build CLI。",
+  "settings.leader.fleetEmptySoft":
+    "未列出 leader（列表探測軟失敗）。啟動可能仍可用；見下方診斷。",
+  "settings.leader.honesty.useLeaderNotRunning":
+    "已開啟「共用 Agent 後端」，但列表中沒有可達 leader。Agent 會嘗試 `--leader`，在啟動 leader（或關閉該開關）前可能失敗。",
+  "settings.leader.honesty.runningNoUseLeader":
+    "已有 leader 行程在執行，但本應用仍使用 `--no-leader`，除非你開啟「共用 Agent 後端」。",
+  "settings.leader.honesty.useLeaderNoCli":
+    "已開啟「共用 Agent 後端」，但目前 CLI 無法管理 leader 行程。Agent 仍可能傳 `--leader`；請更新 CLI 或在應用外管理行程。",
   "settings.leader.serveHint":
     "WebSocket serve 由下方區塊管理（`grok agent serve`）。啟動後密鑰僅顯示遮罩。",
   "settings.serve.title": "Agent serve（WebSocket）",

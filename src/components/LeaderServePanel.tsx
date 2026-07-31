@@ -1,18 +1,31 @@
 /**
  * Settings → Runtime → Connection: Agent leader fleet + serve status.
  * Surfaces `grok leader list|info|kill` with in-app confirm for stop.
+ * LEADER-FLEET-PRO: honest connect pill, soft-fail classification, useLeader banner.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MessageKey, Vars } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import * as api from "@/lib/api";
 import type { LeaderInfo, LeaderProcess, LeaderStatus, ServeStatus } from "@/lib/api";
 import {
+  classifyLeaderError,
+  deriveLeaderConnectStatus,
+  deriveUseLeaderHonesty,
   formatLeaderRowSummary,
   hasLeaderFleet,
+  leaderClassificationLabelKey,
+  leaderClassificationTone,
+  leaderConnectBadgeClass,
+  leaderErrorKindHintKey,
+  leaderErrorKindLabelKey,
+  leaderFleetEmptyMessageKey,
+  leaderFleetEmptyReason,
   leaderInfoDetailRows,
+  leaderInfoSoftFail,
   leaderRowKey,
+  normalizeLeaderClassification,
 } from "@/lib/leaderFleet";
 
 function formatAge(
@@ -30,13 +43,22 @@ function formatAge(
   return t("settings.leader.ageDays", { n: Math.floor(secs / 86400) });
 }
 
+function badgeClassForTone(tone: "ok" | "warn" | "err" | "muted"): string {
+  if (tone === "ok") return "account-badge account-badge--ok";
+  if (tone === "err" || tone === "warn") return "account-badge account-badge--warn";
+  return "account-badge account-badge--muted";
+}
+
 export function LeaderServePanel({
   t,
   onOpenUseLeader,
+  useLeader = false,
 }: {
   t: (k: MessageKey, vars?: Vars) => string;
   /** Deep-link to General → Agent → useLeader toggle. */
   onOpenUseLeader?: () => void;
+  /** Current AppSettings.useLeader — for honesty banner only. */
+  useLeader?: boolean;
 }) {
   const [status, setStatus] = useState<LeaderStatus | null>(null);
   const [serve, setServe] = useState<ServeStatus | null>(null);
@@ -224,32 +246,69 @@ export function LeaderServePanel({
     }
   };
 
+  const leaders = status?.leaders ?? [];
+  const fleetCount = leaders.length;
+
+  const connect = useMemo(
+    () =>
+      deriveLeaderConnectStatus({
+        state: status?.state,
+        cliFound: status?.cliFound,
+        cliSupportsLeader: status?.cliSupportsLeader,
+        socketExists: status?.socketExists,
+        leaders,
+        message: status?.message,
+        pid: status?.pid,
+      }),
+    [status, leaders],
+  );
+
+  const honesty = useMemo(
+    () =>
+      deriveUseLeaderHonesty({
+        useLeader: !!useLeader,
+        phase: connect.phase,
+      }),
+    [useLeader, connect.phase],
+  );
+
+  const emptyReason = leaderFleetEmptyReason({
+    phase: connect.phase,
+    errorKind: connect.errorKind,
+    fleetCount,
+  });
+
+  const panelErrorKind = useMemo(() => {
+    if (error) return classifyLeaderError(error, { source: "status" });
+    if (connect.errorKind) return connect.errorKind;
+    if (status?.message) return classifyLeaderError(status.message, { source: "status" });
+    return null;
+  }, [error, connect.errorKind, status?.message]);
+
+  const showDiagnostic =
+    !!error || connect.showDiagnostic || (!!status?.message && connect.phase !== "running");
+
+  const diagnosticText = error || status?.message || null;
+
+  const infoRows = leaderInfoDetailRows(info);
+  const infoSoft = leaderInfoSoftFail(info);
+  const infoFailKind =
+    infoError != null
+      ? classifyLeaderError(infoError, { source: "info" })
+      : infoSoft.kind;
+
   const state = status?.state ?? "stopped";
-  const running = state === "running";
-  const unsupported = state === "unsupported" || status?.cliSupportsLeader === false;
+  const running = connect.phase === "running" || state === "running";
+  const unsupported = connect.phase === "unsupported";
   const canStart =
     !busy &&
     !running &&
     !unsupported &&
     status?.cliFound !== false &&
     status?.cliSupportsLeader !== false;
-  const canStop = !busy && (running || state === "error");
+  const canStop = !busy && (running || state === "error" || connect.phase === "stale_socket");
 
-  const leaders = status?.leaders ?? [];
-  const fleetCount = leaders.length;
-  const infoRows = leaderInfoDetailRows(info);
-
-  const stateLabel =
-    state === "running"
-      ? t("settings.leader.stateRunning")
-      : state === "error"
-        ? t("settings.leader.stateError")
-        : state === "unsupported"
-          ? t("settings.leader.stateUnsupported")
-          : t("settings.leader.stateStopped");
-
-  const tone =
-    state === "running" ? "ok" : state === "error" || state === "unsupported" ? "err" : "muted";
+  const stateLabel = t(connect.labelKey as MessageKey);
 
   const serveState = serve?.state ?? "stopped";
   const serveRunning = serveState === "running";
@@ -292,18 +351,15 @@ export function LeaderServePanel({
           <div className="settings-row__desc">{t("settings.leader.desc")}</div>
         </div>
         <div className="rim-btn-row" style={{ alignItems: "center", gap: 8 }}>
-          <span
-            className={
-              "account-badge" +
-              (tone === "ok"
-                ? " account-badge--ok"
-                : tone === "err"
-                  ? " account-badge--warn"
-                  : " account-badge--muted")
-            }
-          >
-            {stateLabel}
-          </span>
+          <span className={leaderConnectBadgeClass(connect.tone)}>{stateLabel}</span>
+          {connect.errorKind && connect.phase !== "running" ? (
+            <span
+              className={badgeClassForTone(connect.tone === "ok" ? "muted" : "warn")}
+              title={t(leaderErrorKindHintKey(connect.errorKind) as MessageKey)}
+            >
+              {t(leaderErrorKindLabelKey(connect.errorKind) as MessageKey)}
+            </span>
+          ) : null}
           <button
             type="button"
             className="btn btn--ghost"
@@ -315,10 +371,43 @@ export function LeaderServePanel({
         </div>
       </div>
 
+      {honesty.severity !== "none" && honesty.messageKey ? (
+        <div className="settings-row settings-row--stack">
+          <div
+            className={
+              "settings-row__hint" + (honesty.severity === "warn" ? " is-danger" : "")
+            }
+            role="status"
+          >
+            {t(honesty.messageKey as MessageKey)}
+          </div>
+          <div className="rim-btn-row">
+            {honesty.showOpenUseLeader && onOpenUseLeader ? (
+              <button type="button" className="btn btn--ghost" onClick={onOpenUseLeader}>
+                {t("settings.leader.openUseLeader")}
+              </button>
+            ) : null}
+            {honesty.showStartLeader ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={!canStart}
+                onClick={() => void onStart()}
+              >
+                {busy === "start" ? t("settings.leader.starting") : t("settings.leader.start")}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {unsupported ? (
         <div className="settings-row settings-row--stack">
           <div className="settings-row__hint is-danger" role="status">
             {status?.message || t("settings.leader.unsupportedBody")}
+          </div>
+          <div className="settings-row__hint">
+            {t(leaderErrorKindHintKey("unsupported") as MessageKey)}
           </div>
           {onOpenUseLeader ? (
             <button type="button" className="btn btn--ghost" onClick={onOpenUseLeader}>
@@ -344,6 +433,11 @@ export function LeaderServePanel({
                 {status?.version ? ` · v${status.version}` : ""}
                 {status?.classification ? ` · ${status.classification}` : ""}
               </div>
+              {connect.phase === "stale_socket" ? (
+                <div className="settings-row__hint is-danger" role="status">
+                  {t("settings.leader.hint.socketStale")}
+                </div>
+              ) : null}
             </div>
             <div className="rim-btn-row">
               <button
@@ -384,6 +478,8 @@ export function LeaderServePanel({
                     infoLoadingPid !== null &&
                     ((row.pid != null && infoLoadingPid === row.pid) ||
                       (row.pid == null && infoLoadingPid === "default"));
+                  const classKind = normalizeLeaderClassification(row.classification);
+                  const classTone = leaderClassificationTone(classKind);
                   return (
                     <li
                       key={leaderRowKey(row, i)}
@@ -392,7 +488,10 @@ export function LeaderServePanel({
                         alignItems: "center",
                         gap: 8,
                         padding: "6px 0",
-                        borderTop: i === 0 ? undefined : "1px solid var(--border, rgba(128,128,128,0.2))",
+                        borderTop:
+                          i === 0
+                            ? undefined
+                            : "1px solid var(--border, rgba(128,128,128,0.2))",
                       }}
                     >
                       <div className="settings-row__text" style={{ minWidth: 0, flex: 1 }}>
@@ -403,6 +502,14 @@ export function LeaderServePanel({
                         >
                           {formatLeaderRowSummary(row)}
                         </div>
+                        {row.classification ? (
+                          <span
+                            className={badgeClassForTone(classTone)}
+                            style={{ marginTop: 4, display: "inline-flex" }}
+                          >
+                            {t(leaderClassificationLabelKey(classKind) as MessageKey)}
+                          </span>
+                        ) : null}
                       </div>
                       <button
                         type="button"
@@ -419,7 +526,9 @@ export function LeaderServePanel({
                 })}
               </ul>
             ) : (
-              <div className="settings-row__hint">{t("settings.leader.fleetEmpty")}</div>
+              <div className="settings-row__hint">
+                {t(leaderFleetEmptyMessageKey(emptyReason) as MessageKey)}
+              </div>
             )}
           </div>
 
@@ -470,19 +579,40 @@ export function LeaderServePanel({
         </>
       )}
 
-      {(error || (status?.message && state === "error")) && (
+      {/* Soft-fail / hard diagnostics — honest: show stopped+message too */}
+      {showDiagnostic && diagnosticText ? (
         <div className="settings-row settings-row--stack">
-          <div className="settings-row__hint is-danger" role="alert">
-            {error || status?.message}
+          <div
+            className={
+              "settings-row__hint" +
+              (connect.phase === "soft_diagnostic" ? "" : " is-danger")
+            }
+            role={connect.phase === "soft_diagnostic" ? "status" : "alert"}
+          >
+            {panelErrorKind ? (
+              <span className={badgeClassForTone("warn")} style={{ marginRight: 8 }}>
+                {t(leaderErrorKindLabelKey(panelErrorKind) as MessageKey)}
+              </span>
+            ) : null}
+            {diagnosticText}
           </div>
+          {panelErrorKind ? (
+            <div className="settings-row__hint">
+              {t(leaderErrorKindHintKey(panelErrorKind) as MessageKey)}
+            </div>
+          ) : null}
         </div>
-      )}
+      ) : null}
 
       {/* ── Serve (WebSocket) ──────────────────────────────────────────── */}
       <div
         className="settings-row settings-row--stack"
         id="settings-anchor-agentServe"
-        style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border, rgba(128,128,128,0.25))" }}
+        style={{
+          marginTop: 12,
+          paddingTop: 12,
+          borderTop: "1px solid var(--border, rgba(128,128,128,0.25))",
+        }}
       >
         <div className="settings-row__text">
           <div className="settings-row__label">{t("settings.serve.title")}</div>
@@ -617,13 +747,17 @@ export function LeaderServePanel({
               disabled={busy === "stop"}
               onClick={() => void onStopConfirmed()}
             >
-              {busy === "stop" ? t("settings.leader.stopping") : t("settings.leader.stopConfirmAction")}
+              {busy === "stop"
+                ? t("settings.leader.stopping")
+                : t("settings.leader.stopConfirmAction")}
             </button>
           </>
         }
       >
         <p className="app-dialog__msg">
-          {t("settings.leader.stopConfirmBody", { n: Math.max(fleetCount, running ? 1 : 0) })}
+          {t("settings.leader.stopConfirmBody", {
+            n: Math.max(fleetCount, running ? 1 : 0),
+          })}
         </p>
       </GlassModal>
 
@@ -660,19 +794,40 @@ export function LeaderServePanel({
         ) : (
           <div>
             {(infoError || info?.error) && (
-              <p className="settings-row__hint is-danger" role="alert">
-                {infoError || info?.error || t("settings.leader.infoFailed")}
-              </p>
+              <div style={{ marginBottom: 8 }}>
+                {infoFailKind ? (
+                  <span
+                    className={badgeClassForTone("warn")}
+                    style={{ marginRight: 8, marginBottom: 6, display: "inline-flex" }}
+                  >
+                    {t(leaderErrorKindLabelKey(infoFailKind) as MessageKey)}
+                  </span>
+                ) : null}
+                <p className="settings-row__hint is-danger" role="alert">
+                  {infoError || info?.error || t("settings.leader.infoFailed")}
+                </p>
+                {infoFailKind ? (
+                  <p className="settings-row__hint">
+                    {t(leaderErrorKindHintKey(infoFailKind) as MessageKey)}
+                  </p>
+                ) : null}
+              </div>
             )}
-            {info?.unsupported ? (
+            {info?.unsupported || infoSoft.unsupported ? (
               <p className="settings-row__hint">{t("settings.leader.infoUnsupported")}</p>
             ) : null}
             {infoRows.length > 0 ? (
-              <dl style={{ margin: infoError || info?.error ? "8px 0 0" : 0, display: "grid", gap: 8 }}>
+              <dl
+                style={{
+                  margin: infoError || info?.error ? "8px 0 0" : 0,
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
                 {infoRows.map((r) => (
                   <div key={r.key}>
                     <dt className="settings-row__label" style={{ fontSize: "0.85em" }}>
-                      {r.label}
+                      {t(r.labelKey as MessageKey)}
                     </dt>
                     <dd
                       className="settings-row__desc"
