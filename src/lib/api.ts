@@ -1996,6 +1996,40 @@ export async function exportSupportBundle(
   });
 }
 
+/** One host audit ledger row (camelCase). */
+export type AuditLedgerHostEntry = {
+  ts: string;
+  sessionId?: string | null;
+  projectPath?: string | null;
+  toolName: string;
+  event: string;
+  permission?: string | null;
+  outcome?: string | null;
+  summary?: string | null;
+};
+
+/** Recent cross-session tool/permission audit rows (newest first). Soft-fail → []. */
+export async function auditLedgerList(limit?: number | null) {
+  if (!isTauri()) return [] as AuditLedgerHostEntry[];
+  try {
+    return await invoke<AuditLedgerHostEntry[]>("audit_ledger_list", {
+      limit: limit ?? null,
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Clear on-disk audit ledger. */
+export async function auditLedgerClear() {
+  return invoke<{ ok: boolean }>("audit_ledger_clear");
+}
+
+/** Export redacted JSONL via native save dialog. */
+export async function auditLedgerExport() {
+  return invoke<SupportBundleResult>("audit_ledger_export");
+}
+
 /**
  * Full session diagnostic zip for bug reports: messages, meta, settings,
  * CLI probe, agent trail (events/history/terminal logs), optional runtime snapshot.

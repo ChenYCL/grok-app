@@ -2503,6 +2503,37 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.goal.phase.worker": "執行",
   "reliability.goal.phase.status": "狀態",
   "reliability.goal.phase.unknown": "目標",
+    "彙總忙碌工作階段、停滯訊號、最近錯誤卡片與工具稽核帳本；可匯出支援包。",
+  "reliability.supportZipHint":
+    "去敏後的 Doctor 報告、近期日誌與停滯時間軸快照（不含金鑰）。",
+
+  "reliability.audit.title": "工具稽核帳本",
+  "reliability.audit.count": "{count}",
+  "reliability.audit.empty": "尚無稽核紀錄。",
+  "reliability.audit.emptyFilter": "沒有符合篩選條件的紀錄。",
+  "reliability.audit.lead":
+    "跨工作階段的權限決策與工具起迄（已去敏）。以附加式 JSONL 保存在應用程式資料目錄。",
+  "reliability.audit.searchPlaceholder": "搜尋工具、摘要、工作階段…",
+  "reliability.audit.filterAria": "依事件類型篩選稽核帳本",
+  "reliability.audit.filterAll": "全部",
+  "reliability.audit.event.permission": "權限",
+  "reliability.audit.event.toolStart": "工具開始",
+  "reliability.audit.event.toolEnd": "工具結束",
+  "reliability.audit.refresh": "重新整理",
+  "reliability.audit.clear": "清空帳本",
+  "reliability.audit.clearConfirmTitle": "清空工具稽核帳本？",
+  "reliability.audit.clearConfirmMessage":
+    "將永久刪除此裝置上的稽核 JSONL，無法復原。",
+  "reliability.audit.clearConfirmAction": "清空帳本",
+  "reliability.audit.export": "匯出去敏…",
+  "reliability.audit.exportDone": "已匯出：{path}",
+  "reliability.audit.exportFail": "匯出失敗",
+  "reliability.audit.clearDone": "稽核帳本已清空",
+  "reliability.audit.clearFail": "無法清空帳本",
+  "reliability.audit.loadFail": "無法載入稽核帳本",
+  "reliability.audit.unknownSession": "無工作階段",
+  "reliability.audit.outcome.ok": "成功",
+  "reliability.audit.outcome.err": "失敗",
 
   "costRollup.title": "費用彙總",
   "costRollup.settingsDesc":
@@ -2608,8 +2639,6 @@ export const zhTW: Record<MessageKey, string> = {
   "streamAcpNdjson.softGateNote":
     "僅當 CLI ≥ {min} 時探測才會加上 --output-format streaming-json；舊版本會省略該旗標。",
 
-  "reliability.supportZipHint":
-    "脫敏後的 Doctor 報告、近期日誌與停滯時間線快照（不含金鑰）。",
   "doctor.advanced": "進階",
   "doctor.cliDoctor": "Grok Build CLI doctor",
   "doctor.cliDoctorHint": "來自 `grok doctor --json`（終端機、剪貼簿、色彩）。",

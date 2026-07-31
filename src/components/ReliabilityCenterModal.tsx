@@ -1,8 +1,9 @@
 /**
  * Reliability / Observability center — aggregate long-task signals:
  * busy sessions, stall / end-of-turn stalls, recent error-deck cards,
- * plus a persisted stall timeline (localStorage ring).
- * Actions: export support bundle, open Doctor, clear stall history.
+ * a persisted stall timeline (localStorage ring), and the cross-session
+ * tool/permission audit ledger (host JSONL).
+ * Actions: export support bundle, open Doctor, clear stall/audit, export audit.
  * No secrets from logs.
  */
 
@@ -16,6 +17,13 @@ import {
 } from "@/components/icons";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
+import {
+  auditLedgerEventKey,
+  filterAuditLedger,
+  parseAuditLedgerList,
+  type AuditLedgerEntry,
+  type AuditLedgerEvent,
+} from "@/lib/auditLedger";
 import {
   buildStallTimelineSnapshot,
   clearStallHistory,
@@ -282,6 +290,62 @@ function ErrorRow({
   );
 }
 
+type AuditEventFilter = "all" | AuditLedgerEvent;
+
+function auditDotClass(event: AuditLedgerEvent): string {
+  if (event === "permission") return " reliab-card__dot--warn";
+  if (event === "tool_end") return " reliab-card__dot--busy";
+  return "";
+}
+
+function AuditRow({
+  entry,
+  t,
+  locale,
+}: {
+  entry: AuditLedgerEntry;
+  t: ReturnType<typeof createT>;
+  locale: Locale;
+}) {
+  const when = formatWhen(Date.parse(entry.ts) || 0, locale);
+  const meta = [
+    entry.permission,
+    entry.outcome,
+    when,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <li className="reliab-card__row" data-testid="reliab-audit-row">
+      <div className="reliab-card__row-main">
+        <span
+          className={"reliab-card__dot" + auditDotClass(entry.event)}
+          aria-hidden
+        />
+        <span className="reliab-card__name" title={entry.toolName}>
+          {entry.toolName}
+        </span>
+        <span className="reliab-card__meta">{t(auditLedgerEventKey(entry.event))}</span>
+      </div>
+      {entry.summary ? (
+        <div className="reliab-card__sub" title={entry.summary}>
+          {entry.summary}
+        </div>
+      ) : null}
+      <div className="reliab-card__sub reliab-card__sub--muted">
+        {[
+          entry.sessionId
+            ? entry.sessionId.slice(0, 8)
+            : t("reliability.audit.unknownSession"),
+          meta,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </div>
+    </li>
+  );
+}
+
 export function ReliabilityCenterModal({
   open,
   onClose,
@@ -293,7 +357,9 @@ export function ReliabilityCenterModal({
   goalOrchEvents = [],
 }: ReliabilityCenterModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
-  const [busy, setBusy] = useState<"zip" | null>(null);
+  const [busy, setBusy] = useState<"zip" | "audit-export" | "audit-clear" | null>(
+    null,
+  );
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -308,6 +374,24 @@ export function ReliabilityCenterModal({
     () => assembleGoalOrchView({ events: goalOrchEvents }),
     [goalOrchEvents],
   );
+  const [auditEntries, setAuditEntries] = useState<AuditLedgerEntry[]>([]);
+  const [auditQuery, setAuditQuery] = useState("");
+  const [auditEvent, setAuditEvent] = useState<AuditEventFilter>("all");
+  const [confirmClearAudit, setConfirmClearAudit] = useState(false);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const loadAudit = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const raw = await api.auditLedgerList(200);
+      setAuditEntries(parseAuditLedgerList(raw, 200));
+    } catch {
+      setErrorMsg(t("reliability.audit.loadFail"));
+      setAuditEntries([]);
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [t]);
 
   useEffect(() => {
     if (!open) return;
@@ -318,7 +402,11 @@ export function ReliabilityCenterModal({
     setHistoryKind("all");
     setConfirmClearHistory(false);
     setStallHistory(loadStallHistory());
-  }, [open]);
+    setAuditQuery("");
+    setAuditEvent("all");
+    setConfirmClearAudit(false);
+    void loadAudit();
+  }, [open, loadAudit]);
 
   useEffect(() => {
     if (!open) return;
@@ -343,12 +431,16 @@ export function ReliabilityCenterModal({
           setConfirmClearHistory(false);
           return;
         }
+        if (confirmClearAudit) {
+          setConfirmClearAudit(false);
+          return;
+        }
         onClose();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose, confirmClearHistory]);
+  }, [open, onClose, confirmClearHistory, confirmClearAudit]);
 
   const filteredHistory = useMemo(
     () =>
@@ -357,6 +449,15 @@ export function ReliabilityCenterModal({
         kind: historyKind,
       }),
     [stallHistory, historyQuery, historyKind],
+  );
+
+  const filteredAudit = useMemo(
+    () =>
+      filterAuditLedger(auditEntries, {
+        query: auditQuery,
+        event: auditEvent,
+      }),
+    [auditEntries, auditQuery, auditEvent],
   );
 
   const onSupportZip = useCallback(async () => {
@@ -382,6 +483,40 @@ export function ReliabilityCenterModal({
     setConfirmClearHistory(false);
   }, []);
 
+  const doClearAudit = useCallback(async () => {
+    setBusy("audit-clear");
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      await api.auditLedgerClear();
+      setAuditEntries([]);
+      setConfirmClearAudit(false);
+      setStatusMsg(t("reliability.audit.clearDone"));
+    } catch (e) {
+      setErrorMsg(`${t("reliability.audit.clearFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [t]);
+
+  const onExportAudit = useCallback(async () => {
+    setBusy("audit-export");
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      const res = await api.auditLedgerExport();
+      setStatusMsg(
+        t("reliability.audit.exportDone", {
+          path: res.path ?? "",
+        }),
+      );
+    } catch (e) {
+      setErrorMsg(`${t("reliability.audit.exportFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [t]);
+
   const openDoctor = () => {
     onClose();
     onOpenDoctor();
@@ -395,6 +530,22 @@ export function ReliabilityCenterModal({
     { id: "hard_end", label: t("reliability.stall.kind.hardEnd") },
     { id: "terminal", label: t("reliability.stall.kind.terminal") },
     { id: "end_of_turn", label: t("reliability.stall.kind.endOfTurn") },
+  ];
+
+  const auditChips: { id: AuditEventFilter; label: string }[] = [
+    { id: "all", label: t("reliability.audit.filterAll") },
+    {
+      id: "permission",
+      label: t("reliability.audit.event.permission"),
+    },
+    {
+      id: "tool_start",
+      label: t("reliability.audit.event.toolStart"),
+    },
+    {
+      id: "tool_end",
+      label: t("reliability.audit.event.toolEnd"),
+    },
   ];
 
   const clearConfirmPortal =
@@ -457,6 +608,65 @@ export function ReliabilityCenterModal({
       document.body,
     );
 
+  const clearAuditPortal =
+    confirmClearAudit &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        className="overlay app-dialog-overlay"
+        role="presentation"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) setConfirmClearAudit(false);
+        }}
+      >
+        <div
+          className="modal app-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reliab-audit-clear-title"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <header className="modal-head">
+            <h2 id="reliab-audit-clear-title" className="modal-title">
+              {t("reliability.audit.clearConfirmTitle")}
+            </h2>
+            <button
+              type="button"
+              className="icon-btn modal-close"
+              onClick={() => setConfirmClearAudit(false)}
+              aria-label={t("common.cancel")}
+            >
+              <IconClose size={16} />
+            </button>
+          </header>
+          <div className="app-dialog__form">
+            <p className="app-dialog__msg">
+              {t("reliability.audit.clearConfirmMessage")}
+            </p>
+            <div className="app-dialog__actions modal-actions">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setConfirmClearAudit(false)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--danger"
+                disabled={busy === "audit-clear"}
+                onClick={() => void doClearAudit()}
+                data-testid="reliab-audit-clear-confirm"
+              >
+                {t("reliability.audit.clearConfirmAction")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+
   return (
     <div
       className="overlay doctor-modal-overlay reliab-modal-overlay"
@@ -503,7 +713,9 @@ export function ReliabilityCenterModal({
         )}
 
         <div className="doctor-modal__body reliab-modal__body">
-          {view.empty && stallHistory.length === 0 ? (
+          {view.empty &&
+          stallHistory.length === 0 &&
+          auditEntries.length === 0 ? (
             <div className="reliab-empty" role="status">
               <IconAlertTriangle size={20} className="reliab-empty__icon" />
               <p className="reliab-empty__title">{t("reliability.empty.title")}</p>
@@ -697,6 +909,114 @@ export function ReliabilityCenterModal({
               <p className="reliab-card__empty">{t("reliability.errors.empty")}</p>
             )}
           </section>
+
+          <section
+            className="reliab-card"
+            aria-labelledby="reliab-audit-title"
+            data-testid="reliab-audit-section"
+          >
+            <header className="reliab-card__head">
+              <h3 id="reliab-audit-title" className="reliab-card__title">
+                {t("reliability.audit.title")}
+              </h3>
+              <span className="reliab-card__count">
+                {t("reliability.audit.count", {
+                  count: auditEntries.length,
+                })}
+              </span>
+            </header>
+            <p className="reliab-card__empty" style={{ marginBottom: 8 }}>
+              {t("reliability.audit.lead")}
+            </p>
+
+            <div className="reliab-timeline__toolbar">
+              <label className="reliab-timeline__search">
+                <span className="sr-only">
+                  {t("reliability.audit.searchPlaceholder")}
+                </span>
+                <input
+                  type="search"
+                  className="reliab-timeline__search-input"
+                  value={auditQuery}
+                  onChange={(e) => setAuditQuery(e.target.value)}
+                  placeholder={t("reliability.audit.searchPlaceholder")}
+                  autoComplete="off"
+                  data-testid="reliab-audit-search"
+                />
+              </label>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!busy || auditLoading}
+                onClick={() => void loadAudit()}
+                data-testid="reliab-audit-refresh"
+              >
+                {auditLoading ? "…" : t("reliability.audit.refresh")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!busy || auditEntries.length === 0}
+                onClick={() => void onExportAudit()}
+                data-testid="reliab-audit-export"
+              >
+                {busy === "audit-export" ? "…" : t("reliability.audit.export")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!busy || auditEntries.length === 0}
+                onClick={() => setConfirmClearAudit(true)}
+                data-testid="reliab-audit-clear"
+              >
+                {t("reliability.audit.clear")}
+              </button>
+            </div>
+
+            <div
+              className="reliab-timeline__chips settings-seg"
+              role="tablist"
+              aria-label={t("reliability.audit.filterAria")}
+            >
+              {auditChips.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="tab"
+                  className={
+                    "settings-seg__btn reliab-timeline__chip" +
+                    (auditEvent === c.id ? " is-on" : "")
+                  }
+                  aria-selected={auditEvent === c.id}
+                  data-testid={`reliab-audit-filter-${c.id}`}
+                  onClick={() => setAuditEvent(c.id)}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            {auditEntries.length === 0 ? (
+              <p className="reliab-card__empty">
+                {t("reliability.audit.empty")}
+              </p>
+            ) : filteredAudit.length === 0 ? (
+              <p className="reliab-card__empty">
+                {t("reliability.audit.emptyFilter")}
+              </p>
+            ) : (
+              <ul className="reliab-card__list">
+                {filteredAudit.map((e, i) => (
+                  <AuditRow
+                    key={`${e.ts}-${e.event}-${e.toolName}-${i}`}
+                    entry={e}
+                    t={t}
+                    locale={locale}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
 
         <footer className="doctor-modal__foot reliab-modal__foot">
@@ -728,6 +1048,7 @@ export function ReliabilityCenterModal({
         </footer>
       </div>
       {clearConfirmPortal}
+      {clearAuditPortal}
     </div>
   );
 }

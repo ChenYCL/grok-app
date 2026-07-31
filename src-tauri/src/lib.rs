@@ -40,6 +40,7 @@ mod process_util;
 mod process_limits;
 mod proxy;
 mod journal_throttle;
+mod audit_ledger;
 mod logging;
 mod stream_emit;
 mod stream_stall;
@@ -403,6 +404,9 @@ pub fn run() {
             commands::agents_recycle_all,
             commands::cli_doctor_fix,
             commands::export_support_bundle,
+            commands::audit_ledger_list,
+            commands::audit_ledger_clear,
+            commands::audit_ledger_export,
             commands::export_session_bundle,
             commands::session_cli_export,
             commands::export_bytes_save,

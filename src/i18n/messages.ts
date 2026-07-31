@@ -2622,7 +2622,7 @@ const en = {
   "reliability.openDoctor": "Open Doctor",
   "reliability.openFromSettings": "Open reliability center",
   "reliability.settingsDesc":
-    "Aggregate busy chats, stall signals, and recent error cards; export support zip.",
+    "Aggregate busy chats, stall signals, recent error cards, and the tool audit ledger; export support zip.",
   "reliability.supportZipHint":
     "Redacted Doctor report, recent logs, and stall timeline snapshot (no secrets).",
   "reliability.goal.title": "Goal orchestration",
@@ -2641,6 +2641,35 @@ const en = {
   "reliability.goal.phase.worker": "Worker",
   "reliability.goal.phase.status": "Status",
   "reliability.goal.phase.unknown": "Goal",
+
+  // Cross-session tool / permission audit ledger
+  "reliability.audit.title": "Tool audit ledger",
+  "reliability.audit.count": "{count}",
+  "reliability.audit.empty": "No audit entries yet.",
+  "reliability.audit.emptyFilter": "No entries match this filter.",
+  "reliability.audit.lead":
+    "Cross-session permission decisions and tool start/end (redacted). Stored under app data as append-only JSONL.",
+  "reliability.audit.searchPlaceholder": "Search tool, summary, session…",
+  "reliability.audit.filterAria": "Filter audit ledger by event",
+  "reliability.audit.filterAll": "All",
+  "reliability.audit.event.permission": "Permission",
+  "reliability.audit.event.toolStart": "Tool start",
+  "reliability.audit.event.toolEnd": "Tool end",
+  "reliability.audit.refresh": "Refresh",
+  "reliability.audit.clear": "Clear ledger",
+  "reliability.audit.clearConfirmTitle": "Clear tool audit ledger?",
+  "reliability.audit.clearConfirmMessage":
+    "This permanently deletes the on-disk audit JSONL on this device. You cannot undo this.",
+  "reliability.audit.clearConfirmAction": "Clear ledger",
+  "reliability.audit.export": "Export redacted…",
+  "reliability.audit.exportDone": "Exported: {path}",
+  "reliability.audit.exportFail": "Export failed",
+  "reliability.audit.clearDone": "Audit ledger cleared",
+  "reliability.audit.clearFail": "Could not clear ledger",
+  "reliability.audit.loadFail": "Could not load audit ledger",
+  "reliability.audit.unknownSession": "No session",
+  "reliability.audit.outcome.ok": "ok",
+  "reliability.audit.outcome.err": "err",
 
   // Cost rollup (Settings → Runtime → Tools) — known tokens only, never invoice-grade
   "costRollup.title": "Cost rollup",
@@ -6795,7 +6824,7 @@ const zh: Record<MessageKey, string> = {
   "reliability.openDoctor": "打开 Doctor",
   "reliability.openFromSettings": "打开可靠性中心",
   "reliability.settingsDesc":
-    "汇总忙碌会话、卡顿信号与最近错误卡片；可导出支持包。",
+    "汇总忙碌会话、卡顿信号、最近错误卡片与工具审计账本；可导出支持包。",
   "reliability.supportZipHint":
     "脱敏后的 Doctor 报告、近期日志与卡顿时间线快照（不含密钥）。",
   "reliability.goal.title": "目标编排",
@@ -6814,6 +6843,34 @@ const zh: Record<MessageKey, string> = {
   "reliability.goal.phase.worker": "执行",
   "reliability.goal.phase.status": "状态",
   "reliability.goal.phase.unknown": "目标",
+
+  "reliability.audit.title": "工具审计账本",
+  "reliability.audit.count": "{count}",
+  "reliability.audit.empty": "尚无审计记录。",
+  "reliability.audit.emptyFilter": "没有符合筛选条件的记录。",
+  "reliability.audit.lead":
+    "跨会话的权限决策与工具起止（已脱敏）。以追加式 JSONL 保存在应用数据目录。",
+  "reliability.audit.searchPlaceholder": "搜索工具、摘要、会话…",
+  "reliability.audit.filterAria": "按事件类型筛选审计账本",
+  "reliability.audit.filterAll": "全部",
+  "reliability.audit.event.permission": "权限",
+  "reliability.audit.event.toolStart": "工具开始",
+  "reliability.audit.event.toolEnd": "工具结束",
+  "reliability.audit.refresh": "刷新",
+  "reliability.audit.clear": "清空账本",
+  "reliability.audit.clearConfirmTitle": "清空工具审计账本？",
+  "reliability.audit.clearConfirmMessage":
+    "将永久删除本机磁盘上的审计 JSONL，无法撤销。",
+  "reliability.audit.clearConfirmAction": "清空账本",
+  "reliability.audit.export": "导出脱敏…",
+  "reliability.audit.exportDone": "已导出：{path}",
+  "reliability.audit.exportFail": "导出失败",
+  "reliability.audit.clearDone": "审计账本已清空",
+  "reliability.audit.clearFail": "无法清空账本",
+  "reliability.audit.loadFail": "无法加载审计账本",
+  "reliability.audit.unknownSession": "无会话",
+  "reliability.audit.outcome.ok": "成功",
+  "reliability.audit.outcome.err": "失败",
 
   "costRollup.title": "费用汇总",
   "costRollup.settingsDesc":
