@@ -649,9 +649,9 @@ export function mergeCompactTokensBefore(
 
 /**
  * Compact intensity presets in the App dialog.
- * Grok Build CLI only accepts `/compact [note]` today — no light/standard/
- * aggressive flag — so presets seed **note templates** for the agent.
- * When CLI gains intensity flags, flip {@link COMPACT_PRESET_CLI_INTENSITY}.
+ * Grok Build still has no light/standard/aggressive flag, so these seed
+ * **note templates** for `/compact`. Separate from CLI 0.2.117+
+ * `--compaction-mode` / `--compaction-detail` (see `src/lib/compactionMode.ts`).
  */
 export type CompactPresetId = "light" | "standard" | "aggressive";
 

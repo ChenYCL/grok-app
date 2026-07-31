@@ -1117,6 +1117,27 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.experimentalMemory": "跨工作階段記憶（實驗性）",
   "settings.experimentalMemoryDesc":
     "透過 --experimental-memory / GROK_MEMORY 讓 Grok Build 跨對話記住專案事實。實驗性功能，行為可能變化。預設關閉；關閉時 Agent 強制 --no-memory 以隔離。",
+  "settings.compactionMode": "壓縮模式",
+  "settings.compactionModeDesc":
+    "Grok Build 在 /compact 或自動壓縮後如何保存上下文（CLI 0.2.117+）。啟動時對應 --compaction-mode / GROK_COMPACTION_MODE。summary（預設）只保留短摘要；transcript 指向原始 transcript；segments 寫入可檢索的分段 markdown。變更後會軟重啟目前 Agent。",
+  "settings.compactionMode.summary": "摘要",
+  "settings.compactionMode.transcript": "Transcript 指標",
+  "settings.compactionMode.segments": "分段",
+  "settings.compactionMode.summary.help":
+    "僅短摘要 — 不回指完整 transcript（CLI 預設）。",
+  "settings.compactionMode.transcript.help":
+    "摘要並附帶指向原始 transcript 檔案的指標，便於事後查閱。",
+  "settings.compactionMode.segments.help":
+    "在工作階段壓縮目錄下寫入分段 markdown（便於 grep）。",
+  "settings.compactionDetail": "分段細節",
+  "settings.compactionDetailDesc":
+    "僅對 --compaction-mode segments 生效（CLI 0.2.117+）。對應 --compaction-detail / GROK_COMPACTION_DETAIL。summary / transcript 下忽略。變更後會軟重啟。",
+  "settings.compactionDetail.none": "無",
+  "settings.compactionDetail.minimal": "最少",
+  "settings.compactionDetail.balanced": "均衡",
+  "settings.compactionDetail.verbose": "詳細",
+  "settings.compactionDetail.help":
+    "僅在壓縮模式為「分段」時生效。CLI 預設為「詳細」。",
   "settings.clearWorkspaceMemory": "清除工作區記憶",
   "settings.clearWorkspaceMemoryDesc":
     "對目前專案執行 grok memory clear（MEMORY.md、工作階段摘要、索引）。不會刪除應用程式內聊天紀錄。",
@@ -2538,7 +2559,13 @@ export const zhTW: Record<MessageKey, string> = {
   "slash.compactPresetNote.aggressive":
     "激進壓縮：只保留目前目標與必要決策/路徑；丟棄中間探索與工具雜訊。",
   "slash.compactPresetCliNote":
-    "CLI 尚無強度參數 — 預設會以備註模板隨 /compact 傳給代理。",
+    "強度預設會以備註模板隨 /compact 傳送（CLI 無 light/standard/aggressive 參數）。壓縮模式/細節對應 Grok Build 0.2.117 的 --compaction-mode / --compaction-detail（及環境變數），在 Agent 啟動時傳入。",
+  "slash.compactMode": "壓縮模式",
+  "slash.compactModeHint":
+    "CLI 0.2.117+ — Agent 如何保存壓縮後的上下文。與 設定 → Agent → 壓縮模式 相同。",
+  "slash.compactDetail": "分段細節",
+  "slash.compactDetailHint":
+    "僅當模式為「分段」時生效 — 分段 markdown 的原文細節等級（CLI --compaction-detail）。",
   "slash.compactBefore": "壓縮前",
   "slash.compactAfterEst": "壓縮後（估）",
   "slash.compactAfterUnknown": "用量未知時無法估算",

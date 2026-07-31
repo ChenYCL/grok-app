@@ -1177,6 +1177,27 @@ const en = {
   "settings.experimentalMemory": "Cross-session memory (experimental)",
   "settings.experimentalMemoryDesc":
     "Let Grok Build remember project facts across chats via --experimental-memory / GROK_MEMORY. Experimental — may change. Off by default; when off, agents force --no-memory for isolation.",
+  "settings.compactionMode": "Compaction mode",
+  "settings.compactionModeDesc":
+    "How Grok Build stores context after /compact or auto-compact (CLI 0.2.117+). Maps to --compaction-mode / GROK_COMPACTION_MODE on agent spawn. summary (default) keeps a short summary only; transcript points at the raw transcript; segments writes per-segment markdown you can grep. Soft-respawns the live agent when changed.",
+  "settings.compactionMode.summary": "Summary",
+  "settings.compactionMode.transcript": "Transcript pointer",
+  "settings.compactionMode.segments": "Segments",
+  "settings.compactionMode.summary.help":
+    "Short summary only — no pointer back to the full transcript (CLI default).",
+  "settings.compactionMode.transcript.help":
+    "Summary plus a pointer at the raw transcript file for later reference.",
+  "settings.compactionMode.segments.help":
+    "Persists per-segment markdown under the session compaction folder (grep-friendly).",
+  "settings.compactionDetail": "Segments detail",
+  "settings.compactionDetailDesc":
+    "Verbatim detail for --compaction-mode segments only (CLI 0.2.117+). Maps to --compaction-detail / GROK_COMPACTION_DETAIL. Ignored for summary and transcript. Soft-respawns when changed.",
+  "settings.compactionDetail.none": "None",
+  "settings.compactionDetail.minimal": "Minimal",
+  "settings.compactionDetail.balanced": "Balanced",
+  "settings.compactionDetail.verbose": "Verbose",
+  "settings.compactionDetail.help":
+    "Only applies when Compaction mode is Segments. CLI default is Verbose.",
   "settings.clearWorkspaceMemory": "Clear workspace memory",
   "settings.clearWorkspaceMemoryDesc":
     "Run grok memory clear for the current project workspace (MEMORY.md, session logs, index). Does not delete chat history in the app.",
@@ -2633,7 +2654,13 @@ const en = {
   "slash.compactPresetNote.aggressive":
     "Aggressive compact: keep only the current goal and essential decisions/paths; drop intermediate exploration and tool noise.",
   "slash.compactPresetCliNote":
-    "CLI has no intensity flag yet — presets send note templates with /compact.",
+    "Intensity presets seed note templates for /compact (CLI has no light/standard/aggressive flag). Compaction mode/detail map to Grok Build 0.2.117 --compaction-mode / --compaction-detail (and env) on agent spawn.",
+  "slash.compactMode": "Compaction mode",
+  "slash.compactModeHint":
+    "CLI 0.2.117+ — how the agent stores compacted context. Same as Settings → Agent → Compaction mode.",
+  "slash.compactDetail": "Segments detail",
+  "slash.compactDetailHint":
+    "Only when mode is Segments — verbatim detail level for segment markdown (CLI --compaction-detail).",
   "slash.compactBefore": "Before",
   "slash.compactAfterEst": "After (est.)",
   "slash.compactAfterUnknown": "Unknown until usage is known",
@@ -4954,6 +4981,27 @@ const zh: Record<MessageKey, string> = {
   "settings.experimentalMemory": "跨会话记忆（实验性）",
   "settings.experimentalMemoryDesc":
     "通过 --experimental-memory / GROK_MEMORY 让 Grok Build 跨对话记住项目事实。实验性功能，行为可能变化。默认关闭；关闭时 Agent 强制 --no-memory 以隔离。",
+  "settings.compactionMode": "压缩模式",
+  "settings.compactionModeDesc":
+    "Grok Build 在 /compact 或自动压缩后如何保存上下文（CLI 0.2.117+）。启动时映射为 --compaction-mode / GROK_COMPACTION_MODE。summary（默认）只保留短摘要；transcript 指向原始 transcript；segments 写入可检索的分段 markdown。更改后会软重启当前 Agent。",
+  "settings.compactionMode.summary": "摘要",
+  "settings.compactionMode.transcript": "Transcript 指针",
+  "settings.compactionMode.segments": "分段",
+  "settings.compactionMode.summary.help":
+    "仅短摘要 — 不回指完整 transcript（CLI 默认）。",
+  "settings.compactionMode.transcript.help":
+    "摘要并附带指向原始 transcript 文件的指针，便于事后查阅。",
+  "settings.compactionMode.segments.help":
+    "在会话压缩目录下写入分段 markdown（便于 grep）。",
+  "settings.compactionDetail": "分段细节",
+  "settings.compactionDetailDesc":
+    "仅对 --compaction-mode segments 生效（CLI 0.2.117+）。映射为 --compaction-detail / GROK_COMPACTION_DETAIL。summary / transcript 下忽略。更改后会软重启。",
+  "settings.compactionDetail.none": "无",
+  "settings.compactionDetail.minimal": "最少",
+  "settings.compactionDetail.balanced": "均衡",
+  "settings.compactionDetail.verbose": "详细",
+  "settings.compactionDetail.help":
+    "仅在压缩模式为「分段」时生效。CLI 默认为「详细」。",
   "settings.clearWorkspaceMemory": "清除工作区记忆",
   "settings.clearWorkspaceMemoryDesc":
     "对当前项目执行 grok memory clear（MEMORY.md、会话摘要、索引）。不会删除应用内聊天记录。",
@@ -6374,7 +6422,13 @@ const zh: Record<MessageKey, string> = {
   "slash.compactPresetNote.aggressive":
     "激进压缩：只保留当前目标与必要决策/路径；丢弃中间探索与工具噪声。",
   "slash.compactPresetCliNote":
-    "CLI 尚无强度参数 — 预设会以备注模板随 /compact 发给代理。",
+    "强度预设会以备注模板随 /compact 发送（CLI 无 light/standard/aggressive 参数）。压缩模式/细节对应 Grok Build 0.2.117 的 --compaction-mode / --compaction-detail（及环境变量），在 Agent 启动时传入。",
+  "slash.compactMode": "压缩模式",
+  "slash.compactModeHint":
+    "CLI 0.2.117+ — Agent 如何保存压缩后的上下文。与 设置 → Agent → 压缩模式 相同。",
+  "slash.compactDetail": "分段细节",
+  "slash.compactDetailHint":
+    "仅当模式为「分段」时生效 — 分段 markdown 的原文细节级别（CLI --compaction-detail）。",
   "slash.compactBefore": "压缩前",
   "slash.compactAfterEst": "压缩后（估）",
   "slash.compactAfterUnknown": "用量未知时无法估算",

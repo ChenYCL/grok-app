@@ -28,6 +28,7 @@ See `docs/llm-wiki/release.md`.
 - **Structured JSON replies**: when a session JSON Schema is active, finished assistant turns show a Structured panel — parse + light required-field validation, honest “not valid JSON” on failure, copy / export, and a Structured badge
 - **Context usage / cost estimates**: chip menu shows input/output/total when known; optional crude USD estimate from a static rates table (never invoice-grade); Settings → Appearance → **Show usage estimates** (on by default, with disclaimer)
 - **Compact dialog presets** (light / standard / aggressive): note templates for `/compact` (CLI has no intensity flag yet); optional keep-note + chips; before → after estimate when tokens known; last compact range when available
+- **Compaction mode / detail** (Grok Build CLI **0.2.117+**): Settings → Agent + Compact dialog selectors for `--compaction-mode` `summary|transcript|segments` and `--compaction-detail` `none|minimal|balanced|verbose` (segments only); Host always sets `GROK_COMPACTION_MODE` / `GROK_COMPACTION_DETAIL` env and passes CLI flags when the probed binary is ≥ 0.2.117 (soft-fail on older CLIs); soft-respawn on change
 
 #### Sessions & sidebar
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**

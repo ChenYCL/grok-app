@@ -1140,6 +1140,11 @@ pub async fn settings_set(
         crate::acp_client::normalize_background_wait_timeout_sec(
             settings.background_wait_timeout_sec,
         );
+    // Normalize compaction mode/detail enums (CLI 0.2.117+).
+    settings.compaction_mode =
+        crate::acp_client::normalize_compaction_mode(&settings.compaction_mode).to_string();
+    settings.compaction_detail =
+        crate::acp_client::normalize_compaction_detail(&settings.compaction_detail).to_string();
     let keychain_flip =
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
@@ -1179,6 +1184,13 @@ pub async fn settings_set(
         settings.background_wait_timeout_sec,
     );
     let sandbox_flip = prev.sandbox_profile.trim() != settings.sandbox_profile.trim();
+    let compaction_flip = {
+        let prev_m = crate::acp_client::normalize_compaction_mode(&prev.compaction_mode);
+        let next_m = settings.compaction_mode.as_str();
+        let prev_d = crate::acp_client::normalize_compaction_detail(&prev.compaction_detail);
+        let next_d = settings.compaction_detail.as_str();
+        prev_m != next_m || prev_d != next_d
+    };
     // API-mode address is a spawn-path flip (local CLI ↔ TCP). Soft-respawn so
     // the next connect uses the new target; mid-turn sessions stay skipped.
     let acp_addr_flip = {
@@ -1297,6 +1309,7 @@ pub async fn settings_set(
         || max_turns_flip
         || bg_wait_flip
         || sandbox_flip
+        || compaction_flip
         || acp_addr_flip
     {
         need_soft_respawn = true;

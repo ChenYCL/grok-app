@@ -474,6 +474,18 @@ export interface SettingsPageProps {
   /** Cross-session memory toggle. */
   experimentalMemory?: boolean;
   onExperimentalMemory?: (v: boolean) => void;
+  /**
+   * Compaction mode (CLI 0.2.117+): summary | transcript | segments.
+   * Maps to --compaction-mode / GROK_COMPACTION_MODE.
+   */
+  compactionMode?: string;
+  onCompactionMode?: (v: string) => void;
+  /**
+   * Segments detail (CLI 0.2.117+): none | minimal | balanced | verbose.
+   * Only when mode is segments.
+   */
+  compactionDetail?: string;
+  onCompactionDetail?: (v: string) => void;
   disableWebSearch?: boolean;
   onDisableWebSearch?: (v: boolean) => void;
   /**
@@ -1136,6 +1148,10 @@ export function SettingsPage({
   agentCatalog = [],
   experimentalMemory = false,
   onExperimentalMemory,
+  compactionMode = "summary",
+  onCompactionMode,
+  compactionDetail = "verbose",
+  onCompactionDetail,
   subagentsEnabled = true,
   onSubagentsEnabled,
   planEnabled = true,
@@ -2859,6 +2875,99 @@ export function SettingsPage({
                     onChange={() => onExperimentalMemory(!experimentalMemory)}
                     ariaLabel={t("settings.experimentalMemory")}
                   />
+                </div>
+              ) : null}
+              {onCompactionMode ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-compactionMode")
+                  }
+                  id="settings-anchor-compactionMode"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.compactionMode")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.compactionModeDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={compactionMode || "summary"}
+                    onChange={(v) => onCompactionMode(v)}
+                    options={[
+                      {
+                        value: "summary",
+                        label: t("settings.compactionMode.summary"),
+                      },
+                      {
+                        value: "transcript",
+                        label: t("settings.compactionMode.transcript"),
+                      },
+                      {
+                        value: "segments",
+                        label: t("settings.compactionMode.segments"),
+                      },
+                    ]}
+                  />
+                  <div className="settings-row__desc" style={{ marginTop: 8 }}>
+                    {(() => {
+                      const helpByMode: Record<string, string> = {
+                        summary: "settings.compactionMode.summary.help",
+                        transcript: "settings.compactionMode.transcript.help",
+                        segments: "settings.compactionMode.segments.help",
+                      };
+                      return t(
+                        helpByMode[compactionMode || "summary"] ??
+                          "settings.compactionMode.summary.help",
+                      );
+                    })()}
+                  </div>
+                </div>
+              ) : null}
+              {onCompactionDetail ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-compactionDetail")
+                  }
+                  id="settings-anchor-compactionDetail"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.compactionDetail")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.compactionDetailDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={compactionDetail || "verbose"}
+                    onChange={(v) => onCompactionDetail(v)}
+                    disabled={(compactionMode || "summary") !== "segments"}
+                    options={[
+                      {
+                        value: "none",
+                        label: t("settings.compactionDetail.none"),
+                      },
+                      {
+                        value: "minimal",
+                        label: t("settings.compactionDetail.minimal"),
+                      },
+                      {
+                        value: "balanced",
+                        label: t("settings.compactionDetail.balanced"),
+                      },
+                      {
+                        value: "verbose",
+                        label: t("settings.compactionDetail.verbose"),
+                      },
+                    ]}
+                  />
+                  <div className="settings-row__desc" style={{ marginTop: 8 }}>
+                    {t("settings.compactionDetail.help")}
+                  </div>
                 </div>
               ) : null}
               {onExperimentalMemory ? (
