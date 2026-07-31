@@ -2081,6 +2081,35 @@ export type AuditLedgerHostEntry = {
   summary?: string | null;
 };
 
+/** Host process-budget occupancy (live / background / parked). Soft-fail → null. */
+export type ProcessBudgetHostSnapshot = {
+  live?: number;
+  background?: number;
+  parked?: number;
+  totalWarm?: number;
+  busy?: number;
+  maxConcurrent?: number;
+  idleMinutes?: number;
+  liveSessionIds?: string[];
+  backgroundSessionIds?: string[];
+  parkedSessionIds?: string[];
+  available?: boolean;
+};
+
+/**
+ * Live agent process occupancy vs `maxConcurrentAgents`.
+ * Soft-fail: returns null when not in Tauri or the command errors
+ * (UI maps null → unavailable empty snapshot).
+ */
+export async function processBudgetSnapshot(): Promise<ProcessBudgetHostSnapshot | null> {
+  if (!isTauri()) return null;
+  try {
+    return await invoke<ProcessBudgetHostSnapshot>("process_budget_snapshot");
+  } catch {
+    return null;
+  }
+}
+
 /** Recent cross-session tool/permission audit rows (newest first). Soft-fail → []. */
 export async function auditLedgerList(limit?: number | null) {
   if (!isTauri()) return [] as AuditLedgerHostEntry[];

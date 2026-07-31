@@ -5755,6 +5755,61 @@ impl SessionManager {
         (live, background, parked)
     }
 
+    /// Observable process-budget occupancy for Settings / Reliability UI.
+    ///
+    /// Counts only **living** ACP children (same accounting as spawn capacity).
+    /// Session ids only — never secrets, titles, or paths.
+    pub fn process_budget_snapshot(&self) -> crate::process_limits::ProcessBudgetSnapshot {
+        let settings = store::load_settings();
+        let max = normalize_max_concurrent(settings.max_concurrent_agents);
+        let idle = normalize_idle_minutes(settings.agent_idle_minutes);
+
+        let mut live_ids: Vec<String> = Vec::new();
+        let live = {
+            let guard = self.inner.lock();
+            match guard.as_ref() {
+                Some(s) if s.acp.as_ref().is_some_and(|c| c.is_alive()) => {
+                    live_ids.push(s.app_session_id.clone());
+                    1u32
+                }
+                _ => 0u32,
+            }
+        };
+
+        let mut background_ids: Vec<String> = Vec::new();
+        let background = {
+            let bg = self.background.lock();
+            for (id, s) in bg.iter() {
+                if s.acp.as_ref().is_some_and(|c| c.is_alive()) {
+                    background_ids.push(id.clone());
+                }
+            }
+            background_ids.len() as u32
+        };
+
+        let mut parked_ids: Vec<String> = Vec::new();
+        let parked = {
+            let p = self.parked.lock();
+            for (id, agent) in p.iter() {
+                if agent.acp.is_alive() {
+                    parked_ids.push(id.clone());
+                }
+            }
+            parked_ids.len() as u32
+        };
+
+        crate::process_limits::ProcessBudgetSnapshot::from_counts(
+            live,
+            background,
+            parked,
+            max,
+            idle,
+            live_ids,
+            background_ids,
+            parked_ids,
+        )
+    }
+
     /// Drop every warm agent process (live + background + parked).
     ///
     /// Used when `session_data_mode` flips independent↔shared so no process keeps

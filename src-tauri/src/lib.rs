@@ -413,6 +413,7 @@ pub fn run() {
             commands::agents_recycle_all,
             commands::cli_doctor_fix,
             commands::export_support_bundle,
+            commands::process_budget_snapshot,
             commands::audit_ledger_list,
             commands::audit_ledger_clear,
             commands::audit_ledger_prune,

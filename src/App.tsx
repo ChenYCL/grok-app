@@ -274,6 +274,10 @@ import {
   type BatchProjectInput,
 } from "@/lib/batchAgents";
 import {
+  parseProcessLimitEvent,
+  type ProcessLimitEvent,
+} from "@/lib/processBudget";
+import {
   buildReliabilityCenter,
   DEFAULT_RELIABILITY_MAX_ERRORS,
   DEFAULT_RELIABILITY_MAX_STALLS,
@@ -2389,6 +2393,9 @@ export default function App() {
   const [proxyUrl, setProxyUrl] = useState("");
   const [proxyNoProxy, setProxyNoProxy] = useState("");
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(8);
+  /** Last process_limit event for Settings / Reliability honesty (ids only). */
+  const [lastProcessLimit, setLastProcessLimit] =
+    useState<ProcessLimitEvent | null>(null);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(180);
   /** Tool audit ledger retention days: 7 | 30 | 90 | 0 = unlimited. */
@@ -4619,6 +4626,9 @@ export default function App() {
             maxConcurrentAgents?: number;
           }>("session://process_limit", (p) => {
             if (cancelled || !p) return;
+            // Remember for process-budget UI (Settings pool / Reliability).
+            const ev = parseProcessLimitEvent(p, Date.now());
+            if (ev) setLastProcessLimit(ev);
             setToast(tr("agent.processLimitToast"));
             window.setTimeout(() => setToast(null), 5200);
             if (
@@ -15836,6 +15846,7 @@ export default function App() {
               api.settingsSet({ ...s, maxConcurrentAgents: v }),
             );
           }}
+          lastProcessLimit={lastProcessLimit}
           agentIdleMinutes={agentIdleMinutes}
           onAgentIdleMinutes={(v) => {
             setAgentIdleMinutes(v);
@@ -19709,6 +19720,7 @@ export default function App() {
         view={reliabilityView}
         goalOrchUiEnabled={goalOrchUiEnabled}
         goalOrchEvents={goalOrchEvents}
+        lastProcessLimit={lastProcessLimit}
         onOpenDoctor={() => void openDoctor()}
         onSelectSession={(id) => {
           setShowReliability(false);
