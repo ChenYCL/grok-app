@@ -2,11 +2,18 @@
  * File / folder card for chat history and composer.
  * Images: square thumb, click → lightbox, context menu includes copy image.
  * Other files: click → OS open; right-click → context menu.
+ *
+ * Preview honesty (ATTACHMENTS-PRO): never claim a ready thumb after onError;
+ * missing/broken states surface via title + placeholder (no invented image).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Attachment } from "@/lib/attachments";
 import { isImagePath } from "@/lib/attachments";
+import {
+  attachPreviewMessageKey,
+  deriveAttachPreviewPhase,
+} from "@/lib/attachmentsPro";
 import * as api from "@/lib/api";
 import { ensureMediaEndpoint, resolveImageSrc, resolveImageSrcSync } from "@/lib/imageSrc";
 import { copyImageFromPath } from "@/lib/copyImage";
@@ -30,6 +37,12 @@ export interface AttachmentCardLabels {
   addToComposer: string;
   remove?: string;
   viewImage?: string;
+  /** Honest copy when image thumb fails to load. */
+  previewBroken?: string;
+  /** Honest copy when path is known missing on disk. */
+  previewMissing?: string;
+  /** Loading thumb (optional; falls back to path tip). */
+  previewPending?: string;
 }
 
 interface AttachmentCardProps {
@@ -59,29 +72,69 @@ export function AttachmentCard({
   const [thumbSrc, setThumbSrc] = useState<string | null>(() =>
     isImg ? resolveImageSrcSync(attachment.path) : null,
   );
+  /** Once decode fails, stay broken — do not re-claim readiness on re-render. */
+  const [thumbFailed, setThumbFailed] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const viewer = useImageViewerOptional();
 
   useEffect(() => {
     if (!isImg) {
       setThumbSrc(null);
+      setThumbFailed(false);
       return;
     }
     // Sync resolve + cache: avoid empty→thumb height flash in the thread.
     setThumbSrc(resolveImageSrcSync(attachment.path));
+    setThumbFailed(false);
     let cancelled = false;
     void ensureMediaEndpoint()
       .then(() => resolveImageSrc(attachment.path))
       .then((url) => {
-        if (!cancelled && url) setThumbSrc(url);
+        if (!cancelled && url) {
+          setThumbSrc(url);
+          setThumbFailed(false);
+        }
       })
       .catch(() => {
-        /* keep sync */
+        /* keep sync; do not invent a working thumb */
       });
     return () => {
       cancelled = true;
     };
   }, [attachment.path, isImg]);
+
+  const previewPhase = useMemo(
+    () =>
+      deriveAttachPreviewPhase({
+        isImage: isImg,
+        hasSrc: !!thumbSrc && !thumbFailed,
+        loadFailed: thumbFailed,
+        isDir: attachment.isDir,
+      }),
+    [attachment.isDir, isImg, thumbFailed, thumbSrc],
+  );
+
+  const previewTip = useMemo(() => {
+    const key = attachPreviewMessageKey(previewPhase);
+    if (key === "attach.preview.broken" && labels.previewBroken) {
+      return labels.previewBroken;
+    }
+    if (key === "attach.preview.missing" && labels.previewMissing) {
+      return labels.previewMissing;
+    }
+    if (key === "attach.preview.pending" && labels.previewPending) {
+      return labels.previewPending;
+    }
+    return attachment.path;
+  }, [
+    attachment.path,
+    labels.previewBroken,
+    labels.previewMissing,
+    labels.previewPending,
+    previewPhase,
+  ]);
+
+  const showThumb = isImg && !!thumbSrc && !thumbFailed;
 
   const openPath = async () => {
     try {
@@ -176,14 +229,18 @@ export function AttachmentCard({
 
   if (variant === "chip") {
     return (
-      <Tip label={attachment.path}>
+      <Tip label={previewTip}>
         <span
           ref={rootRef as unknown as React.RefObject<HTMLSpanElement>}
           className={
             "attach-chip" +
             (attachment.isDir ? " attach-chip--dir" : "") +
-            (isImg ? " attach-chip--image" : "")
+            (isImg ? " attach-chip--image" : "") +
+            (previewPhase === "broken" || previewPhase === "missing"
+              ? " attach-chip--preview-fail"
+              : "")
           }
+          data-preview-phase={isImg ? previewPhase : undefined}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -194,14 +251,23 @@ export function AttachmentCard({
             type="button"
             className="attach-chip__main"
             onClick={onPrimaryClick}
+            title={previewTip}
+            aria-label={
+              isImg && (previewPhase === "broken" || previewPhase === "missing")
+                ? `${attachment.name} — ${previewTip}`
+                : undefined
+            }
           >
-            {isImg && thumbSrc ? (
+            {showThumb ? (
               <img
                 className="attach-chip__thumb"
-                src={thumbSrc}
+                src={thumbSrc!}
                 alt={attachment.name}
                 draggable={false}
-                onError={() => setThumbSrc(null)}
+                onError={() => {
+                  setThumbFailed(true);
+                  setThumbSrc(null);
+                }}
               />
             ) : (
               <>
@@ -250,14 +316,18 @@ export function AttachmentCard({
   }
 
   return (
-    <Tip label={attachment.path}>
+    <Tip label={previewTip}>
     <div
       ref={rootRef}
       className={
         "att-card" +
         (attachment.isDir ? " att-card--dir" : "") +
-        (isImg ? " att-card--image" : "")
+        (isImg ? " att-card--image" : "") +
+        (previewPhase === "broken" || previewPhase === "missing"
+          ? " att-card--preview-fail"
+          : "")
       }
+      data-preview-phase={isImg ? previewPhase : undefined}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -268,18 +338,35 @@ export function AttachmentCard({
         type="button"
         className={"att-card__btn" + (isImg ? " att-card__btn--image" : "")}
         onClick={onPrimaryClick}
+        title={previewTip}
+        aria-label={
+          isImg && (previewPhase === "broken" || previewPhase === "missing")
+            ? `${attachment.name} — ${previewTip}`
+            : undefined
+        }
       >
         {isImg ? (
-          thumbSrc ? (
+          showThumb ? (
             <img
               className="att-card__thumb"
-              src={thumbSrc}
+              src={thumbSrc!}
               alt={attachment.name}
               draggable={false}
-              onError={() => setThumbSrc(null)}
+              onError={() => {
+                setThumbFailed(true);
+                setThumbSrc(null);
+              }}
             />
           ) : (
-            <span className="att-card__thumb att-card__thumb--placeholder">
+            <span
+              className={
+                "att-card__thumb att-card__thumb--placeholder" +
+                (previewPhase === "broken" || previewPhase === "missing"
+                  ? " att-card__thumb--fail"
+                  : "")
+              }
+              title={previewTip}
+            >
               <IconPaperclip size={18} />
             </span>
           )

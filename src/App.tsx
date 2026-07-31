@@ -562,6 +562,14 @@ import {
   parseAttachmentsFromContent,
   type Attachment,
 } from "@/lib/attachments";
+import {
+  formatAttachErrorMessage,
+  isAttachPayloadTooLarge,
+  resolveAttachError,
+  resolveAttachSavedToast,
+  resolveHostOnlyAttach,
+  resolveNativeClipboardEmpty,
+} from "@/lib/attachmentsPro";
 import { fileKey as clipboardFileKey } from "@/lib/clipboardPaste";
 import {
   applySkillAtSlash,
@@ -8153,6 +8161,9 @@ export default function App() {
       addToComposer: tr("attach.addToComposer"),
       remove: tr("composer.attachRemove"),
       viewImage: tr("image.view"),
+      previewBroken: tr("attach.preview.broken"),
+      previewMissing: tr("attach.preview.missing"),
+      previewPending: tr("attach.preview.pending"),
     }),
     [tr, platform],
   );
@@ -8578,8 +8589,19 @@ export default function App() {
     [tr],
   );
 
-  const addAttachmentsFromPaths = useCallback(
+  const reportAttachError = useCallback(
+    (
+      err: unknown,
+      source: Parameters<typeof resolveAttachError>[1] = "other",
+    ) => {
+      const resolved = resolveAttachError(err, source);
+      const msg = formatAttachErrorMessage(resolved, tr);
+      if (msg) setLocalError(msg);
+    },
+    [tr],
+  );
 
+  const addAttachmentsFromPaths = useCallback(
     async (paths: string[]) => {
       if (!paths.length) {
         setLocalError(tr("attach.droppedNone"));
@@ -8617,10 +8639,10 @@ export default function App() {
         mergeInto((prev) => mergeAttachments(prev, next));
         setLocalError(null);
       } catch (e) {
-        setLocalError(String(e));
+        reportAttachError(e, "drop");
       }
     },
-    [tr],
+    [reportAttachError, tr],
   );
 
   /** Web File list (paste / HTML5 drop) → absolute paths for agent `@path`. */
@@ -8651,14 +8673,24 @@ export default function App() {
       }
       if (!withoutPath.length) return;
       if (!api.isTauri()) {
-        setLocalError(tr("composer.attachPasteFailed"));
+        const host = resolveHostOnlyAttach("paste");
+        const msg = formatAttachErrorMessage(host, tr);
+        if (msg) setLocalError(msg);
         return;
       }
       const intoEdit = !!editingUserMessageIdRef.current;
       const mergeInto = intoEdit ? setEditAttachments : setAttachments;
       try {
+        let saved = 0;
         let lastName = "";
         for (const f of withoutPath) {
+          if (isAttachPayloadTooLarge(f.size)) {
+            reportAttachError(
+              { code: "too_large", message: "attachment too large (max 40 MiB)" },
+              "paste",
+            );
+            return;
+          }
           const buf = await f.arrayBuffer();
           const bytes = new Uint8Array(buf);
           if (!bytes.length) continue;
@@ -8679,6 +8711,7 @@ export default function App() {
                 : f.name || "paste.bin";
           const entry = await api.saveTempAttachment(b64, name, f.type || null);
           lastName = entry.name;
+          saved += 1;
           mergeInto((prev) =>
             mergeAttachments(prev, [
               {
@@ -8689,9 +8722,21 @@ export default function App() {
             ]),
           );
         }
+        if (!saved) {
+          // All zero-byte after read — honest empty, not a fake success.
+          reportAttachError(
+            { code: "empty", message: "empty attachment payload" },
+            "paste",
+          );
+          return;
+        }
         setLocalError(null);
-        if (lastName) {
-          const msg = tr("composer.attachSaved", { name: lastName });
+        const toast = resolveAttachSavedToast({
+          count: saved,
+          name: lastName,
+        });
+        if (toast.ok) {
+          const msg = tr(toast.messageKey as MessageKey, toast.vars);
           setToast(msg);
           window.setTimeout(
             () => setToast((cur) => (cur === msg ? null : cur)),
@@ -8699,10 +8744,10 @@ export default function App() {
           );
         }
       } catch (e) {
-        setLocalError(String(e) || tr("composer.attachPasteFailed"));
+        reportAttachError(e, "paste");
       }
     },
-    [addAttachmentsFromPaths, tr],
+    [addAttachmentsFromPaths, reportAttachError, tr],
   );
 
   /**
@@ -8713,31 +8758,39 @@ export default function App() {
     async (opts?: { expectMedia?: boolean }) => {
       if (!api.isTauri()) {
         if (opts?.expectMedia) {
-          setLocalError(tr("composer.attachPasteFailed"));
+          const host = resolveHostOnlyAttach("native_clipboard");
+          const msg = formatAttachErrorMessage(host, tr);
+          if (msg) setLocalError(msg);
         }
         return;
       }
       try {
         const entry = await api.clipboardPasteImage();
         if (!entry?.path) {
-          if (opts?.expectMedia) {
-            setLocalError(tr("composer.attachPasteFailed"));
-          }
+          const empty = resolveNativeClipboardEmpty(opts);
+          const msg = formatAttachErrorMessage(empty, tr);
+          if (msg) setLocalError(msg);
           return;
         }
         await addAttachmentsFromPaths([entry.path]);
         setLocalError(null);
-        const msg = tr("composer.attachSaved", { name: entry.name });
-        setToast(msg);
-        window.setTimeout(
-          () => setToast((cur) => (cur === msg ? null : cur)),
-          2200,
-        );
+        const toast = resolveAttachSavedToast({
+          count: 1,
+          name: entry.name,
+        });
+        if (toast.ok) {
+          const msg = tr(toast.messageKey as MessageKey, toast.vars);
+          setToast(msg);
+          window.setTimeout(
+            () => setToast((cur) => (cur === msg ? null : cur)),
+            2200,
+          );
+        }
       } catch (e) {
-        setLocalError(String(e) || tr("composer.attachPasteFailed"));
+        reportAttachError(e, "native_clipboard");
       }
     },
-    [addAttachmentsFromPaths, tr],
+    [addAttachmentsFromPaths, reportAttachError, tr],
   );
 
   const closeComposerMenu = useCallback(() => {
@@ -8779,13 +8832,15 @@ export default function App() {
       return;
     }
     if (!api.isTauri()) {
-      setLocalError(tr("composer.attachPasteFailed"));
+      const host = resolveHostOnlyAttach("pick");
+      const msg = formatAttachErrorMessage(host, tr);
+      if (msg) setLocalError(msg);
       return;
     }
     try {
       const paths = await api.pickAttachFiles();
       if (!paths.length) {
-        // Cancelled — no error.
+        // Cancelled — silent (never invent “no files” for dismiss).
         return;
       }
       await addAttachmentsFromPaths(paths);
@@ -8793,27 +8848,36 @@ export default function App() {
       const label =
         paths.length === 1
           ? paths[0]!.split(/[/\\]/).pop() || paths[0]!
-          : tr("composer.attachCount", { n: String(paths.length) });
-      const msg =
-        paths.length === 1
-          ? tr("composer.attachSaved", { name: label })
-          : tr("composer.attachSaved", { name: label });
-      setToast(msg);
-      window.setTimeout(
-        () => setToast((cur) => (cur === msg ? null : cur)),
-        2200,
-      );
+          : undefined;
+      const toast = resolveAttachSavedToast({
+        count: paths.length,
+        name: label,
+      });
+      if (toast.ok) {
+        const msg =
+          paths.length === 1
+            ? tr(toast.messageKey as MessageKey, toast.vars)
+            : tr("composer.attachSaved", {
+                name: tr("composer.attachCount", {
+                  n: String(paths.length),
+                }),
+              });
+        setToast(msg);
+        window.setTimeout(
+          () => setToast((cur) => (cur === msg ? null : cur)),
+          2200,
+        );
+      }
     } catch (e) {
-      const code =
-        e && typeof e === "object" && "code" in e
-          ? String((e as { code?: string }).code)
-          : "";
-      if (code === "UNSUPPORTED") {
+      const resolved = resolveAttachError(e, "pick");
+      if (resolved.kind === "unsupported") {
         setToast(tr("mirror.unsupported"));
         window.setTimeout(() => setToast(null), 3200);
-      } else {
-        setLocalError(String(e) || tr("composer.attachPasteFailed"));
+        return;
       }
+      if (resolved.silent) return;
+      const msg = formatAttachErrorMessage(resolved, tr);
+      if (msg) setLocalError(msg);
     }
   }, [addAttachmentsFromPaths, closeComposerMenu, tr]);
 
