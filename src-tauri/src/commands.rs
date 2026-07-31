@@ -5973,10 +5973,14 @@ fn resolve_path_under_project(
         }
         (rel, abs_norm)
     } else {
-        // Relative under project — reject `..` components
+        // Relative under project — reject `..` components.
+        // On Windows, Path::is_absolute is false for Unix-style "/etc/passwd";
+        // do not strip a leading slash and treat it as project-relative.
+        if target.starts_with('/') || target.starts_with('\\') {
+            return Err("path outside project root".into());
+        }
         let rel = target
             .trim_start_matches("./")
-            .trim_start_matches('/')
             .replace('\\', "/");
         if rel.is_empty() || rel == "." {
             return Err("not a file path".into());
@@ -5987,7 +5991,7 @@ fn resolve_path_under_project(
                 _ => return Err("path escapes project root".into()),
             }
         }
-        let abs = root.join(&rel);
+        let abs = root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
         (rel, abs)
     };
 
@@ -6384,7 +6388,12 @@ mod git_status_parse_tests {
         assert!(r.is_ok(), "{r:?}");
         let (_root, rel, abs) = r.unwrap();
         assert_eq!(rel, "src/hello.ts");
-        assert!(abs.to_string_lossy().ends_with("src/hello.ts"));
+        // Path separators differ on Windows — compare POSIX form.
+        let abs_posix = abs.to_string_lossy().replace('\\', "/");
+        assert!(
+            abs_posix.ends_with("src/hello.ts"),
+            "abs={abs_posix}"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -6396,9 +6405,12 @@ mod git_status_parse_tests {
         ));
         let _ = std::fs::create_dir_all(&tmp);
         let r = resolve_path_under_project(&tmp.to_string_lossy(), "../outside.txt");
-        assert!(r.is_err());
+        assert!(r.is_err(), "parent escape should fail: {r:?}");
+        // Unix-style absolute must not become project-relative (Windows Path::is_absolute is false).
         let r2 = resolve_path_under_project(&tmp.to_string_lossy(), "/etc/passwd");
-        assert!(r2.is_err());
+        assert!(r2.is_err(), "unix absolute should fail: {r2:?}");
+        let r3 = resolve_path_under_project(&tmp.to_string_lossy(), "\\\\server\\share\\x");
+        assert!(r3.is_err(), "unc-style should fail: {r3:?}");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
