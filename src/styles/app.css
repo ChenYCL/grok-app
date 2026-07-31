@@ -2700,6 +2700,17 @@ html[data-sidebar-density="compact"] .session-row__meta {
   flex-shrink: 0;
 }
 
+.user-avatar--logo {
+  color: var(--text-primary);
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.user-avatar--logo .provider-brand-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .user-meta {
   min-width: 0;
   flex: 1;
@@ -12738,8 +12749,14 @@ html[data-composer-min-rows="8"] .composer__input {
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
-  max-width: 200px;
+  /* Custom provider model ids are long; allow more room before ellipsis. */
+  max-width: min(320px, 42vw);
   transition: background 120ms ease, color 120ms ease;
+}
+
+/* Model menu: room for long request model ids (e.g. deepseek-v4-flash). */
+.cmm--model .cmm__trigger {
+  max-width: min(360px, 48vw);
 }
 
 .cmm__trigger:hover {
@@ -12876,6 +12893,13 @@ html[data-composer-min-rows="8"] .composer__input {
   color: var(--text-primary);
 }
 
+/* Wider model panel so long model ids are not clipped by 55% row-val caps. */
+.cmm--model .cmm__pop,
+.cmm--model .cmm__pop--portal {
+  min-width: min(320px, calc(100vw - 16px));
+  max-width: min(420px, calc(100vw - 16px));
+}
+
 /* Portaled to body — escapes all overflow parents */
 .cmm__pop--portal {
   position: fixed;
@@ -12906,10 +12930,42 @@ html[data-composer-min-rows="8"] .composer__input {
   gap: 4px;
   color: var(--text-primary);
   font-weight: 500;
-  max-width: 55%;
+  min-width: 0;
+  /* Default menus may still ellipsis; model menu overrides below. */
+  max-width: min(280px, 70%);
+}
+
+.cmm__row-val-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+
+/* Model root row: show full request model id (panel min-width grows with content). */
+.cmm--model .cmm__row-val {
+  max-width: none;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  overflow: visible;
+}
+
+.cmm--model .cmm__row-val-text {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* Nested option titles: wrap long ids instead of clipping mid-token. */
+.cmm--model .cmm__opt-title {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.cmm--model .cmm__opt-desc {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .cmm__row--sub {
@@ -13808,10 +13864,19 @@ textarea::-webkit-scrollbar-thumb:active,
   color: var(--text-primary);
 }
 
+.prov-item__avatar--logo {
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
 .prov-item.is-selected .prov-item__avatar {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   border-color: transparent;
   color: var(--accent);
+}
+
+.prov-item.is-selected .prov-item__avatar--logo {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-input));
 }
 
 .prov-item__text {
@@ -13942,10 +14007,13 @@ textarea::-webkit-scrollbar-thumb:active,
   border-bottom: 1px solid var(--border-subtle);
 }
 
+/* Strict 2-column form: equal track widths, consistent gutters */
 .prov-form__grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 14px;
+  align-items: start;
 }
 
 .prov-field {
@@ -13960,9 +14028,324 @@ textarea::-webkit-scrollbar-thumb:active,
 }
 
 .prov-field__label {
+  display: block;
+  min-height: 18px;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--text-secondary);
+  line-height: 18px;
+}
+
+.prov-field__hint {
+  display: block;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.35;
+}
+
+/* Label row: title left, optional text action (e.g. Get API Key) right */
+.prov-field__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 18px;
+}
+
+.prov-field__label-row .prov-field__label {
+  margin: 0;
+  min-height: 0;
+}
+
+.prov-field__text-link {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent, #6b8cff);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 18px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.prov-field__text-link:hover {
+  text-decoration: underline;
+  color: var(--text-primary);
+}
+
+/* Select fills its grid cell like .settings-input */
+.prov-field__select,
+.prov-field > .c-select.prov-field__select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.prov-field__select .c-select__trigger {
+  display: flex;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  justify-content: space-between;
+}
+
+.prov-field .settings-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.prov-section {
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 2px;
+}
+
+/* Preset gallery (add provider) */
+.prov-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.prov-presets__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.prov-presets__chip:hover {
+  border-color: color-mix(in srgb, var(--text-primary) 28%, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-active, #2a2a2a) 70%, transparent);
+}
+
+.prov-presets__chip--custom {
+  background: var(--text-primary);
+  color: var(--bg-main);
+  border-color: transparent;
+}
+
+.prov-presets__chip--custom:hover {
+  filter: brightness(1.05);
+  background: var(--text-primary);
+  color: var(--bg-main);
+}
+
+.prov-presets__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  font-size: 12px;
+  font-weight: 650;
+  flex-shrink: 0;
+  color: var(--text-primary);
+}
+
+.prov-presets__avatar--logo {
+  background: transparent;
+}
+
+.prov-presets__name {
+  white-space: nowrap;
+}
+
+/* Provider brand marks */
+.provider-brand-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Amux: follows theme ink (black in light, white in dark) */
+.provider-brand-icon--amux {
+  color: var(--text-primary);
+}
+
+/* DeepSeek: fixed brand blue */
+.provider-brand-icon--deepseek {
+  color: #4d6bfe;
+}
+
+/* Multi-model / efforts table: equal 1fr + 1fr + action */
+.prov-models {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg-elevated, #141414) 50%, transparent);
+}
+
+.prov-models__head,
+.prov-models__row,
+.prov-models__add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+}
+
+.prov-models__head {
+  padding-top: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+
+.prov-models__row {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.prov-models__row:last-of-type {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.prov-models__row .settings-input,
+.prov-models__add-row .settings-input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  font-size: 12.5px;
+}
+
+.prov-models__remove {
+  width: 32px;
+  height: 32px;
+  justify-self: center;
+  color: var(--text-tertiary);
+}
+
+.prov-models__remove:hover:not(:disabled) {
+  color: var(--danger, #e07040);
+}
+
+.prov-models__empty {
+  margin: 0;
+  padding: 14px 12px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.prov-models__add-row {
+  background: color-mix(in srgb, var(--bg-hover, #222) 45%, transparent);
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.prov-models__add-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 2px;
+}
+
+/* Add row: two equal inputs + action button */
+.prov-models__add-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.prov-models__add-btn {
+  grid-column: auto;
+  margin-top: 0;
+  justify-self: stretch;
+  white-space: nowrap;
+  height: 34px;
+}
+
+.prov-models__remote {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prov-models__remote-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+
+.prov-models__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.prov-models__chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.prov-models__chip:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--text-primary) 35%, var(--border-subtle));
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.prov-models__chip.is-added,
+.prov-models__chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: 560px) {
+  .prov-models__head {
+    display: none;
+  }
+
+  .prov-models__row,
+  .prov-models__add-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .prov-models__remove {
+    justify-self: end;
+  }
+
+  .prov-models__add-btn {
+    grid-column: 1;
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .prov-field__label-row {
@@ -13976,10 +14359,22 @@ textarea::-webkit-scrollbar-thumb:active,
   display: flex;
   gap: 8px;
   align-items: center;
+  width: 100%;
 }
 
 .prov-key-row .settings-input {
   flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .prov-form__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .prov-field--full {
+    grid-column: auto;
+  }
 }
 
 .prov-check {
@@ -22152,6 +22547,33 @@ div.composer__input:empty::before {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Stacked rows (e.g. current model via custom provider): title + sub caption. */
+.phone-sheet__row--stacked .phone-sheet__row-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  white-space: normal;
+}
+
+.phone-sheet__row-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.phone-sheet__row-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+  font-size: 13px;
+  color: var(--text-tertiary);
 }
 
 .phone-sheet__row-value {

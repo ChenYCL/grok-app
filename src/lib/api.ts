@@ -2651,6 +2651,21 @@ export async function focusMainWindow(): Promise<void> {
 
 // ── Custom providers (agent-home config.toml) ───────────────────────────────
 
+export interface ProviderModelEntry {
+  /** Upstream request body model id. */
+  id: string;
+  /** Composer chip / menu display label. */
+  name: string;
+}
+
+export interface ProviderEffortEntry {
+  /** Value for `--reasoning-effort` / upstream `reasoning_effort`. */
+  id: string;
+  /** Composer display label (optional; falls back to id). */
+  name?: string;
+  isDefault?: boolean;
+}
+
 export interface CustomProvider {
   id: string;
   model: string;
@@ -2659,6 +2674,10 @@ export interface CustomProvider {
   hasApiKey: boolean;
   apiBackend: string;
   isDefault: boolean;
+  /** Selectable models for this channel (App-managed catalog). */
+  models?: ProviderModelEntry[];
+  /** Reasoning efforts for this channel (App-managed). Empty → Grok 3-tier fallback. */
+  efforts?: ProviderEffortEntry[];
 }
 
 export interface ProvidersListResult {
@@ -2749,6 +2768,8 @@ export async function providersUpsert(body: {
   apiBackend?: string;
   setAsDefault?: boolean;
   createOnly?: boolean;
+  models?: ProviderModelEntry[];
+  efforts?: ProviderEffortEntry[];
 }) {
   return invoke<ProvidersListResult>("providers_upsert", {
     id: body.id,
@@ -2759,6 +2780,8 @@ export async function providersUpsert(body: {
     apiBackend: body.apiBackend ?? null,
     setAsDefault: body.setAsDefault ?? null,
     createOnly: body.createOnly ?? null,
+    models: body.models ?? null,
+    efforts: body.efforts ?? null,
   });
 }
 

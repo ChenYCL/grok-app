@@ -23,9 +23,27 @@ Flags **必须在** `stdio` 之前。连接后 `session/set_model` 再对齐一�
 
 ## 推理强度（effort）
 
-CLI `models_cache.json` 每模型可带 `info.reasoning_efforts: [{id,value,label,description,default}]`。Host 经 `AvailableModel.reasoningEfforts`（`isDefault`）下发；composer 列表优先用该数组，空则回退静态 `GROK_BUILD_EFFORTS`（`low` | `medium` | `high`）。展示标签：标准 id（`high`/`medium`/`low`）优先 i18n `effort.high|medium|low`（中文 高/中/低，英文 High/Medium/Low，避免 catalog 英文 “High Effort” 覆盖本地化）；其他 catalog `label` 会去掉相同后缀 ` Effort`。
+CLI `models_cache.json` 每模型可带 `info.reasoning_efforts: [{id,value,label,description,default}]`。Host 经 `AvailableModel.reasoningEfforts`（`isDefault`）下发。
 
-Spawn：`--reasoning-effort <id>`。无模型级默认时 App 默认 **`medium`**；有 `default: true` 时用模型默认。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
+Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极高**。  
+3 档模型（Grok）不展示「极高」；选中后映射为该模型真实 spawn / `reasoning_effort` 值。
+
+| UI 阶梯 | Grok spawn | DeepSeek spawn |
+|---------|------------|----------------|
+| 低 | `low` | `low` |
+| 中 | `medium` | `high` |
+| 高 | `high` | `xhigh` |
+| 极高 | —（不展示） | `max` |
+
+解析顺序（真实可选值）：
+
+1. **自定义通道 active** → 该提供商的 `efforts`（`app_efforts`）
+2. 否则官方 catalog 的 `reasoningEfforts`
+3. 再回退 `GROK_BUILD_EFFORTS`（`low` · `medium` · `high`，默认 medium）
+
+展示标签走 UI 阶梯 i18n（`effort.low|medium|high|xhigh`），不直接用上游 id 文案。
+
+Spawn：`--reasoning-effort <spawnId>`。切换通道时按阶梯对齐（极高在 3 档上钳到「高」）。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
 
 ### 连接加速（Host）
 
@@ -140,4 +158,13 @@ grok --no-auto-update --permission-mode <mode> agent [--always-approve] … stdi
 
 ## 服务商
 
-自定义提供商 = 渠道路由，**不进**模型选择器。在 Providers 面板切换。
+自定义提供商 = 渠道路由。Composer **模型菜单**会聚合：
+
+1. **官方**分组：catalog 模型（`availableModels`）
+2. **每个已配置提供商**一组：列出该提供商 catalog 中的全部请求模型（`models[]`，每项含 **展示名称** + model id），**不**在菜单里拉远程 `/v1/models`
+
+选择自定义条目会：必要时更新该通道的 active `model`，再 `providers_activate`（与 Settings → Account → Custom providers → **Use** 相同）。官方条目在当前为 custom 路由时会先切回 official，再写入 catalog `modelId` 偏好。
+
+芯片文案：官方用 catalog label；自定义路由用 **当前选中模型的展示名称**（`models[].name`，空则回退 model id）。
+
+Settings 提供商表单：去掉「设为默认」；支持添加多个模型（手动输入 id + 展示名称，或从「拉取模型」列表点选）。

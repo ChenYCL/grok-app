@@ -29,15 +29,35 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 | Field | Role |
 |-------|------|
 | `id` | Config section slug (`[model.<id>]`) |
-| `name` | Display label |
+| `name` | Channel display label (provider card / menu group) |
 | `baseUrl` | OpenAI-compatible root, usually ends with `/v1` |
 | `apiKey` | Required for custom relay; never returned plaintext to UI |
-| `model` | Request body model id |
+| `model` | **Active** request body model id (written to config `model = …`) |
+| `models` | Multi-model catalog (`[{id, name}]`); App field `app_models` JSON in TOML (ignored by Grok Build). Each entry has request id + **display name** for composer chip |
+| `efforts` | Reasoning-effort options for this channel (`[{id, name, isDefault}]`); App field `app_efforts` JSON. Composer effort menu uses this on custom route. Empty → Grok `low`/`medium`/`high` fallback |
 | `apiBackend` | Message format: `responses` (default) \| `chat_completions` \| `messages` |
-| `isDefault` | Maps to `[models].default` |
+| `isDefault` | Maps to `[models].default` (set only via **Use** / composer pick activate, not a form checkbox) |
 
-CPA / sub2api / grok-go are **not special-cased** — any compatible base URL works.
-No bundled third-party presets (e.g. yunyi) ship with the app; users add relays themselves.
+### Presets (add provider)
+
+Add flow opens a **preset gallery** (`providerPresets.ts`):
+
+| Preset | Models | Default efforts |
+|--------|--------|-----------------|
+| **Custom** | empty (user fills) | Grok `low`/`medium`/`high` |
+| **DeepSeek** | `deepseek-v4-flash`, `deepseek-v4-pro` | `low` / `high` / `xhigh` / `max` (docs mapping table; default `high`) |
+| **Amux** | `grok-4.5` (display **Grok 4.5**) | Grok `low`/`medium`/`high` |
+| **Yun API** | `grok-4.5` (display **Grok 4.5**) | Grok `low`/`medium`/`high` |
+
+| Preset | Base | Get API Key |
+|--------|------|-------------|
+| DeepSeek | `https://api.deepseek.com/v1` (`chat_completions`) | https://platform.deepseek.com/ |
+| Amux | `https://api.amux.ai/v1` (`responses`) | https://api.amux.ai/register?aff=Vccp |
+| Yun API | `https://api.yunyi.ai/v1` (`responses`) | https://api.yunyi.ai/register/?aff_code=W0iw |
+
+Form shows a **Get API Key** text control under the key field when the channel matches a preset (by id or base host). Opens the URL via `open_external_url`.
+
+CPA / sub2api / grok-go remain generic OpenAI-compatible relays.
 
 ## Settings UI (Account → Custom providers)
 
@@ -63,7 +83,7 @@ Verified working combinations:
 | Custom relay | provider id (`yunyi`) | **provider id** | **removed** (api_key only) |
 | Official | `grok` | catalog id (`grok-4.5`) | **synced** from `~/.grok` |
 
-Host must rebind both sides on every switch and before each ACP spawn (`prepare_route_auth_for_agent` + `agent_spawn_model_id`). Composer model stays a catalog id for the UI; spawn resolves the channel id separately.
+Host must rebind both sides on every switch and before each ACP spawn (`prepare_route_auth_for_agent` + `agent_spawn_model_id`). Composer catalog `modelId` remains the official selection preference; spawn resolves the channel id separately. **Alternate activate entry:** picking a custom provider row in the composer model menu also calls `providers_activate` (same Host path as Settings **Use**).
 
 ## Host commands
 

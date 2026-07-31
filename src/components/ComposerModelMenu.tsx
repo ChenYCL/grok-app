@@ -19,12 +19,21 @@ import {
   PERMISSION_POLICIES,
   SESSION_MODES,
   effortDisplayLabel,
+  effortUiOptionsForCatalog,
   effortsForModel,
   findModel,
+  spawnIdToEffortUiSlot,
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
-import { filterModelsForMenu } from "@/lib/modelMenuSearch";
+import {
+  buildComposerModelGroups,
+  filterComposerModelGroups,
+  isComposerModelEntryActive,
+  type ComposerModelPick,
+  type ComposerProviderInput,
+} from "@/lib/composerModelGroups";
+import { composerModelChipLabel } from "@/lib/effectiveModel";
 import { Tip } from "@/components/ui/tooltip";
 import {
   IconAlertTriangle,
@@ -42,7 +51,11 @@ import { useFloatingMenu, type FloatingPos } from "@/lib/floatingMenu";
 
 type Nested = "model" | "effort" | null;
 
-function usePortalMenu(estHeight = 220, _width = 300, nestedKey?: string) {
+function usePortalMenu(
+  estHeight = 220,
+  minWidth = 200,
+  nestedKey?: string,
+) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -57,7 +70,7 @@ function usePortalMenu(estHeight = 220, _width = 300, nestedKey?: string) {
     onClose: () => setOpen(false),
     placement: "auto",
     fitContent: true,
-    minWidth: 200,
+    minWidth,
     estHeight,
     gap: 8,
     deps: [nestedKey],
@@ -186,52 +199,102 @@ export interface ComposerModelMenuProps {
   effort: string;
   /** Live selectable models only (from Host catalog). */
   models?: ModelOption[];
+  /** Configured custom providers for grouped menu entries. */
+  providers?: ComposerProviderInput[];
+  /** Active inference route: official | custom. */
+  activeSource?: string;
+  activeProviderId?: string | null;
   labels: {
     model: string;
     effort: string;
     effortHigh: string;
     effortMedium: string;
     effortLow: string;
+    effortXhigh?: string;
+    effortMax?: string;
     /** Search field placeholder in the model nested list. */
     modelSearchPlaceholder: string;
     /** Empty state when filter matches nothing. */
     modelSearchEmpty: string;
+    /** Section header for official catalog models. */
+    modelGroupOfficial: string;
+    /** @deprecated Prefer real custom groups via `providers`. */
+    modelViaProvider?: string;
   };
-  onModel: (id: string) => void;
+  /**
+   * When custom route is active, use channel-configured efforts
+   * (e.g. DeepSeek low/high/xhigh/max) instead of official catalog.
+   */
+  channelEfforts?: import("@/lib/grokCatalog").EffortOption[] | null;
+  /** Prefer over onModel when provided. */
+  onModelPick?: (pick: ComposerModelPick) => void;
+  onModel?: (id: string) => void;
   onEffort: (id: string) => void;
 }
 
-function resolveEffortLabel(
-  effortId: string,
-  effortList: ReturnType<typeof effortsForModel>,
-  labels: ComposerModelMenuProps["labels"],
-): string {
-  const entry = effortList.find((e) => e.id === effortId);
-  return effortDisplayLabel(entry ?? effortId, {
+function effortI18n(labels: ComposerModelMenuProps["labels"]) {
+  return {
     high: labels.effortHigh,
     medium: labels.effortMedium,
     low: labels.effortLow,
-  });
+    xhigh: labels.effortXhigh,
+    max: labels.effortMax ?? labels.effortXhigh,
+  };
+}
+
+/** Label for a spawn effort id via the canonical UI ladder (低/中/高/极高). */
+function resolveEffortLabel(
+  spawnId: string,
+  catalogEfforts: ReturnType<typeof effortsForModel> | null | undefined,
+  labels: ComposerModelMenuProps["labels"],
+): string {
+  const slot = spawnIdToEffortUiSlot(spawnId, catalogEfforts);
+  return effortDisplayLabel(slot ?? spawnId, effortI18n(labels));
 }
 
 export function ComposerModelMenu({
   modelId,
   effort,
   models = GROK_BUILD_MODELS,
+  providers = [],
+  activeSource = "official",
+  activeProviderId = null,
+  channelEfforts = null,
   labels,
+  onModelPick,
   onModel,
   onEffort,
 }: ComposerModelMenuProps) {
   const [nested, setNested] = useState<Nested>(null);
   const [modelQuery, setModelQuery] = useState("");
   const modelSearchRef = useRef<HTMLInputElement>(null);
-  const menu = usePortalMenu(240, 280, nested ?? "root");
+  /* Wider min so long custom model ids render fully in the root rows. */
+  const menu = usePortalMenu(240, 300, nested ?? "root");
   const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
-  const filteredModels = filterModelsForMenu(modelList, modelQuery);
+  const groups = buildComposerModelGroups({
+    officialModels: modelList,
+    providers,
+    officialGroupTitle: labels.modelGroupOfficial,
+  });
+  const filteredGroups = filterComposerModelGroups(groups, modelQuery);
   const activeModel = findModel(modelId, modelList);
-  const effortList = effortsForModel(activeModel);
+  const effortCatalog =
+    activeSource === "custom" && channelEfforts && channelEfforts.length > 0
+      ? effortsForModel(null, channelEfforts)
+      : effortsForModel(activeModel);
+  /** Ordered UI ladder (3 or 4 slots); spawnId is the real model value. */
+  const effortUiList = effortUiOptionsForCatalog(effortCatalog);
 
   const clearModelQuery = () => setModelQuery("");
+
+  const selectPick = (pick: ComposerModelPick) => {
+    if (onModelPick) {
+      onModelPick(pick);
+    } else if (pick.kind === "official" && onModel) {
+      onModel(pick.modelId);
+    }
+    setNested(null);
+  };
 
   useEffect(() => {
     if (!menu.open) {
@@ -286,8 +349,31 @@ export function ComposerModelMenu({
     return () => document.removeEventListener("keydown", onKey, true);
   }, [menu.open, nested]);
 
-  const modelLabel = activeModel?.label ?? modelId;
-  const eLabel = resolveEffortLabel(effort, effortList, labels);
+  const activeCustom =
+    activeSource === "custom" && activeProviderId
+      ? (() => {
+          const p = providers.find((x) => x.id === activeProviderId);
+          if (!p) return null;
+          const activeId = p.model?.trim() ?? "";
+          const entry =
+            p.models?.find((m) => m.id === activeId) ??
+            (activeId ? { id: activeId, name: activeId } : null);
+          return entry
+            ? { name: entry.name || entry.id, model: entry.id }
+            : { name: p.name, model: p.model };
+        })()
+      : null;
+  const activeRequestModel =
+    activeSource === "custom"
+      ? providers.find((x) => x.id === activeProviderId)?.model ?? null
+      : null;
+  const officialLabel = activeModel?.label ?? modelId;
+  const modelLabel = composerModelChipLabel({
+    modelId,
+    officialLabel,
+    activeCustom,
+  });
+  const eLabel = resolveEffortLabel(effort, effortCatalog, labels);
   // Compact trigger: model + short effort (locale), no middle-dot noise.
   const triggerText = `${modelLabel} ${eLabel}`;
   const title = `${labels.model}: ${modelLabel} · ${labels.effort}: ${eLabel}`;
@@ -317,7 +403,9 @@ export function ComposerModelMenu({
           >
             <span>{labels.model}</span>
             <span className="cmm__row-val">
-              {modelLabel}
+              <span className="cmm__row-val-text" title={modelLabel}>
+                {modelLabel}
+              </span>
               <IconChevronRight size={14} />
             </span>
           </button>
@@ -328,7 +416,7 @@ export function ComposerModelMenu({
           >
             <span>{labels.effort}</span>
             <span className="cmm__row-val">
-              {eLabel}
+              <span className="cmm__row-val-text">{eLabel}</span>
               <IconChevronRight size={14} />
             </span>
           </button>
@@ -343,7 +431,7 @@ export function ComposerModelMenu({
             {nested === "model" ? labels.model : labels.effort}
           </button>
           {nested === "model" &&
-            (modelList.length === 0 ? (
+            (groups.length === 0 ? (
               <div className="cmm__opt cmm__opt--muted" role="status">
                 <span className="cmm__opt-main">
                   <span className="cmm__opt-title">{modelId || "—"}</span>
@@ -368,7 +456,7 @@ export function ComposerModelMenu({
                     }}
                   />
                 </div>
-                {filteredModels.length === 0 ? (
+                {filteredGroups.length === 0 ? (
                   <div className="cmm__opt cmm__opt--muted" role="status">
                     <span className="cmm__opt-main">
                       <span className="cmm__opt-title">
@@ -377,54 +465,74 @@ export function ComposerModelMenu({
                     </span>
                   </div>
                 ) : (
-                  filteredModels.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className={
-                        "cmm__opt" + (m.id === modelId ? " is-active" : "")
-                      }
-                      onClick={() => {
-                        onModel(m.id);
-                        setNested(null);
-                      }}
-                    >
-                      <span className="cmm__opt-main">
-                        <span className="cmm__opt-title">{m.label}</span>
-                      </span>
-                      {m.id === modelId && (
-                        <span className="cmm__opt-check" aria-hidden>
-                          <IconCheck size={16} />
-                        </span>
-                      )}
-                    </button>
+                  filteredGroups.map((group) => (
+                    <div key={group.key}>
+                      <div className="cmm__section">{group.title}</div>
+                      {group.entries.map((entry) => {
+                        const active = isComposerModelEntryActive(entry, {
+                          activeSource,
+                          activeProviderId,
+                          activeRequestModel,
+                          modelId,
+                        });
+                        return (
+                          <button
+                            key={entry.key}
+                            type="button"
+                            className={"cmm__opt" + (active ? " is-active" : "")}
+                            onClick={() => selectPick(entry.pick)}
+                          >
+                            <span className="cmm__opt-main">
+                              <span className="cmm__opt-title">
+                                {entry.title}
+                              </span>
+                              {entry.subtitle ? (
+                                <span className="cmm__opt-desc">
+                                  {entry.subtitle}
+                                </span>
+                              ) : null}
+                            </span>
+                            {active ? (
+                              <span className="cmm__opt-check" aria-hidden>
+                                <IconCheck size={16} />
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
                   ))
                 )}
               </>
             ))}
           {nested === "effort" &&
-            effortList.map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                className={"cmm__opt" + (e.id === effort ? " is-active" : "")}
-                onClick={() => {
-                  onEffort(e.id);
-                  setNested(null);
-                }}
-              >
-                <span className="cmm__opt-main">
-                  <span className="cmm__opt-title">
-                    {resolveEffortLabel(e.id, effortList, labels)}
+            effortUiList.map((e) => {
+              const active =
+                e.spawnId === effort ||
+                spawnIdToEffortUiSlot(effort, effortCatalog) === e.uiId;
+              return (
+                <button
+                  key={e.uiId}
+                  type="button"
+                  className={"cmm__opt" + (active ? " is-active" : "")}
+                  onClick={() => {
+                    onEffort(e.spawnId);
+                    setNested(null);
+                  }}
+                >
+                  <span className="cmm__opt-main">
+                    <span className="cmm__opt-title">
+                      {effortDisplayLabel(e.uiId, effortI18n(labels))}
+                    </span>
                   </span>
-                </span>
-                {e.id === effort && (
-                  <span className="cmm__opt-check" aria-hidden>
-                    <IconCheck size={16} />
-                  </span>
-                )}
-              </button>
-            ))}
+                  {active ? (
+                    <span className="cmm__opt-check" aria-hidden>
+                      <IconCheck size={16} />
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
         </div>
       )}
     </MenuShell>

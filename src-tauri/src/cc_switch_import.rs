@@ -403,6 +403,15 @@ pub fn import_cc_switch_providers(req: CcSwitchImportRequest) -> Result<CcSwitch
             api_backend: Some(parsed.api_backend.clone()),
             set_as_default: Some(false),
             create_only: Some(false),
+            models: Some(vec![providers::ProviderModelEntry {
+                id: parsed.model.clone(),
+                name: if parsed.model.trim().is_empty() {
+                    parsed.name.clone()
+                } else {
+                    parsed.model.clone()
+                },
+            }]),
+            efforts: None,
         }) {
             Ok(list) => {
                 existing.insert(id);

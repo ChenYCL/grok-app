@@ -21,7 +21,7 @@ export interface ModelOption {
   label: string;
   /** True if CLI lists as default */
   isDefault?: boolean;
-  /** Catalog source; composer only shows official model IDs (not providers). */
+  /** Catalog source; official list is one group in the composer model menu. */
   source?: string;
   /** Per-model reasoning efforts from CLI cache; empty/undefined → static fallback. */
   reasoningEfforts?: EffortOption[];
@@ -73,10 +73,13 @@ export const GROK_BUILD_MODELS: ModelOption[] = [
 export const DEFAULT_MODEL_ID =
   GROK_BUILD_MODELS.find((m) => m.isDefault)?.id ?? "grok-4.5";
 
-/** Static fallback when the selected model has no `reasoning_efforts` in cache. */
+/**
+ * Static fallback when the selected model has no `reasoning_efforts` in cache.
+ * Order is the product ladder (low → high intensity).
+ */
 export const GROK_BUILD_EFFORTS: EffortOption[] = [
-  { id: "medium" },
   { id: "low" },
+  { id: "medium", isDefault: true },
   { id: "high" },
 ];
 
@@ -86,6 +89,27 @@ export const GROK_BUILD_EFFORTS: EffortOption[] = [
  * When a model lists a default effort, prefer `pickDefaultEffort(model)`.
  */
 export const DEFAULT_EFFORT = "medium";
+
+/**
+ * Canonical composer effort ladder (low → high intensity).
+ * All channels present a prefix of this ladder; 3-tier models omit `xhigh` (极高).
+ * Selection maps to the model’s real spawn / `reasoning_effort` value.
+ */
+export type EffortUiSlotId = "low" | "medium" | "high" | "xhigh";
+
+export const EFFORT_UI_LADDER: readonly EffortUiSlotId[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
+
+export type EffortUiOption = {
+  /** Stable UI slot (display order + i18n). */
+  uiId: EffortUiSlotId;
+  /** Value passed to agent `--reasoning-effort` / upstream. */
+  spawnId: string;
+};
 
 /** Product session modes (desktop shell). */
 export const SESSION_MODES: SessionModeOption[] = [
@@ -161,6 +185,135 @@ export function pickDefaultEffort(
   );
 }
 
+/** Classify an effort catalog for cross-channel / UI-ladder mapping. */
+export function effortCatalogKind(
+  efforts?: EffortOption[] | null,
+): "grok3" | "deepseek4" | "other" {
+  const list = efforts?.length ? efforts : [];
+  const ids = new Set(list.map((e) => e.id.trim().toLowerCase()));
+  const hasMedium = ids.has("medium");
+  const hasDsTop = ids.has("xhigh") || ids.has("max");
+  // DeepSeek-style: low/high/xhigh/max (no medium).
+  if (hasDsTop && !hasMedium) return "deepseek4";
+  // Grok-style: low/medium/high (no xhigh/max).
+  if (hasMedium && !hasDsTop) return "grok3";
+  if (hasDsTop) return "deepseek4";
+  if (hasMedium) return "grok3";
+  return "other";
+}
+
+/**
+ * Map catalog spawn ids onto the canonical UI ladder (低/中/高/极高).
+ *
+ * Grok 3-tier: low→低, medium→中, high→高 (no 极高).
+ * DeepSeek 4-tier: low→低, high→中, xhigh→高, max→极高.
+ */
+function spawnMapForCatalog(
+  catalog: EffortOption[],
+): Partial<Record<EffortUiSlotId, string>> {
+  const byLower = new Map(
+    catalog.map((e) => [e.id.trim().toLowerCase(), e.id] as const),
+  );
+  const kind = effortCatalogKind(catalog);
+  if (kind === "grok3") {
+    return {
+      low: byLower.get("low"),
+      medium: byLower.get("medium"),
+      high: byLower.get("high"),
+    };
+  }
+  if (kind === "deepseek4") {
+    return {
+      low: byLower.get("low"),
+      medium: byLower.get("high"),
+      high: byLower.get("xhigh") ?? byLower.get("high"),
+      xhigh: byLower.get("max") ?? byLower.get("xhigh"),
+    };
+  }
+  // Generic: place known ids on the ladder; keep catalog order for the rest.
+  const map: Partial<Record<EffortUiSlotId, string>> = {};
+  for (const slot of EFFORT_UI_LADDER) {
+    const id = byLower.get(slot);
+    if (id) map[slot] = id;
+  }
+  if (byLower.has("max") && !map.xhigh) map.xhigh = byLower.get("max");
+  return map;
+}
+
+/**
+ * Ordered UI options for the composer effort menu.
+ * 3-tier catalogs omit 极高; values are the real spawn ids.
+ */
+export function effortUiOptionsForCatalog(
+  catalogEfforts?: EffortOption[] | null,
+): EffortUiOption[] {
+  const list = effortsForModel(null, catalogEfforts);
+  const map = spawnMapForCatalog(list);
+  return EFFORT_UI_LADDER.filter((uiId) => !!map[uiId]).map((uiId) => ({
+    uiId,
+    spawnId: map[uiId]!,
+  }));
+}
+
+/** Resolve which UI slot a spawn id occupies for this catalog. */
+export function spawnIdToEffortUiSlot(
+  spawnId: string,
+  catalogEfforts?: EffortOption[] | null,
+): EffortUiSlotId | null {
+  const cur = spawnId.trim().toLowerCase();
+  if (!cur) return null;
+  const opts = effortUiOptionsForCatalog(catalogEfforts);
+  const exact = opts.find((o) => o.spawnId.toLowerCase() === cur);
+  if (exact) return exact.uiId;
+
+  // Infer from raw id when catalog context is missing/partial.
+  if (cur === "low" || cur === "medium" || cur === "high" || cur === "xhigh") {
+    return cur;
+  }
+  if (cur === "max") return "xhigh";
+  return null;
+}
+
+/**
+ * Map a spawn effort into another catalog via the shared UI ladder.
+ * If the target has fewer slots (e.g. no 极高), clamp down to the highest
+ * available tier so order stays aligned (低/中/高).
+ */
+export function mapEffortToTargetCatalog(
+  current: string,
+  targetEfforts?: EffortOption[] | null,
+  sourceEfforts?: EffortOption[] | null,
+): string {
+  const targetList = effortsForModel(null, targetEfforts);
+  if (targetList.length === 0) return DEFAULT_EFFORT;
+
+  const sourceList = sourceEfforts?.length
+    ? effortsForModel(null, sourceEfforts)
+    : null;
+  const slot =
+    spawnIdToEffortUiSlot(current, sourceList) ??
+    spawnIdToEffortUiSlot(current, targetList) ??
+    "medium";
+
+  const targetOpts = effortUiOptionsForCatalog(targetList);
+  const exact = targetOpts.find((o) => o.uiId === slot);
+  if (exact) return exact.spawnId;
+
+  // Clamp: e.g. 极高 → 高 when switching to a 3-tier model.
+  const idx = EFFORT_UI_LADDER.indexOf(slot);
+  for (let i = idx; i >= 0; i--) {
+    const uiId = EFFORT_UI_LADDER[i];
+    const hit = targetOpts.find((o) => o.uiId === uiId);
+    if (hit) return hit.spawnId;
+  }
+  for (let i = idx + 1; i < EFFORT_UI_LADDER.length; i++) {
+    const uiId = EFFORT_UI_LADDER[i];
+    const hit = targetOpts.find((o) => o.uiId === uiId);
+    if (hit) return hit.spawnId;
+  }
+  return pickDefaultEffort(null, targetList);
+}
+
 /**
  * Strip a shared CLI suffix so "High Effort" / "Medium Effort" collapse to
  * "High" / "Medium" (identical trailing " Effort" is noise in compact UI).
@@ -174,29 +327,85 @@ export function stripCommonEffortSuffix(label: string): string {
 
 /**
  * Display label for an effort.
- * - Standard ids (`high` / `medium` / `low`): prefer i18n so locale controls
- *   高/中/低 vs High/Medium/Low (catalog labels are English-only).
- * - Other catalog labels: strip a shared " Effort" suffix, then raw id.
+ * - Standard Grok ids (`high` / `medium` / `low`): prefer i18n.
+ * - DeepSeek-style ids (`xhigh` / `max` / `none`): prefer i18n when provided.
+ * - Other catalog labels: strip a shared " Effort" suffix, then raw id / label.
  */
+/** Known effort ids that have dedicated i18n keys (`effort.<id>`). */
+const I18N_EFFORT_IDS = new Set([
+  "high",
+  "medium",
+  "low",
+  "xhigh",
+  "max",
+  "none",
+]);
+
 export function effortDisplayLabel(
   effort: EffortOption | string,
   i18nLabels?: {
     high?: string;
     medium?: string;
     low?: string;
+    xhigh?: string;
+    max?: string;
+    none?: string;
   },
 ): string {
-  const id = typeof effort === "string" ? effort : effort.id;
+  const id = (typeof effort === "string" ? effort : effort.id)
+    .trim()
+    .toLowerCase();
+  // Prefer locale labels for known ids even when the catalog stored an
+  // English `name`/`label` (e.g. channel efforts saved as "xhigh"/"max").
   if (id === "high" && i18nLabels?.high) return i18nLabels.high;
   if (id === "medium" && i18nLabels?.medium) return i18nLabels.medium;
   if (id === "low" && i18nLabels?.low) return i18nLabels.low;
+  if (id === "xhigh" && i18nLabels?.xhigh) return i18nLabels.xhigh;
+  // DeepSeek `max` is the top UI slot (极高); prefer xhigh label when max text omitted.
+  if (id === "max") {
+    if (i18nLabels?.max) return i18nLabels.max;
+    if (i18nLabels?.xhigh) return i18nLabels.xhigh;
+  }
+  if (id === "none" && i18nLabels?.none) return i18nLabels.none;
 
   if (typeof effort !== "string") {
     const raw = effort.label?.trim();
-    if (raw) return stripCommonEffortSuffix(raw);
-    return effortDisplayLabel(effort.id, i18nLabels);
+    // Skip label when it is just the raw id (would re-show English "xhigh").
+    if (raw && raw.toLowerCase() !== id && !I18N_EFFORT_IDS.has(raw.toLowerCase())) {
+      return stripCommonEffortSuffix(raw);
+    }
+    if (raw && !I18N_EFFORT_IDS.has(id)) {
+      return stripCommonEffortSuffix(raw);
+    }
+    return effort.id;
   }
   return effort;
+}
+
+/**
+ * Map provider-channel effort entries into EffortOption for composer menus.
+ */
+export function effortOptionsFromProvider(
+  efforts:
+    | Array<{ id: string; name?: string; label?: string; isDefault?: boolean }>
+    | null
+    | undefined,
+): EffortOption[] | null {
+  if (!efforts?.length) return null;
+  const out: EffortOption[] = [];
+  const seen = new Set<string>();
+  for (const e of efforts) {
+    const id = e.id?.trim() ?? "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const label = (e.name ?? e.label)?.trim();
+    out.push({
+      id,
+      label: label || undefined,
+      isDefault: !!e.isDefault,
+    });
+  }
+  return out.length ? out : null;
 }
 
 export function isValidPolicy(id: string): id is PermissionPolicyId {

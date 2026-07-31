@@ -375,13 +375,16 @@ import {
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL_ID,
+  GROK_BUILD_EFFORTS,
   GROK_BUILD_MODELS,
   PERMISSION_POLICIES,
   findModel,
+  effortOptionsFromProvider,
   isValidEffort,
   isValidModelId,
   isValidPolicy,
   isValidPrefsScope,
+  mapEffortToTargetCatalog,
   pickDefaultEffort,
   pickDefaultModelId,
   type ComposerPrefsScope,
@@ -860,6 +863,12 @@ import {
   ComposerAccessMenu,
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
+import type { ComposerModelPick } from "@/lib/composerModelGroups";
+import { resolveProviderBrandId } from "@/lib/providerPresets";
+import {
+  ProviderBrandIcon,
+  providerAvatarLetter,
+} from "@/components/ProviderBrandIcon";
 import {
   ResourceViewer,
   type ResourceOpenTarget,
@@ -11502,14 +11511,43 @@ export default function App() {
   /** Active inference channel: custom relay identity replaces official account chrome. */
   const [activeCustomProvider, setActiveCustomProvider] =
     useState<api.CustomProvider | null>(null);
+  /** Full provider list for composer model menu groups. */
+  const [customProviders, setCustomProviders] = useState<api.CustomProvider[]>(
+    [],
+  );
+  const [providerActiveSource, setProviderActiveSource] =
+    useState<string>("official");
+  const [providerActiveId, setProviderActiveId] = useState<string | null>(null);
+  const [modelPickBusy, setModelPickBusy] = useState(false);
   const customRouteActive = activeCustomProvider != null;
+  const composerProviderInputs = useMemo(
+    () =>
+      customProviders.map((p) => ({
+        id: p.id,
+        name: p.name,
+        model: p.model,
+        models: (p.models?.length
+          ? p.models
+          : p.model
+            ? [{ id: p.model, name: p.model }]
+            : []
+        ).map((m) => ({ id: m.id, name: m.name || m.id })),
+      })),
+    [customProviders],
+  );
   const refreshProviderRoute = useCallback(async () => {
     if (!api.isTauri()) {
       setActiveCustomProvider(null);
+      setCustomProviders([]);
+      setProviderActiveSource("official");
+      setProviderActiveId(null);
       return;
     }
     try {
       const list = await api.providersList();
+      setCustomProviders(list.providers);
+      setProviderActiveSource(list.activeSource);
+      setProviderActiveId(list.activeProviderId);
       const active =
         list.activeSource === "custom"
           ? list.providers.find((provider) => provider.id === list.activeProviderId) ?? null
@@ -11526,6 +11564,135 @@ export default function App() {
   useEffect(() => {
     void refreshVoiceGate();
   }, [customRouteActive, refreshVoiceGate]);
+
+  /** Effort list for the active channel (custom provider catalog or official). */
+  const channelEffortOptions = useMemo(() => {
+    if (providerActiveSource !== "custom" || !activeCustomProvider) {
+      return null;
+    }
+    return effortOptionsFromProvider(activeCustomProvider.efforts);
+  }, [providerActiveSource, activeCustomProvider]);
+
+  /**
+   * Active effort catalog for the composer: custom channel efforts, else Grok 3-tier.
+   * Used when remapping after route/model switches (DeepSeek 4-tier ↔ Grok 3-tier).
+   */
+  const activeEffortCatalog = useMemo(
+    () => channelEffortOptions ?? GROK_BUILD_EFFORTS,
+    [channelEffortOptions],
+  );
+  const prevEffortCatalogRef = useRef(activeEffortCatalog);
+
+  // When switching channels / catalogs, map effort into the target list
+  // (DeepSeek high → Grok medium; xhigh/max → Grok high; reverse accordingly).
+  useEffect(() => {
+    const source = prevEffortCatalogRef.current;
+    prevEffortCatalogRef.current = activeEffortCatalog;
+    const next = mapEffortToTargetCatalog(
+      effort,
+      activeEffortCatalog,
+      source,
+    );
+    if (next !== effort) setEffort(next);
+  }, [activeEffortCatalog, effort]);
+
+  const handleModelPick = useCallback(
+    async (pick: ComposerModelPick) => {
+      if (modelPickBusy) return;
+      setModelPickBusy(true);
+      try {
+        if (pick.kind === "official") {
+          if (providerActiveSource === "custom" && api.isTauri()) {
+            await api.providersActivate("official");
+            await refreshProviderRoute();
+          }
+          if (!isValidModelId(pick.modelId, availableModels)) return;
+          setModelId(pick.modelId);
+          // DeepSeek 4-tier → Grok 3-tier (low→low, high→medium, xhigh/max→high).
+          setEffort((prev) =>
+            mapEffortToTargetCatalog(
+              prev,
+              GROK_BUILD_EFFORTS,
+              channelEffortOptions ?? undefined,
+            ),
+          );
+          void api
+            .composerPrefsSet({
+              projectId: activeProject?.id ?? null,
+              sessionId: session.sessionId ?? null,
+              modelId: pick.modelId,
+            })
+            .catch((e) => showToast(String(e), 4000));
+        } else {
+          if (!api.isTauri()) return;
+          const provider = customProviders.find(
+            (p) => p.id === pick.providerId,
+          );
+          if (!provider) {
+            showToast(tr("prov.err.unknownProvider"), 4000);
+            return;
+          }
+          // Switch request model on the channel when needed (keeps multi-model catalog).
+          if (provider.model.trim() !== pick.modelId.trim()) {
+            const models =
+              provider.models?.length
+                ? provider.models
+                : [{ id: provider.model, name: provider.model }];
+            const catalog = models.some((m) => m.id === pick.modelId)
+              ? models
+              : [
+                  ...models,
+                  { id: pick.modelId, name: pick.modelId },
+                ];
+            await api.providersUpsert({
+              id: provider.id,
+              model: pick.modelId,
+              baseUrl: provider.baseUrl,
+              name: provider.name,
+              apiBackend: provider.apiBackend,
+              models: catalog,
+              efforts: provider.efforts,
+              setAsDefault: false,
+            });
+          }
+          if (
+            providerActiveSource !== "custom" ||
+            providerActiveId !== pick.providerId
+          ) {
+            await api.providersActivate("custom", pick.providerId);
+          }
+          await refreshProviderRoute();
+          // Map effort into the picked channel's catalog (Grok ↔ DeepSeek tiers).
+          const nextEfforts =
+            effortOptionsFromProvider(provider.efforts) ?? GROK_BUILD_EFFORTS;
+          setEffort((prev) =>
+            mapEffortToTargetCatalog(
+              prev,
+              nextEfforts,
+              channelEffortOptions ?? GROK_BUILD_EFFORTS,
+            ),
+          );
+        }
+      } catch (e) {
+        showToast(String(e), 4000);
+      } finally {
+        setModelPickBusy(false);
+      }
+    },
+    [
+      modelPickBusy,
+      providerActiveSource,
+      providerActiveId,
+      availableModels,
+      customProviders,
+      activeProject?.id,
+      session.sessionId,
+      refreshProviderRoute,
+      showToast,
+      tr,
+      channelEffortOptions,
+    ],
+  );
   const liveBrandKind = useMemo(
     () =>
       superGrokBrandKind(
@@ -16001,6 +16168,10 @@ export default function App() {
           trustedProjects={projects
             .filter((p) => p.trusted)
             .map((p) => ({ id: p.id, name: p.name, path: p.path }))}
+          onProvidersChanged={() => {
+            // CRUD on provider list / models / efforts — keep composer menu in sync.
+            void refreshProviderRoute();
+          }}
           onProviderActivated={() => {
             // Host already recycled warm agents on upsert/activate. Refresh UI
             // chrome only — never park (sessionDisconnect) a live process: that
@@ -17024,14 +17195,40 @@ export default function App() {
                 }
               }}
             >
-              <div className="user-avatar" aria-hidden>
-                {activeCustomProvider
-                  ? Array.from(
-                      activeCustomProvider.name.trim() || activeCustomProvider.id,
-                    )[0]?.toUpperCase() || "P"
-                  : account?.profile
-                    ? accountInitials(account.profile)
-                    : "G"}
+              <div
+                className={
+                  "user-avatar" +
+                  (activeCustomProvider &&
+                  resolveProviderBrandId({
+                    providerId: activeCustomProvider.id,
+                    baseUrl: activeCustomProvider.baseUrl,
+                  })
+                    ? " user-avatar--logo"
+                    : "")
+                }
+                aria-hidden
+              >
+                {activeCustomProvider ? (
+                  resolveProviderBrandId({
+                    providerId: activeCustomProvider.id,
+                    baseUrl: activeCustomProvider.baseUrl,
+                  }) ? (
+                    <ProviderBrandIcon
+                      providerId={activeCustomProvider.id}
+                      baseUrl={activeCustomProvider.baseUrl}
+                      size={20}
+                    />
+                  ) : (
+                    providerAvatarLetter(
+                      activeCustomProvider.name.trim() ||
+                        activeCustomProvider.id,
+                    )
+                  )
+                ) : account?.profile ? (
+                  accountInitials(account.profile)
+                ) : (
+                  "G"
+                )}
               </div>
               <div className="user-meta">
                 <span className="user-meta__name">
@@ -18834,30 +19031,36 @@ export default function App() {
                       modelId={modelId}
                       effort={effort}
                       models={availableModels}
+                      providers={composerProviderInputs}
+                      activeSource={providerActiveSource}
+                      activeProviderId={providerActiveId}
+                      channelEfforts={channelEffortOptions}
                       labels={{
                         model: tr("composer.model"),
+                        modelGroupOfficial: tr("composer.modelGroupOfficial"),
+                        modelViaProvider: tr("composer.modelViaProvider"),
                         effort: tr("composer.effort"),
                         effortHigh: tr("effort.high"),
                         effortMedium: tr("effort.medium"),
                         effortLow: tr("effort.low"),
+                        effortXhigh: tr("effort.xhigh"),
+                        effortMax: tr("effort.max"),
                         modelSearchPlaceholder: tr(
                           "composer.modelSearchPlaceholder",
                         ),
                         modelSearchEmpty: tr("composer.modelSearchEmpty"),
                       }}
-                      onModel={(v) => {
-                        if (!isValidModelId(v, availableModels)) return;
-                        setModelId(v);
-                        void api
-                          .composerPrefsSet({
-                            projectId: activeProject?.id ?? null,
-                            sessionId: session.sessionId ?? null,
-                            modelId: v,
-                          })
-                          .catch((e) => showToast(String(e), 4000));
+                      onModelPick={(pick) => {
+                        void handleModelPick(pick);
                       }}
                       onEffort={(v) => {
-                        if (!isValidEffort(v)) return;
+                        if (
+                          !isValidEffort(
+                            v,
+                            channelEffortOptions ?? undefined,
+                          )
+                        )
+                          return;
                         setEffort(v);
                         void api
                           .composerPrefsSet({
@@ -19303,6 +19506,8 @@ export default function App() {
               modeAgent: tr("mode.agent"),
               modePlan: tr("mode.plan"),
               modeAsk: tr("mode.ask"),
+              modelGroupOfficial: tr("composer.modelGroupOfficial"),
+              modelViaProvider: tr("composer.modelViaProvider"),
               policyAsk: tr("policy.ask"),
               policyAcceptEdits: tr("policy.accept_edits"),
               policySession: tr("policy.allow_for_session"),
@@ -19312,6 +19517,8 @@ export default function App() {
               effortHigh: tr("effort.high"),
               effortMedium: tr("effort.medium"),
               effortLow: tr("effort.low"),
+              effortXhigh: tr("effort.xhigh"),
+              effortMax: tr("effort.max"),
               contextCurrent: tr("context.current"),
               contextUnknown: tr("phone.contextUnknown"),
               contextCompact: tr("context.compactAction"),
@@ -19325,6 +19532,10 @@ export default function App() {
             modelId={modelId}
             effort={effort}
             models={availableModels}
+            providers={composerProviderInputs}
+            activeSource={providerActiveSource}
+            activeProviderId={providerActiveId}
+            channelEfforts={channelEffortOptions}
             mode={mode}
             policy={policy}
             contextDisplay={contextUsageDisplay}
@@ -19343,19 +19554,14 @@ export default function App() {
             onAddProject={() => {
               void addProjectFromPicker({ bindSession: true });
             }}
-            onModel={(v) => {
-              if (!isValidModelId(v, availableModels)) return;
-              setModelId(v);
-              void api
-                .composerPrefsSet({
-                  projectId: activeProject?.id ?? null,
-                  sessionId: session.sessionId ?? null,
-                  modelId: v,
-                })
-                .catch((e) => showToast(String(e), 4000));
+            onModelPick={(pick) => {
+              void handleModelPick(pick);
             }}
             onEffort={(v) => {
-              if (!isValidEffort(v)) return;
+              if (
+                !isValidEffort(v, channelEffortOptions ?? undefined)
+              )
+                return;
               setEffort(v);
               void api
                 .composerPrefsSet({

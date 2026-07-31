@@ -23,10 +23,21 @@ import {
   GROK_BUILD_MODELS,
   PERMISSION_POLICIES,
   SESSION_MODES,
+  effortDisplayLabel,
+  effortUiOptionsForCatalog,
+  effortsForModel,
+  spawnIdToEffortUiSlot,
   type EffortOption,
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
+import {
+  buildComposerModelGroups,
+  isComposerModelEntryActive,
+  type ComposerModelPick,
+  type ComposerProviderInput,
+} from "@/lib/composerModelGroups";
+import { composerModelChipLabel } from "@/lib/effectiveModel";
 import type { ContextUsageDisplay } from "@/lib/contextUsage";
 import {
   formatTokenCount,
@@ -67,6 +78,10 @@ export type PhoneComposerToolsSheetProps = {
     modeAgent: string;
     modePlan: string;
     modeAsk: string;
+    /** Section header for official catalog models. */
+    modelGroupOfficial: string;
+    /** @deprecated Prefer real custom groups via `providers`. */
+    modelViaProvider?: string;
     policyAsk: string;
     policyAcceptEdits: string;
     policySession: string;
@@ -76,6 +91,8 @@ export type PhoneComposerToolsSheetProps = {
     effortHigh: string;
     effortMedium: string;
     effortLow: string;
+    effortXhigh?: string;
+    effortMax?: string;
     contextCurrent: string;
     contextUnknown: string;
     contextCompact: string;
@@ -89,13 +106,22 @@ export type PhoneComposerToolsSheetProps = {
   modelId: string;
   effort: string;
   models?: ModelOption[];
+  /** Configured custom providers for grouped menu entries. */
+  providers?: ComposerProviderInput[];
+  /** Active inference route: official | custom. */
+  activeSource?: string;
+  activeProviderId?: string | null;
+  /** Channel-configured efforts when custom route is active. */
+  channelEfforts?: EffortOption[] | null;
   mode: string;
   policy: string;
   contextDisplay: ContextUsageDisplay;
   onAttach: () => void;
   onSelectProject: (project: PhoneProjectOption | null) => void;
   onAddProject: () => void;
-  onModel: (id: string) => void;
+  /** Prefer over onModel when provided. */
+  onModelPick?: (pick: ComposerModelPick) => void;
+  onModel?: (id: string) => void;
   onEffort: (id: EffortOption["id"]) => void;
   onMode: (id: string) => void;
   onPolicy: (id: PermissionPolicyId) => void;
@@ -103,12 +129,18 @@ export type PhoneComposerToolsSheetProps = {
 };
 
 function effortLabel(
-  id: string,
+  spawnId: string,
   labels: PhoneComposerToolsSheetProps["labels"],
+  catalog?: EffortOption[] | null,
 ): string {
-  if (id === "high") return labels.effortHigh;
-  if (id === "medium") return labels.effortMedium;
-  return labels.effortLow;
+  const slot = spawnIdToEffortUiSlot(spawnId, catalog);
+  return effortDisplayLabel(slot ?? spawnId, {
+    high: labels.effortHigh,
+    medium: labels.effortMedium,
+    low: labels.effortLow,
+    xhigh: labels.effortXhigh,
+    max: labels.effortMax ?? labels.effortXhigh,
+  });
 }
 
 function modeLabel(
@@ -180,12 +212,17 @@ export function PhoneComposerToolsSheet({
   modelId,
   effort,
   models = GROK_BUILD_MODELS,
+  providers = [],
+  activeSource = "official",
+  activeProviderId = null,
+  channelEfforts = null,
   mode,
   policy,
   contextDisplay,
   onAttach,
   onSelectProject,
   onAddProject,
+  onModelPick,
   onModel,
   onEffort,
   onMode,
@@ -200,8 +237,50 @@ export function PhoneComposerToolsSheet({
   const toolsPanelRef = useRef(panel);
   toolsPanelRef.current = panel;
   const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
-  const modelLabel =
+  const modelGroups = buildComposerModelGroups({
+    officialModels: modelList,
+    providers,
+    officialGroupTitle: labels.modelGroupOfficial,
+  });
+  const activeCustom =
+    activeSource === "custom" && activeProviderId
+      ? (() => {
+          const p = providers.find((x) => x.id === activeProviderId);
+          if (!p) return null;
+          const activeId = p.model?.trim() ?? "";
+          const entry =
+            p.models?.find((m) => m.id === activeId) ??
+            (activeId ? { id: activeId, name: activeId } : null);
+          return entry
+            ? { name: entry.name || entry.id, model: entry.id }
+            : { name: p.name, model: p.model };
+        })()
+      : null;
+  const activeRequestModel =
+    activeSource === "custom"
+      ? providers.find((x) => x.id === activeProviderId)?.model ?? null
+      : null;
+  const effortCatalog =
+    activeSource === "custom" && channelEfforts && channelEfforts.length > 0
+      ? effortsForModel(null, channelEfforts)
+      : GROK_BUILD_EFFORTS;
+  const effortUiList = effortUiOptionsForCatalog(effortCatalog);
+  const officialLabel =
     modelList.find((m) => m.id === modelId)?.label ?? modelId;
+  const modelLabel = composerModelChipLabel({
+    modelId,
+    officialLabel,
+    activeCustom,
+  });
+
+  const selectPick = (pick: ComposerModelPick) => {
+    if (onModelPick) {
+      onModelPick(pick);
+    } else if (pick.kind === "official" && onModel) {
+      onModel(pick.modelId);
+    }
+    onClose();
+  };
 
   useEffect(() => {
     if (!open) setPanel("root");
@@ -313,7 +392,7 @@ export function PhoneComposerToolsSheet({
               <SheetRow
                 icon={<IconBolt size={20} />}
                 label={labels.model}
-                value={`${modelLabel} ${effortLabel(effort, labels)}`}
+                value={`${modelLabel} ${effortLabel(effort, labels, effortCatalog)}`}
                 chevron
                 onClick={() => setPanel("model")}
               />
@@ -371,29 +450,55 @@ export function PhoneComposerToolsSheet({
 
           {panel === "model" && (
             <>
-              <div className="phone-sheet__section">{labels.model}</div>
-              {modelList.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={
-                    "phone-sheet__row" +
-                    (m.id === modelId ? " is-active" : "")
-                  }
-                  onClick={() => onModel(m.id)}
-                >
-                  <span className="phone-sheet__row-label">{m.label}</span>
-                  {m.id === modelId ? (
-                    <span className="phone-sheet__row-value" aria-hidden>
-                      <IconCheck size={18} />
-                    </span>
-                  ) : null}
-                </button>
+              {modelGroups.map((group) => (
+                <div key={group.key}>
+                  <div className="phone-sheet__section">{group.title}</div>
+                  {group.entries.map((entry) => {
+                    const active = isComposerModelEntryActive(entry, {
+                      activeSource,
+                      activeProviderId,
+                      activeRequestModel,
+                      modelId,
+                    });
+                    return (
+                      <button
+                        key={entry.key}
+                        type="button"
+                        className={
+                          "phone-sheet__row" +
+                          (active ? " is-active" : "") +
+                          (entry.subtitle ? " phone-sheet__row--stacked" : "")
+                        }
+                        onClick={() => selectPick(entry.pick)}
+                      >
+                        <span className="phone-sheet__row-label">
+                          {entry.subtitle ? (
+                            <>
+                              <span className="phone-sheet__row-title">
+                                {entry.title}
+                              </span>
+                              <span className="phone-sheet__row-sub">
+                                {entry.subtitle}
+                              </span>
+                            </>
+                          ) : (
+                            entry.title
+                          )}
+                        </span>
+                        {active ? (
+                          <span className="phone-sheet__row-value" aria-hidden>
+                            <IconCheck size={18} />
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
               ))}
               <SheetRow
                 icon={<IconActivity size={20} />}
                 label={labels.effort}
-                value={effortLabel(effort, labels)}
+                value={effortLabel(effort, labels, effortCatalog)}
                 chevron
                 onClick={() => setPanel("effort")}
               />
@@ -401,28 +506,39 @@ export function PhoneComposerToolsSheet({
           )}
 
           {panel === "effort" &&
-            GROK_BUILD_EFFORTS.map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                className={
-                  "phone-sheet__row" + (e.id === effort ? " is-active" : "")
-                }
-                onClick={() => {
-                  onEffort(e.id);
-                  setPanel("model");
-                }}
-              >
-                <span className="phone-sheet__row-label">
-                  {effortLabel(e.id, labels)}
-                </span>
-                {e.id === effort ? (
-                  <span className="phone-sheet__row-value" aria-hidden>
-                    <IconCheck size={18} />
+            effortUiList.map((e) => {
+              const active =
+                e.spawnId === effort ||
+                spawnIdToEffortUiSlot(effort, effortCatalog) === e.uiId;
+              return (
+                <button
+                  key={e.uiId}
+                  type="button"
+                  className={
+                    "phone-sheet__row" + (active ? " is-active" : "")
+                  }
+                  onClick={() => {
+                    onEffort(e.spawnId);
+                    setPanel("model");
+                  }}
+                >
+                  <span className="phone-sheet__row-label">
+                    {effortDisplayLabel(e.uiId, {
+                      high: labels.effortHigh,
+                      medium: labels.effortMedium,
+                      low: labels.effortLow,
+                      xhigh: labels.effortXhigh,
+                      max: labels.effortMax ?? labels.effortXhigh,
+                    })}
                   </span>
-                ) : null}
-              </button>
-            ))}
+                  {active ? (
+                    <span className="phone-sheet__row-value" aria-hidden>
+                      <IconCheck size={18} />
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
 
           {panel === "access" && (
             <>
