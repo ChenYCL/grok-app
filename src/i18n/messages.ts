@@ -1468,6 +1468,45 @@ const en = {
   "settings.privacy.save": "Save privacy keys",
   "settings.privacy.saving": "Saving…",
   "settings.privacy.needTauri": "Privacy center requires the desktop app.",
+  "settings.privacy.unsetNotOff":
+    "Unset is not off. Missing privacy keys stay unset — this App never invents telemetry or uploads as disabled.",
+  "settings.privacy.summary.allUnset":
+    "All {total} privacy keys unset ({unset} unset · {set} set)",
+  "settings.privacy.summary.partial":
+    "{set} of {total} privacy keys set · {unset} still unset",
+  "settings.privacy.summary.allSet":
+    "All {total} privacy keys present in config ({set} set)",
+  "settings.privacy.default.telemetry":
+    "Unset — CLI / env decides product telemetry. App never invents “off”.",
+  "settings.privacy.default.traceUpload":
+    "Unset — when missing, CLI follows the telemetry toggle (not a forced off).",
+  "settings.privacy.default.mixpanel":
+    "Unset — CLI / env decides Mixpanel. App never invents “off”.",
+  "settings.privacy.default.disableCodebaseUpload":
+    "Unset — CLI harness default applies. App does not invent disabled.",
+  "settings.privacy.default.disableWorkspaceTeleport":
+    "Unset — CLI harness default applies. App does not invent disabled.",
+  "settings.privacy.probe.okMissing":
+    "Config file not found yet — keys unset (soft-ok, not claimed off)",
+  "settings.privacy.probe.okAllUnset":
+    "Config loaded — no privacy keys set yet (unset ≠ off)",
+  "settings.privacy.probe.okPartial": "Config loaded — some privacy keys set",
+  "settings.privacy.probe.okAllSet": "Config loaded — all privacy keys present",
+  "settings.privacy.probe.hostOnly":
+    "Privacy center requires the desktop app (host probe unavailable).",
+  "settings.privacy.probe.sharedMode":
+    "Shared mode cannot write privacy keys — switch to independent agent-home.",
+  "settings.privacy.probe.pathNotAllowed":
+    "Path not allowed — only independent agent-home config.toml may be edited.",
+  "settings.privacy.probe.io":
+    "Could not read or write the privacy config file (I/O soft-fail).",
+  "settings.privacy.probe.emptyPatch": "No privacy key changes to save.",
+  "settings.privacy.probe.other": "Could not load or update privacy config.",
+  "settings.privacy.probe.error": "Privacy config probe failed",
+  "settings.privacy.apply.softRespawn":
+    "Save writes allowlisted keys and soft-respawns the agent so the next turn reloads config.toml.",
+  "settings.privacy.apply.independentOnly":
+    "Writes apply only in independent agent-home mode. Shared mode is a read-only probe of ~/.grok.",
   "settings.searchResults": "Matching settings",
   "settings.searchOpen": "Open",
   "settings.inspect.manageInExtensions": "Manage in Extensions",
@@ -7453,6 +7492,44 @@ const zh: Record<MessageKey, string> = {
   "settings.privacy.save": "保存隐私键",
   "settings.privacy.saving": "保存中…",
   "settings.privacy.needTauri": "隐私中心需要桌面应用。",
+  "settings.privacy.unsetNotOff":
+    "「未设置」不等于「关闭」。缺失的隐私键保持未设置——本应用不会把遥测或上传虚构为已禁用。",
+  "settings.privacy.summary.allUnset":
+    "全部 {total} 个隐私键未设置（{unset} 未设置 · {set} 已设置）",
+  "settings.privacy.summary.partial":
+    "已设置 {set}/{total} 个隐私键 · 仍有 {unset} 个未设置",
+  "settings.privacy.summary.allSet":
+    "全部 {total} 个隐私键已在配置中（{set} 已设置）",
+  "settings.privacy.default.telemetry":
+    "未设置 — 由 CLI / 环境变量决定产品遥测。本应用不会虚构为「关」。",
+  "settings.privacy.default.traceUpload":
+    "未设置 — 缺失时 CLI 跟随 telemetry 开关（不是强制关闭）。",
+  "settings.privacy.default.mixpanel":
+    "未设置 — 由 CLI / 环境变量决定 Mixpanel。本应用不会虚构为「关」。",
+  "settings.privacy.default.disableCodebaseUpload":
+    "未设置 — 使用 CLI harness 默认。本应用不会虚构为已禁用。",
+  "settings.privacy.default.disableWorkspaceTeleport":
+    "未设置 — 使用 CLI harness 默认。本应用不会虚构为已禁用。",
+  "settings.privacy.probe.okMissing":
+    "配置文件尚不存在 — 键均为未设置（软成功，不宣称已关闭）",
+  "settings.privacy.probe.okAllUnset":
+    "配置已加载 — 尚未设置任何隐私键（未设置 ≠ 关闭）",
+  "settings.privacy.probe.okPartial": "配置已加载 — 部分隐私键已设置",
+  "settings.privacy.probe.okAllSet": "配置已加载 — 全部隐私键均已存在",
+  "settings.privacy.probe.hostOnly":
+    "隐私中心需要桌面应用（主机探测不可用）。",
+  "settings.privacy.probe.sharedMode":
+    "共享模式无法写入隐私键 — 请切换到独立 agent-home。",
+  "settings.privacy.probe.pathNotAllowed":
+    "路径不允许 — 仅可编辑独立 agent-home 的 config.toml。",
+  "settings.privacy.probe.io": "无法读写隐私配置文件（I/O 软失败）。",
+  "settings.privacy.probe.emptyPatch": "没有可保存的隐私键变更。",
+  "settings.privacy.probe.other": "无法加载或更新隐私配置。",
+  "settings.privacy.probe.error": "隐私配置探测失败",
+  "settings.privacy.apply.softRespawn":
+    "保存会写入白名单键并 soft-respawn agent，使下一轮重新加载 config.toml。",
+  "settings.privacy.apply.independentOnly":
+    "仅在独立 agent-home 模式下可写。共享模式是对 ~/.grok 的只读探测。",
   "settings.tab.remoteIm": "IM 通信",
   "settings.tab.phoneMirror": "手机镜像",
   "settings.searchResults": "匹配的设置",

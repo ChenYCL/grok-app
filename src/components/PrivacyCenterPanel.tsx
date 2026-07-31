@@ -2,6 +2,7 @@
  * Settings → Runtime → Privacy: honest Grok Build 0.2.117 privacy keys.
  * Independent agent-home: allowlisted read/write. Shared mode: read-only probe.
  * Coding-data / training is CLI `/privacy` only — never a fake App toggle.
+ * Probe soft-fail is classified; unset keys never invent “off”.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
@@ -9,14 +10,27 @@ import type { PrivacyConfigSnapshot } from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import {
   buildPrivacyPatch,
+  classifyPrivacyProbeResult,
   CLI_PRIVACY_COMMAND,
   hasPrivacyChanges,
+  privacyIsUnset,
+  privacyKeyDefaultHintMessageKey,
   privacyKeyPresence,
+  privacyPresenceMessageKey,
+  privacyProbeErrorMessageKey,
+  privacyProbeOutcomeMessageKey,
+  privacyProbeToneClass,
+  privacySummaryMessageKey,
+  privacySummaryKind,
   privacyToggleChecked,
+  resolvePrivacyProbeErrorCopy,
+  summarizePrivacyValues,
   togglePrivacyTri,
   valuesFromPrivacySnapshot,
+  type ClassifiedPrivacyProbe,
   type PrivacyTri,
   type PrivacyValues,
+  type PrivacyWritableKey,
 } from "@/lib/privacyConfig";
 import { IconRefresh } from "@/components/icons";
 
@@ -70,21 +84,20 @@ function PresenceBadge({
   t: (k: MessageKey, vars?: Record<string, string | number>) => string;
 }) {
   const p = privacyKeyPresence(value);
+  const label = t(privacyPresenceMessageKey(p) as MessageKey);
   if (p === "unset") {
     return (
-      <span className="ext-badge ext-badge--muted">
-        {t("settings.privacy.presence.unset")}
+      <span className="ext-badge ext-badge--muted" title={label}>
+        {label}
       </span>
     );
   }
   if (p === "set_on") {
-    return (
-      <span className="ext-badge">{t("settings.privacy.presence.on")}</span>
-    );
+    return <span className="ext-badge">{label}</span>;
   }
   return (
-    <span className="ext-badge ext-badge--muted">
-      {t("settings.privacy.presence.off")}
+    <span className="ext-badge ext-badge--muted" title={label}>
+      {label}
     </span>
   );
 }
@@ -96,6 +109,7 @@ function PrivacyRow({
   labelKey,
   descKey,
   configKey,
+  valueKey,
   value,
   disabled,
   onToggle,
@@ -105,19 +119,25 @@ function PrivacyRow({
   labelKey: MessageKey;
   descKey: MessageKey;
   configKey: string;
+  valueKey: PrivacyWritableKey;
   value: PrivacyTri;
   disabled: boolean;
   onToggle: () => void;
   t: (k: MessageKey, vars?: Record<string, string | number>) => string;
 }) {
+  const unset = privacyIsUnset(value);
   return (
     <div className="settings-row" id={id}>
       <div className="settings-row__text">
         <div className="settings-row__label">
-          {t(labelKey)}{" "}
-          <PresenceBadge value={value} t={t} />
+          {t(labelKey)} <PresenceBadge value={value} t={t} />
         </div>
         <div className="settings-row__desc">{t(descKey)}</div>
+        {unset ? (
+          <div className="settings-row__hint settings-privacy__default-hint">
+            {t(privacyKeyDefaultHintMessageKey(valueKey) as MessageKey)}
+          </div>
+        ) : null}
         <div className="settings-row__hint" title={configKey}>
           {configKey}
         </div>
@@ -149,8 +169,10 @@ export function PrivacyCenterPanel({
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [errorMessageKey, setErrorMessageKey] = useState<string | null>(null);
   const [snap, setSnap] = useState<PrivacyConfigSnapshot | null>(null);
+  const [probe, setProbe] = useState<ClassifiedPrivacyProbe | null>(null);
   const [baseline, setBaseline] = useState<PrivacyValues>(
     valuesFromPrivacySnapshot({}),
   );
@@ -161,6 +183,8 @@ export function PrivacyCenterPanel({
 
   const applySnap = useCallback((s: PrivacyConfigSnapshot) => {
     setSnap(s);
+    const classified = classifyPrivacyProbeResult(s);
+    setProbe(classified);
     const vals = valuesFromPrivacySnapshot({
       telemetry: s.telemetry,
       traceUpload: s.traceUpload,
@@ -170,29 +194,49 @@ export function PrivacyCenterPanel({
     });
     setBaseline(vals);
     setDraft(vals);
+    setErrorDetail(null);
+    setErrorMessageKey(null);
   }, []);
+
+  const applySoftFail = useCallback(
+    (err: unknown, available = true) => {
+      const copy = resolvePrivacyProbeErrorCopy({ err });
+      const classified = classifyPrivacyProbeResult(null, {
+        available,
+        invokeError: available ? copy.detail || String(err) : null,
+      });
+      setProbe(classified);
+      setSnap(null);
+      setErrorMessageKey(copy.messageKey);
+      setErrorDetail(copy.detail || null);
+      const toast = t(copy.messageKey as MessageKey);
+      onError?.(toast);
+    },
+    [onError, t],
+  );
 
   const load = useCallback(async () => {
     if (!api.isTauri()) {
+      const classified = classifyPrivacyProbeResult(null, { available: false });
+      setProbe(classified);
       setSnap(null);
-      setError(t("settings.privacy.needTauri"));
+      setErrorMessageKey(privacyProbeErrorMessageKey("host_only"));
+      setErrorDetail(null);
       setLoading(false);
       return;
     }
     setLoading(true);
-    setError(null);
+    setErrorDetail(null);
+    setErrorMessageKey(null);
     try {
       const res = await api.privacyConfigGet();
       applySnap(res);
     } catch (e) {
-      setSnap(null);
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-      onError?.(msg);
+      applySoftFail(e, true);
     } finally {
       setLoading(false);
     }
-  }, [applySnap, onError, t]);
+  }, [applySnap, applySoftFail]);
 
   useEffect(() => {
     void load();
@@ -206,6 +250,12 @@ export function PrivacyCenterPanel({
   const writable = !!snap?.writable;
   const disabled = !writable || busy || loading;
 
+  const draftSummary = useMemo(() => summarizePrivacyValues(draft), [draft]);
+  const draftSummaryKind = useMemo(
+    () => privacySummaryKind(draft),
+    [draft],
+  );
+
   const setKey = (key: RowKey) => {
     setDraft((d) => ({ ...d, [key]: togglePrivacyTri(d[key]) }));
   };
@@ -213,7 +263,8 @@ export function PrivacyCenterPanel({
   const save = async () => {
     if (!dirty || !writable || !api.isTauri()) return;
     setBusy(true);
-    setError(null);
+    setErrorDetail(null);
+    setErrorMessageKey(null);
     try {
       const res = await api.privacyConfigSet({
         telemetry: patch.telemetry ?? null,
@@ -225,9 +276,7 @@ export function PrivacyCenterPanel({
       applySnap(res);
       onSaved?.();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-      onError?.(msg);
+      applySoftFail(e, true);
       await load();
     } finally {
       setBusy(false);
@@ -246,6 +295,9 @@ export function PrivacyCenterPanel({
       // ignore — clipboard may be blocked
     }
   };
+
+  const probeTone = probe ? privacyProbeToneClass(probe.tone) : "";
+  const hardFail = probe != null && probe.outcome === "error" && !snap;
 
   return (
     <div
@@ -266,10 +318,55 @@ export function PrivacyCenterPanel({
         <p className="ext-field-hint">{t("settings.privacy.loading")}</p>
       ) : null}
 
-      {error ? (
-        <div className="ext-alert ext-alert--error" role="alert">
-          <div className="ext-alert__title">{t("settings.privacy.error")}</div>
-          <p className="ext-alert__body">{error}</p>
+      {probe && !loading ? (
+        <div
+          className={
+            "settings-config-edit__badges settings-privacy__probe " + probeTone
+          }
+          role="status"
+        >
+          <span
+            className={
+              "ext-badge" +
+              (probe.tone === "err"
+                ? " ext-badge--danger"
+                : probe.tone === "muted" || probe.tone === "info"
+                  ? " ext-badge--muted"
+                  : "")
+            }
+          >
+            {t(privacyProbeOutcomeMessageKey(probe.outcome) as MessageKey)}
+          </span>
+          {snap ? (
+            <span className="ext-badge ext-badge--muted">
+              {t(privacySummaryMessageKey(draftSummaryKind) as MessageKey, {
+                set: draftSummary.setCount,
+                unset: draftSummary.unsetCount,
+                total: draftSummary.total,
+              })}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {errorMessageKey ? (
+        <div
+          className={
+            "ext-alert" +
+            (hardFail || probe?.tone === "err"
+              ? " ext-alert--error"
+              : " ext-alert--warn")
+          }
+          role={hardFail || probe?.tone === "err" ? "alert" : "status"}
+        >
+          <div className="ext-alert__title">
+            {t(errorMessageKey as MessageKey)}
+          </div>
+          {errorDetail &&
+          errorDetail.trim() &&
+          errorDetail !== t(errorMessageKey as MessageKey) ? (
+            <p className="ext-alert__body">{errorDetail}</p>
+          ) : null}
         </div>
       ) : null}
 
@@ -277,6 +374,14 @@ export function PrivacyCenterPanel({
         <div className="ext-alert ext-alert--warn" role="status">
           <p className="ext-alert__body" style={{ margin: 0 }}>
             {t("settings.privacy.sharedWarning")}
+          </p>
+        </div>
+      ) : null}
+
+      {snap && draftSummary.allUnset ? (
+        <div className="ext-alert ext-alert--info" role="status">
+          <p className="ext-alert__body" style={{ margin: 0 }}>
+            {t("settings.privacy.unsetNotOff")}
           </p>
         </div>
       ) : null}
@@ -311,6 +416,7 @@ export function PrivacyCenterPanel({
               labelKey="settings.privacy.telemetry"
               descKey="settings.privacy.telemetryDesc"
               configKey="[features] telemetry · GROK_TELEMETRY_ENABLED"
+              valueKey="telemetry"
               value={draft.telemetry}
               disabled={disabled}
               onToggle={() => setKey("telemetry")}
@@ -321,6 +427,7 @@ export function PrivacyCenterPanel({
               labelKey="settings.privacy.traceUpload"
               descKey="settings.privacy.traceUploadDesc"
               configKey="[telemetry] trace_upload · GROK_TELEMETRY_TRACE_UPLOAD"
+              valueKey="traceUpload"
               value={draft.traceUpload}
               disabled={disabled}
               onToggle={() => setKey("traceUpload")}
@@ -331,6 +438,7 @@ export function PrivacyCenterPanel({
               labelKey="settings.privacy.mixpanel"
               descKey="settings.privacy.mixpanelDesc"
               configKey="[telemetry] mixpanel_enabled · GROK_TELEMETRY_MIXPANEL_ENABLED"
+              valueKey="mixpanelEnabled"
               value={draft.mixpanelEnabled}
               disabled={disabled}
               onToggle={() => setKey("mixpanelEnabled")}
@@ -341,6 +449,7 @@ export function PrivacyCenterPanel({
               labelKey="settings.privacy.disableCodebaseUpload"
               descKey="settings.privacy.disableCodebaseUploadDesc"
               configKey="[harness] disable_codebase_upload"
+              valueKey="disableCodebaseUpload"
               value={draft.disableCodebaseUpload}
               disabled={disabled}
               onToggle={() => setKey("disableCodebaseUpload")}
@@ -351,6 +460,7 @@ export function PrivacyCenterPanel({
               labelKey="settings.privacy.disableWorkspaceTeleport"
               descKey="settings.privacy.disableWorkspaceTeleportDesc"
               configKey="[harness] disable_workspace_teleport"
+              valueKey="disableWorkspaceTeleport"
               value={draft.disableWorkspaceTeleport}
               disabled={disabled}
               onToggle={() => setKey("disableWorkspaceTeleport")}
@@ -408,6 +518,16 @@ export function PrivacyCenterPanel({
             </div>
           ) : (
             <p className="ext-field-hint">{t("settings.privacy.previewEmpty")}</p>
+          )}
+
+          {writable ? (
+            <p className="ext-field-hint" style={{ marginTop: 8 }}>
+              {t("settings.privacy.apply.softRespawn")}
+            </p>
+          ) : (
+            <p className="ext-field-hint" style={{ marginTop: 8 }}>
+              {t("settings.privacy.apply.independentOnly")}
+            </p>
           )}
 
           <div
