@@ -31,6 +31,9 @@ import {
   slackHealthHintKeys,
   validateSlackConfig,
 } from "./slackConfig";
+  qqHealthHintKeys,
+  validateQqConfig,
+} from "./qqConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -124,6 +127,7 @@ const WEIXIN_LIKE: RemoteChannelId[] = ["weixin"];
 const DISCORD_LIKE: RemoteChannelId[] = ["discord"];
 const LINE_LIKE: RemoteChannelId[] = ["line"];
 const SLACK_LIKE: RemoteChannelId[] = ["slack"];
+const QQ_LIKE: RemoteChannelId[] = ["qq"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -138,6 +142,7 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
   // Weixin secrets validated via weixinConfig
   weixin: ["token"],
+  // QQ OneBot: token optional; readiness via qqConfig (ws_url required)
   matrix: ["access_token"],
   // LINE secrets validated via lineConfig (access_token alias)
   line: ["channel_secret", "channel_access_token"],
@@ -151,6 +156,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   weixin: [],
   line: [],
   slack: [],
+  // QQ validated via qqConfig (ws_url / url alias)
 };
 
 
@@ -305,6 +311,16 @@ export function channelModeLabel(
     return parts.join(",");
   if (channel === "slack") {
     return "mode=socket";
+  if (QQ_LIKE.includes(channel)) {
+    const ws =
+      optionString(options, "ws_url") || optionString(options, "url");
+    if (!ws) return "ws=missing";
+    const scheme = /^wss?:/i.test(ws)
+      ? ws.toLowerCase().startsWith("wss")
+        ? "wss"
+        : "ws"
+      : "bad";
+    return `forward_ws · ${scheme}`;
   }
   return null;
 }
@@ -414,6 +430,11 @@ export function credentialReadiness(
       hasCredentials: instance.hasCredentials,
       botTokenValue,
       appTokenValue,
+  if (QQ_LIKE.includes(channel)) {
+    const v = validateQqConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -481,6 +502,8 @@ export function classifyChannelHealth(
   // cannot look "connected".
   const requireReadyForConnect =
     channel === "wecom" || channel === "line";
+  // Honest status: incomplete mode-switch / missing keys cannot look "connected".
+  // QQ: token is optional, but save still sets hasCredentials when URL bind is ready.
   const credsUsable =
     !!instance.hasCredentials &&
     (credentialsReady || !requireReadyForConnect);
@@ -612,6 +635,8 @@ export function classifyChannelHealth(
     const wxV = validateWeixinConfig({
   if (LINE_LIKE.includes(channel)) {
     const lineV = validateLineConfig({
+  if (QQ_LIKE.includes(channel)) {
+    const qqV = validateQqConfig({
       options: opts,
       secretKeysFilled: input.secretKeysFilled,
       hasCredentials: instance.hasCredentials,
@@ -628,6 +653,13 @@ export function classifyChannelHealth(
     });
     for (const k of slackHealthHintKeys(slackV, {
       openAcl: openAcl && instance.hasCredentials,
+    const tokenInForm =
+      !!input.secretKeysFilled &&
+      (input.secretKeysFilled.has("token") ||
+        input.secretKeysFilled.has("access_token"));
+    for (const k of qqHealthHintKeys(qqV, {
+      openAcl: openAcl && (instance.hasCredentials || qqV.ok),
+      tokenInForm,
     })) {
       hintKeys.push(k);
     }
@@ -671,5 +703,6 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     DISCORD_LIKE.includes(channel)
     LINE_LIKE.includes(channel)
     SLACK_LIKE.includes(channel)
+    QQ_LIKE.includes(channel)
   );
 }

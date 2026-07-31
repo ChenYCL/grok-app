@@ -86,6 +86,12 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("data-discord-guide");
     expect(src).toContain("data-discord-intent");
     expect(src).toContain('channelId === "discord"');
+  it("ChannelPanel QQ OneBot guide + risk callout without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-qq-guide");
+    expect(src).toContain("data-qq-risk");
+    expect(src).toContain('channelId === "qq"');
+    expect(src).toContain("validateQqConfig");
     expect(src).not.toMatch(/window\.confirm/);
   });
 

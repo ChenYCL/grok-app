@@ -269,6 +269,11 @@ describe("classifyChannelHealth", () => {
   it("discord: gateway deep health with intent + ACL hints", () => {
     expect(channelHasDeepHealth("discord")).toBe(true);
     const bare = inst("discord", {
+  it("qq: forward_ws deep health with community risk · never live without Bridge", () => {
+    expect(channelHasDeepHealth("qq")).toBe(true);
+    expect(transportForChannel("qq")).toBe("forward_ws");
+
+    const bare = inst("qq", {
       hasCredentials: false,
       enabled: false,
       options: {},
@@ -284,6 +289,7 @@ describe("classifyChannelHealth", () => {
     expect(channelModeLabel("slack", {})).toBe("mode=socket");
 
     const bare = inst("slack", { hasCredentials: false, enabled: false });
+
     const h0 = classifyChannelHealth({
       instance: bare,
       bridgeRunning: false,
@@ -339,6 +345,17 @@ describe("classifyChannelHealth", () => {
     const ready = inst("slack", {
       hasCredentials: true,
       enabled: true,
+    expect(h0.transport).toBe("forward_ws");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("qqForwardWs"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqSelfHosted"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqCommunityRisk"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqMissingWsUrl"))).toBe(true);
+
+    const ready = inst("qq", {
+      hasCredentials: true,
+      enabled: true,
+      options: { ws_url: "ws://127.0.0.1:3001" },
       acl: {
         allowFrom: "*",
         requireMention: true,
@@ -419,5 +436,37 @@ describe("classifyChannelHealth", () => {
       new Set(["bot_token", "app_token"]),
     );
     expect(both.ready).toBe(true);
+    expect(h1.transport).toBe("forward_ws");
+    expect(h1.modeLabel).toContain("forward_ws");
+    expect(h1.modeLabel).toContain("ws");
+    expect(h1.hintKeys.some((k) => k.includes("qqForwardWs"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("qqCommunityRisk"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("qqTokenOptional"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid URL soft-fail — not ready; never claims WS live
+    const bad = inst("qq", {
+      hasCredentials: true,
+      enabled: true,
+      options: { ws_url: "http://127.0.0.1:3001" },
+    });
+    const h2 = classifyChannelHealth({
+      instance: bad,
+      bridgeRunning: true,
+      bridgeLinked: false,
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.tone).not.toBe("connected");
+    expect(h2.hintKeys.some((k) => k.includes("qqWsUrlInvalid"))).toBe(true);
+    expect(h2.hintKeys.some((k) => k.includes("qqHttpNotWs"))).toBe(true);
+
+    // url alias + optional token in form
+    const alias = inst("qq", {
+      hasCredentials: false,
+      options: { url: "wss://bridge.local/onebot" },
+    });
+    const r = credentialReadiness("qq", alias, new Set(["token"]));
+    expect(r.ready).toBe(true);
+    expect(r.missingKeys).not.toContain("token");
   });
 });
