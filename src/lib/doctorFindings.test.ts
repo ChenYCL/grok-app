@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DoctorCheck } from "@/lib/api";
 import type { CliDoctorCheck, CliDoctorView } from "@/lib/cliDoctor";
 import {
+  buildDoctorFindingsExport,
   categoriesPresent,
   classifyDoctorFindingCategory,
   collectDoctorFindings,
@@ -10,10 +11,15 @@ import {
   doctorFindingCopyText,
   doctorFindingMatchesQuery,
   doctorFindingsCopyText,
+  doctorFindingsExportIsEmpty,
+  doctorFindingsExportJsonFilename,
+  doctorFindingsExportTextFilename,
   filterDoctorFindings,
+  formatDoctorFindingsExportText,
   normalizeAppDoctorCheck,
   normalizeCliDoctorCheck,
   presentDoctorFindingDetail,
+  serializeDoctorFindingsExport,
   sortDoctorFindings,
   type DoctorFindingRow,
 } from "./doctorFindings";
@@ -354,5 +360,144 @@ describe("collectDoctorFindingsLoose", () => {
     });
     expect(rows).toHaveLength(2);
     expect(rows[0]!.level).toBe("fail");
+  });
+});
+
+describe("buildDoctorFindingsExport / serialize / text", () => {
+  const rows = collectDoctorFindings(APP_CHECKS, cliView(CLI_CHECKS));
+
+  it("builds redacted JSON export with filter summary counts", () => {
+    const snap = buildDoctorFindingsExport(rows, {
+      generatedAt: "2026-07-31T00:00:00.000Z",
+      filter: {
+        level: "all",
+        category: "all",
+        source: "cli",
+        query: "ssh",
+        issuesOnly: true,
+      },
+    });
+    expect(snap.kind).toBe("doctor_findings");
+    expect(snap.source).toBe("doctor");
+    expect(snap.generatedAt).toBe("2026-07-31T00:00:00.000Z");
+    expect(snap.count).toBe(rows.length);
+    expect(snap.summary.total).toBe(rows.length);
+    expect(snap.summary.fail).toBe(1);
+    expect(snap.summary.ok + snap.summary.warn + snap.summary.fail).toBe(
+      snap.summary.total,
+    );
+    expect(snap.summary.bySource.app + snap.summary.bySource.cli).toBe(
+      snap.summary.total,
+    );
+    expect(snap.filter).toEqual({
+      level: "all",
+      category: "all",
+      source: "cli",
+      query: "ssh",
+      issuesOnly: true,
+    });
+    for (const row of snap.findings) {
+      expect(Object.keys(row).sort()).toEqual(
+        [
+          "category",
+          "detail",
+          "destructive",
+          "disposition",
+          "fixId",
+          "id",
+          "level",
+          "source",
+          "title",
+        ].sort(),
+      );
+    }
+    const json = serializeDoctorFindingsExport(snap);
+    expect(json).toContain('"kind": "doctor_findings"');
+    expect(json).toContain('"summary"');
+  });
+
+  it("redacts secrets from titles/details in export", () => {
+    const secretRows: DoctorFindingRow[] = [
+      {
+        key: "app:auth",
+        rawId: "auth",
+        source: "app",
+        category: "auth",
+        level: "fail",
+        title: "Auth Bearer sk-abcdefghijklmnopqrstuv",
+        detail: "token xai-abcdefghijklmnopqrstuv leaked",
+        fixId: "fix-auth",
+        destructive: true,
+      },
+    ];
+    const snap = buildDoctorFindingsExport(secretRows, {
+      generatedAt: "2026-07-31T12:00:00.000Z",
+    });
+    expect(snap.findings[0]!.title).toContain("[REDACTED]");
+    expect(snap.findings[0]!.detail).toContain("[REDACTED]");
+    expect(snap.findings[0]!.title).not.toMatch(/sk-[A-Za-z0-9]{10,}/);
+    expect(snap.findings[0]!.detail).not.toMatch(/xai-[A-Za-z0-9]{10,}/);
+    const json = serializeDoctorFindingsExport(snap);
+    expect(json).not.toMatch(/sk-[A-Za-z0-9]{10,}/);
+    expect(json).not.toMatch(/xai-[A-Za-z0-9]{10,}/);
+    const text = formatDoctorFindingsExportText(snap);
+    expect(text).toContain("summary:");
+    expect(text).toContain("[FAIL]");
+    expect(text).not.toMatch(/sk-[A-Za-z0-9]{10,}/);
+  });
+
+  it("soft-fails empty export without inventing rows", () => {
+    const empty = buildDoctorFindingsExport([]);
+    expect(empty.count).toBe(0);
+    expect(empty.findings).toEqual([]);
+    expect(empty.summary).toEqual({
+      ok: 0,
+      warn: 0,
+      fail: 0,
+      total: 0,
+      bySource: { app: 0, cli: 0 },
+    });
+    expect(doctorFindingsExportIsEmpty(empty)).toBe(true);
+    expect(formatDoctorFindingsExportText(empty)).toBe("");
+    expect(doctorFindingsExportIsEmpty(null)).toBe(true);
+  });
+
+  it("honors max cap and filters echo", () => {
+    const many = rows.concat(rows).map((r, i) => ({
+      ...r,
+      key: `${r.key}:${i}`,
+      rawId: `${r.rawId}-${i}`,
+    }));
+    const snap = buildDoctorFindingsExport(many, {
+      max: 3,
+      filter: { level: "fail", issuesOnly: true },
+    });
+    expect(snap.findings).toHaveLength(3);
+    expect(snap.count).toBe(3);
+    expect(snap.filter.level).toBe("fail");
+    expect(snap.filter.issuesOnly).toBe(true);
+  });
+
+  it("builds safe download filenames", () => {
+    expect(
+      doctorFindingsExportJsonFilename("2026-07-31T12:34:56.000Z"),
+    ).toBe("grok-app-doctor-findings-2026-07-31-12-34-56.json");
+    expect(
+      doctorFindingsExportTextFilename("2026-07-31T12:34:56.000Z"),
+    ).toBe("grok-app-doctor-findings-2026-07-31-12-34-56.txt");
+  });
+
+  it("formats text export with summary header", () => {
+    const filtered = filterDoctorFindings(rows, { issuesOnly: true });
+    const snap = buildDoctorFindingsExport(filtered, {
+      generatedAt: "2026-07-31T00:00:00.000Z",
+      filter: { issuesOnly: true, level: "all" },
+    });
+    const text = formatDoctorFindingsExportText(snap);
+    expect(text).toContain("# Doctor findings export (redacted)");
+    expect(text).toContain("issuesOnly=true");
+    expect(text).toContain(`total=${snap.summary.total}`);
+    expect(text).toContain("### 1/");
+    expect(doctorFindingsExportIsEmpty(snap)).toBe(false);
   });
 });
