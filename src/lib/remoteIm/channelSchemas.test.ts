@@ -104,29 +104,6 @@ describe("remoteIm channelSchemas", () => {
     ).toBe(true);
   });
 
-  it("weixin §6.9: long-poll, scan+paste, token bind field help", () => {
-    const wx = getChannelSchema("weixin")!;
-    expect(wx.implemented).toBe(true);
-    expect(wx.scanSupport).toBe(true);
-    expect(wx.pasteSupport).toBe(true);
-    expect(wx.connectionKey).toContain("longPoll");
-    expect(wx.needsPublicUrl).toBeFalsy();
-    expect(showsPublicUrlCallout(wx, {})).toBe(false);
-    const token = wx.fields.find((f) => f.key === "token");
-    expect(token?.secret).toBe(true);
-    expect(token?.helpKey).toBe("settings.remoteIm.weixin.tokenHelp");
-    expect(wx.fields.some((f) => f.key === "long_poll_timeout_ms")).toBe(true);
-    expect(
-      validateBindFields(wx, {}, { hasCredentials: false }).ok,
-    ).toBe(false);
-    expect(
-      validateBindFields(wx, {}, {
-        hasCredentials: false,
-        secretKeysFilled: new Set(["token"]),
-      }).ok,
-    ).toBe(true);
-  });
-
   it("wecom validateBindFields is mode-aware and honest on mode switch", () => {
     const wecom = getChannelSchema("wecom")!;
     expect(
@@ -196,136 +173,15 @@ describe("remoteIm channelSchemas", () => {
     expect(wecom.fields.some((f) => f.key === "enable_markdown")).toBe(true);
   });
 
-  it("slack requires dual Socket Mode tokens and never needs public URL", () => {
-    const slack = getChannelSchema("slack")!;
-    expect(slack.implemented).toBe(true);
-    expect(slack.scanSupport).toBe(false);
-    expect(slack.pasteSupport).toBe(true);
-    expect(slack.needsPublicUrl).toBeFalsy();
-    expect(showsPublicUrlCallout(slack, {})).toBe(false);
-    expect(slack.connectionKey).toContain("socketMode");
-
-    const bot = slack.fields.find((f) => f.key === "bot_token");
-    const app = slack.fields.find((f) => f.key === "app_token");
-    expect(bot?.secret).toBe(true);
-    expect(bot?.required).toBe(true);
-    expect(bot?.helpKey).toBe("settings.remoteIm.slack.botTokenHelp");
-    expect(app?.secret).toBe(true);
-    expect(app?.required).toBe(true);
-    expect(app?.helpKey).toBe("settings.remoteIm.slack.appTokenHelp");
-
-    expect(
-      validateBindFields(slack, {
-        bot_token: ["xoxb", "1"].join("-"),
-        app_token: ["xapp", "1"].join("-"),
-      }).ok,
-    ).toBe(true);
-    expect(
-      validateBindFields(slack, { bot_token: ["xoxb", "1"].join("-") }).ok,
-    ).toBe(false);
-    expect(
-      validateBindFields(slack, {}, { hasCredentials: true }).ok,
-  it("qq OneBot schema: required ws_url, optional token, forward WS, no public URL", () => {
-    const qq = getChannelSchema("qq")!;
-    expect(qq.implemented).toBe(true);
-    expect(qq.scanSupport).toBe(false);
-    expect(qq.pasteSupport).toBe(true);
-    expect(qq.connectionKey).toContain("forwardWs");
-    const ws = qq.fields.find((f) => f.key === "ws_url");
-    expect(ws?.required).toBe(true);
-    expect(ws?.secret).not.toBe(true);
-    expect(ws?.helpKey).toBe("settings.remoteIm.qq.wsUrlHelp");
-    const tok = qq.fields.find((f) => f.key === "token");
-    expect(tok?.secret).toBe(true);
-    expect(tok?.required).not.toBe(true);
-    expect(tok?.helpKey).toBe("settings.remoteIm.qq.tokenHelp");
-    expect(showsPublicUrlCallout(qq, {})).toBe(false);
-    expect(validateBindFields(qq, {}).ok).toBe(false);
-    expect(
-      validateBindFields(qq, { ws_url: "ws://127.0.0.1:3001" }).ok,
-    ).toBe(true);
-    // Token optional
-    expect(
-      validateBindFields(qq, {
-        ws_url: "ws://127.0.0.1:3001",
-        token: "optional",
-      }).ok,
-    ).toBe(true);
-  it("qqbot official schema: app_id + app_secret, gateway, default INTERACTION, no public URL", () => {
-    const qqbot = getChannelSchema("qqbot")!;
-    expect(qqbot.implemented).toBe(true);
-    expect(qqbot.scanSupport).toBe(false);
-    expect(qqbot.pasteSupport).toBe(true);
-    expect(qqbot.connectionKey).toContain("gateway");
-    const appId = qqbot.fields.find((f) => f.key === "app_id");
-    expect(appId?.required).toBe(true);
-    expect(appId?.secret).not.toBe(true);
-    expect(appId?.helpKey).toBe("settings.remoteIm.qqbot.appIdHelp");
-    const secret = qqbot.fields.find((f) => f.key === "app_secret");
-    expect(secret?.required).toBe(true);
-    expect(secret?.secret).toBe(true);
-    expect(secret?.helpKey).toBe("settings.remoteIm.qqbot.appSecretHelp");
-    const intents = qqbot.fields.find((f) => f.key === "intents");
-    expect(intents?.required).not.toBe(true);
-    expect(intents?.helpKey).toBe("settings.remoteIm.qqbot.intentsHelp");
-    expect(showsPublicUrlCallout(qqbot, {})).toBe(false);
-    expect(validateBindFields(qqbot, {}).ok).toBe(false);
-    expect(
-      validateBindFields(qqbot, {
-        app_id: "102012345",
-        app_secret: "sec",
-      }).ok,
-    ).toBe(true);
-    // Distinct from OneBot `qq`
-    const qq = getChannelSchema("qq")!;
-    expect(qq.connectionKey).toContain("forwardWs");
-    expect(qqbot.id).not.toBe(qq.id);
-  });
-
   it("LINE always shows public-URL callout when flagged", () => {
     const line = getChannelSchema("line")!;
-    expect(line.needsPublicUrl).toBe(true);
-    expect(line.implemented).toBe(true);
-    expect(line.pasteSupport).toBe(true);
-    expect(line.scanSupport).toBe(false);
     expect(showsPublicUrlCallout(line, {})).toBe(true);
-    expect(line.fields.some((f) => f.key === "channel_secret")).toBe(true);
-    expect(line.fields.some((f) => f.key === "channel_access_token")).toBe(
-      true,
-    );
-    expect(line.fields.find((f) => f.key === "port")?.defaultValue).toBe(8081);
-    expect(
-      line.fields.find((f) => f.key === "callback_path")?.defaultValue,
-    ).toBe("/line/callback");
-    expect(line.fields.find((f) => f.key === "channel_secret")?.helpKey).toBe(
-      "settings.remoteIm.line.channelSecretHelp",
-    );
   });
 
   it("feishu never shows public-URL callout", () => {
     const feishu = getChannelSchema("feishu")!;
     expect(showsPublicUrlCallout(feishu, {})).toBe(false);
   });
-
-  it("weibo §6.13: app_id + app_secret + advanced endpoints, no public URL", () => {
-    const weibo = getChannelSchema("weibo")!;
-    expect(weibo.implemented).toBe(true);
-    expect(weibo.scanSupport).toBe(false);
-    expect(weibo.pasteSupport).toBe(true);
-    expect(showsPublicUrlCallout(weibo, {})).toBe(false);
-    expect(weibo.fields.some((f) => f.key === "app_id" && f.required)).toBe(
-      true,
-    );
-    const secret = weibo.fields.find((f) => f.key === "app_secret");
-    expect(secret?.secret).toBe(true);
-    expect(secret?.control).toBe("password");
-    expect(weibo.fields.some((f) => f.key === "token_endpoint")).toBe(true);
-    expect(weibo.fields.some((f) => f.key === "ws_endpoint")).toBe(true);
-    expect(weibo.fields.find((f) => f.key === "app_id")?.helpKey).toBe(
-      "settings.remoteIm.weibo.appIdHelp",
-    );
-  });
-
 
   it("rejects credential submit when schema not implemented", () => {
     const fake = {

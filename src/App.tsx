@@ -462,6 +462,7 @@ import {
   streamSessionExportMimeType,
   type StreamSessionExportFormat,
 } from "@/lib/streamSessionExport";
+import {
   canSessionExportActions,
   estimateSessionExportSizeClass,
   formatSessionExportBytes,
@@ -9798,10 +9799,8 @@ export default function App() {
       if (!api.isTauri()) {
         const error = tr("ext.needTauri");
         setMcpDoctorError(error);
-        return { report: null, error };
         // Soft-fail: modal classifies host_only; no window.alert.
-        setMcpDoctorError("need_tauri");
-        return;
+        return { report: null, error };
       }
       const focus = name?.trim() || null;
       setMcpDoctorFocus(focus);

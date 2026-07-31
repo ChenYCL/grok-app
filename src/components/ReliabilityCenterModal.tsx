@@ -73,16 +73,9 @@ export type ReliabilityCenterModalProps = {
    */
   goalOrchUiEnabled?: boolean;
   /** In-memory ring of observed goal phase events (never invented). */
-  goalOrchEvents?: Array<{
-    id: string;
-    phase?: string;
-    progress?: number | string;
-    at?: number | string;
-    summary?: string;
-  }>;
+  goalOrchEvents?: GoalOrchEvent[];
   /** Last process_limit toast context for process-budget honesty. */
   lastProcessLimit?: ProcessLimitEvent | null;
-  goalOrchEvents?: GoalOrchEvent[];
 };
 
 type StallKindFilter = "all" | ReliabilityStallKind;
@@ -390,18 +383,19 @@ export function ReliabilityCenterModal({
   view,
   onOpenDoctor,
   onSelectSession,
+  goalOrchUiEnabled = true,
+  goalOrchEvents = [],
   lastProcessLimit = null,
 }: ReliabilityCenterModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
   const [busy, setBusy] = useState<
-    "zip" | "audit-export" | "audit-clear" | "audit-copy" | null
-  goalOrchUiEnabled = true,
-  goalOrchEvents = [],
-}: ReliabilityCenterModalProps) {
-  const t = useMemo(() => createT(locale), [locale]);
-  const [busy, setBusy] = useState<
-    "zip" | "audit-export" | "audit-clear" | "goal-copy" | null
-    "zip" | "audit-export" | "audit-clear" | "stall-export" | null
+    | "zip"
+    | "audit-export"
+    | "audit-clear"
+    | "audit-copy"
+    | "goal-copy"
+    | "stall-export"
+    | null
   >(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -747,65 +741,6 @@ export function ReliabilityCenterModal({
     })),
   ];
 
-  const clearConfirmPortal =
-    confirmClearHistory &&
-    typeof document !== "undefined" &&
-    createPortal(
-      <div
-        className="overlay app-dialog-overlay"
-        role="presentation"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) setConfirmClearHistory(false);
-        }}
-      >
-        <div
-          className="modal app-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reliab-stall-history-clear-title"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <header className="modal-head">
-            <h2
-              id="reliab-stall-history-clear-title"
-              className="modal-title"
-            >
-              {t("reliability.timeline.clearConfirmTitle")}
-            </h2>
-            <button
-              type="button"
-              className="icon-btn modal-close"
-              onClick={() => setConfirmClearHistory(false)}
-              aria-label={t("common.cancel")}
-            >
-              <IconClose size={16} />
-            </button>
-          </header>
-          <div className="app-dialog__form">
-            <p className="app-dialog__msg">
-              {t("reliability.timeline.clearConfirmMessage")}
-            </p>
-            <div className="app-dialog__actions modal-actions">
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => setConfirmClearHistory(false)}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                className="btn btn--danger"
-                onClick={doClearHistory}
-              >
-                {t("reliability.timeline.clearConfirmAction")}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>,
-      document.body,
-    );
 
 
   const clearAuditPortal =

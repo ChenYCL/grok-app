@@ -350,42 +350,32 @@ const WEIXIN_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.weixin.tokenHelp",
-    placeholderKey: "settings.remoteIm.weixin.tokenPlaceholder",
   },
   {
     key: "base_url",
     labelKey: "settings.remoteIm.field.baseUrl",
     control: "text",
     section: "advanced",
-    helpKey: "settings.remoteIm.weixin.baseUrlHelp",
-    placeholderKey: "settings.remoteIm.weixin.baseUrlPlaceholder",
   },
   {
     key: "cdn_base_url",
     labelKey: "settings.remoteIm.field.cdnBaseUrl",
     control: "text",
     section: "advanced",
-    helpKey: "settings.remoteIm.weixin.cdnBaseHelp",
   },
-  {
-    ...ACL_ALLOW_FROM,
-    helpKey: "settings.remoteIm.weixin.allowFromHelp",
-  },
+  ACL_ALLOW_FROM,
   {
     key: "account_id",
     labelKey: "settings.remoteIm.field.accountId",
     control: "text",
     section: "options",
     defaultValue: "default",
-    helpKey: "settings.remoteIm.weixin.accountIdHelp",
   },
   {
     key: "route_tag",
     labelKey: "settings.remoteIm.field.routeTag",
     control: "text",
     section: "advanced",
-    helpKey: "settings.remoteIm.weixin.routeTagHelp",
   },
   {
     key: "long_poll_timeout_ms",
@@ -393,20 +383,14 @@ const WEIXIN_FIELDS: ChannelSchema["fields"] = [
     control: "number",
     section: "advanced",
     defaultValue: 35000,
-    helpKey: "settings.remoteIm.weixin.longPollHelp",
   },
   {
     key: "chat_id",
     labelKey: "settings.remoteIm.field.chatId",
     control: "text",
     section: "options",
-    helpKey: "settings.remoteIm.weixin.chatIdHelp",
   },
-  {
-    ...PROXY,
-    helpKey: "settings.remoteIm.weixin.proxyHelp",
-    placeholderKey: "settings.remoteIm.weixin.proxyPlaceholder",
-  },
+  PROXY,
 ];
 
 const TELEGRAM_FIELDS: ChannelSchema["fields"] = [
@@ -460,8 +444,6 @@ const SLACK_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.slack.botTokenHelp",
-    placeholderKey: "settings.remoteIm.slack.botTokenPlaceholder",
   },
   {
     key: "app_token",
@@ -470,13 +452,8 @@ const SLACK_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.slack.appTokenHelp",
-    placeholderKey: "settings.remoteIm.slack.appTokenPlaceholder",
   },
-  {
-    ...ACL_ALLOW_FROM,
-    helpKey: "settings.remoteIm.slack.allowFromHelp",
-  },
+  ACL_ALLOW_FROM,
 ];
 
 const DISCORD_FIELDS: ChannelSchema["fields"] = [
@@ -487,21 +464,10 @@ const DISCORD_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.discord.tokenHelp",
-    placeholderKey: "settings.remoteIm.discord.tokenPlaceholder",
   },
-  {
-    ...ACL_ALLOW_FROM,
-    helpKey: "settings.remoteIm.discord.allowFromHelp",
-  },
-  {
-    ...THREAD_ISOLATION,
-    helpKey: "settings.remoteIm.discord.threadHelp",
-  },
-  {
-    ...PROGRESS_STYLE,
-    helpKey: "settings.remoteIm.discord.progressHelp",
-  },
+  ACL_ALLOW_FROM,
+  THREAD_ISOLATION,
+  PROGRESS_STYLE,
 ];
 
 const MATRIX_FIELDS: ChannelSchema["fields"] = [
@@ -511,8 +477,6 @@ const MATRIX_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
-    helpKey: "settings.remoteIm.matrix.homeserverHelp",
-    placeholderKey: "settings.remoteIm.matrix.homeserverPlaceholder",
   },
   {
     key: "access_token",
@@ -521,35 +485,26 @@ const MATRIX_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.matrix.tokenHelp",
-    placeholderKey: "settings.remoteIm.matrix.tokenPlaceholder",
   },
   {
     key: "user_id",
     labelKey: "settings.remoteIm.field.userId",
     control: "text",
     section: "options",
-    helpKey: "settings.remoteIm.matrix.userIdHelp",
-    placeholderKey: "settings.remoteIm.matrix.userIdPlaceholder",
   },
   {
     key: "device_id",
     labelKey: "settings.remoteIm.field.deviceId",
     control: "text",
     section: "advanced",
-    helpKey: "settings.remoteIm.matrix.deviceIdHelp",
   },
-  {
-    ...ACL_ALLOW_FROM,
-    helpKey: "settings.remoteIm.matrix.allowFromHelp",
-  },
+  ACL_ALLOW_FROM,
   {
     key: "auto_join",
     labelKey: "settings.remoteIm.field.autoJoin",
     control: "checkbox",
     section: "options",
     defaultValue: true,
-    helpKey: "settings.remoteIm.matrix.autoJoinHelp",
   },
   {
     key: "auto_verify",
@@ -557,7 +512,6 @@ const MATRIX_FIELDS: ChannelSchema["fields"] = [
     control: "checkbox",
     section: "options",
     defaultValue: true,
-    helpKey: "settings.remoteIm.matrix.autoVerifyHelp",
   },
   {
     key: "cross_signing_password",
@@ -565,25 +519,16 @@ const MATRIX_FIELDS: ChannelSchema["fields"] = [
     control: "password",
     section: "advanced",
     secret: true,
-    helpKey: "settings.remoteIm.matrix.crossSigningHelp",
   },
-  {
-    ...SHARED_SESSION,
-    helpKey: "settings.remoteIm.matrix.shareSessionHelp",
-  },
+  SHARED_SESSION,
   {
     key: "group_reply_all",
     labelKey: "settings.remoteIm.field.groupReplyAll",
     control: "checkbox",
     section: "options",
     defaultValue: false,
-    helpKey: "settings.remoteIm.matrix.groupReplyHelp",
   },
-  {
-    ...PROXY,
-    helpKey: "settings.remoteIm.matrix.proxyHelp",
-    placeholderKey: "settings.remoteIm.matrix.proxyPlaceholder",
-  },
+  PROXY,
 ];
 
 const QQ_FIELDS: ChannelSchema["fields"] = [
@@ -593,8 +538,6 @@ const QQ_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
-    helpKey: "settings.remoteIm.qq.wsUrlHelp",
-    placeholderKey: "settings.remoteIm.qq.wsUrlPlaceholder",
   },
   {
     key: "token",
@@ -602,13 +545,8 @@ const QQ_FIELDS: ChannelSchema["fields"] = [
     control: "password",
     section: "bind",
     secret: true,
-    helpKey: "settings.remoteIm.qq.tokenHelp",
-    placeholderKey: "settings.remoteIm.qq.tokenPlaceholder",
   },
-  {
-    ...ACL_ALLOW_FROM,
-    helpKey: "settings.remoteIm.qq.allowFromHelp",
-  },
+  ACL_ALLOW_FROM,
 ];
 
 const QQBOT_FIELDS: ChannelSchema["fields"] = [
@@ -618,8 +556,6 @@ const QQBOT_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
-    helpKey: "settings.remoteIm.qqbot.appIdHelp",
-    placeholderKey: "settings.remoteIm.qqbot.appIdPlaceholder",
   },
   {
     key: "app_secret",
@@ -628,21 +564,15 @@ const QQBOT_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.qqbot.appSecretHelp",
-    placeholderKey: "settings.remoteIm.qqbot.appSecretPlaceholder",
   },
   {
     key: "intents",
     labelKey: "settings.remoteIm.field.intents",
     control: "text",
     section: "advanced",
-    helpKey: "settings.remoteIm.qqbot.intentsHelp",
-    placeholderKey: "settings.remoteIm.qqbot.intentsPlaceholder",
+    helpKey: "settings.remoteIm.field.intentsHelp",
   },
-  {
-    ...ACL_ALLOW_FROM,
-    helpKey: "settings.remoteIm.qqbot.allowFromHelp",
-  },
+  ACL_ALLOW_FROM,
 ];
 
 const WEIBO_FIELDS: ChannelSchema["fields"] = [
@@ -652,8 +582,6 @@ const WEIBO_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
-    helpKey: "settings.remoteIm.weibo.appIdHelp",
-    placeholderKey: "settings.remoteIm.weibo.appIdPlaceholder",
   },
   {
     key: "app_secret",
@@ -662,27 +590,19 @@ const WEIBO_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.weibo.appSecretHelp",
   },
-  {
-    ...ACL_ALLOW_FROM,
-    helpKey: "settings.remoteIm.weibo.allowFromHelp",
-  },
+  ACL_ALLOW_FROM,
   {
     key: "token_endpoint",
     labelKey: "settings.remoteIm.field.tokenEndpoint",
     control: "text",
     section: "advanced",
-    helpKey: "settings.remoteIm.weibo.tokenEndpointHelp",
-    placeholderKey: "settings.remoteIm.weibo.tokenEndpointPlaceholder",
   },
   {
     key: "ws_endpoint",
     labelKey: "settings.remoteIm.field.wsEndpoint",
     control: "text",
     section: "advanced",
-    helpKey: "settings.remoteIm.weibo.wsEndpointHelp",
-    placeholderKey: "settings.remoteIm.weibo.wsEndpointPlaceholder",
   },
 ];
 
@@ -757,8 +677,6 @@ const LINE_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.line.channelSecretHelp",
-    placeholderKey: "settings.remoteIm.line.channelSecretPlaceholder",
   },
   {
     key: "channel_access_token",
@@ -767,26 +685,18 @@ const LINE_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.line.accessTokenHelp",
-    placeholderKey: "settings.remoteIm.line.accessTokenPlaceholder",
   },
   {
     key: "port",
     labelKey: "settings.remoteIm.field.port",
     control: "number",
     section: "advanced",
-    defaultValue: 8081,
-    helpKey: "settings.remoteIm.line.portHelp",
-    placeholderKey: "settings.remoteIm.line.portPlaceholder",
   },
   {
     key: "callback_path",
     labelKey: "settings.remoteIm.field.callbackPath",
     control: "text",
     section: "advanced",
-    defaultValue: "/line/callback",
-    helpKey: "settings.remoteIm.line.callbackPathHelp",
-    placeholderKey: "settings.remoteIm.line.callbackPathPlaceholder",
   },
 ];
 
@@ -899,7 +809,7 @@ export const CHANNEL_SCHEMAS: ChannelSchema[] = [
     implemented: true,
     scanSupport: false,
     pasteSupport: true,
-    connectionKey: "settings.remoteIm.conn.gateway",
+    connectionKey: "settings.remoteIm.conn.websocket",
     nameKey: "settings.remoteIm.channel.qqbot",
     fields: QQBOT_FIELDS,
   },

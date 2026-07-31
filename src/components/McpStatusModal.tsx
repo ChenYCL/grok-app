@@ -218,7 +218,6 @@ export function McpStatusModal({
     null,
   );
   const [summaryCopied, setSummaryCopied] = useState(false);
-  const [oauthHelp, setOauthHelp] = useState<OauthHelpTarget | null>(null);
   const [oauthBusy, setOauthBusy] = useState(false);
 
   const [findingQuery, setFindingQuery] = useState("");
@@ -403,10 +402,6 @@ export function McpStatusModal({
     }
   }, [filtered, doctorStatusIndex, tr]);
 
-  const oauthHelpName =
-    oauthHelp?.action.server ||
-    oauthHelp?.status?.name ||
-    tr("mcpModal.oauth.unknownServer");
 
   return (
     <>
