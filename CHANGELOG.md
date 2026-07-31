@@ -15,6 +15,9 @@ See `docs/llm-wiki/release.md`.
 
 - **Long chat virtualizer (PERF-A11Y-PACK / perf)**: history browse no longer expands the continuous window to the tail just because idle force-mount lists the last user/assistant (that mounted hundreds of rows mid-scroll). Force expand is nearby-only while escaped; pin still expands for blank-pin defense. Adaptive viewport-scaled overscan, binary-search range find, rAF-coalesced scroll recompute, and cached cumulative offsets keep long transcripts snappy. Pure helpers + tests in `chatVirtualList`.
 - **Custom provider save stuck on “Saving…” / requires restart** (#376): `providers_upsert` / activate / remove / set-default run file I/O on a blocking pool and recycle warm agents (`provider_route`) so the next message reloads `config.toml` + auth without a full app restart. Settings save uses a wall-clock timeout, always clears busy in `finally`, shows success / soft-fail apply toasts (en/zh/zh-TW), and no longer parks live agents via `sessionDisconnect` (which kept stale OIDC in memory). Pure `providerSave` helpers + tests.
+- **MCP config.toml parser**: an unclosed multi-line `args = [` no longer silently swallows the next `[mcp_servers.*]` table (whole server used to disappear); array end detection is now string-literal-aware, so `]` inside a quoted arg (e.g. `"some]thing"`) no longer truncates the array
+- **Wallpaper gallery**: `is_gallery_media_url` now accepts all download-allowlisted hosts (`abs.twimg.com`, `filesystem.site`) — legit Imagine/CDN images were silently filtered out before display
+- **Wallpaper URL normalize**: legacy twimg `:thumb/:small/:medium/:large` suffixes are normalized to `:orig` again (the replacement branch was unreachable dead code after `Url::parse` succeeded)
 
 ### Added
 
@@ -172,10 +175,11 @@ See `docs/llm-wiki/release.md`.
 - **Hooks try-run**: Settings → Extensions → Hooks can **real-run** a script under `~/.grok/hooks` or project `.grok/hooks` only (host `hooks_try_run`, optional JSON stdin, timeout, redacted stdout/stderr); paths outside hooks dirs are refused; `ok` only on exit 0
 - **Hooks validate pro**: try-run / stdin **Validate** show classified outcomes (path refused, timeout, non-zero exit, invalid JSON, …) with actionable hints in a **GlassModal** result (no `window.confirm`); pure `hooksValidate` helpers + tests; en/zh/zh-TW
 
-### Fixed
-
-- CLI install missing SHA-256 (#227) · app.css rewind/fork selectors (#259)
-- **Multi-turn chat scroll jank (#280)**: free-scroll node-rail highlight no longer `setState`s the transcript parent each frame; virtual-list `measureRef` callbacks are stable per index (stops ResizeObserver thrash); idle force-mount uses transcript indices only; rail `scrollIntoView` is instant
+#### X Evidence Rail (MVP)
+- **X 证据轨** backend (`x_evidence.rs`, design: `docs/features/x-search.md`): `x_evidence_search` searches X via headless Grok CLI and persists every post as a local **evidence row** (sqlite `{app_data}/x-evidence/evidence.db`) with a stable `evidence_id`; posts without a canonical `x.com/…/status/…` URL are stored but flagged `verified=false` — hallucinated links never pass as evidence
+- **Local evidence bus**: `x_evidence_list` (filter by session tag / query / author) + `x_evidence_get` (by ids) so later agent turns re-read evidence without re-searching or losing citations
+- **Quote pack**: `x_quote_pack` renders evidence ids into a paste-ready markdown pack saved under `{app_data}/x-evidence/packs/*.md` (unverified items clearly marked); write-to-X path intentionally absent
+- Frontend API wrappers in `src/lib/api.ts` (`xEvidenceSearch` / `xEvidenceList` / `xEvidenceGet` / `xQuotePack`)
 
 **中文 · 新增（按域）**
 
@@ -236,11 +240,15 @@ See `docs/llm-wiki/release.md`.
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**权限规则试算**（输入工具调用预览 allow/deny/ask，不写配置）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**记忆正文搜索**（`GROK_HOME/memory` 路径限定 + 上限；脱敏摘录；打开/显示）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**ACP 服务器健康检查**（解析/TCP 探测/状态芯片/blur 校验；地址变更 soft-respawn）
+- **X 证据轨（MVP）**：`x_evidence_search` 经 headless Grok CLI 搜 X 并逐条落库为本地证据行（sqlite，稳定 `evidence_id`，无合法 status 链接标 `verified=false`）；`x_evidence_list` / `x_evidence_get` 本地证据总线跨回合复用；`x_quote_pack` 生成可粘贴 markdown 引用包（设计文档 `docs/features/x-search.md`；不含发帖写路径）
 
 
 **中文 · 修复**
 
 - CLI SHA-256（#227）；CSS（#259）；多轮对话滚动卡顿（#280）
+- **MCP config.toml 解析**：多行 `args = [` 漏闭合不再吞掉下一个 `[mcp_servers.*]` 表头（整个 server 曾被静默丢弃）；数组结尾判定改为字符串感知，引号内的 `]` 不再截断参数
+- **壁纸画廊**：`is_gallery_media_url` 补齐下载白名单主机（`abs.twimg.com`、`filesystem.site`），合法 Imagine/CDN 图不再被静默过滤
+- **壁纸 URL 归一**：twimg 老式 `:thumb/:small/:medium/:large` 后缀恢复归一为 `:orig`（原替换分支在 `Url::parse` 成功后不可达）
 
 
 ## [0.2.2] - 2026-07-30

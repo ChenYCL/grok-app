@@ -317,20 +317,29 @@ pub fn parse_mcp_servers_from_toml(text: &str) -> Vec<McpServerDef> {
 
     for line in text.lines() {
         let trimmed = line.trim();
-        if let Some(ref mut buf) = args_buf {
-            buf.push(' ');
-            buf.push_str(trimmed);
-            if trimmed.contains(']') {
-                let joined = args_buf.take().unwrap_or_default();
-                if let Some(name) = current.as_ref() {
-                    if let Some(def) = by_name.get_mut(name) {
-                        if let Some(arr) = parse_toml_string_array(&joined) {
-                            def.args = Some(arr);
+        if args_buf.is_some() {
+            // A table header while accumulating means the previous multi-line
+            // args never closed — drop the malformed buffer and let the header
+            // logic below process this line, instead of silently eating it
+            // (which used to lose whole servers).
+            if trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.contains('"') && !trimmed.contains('\'') {
+                args_buf = None;
+            } else {
+                let buf = args_buf.as_mut().expect("checked is_some");
+                buf.push(' ');
+                buf.push_str(trimmed);
+                if toml_array_closed(buf) {
+                    let joined = args_buf.take().unwrap_or_default();
+                    if let Some(name) = current.as_ref() {
+                        if let Some(def) = by_name.get_mut(name) {
+                            if let Some(arr) = parse_toml_string_array(&joined) {
+                                def.args = Some(arr);
+                            }
                         }
                     }
                 }
+                continue;
             }
-            continue;
         }
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
@@ -408,7 +417,7 @@ pub fn parse_mcp_servers_from_toml(text: &str) -> Vec<McpServerDef> {
                 def.enabled = parse_toml_bool(val_raw);
             }
             "args" => {
-                if val_raw.contains('[') && !val_raw.contains(']') {
+                if val_raw.contains('[') && !toml_array_closed(val_raw) {
                     args_buf = Some(val_raw.to_string());
                 } else if let Some(arr) = parse_toml_string_array(val_raw) {
                     def.args = Some(arr);
@@ -466,20 +475,49 @@ fn parse_toml_bool(raw: &str) -> Option<bool> {
     }
 }
 
+/// Whether an `args = [ …` buffer (single line or multi-line-joined) already
+/// contains its closing `]` **outside** any string literal. A `]` inside a
+/// quoted element (e.g. `"some]thing"`) must not terminate the array.
+fn toml_array_closed(buf: &str) -> bool {
+    let Some(start) = buf.find('[') else {
+        return false;
+    };
+    let mut in_str: Option<char> = None;
+    let mut escape = false;
+    for ch in buf[start + 1..].chars() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if let Some(q) = in_str {
+            if ch == '\\' {
+                escape = true;
+            } else if ch == q {
+                in_str = None;
+            }
+            continue;
+        }
+        match ch {
+            '"' | '\'' => in_str = Some(ch),
+            ']' => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Parse a single-line or multi-line-joined TOML string array: `["a", "b"]`.
+/// Stops at the first `]` outside a string literal so quoted elements may
+/// contain `]` without truncating the array.
 fn parse_toml_string_array(raw: &str) -> Option<Vec<String>> {
     let s = raw.trim();
     let start = s.find('[')?;
-    let end = s.rfind(']')?;
-    if end <= start {
-        return None;
-    }
-    let inner = &s[start + 1..end];
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut in_str: Option<char> = None;
     let mut escape = false;
-    for ch in inner.chars() {
+    let mut closed = false;
+    for ch in s[start + 1..].chars() {
         if escape {
             cur.push(ch);
             escape = false;
@@ -501,9 +539,15 @@ fn parse_toml_string_array(raw: &str) -> Option<Vec<String>> {
         }
         match ch {
             '"' | '\'' => in_str = Some(ch),
-            ',' | ' ' | '\t' | '\n' | '\r' => {}
+            ']' => {
+                closed = true;
+                break;
+            }
             _ => {}
         }
+    }
+    if !closed {
+        return None;
     }
     Some(out)
 }
@@ -1653,6 +1697,48 @@ enabled = true
         assert_eq!(a.len(), 2);
         assert!(a.iter().any(|v| v["name"] == "chrome-devtools"));
         assert!(a.iter().any(|v| v["name"] == "cloudflare-api" && v["type"] == "http"));
+    }
+
+    #[test]
+    fn parse_mcp_servers_from_toml_recovers_from_unclosed_args() {
+        // alpha 的多行 args 漏了 `]` — beta 表头不能被当成 args 续行吞掉。
+        let raw = r#"
+[mcp_servers.alpha]
+command = "npx"
+args = [
+    "-y",
+    "alpha-mcp"
+
+[mcp_servers.beta]
+command = "node"
+args = ["server.js"]
+
+[mcp_servers.gamma]
+command = "python"
+args = ["-m", "gamma"]
+"#;
+        let defs = parse_mcp_servers_from_toml(raw);
+        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "beta", "gamma"], "{defs:?}");
+        let beta = defs.iter().find(|d| d.name == "beta").unwrap();
+        assert_eq!(
+            beta.args.as_ref().map(|a| a.as_slice()),
+            Some(["server.js".to_string()].as_slice())
+        );
+        // alpha 的坏 buffer 被丢弃，不能吃到 beta 的 args。
+        let alpha = defs.iter().find(|d| d.name == "alpha").unwrap();
+        assert_ne!(
+            alpha.args.as_ref().map(|a| a.as_slice()),
+            Some(["server.js".to_string()].as_slice())
+        );
+    }
+
+    #[test]
+    fn parse_toml_string_array_bracket_inside_string() {
+        let arr = parse_toml_string_array(r#"["-y", "some]thing", "last"]"#).unwrap();
+        assert_eq!(arr, vec!["-y", "some]thing", "last"]);
+        // 未闭合数组（字符串外无 `]`）→ None，而不是截断。
+        assert!(parse_toml_string_array(r#"["-y", "open"#).is_none());
     }
 
     #[test]
