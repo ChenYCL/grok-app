@@ -2928,8 +2928,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.cmd.project": "列出 / 綁定已信任專案（新會話）",
   "settings.remoteIm.cmd.resume": "列出 / 恢復 App 歷史會話",
   "settings.remoteIm.cmd.new": "新會話，保持專案",
-  "settings.remoteIm.cmd.status": "查看绑定状态",
-  "settings.remoteIm.cmd.help": "說明",
+  "settings.remoteIm.cmd.status": "查看綁定狀態",
+  "settings.remoteIm.cmd.help": "歡迎與命令說明",
+  "settings.remoteIm.cmd.whoami": "查看發送者 id",
+  "settings.remoteIm.cmd.stop": "中斷目前任務",
+  "settings.remoteIm.bridge.telegramNativeCommands":
+    "Telegram：測試連線或 Bridge 啟動後，在聊天輸入 / 即可喚起原生命令選單（setMyCommands）。",
+  "settings.remoteIm.field.telegramTokenHelp":
+    "從 @BotFather 取得。連線時會自動註冊 /start /help /p /r /new /status /whoami /stop 到 Telegram 原生 / 選單。",
   "settings.remoteIm.channel.feishu": "飛書",
   "settings.remoteIm.channel.lark": "Lark",
   "settings.remoteIm.channel.dingtalk": "釘釘",

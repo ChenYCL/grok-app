@@ -284,6 +284,10 @@ export function RemoteImOverview({
           </div>
           <ul className="rim-help-list">
             <li>
+              <code>/start</code> · <code>/help</code> —{" "}
+              {t("settings.remoteIm.cmd.help")}
+            </li>
+            <li>
               <code>/p</code> — {t("settings.remoteIm.cmd.project")}
             </li>
             <li>
@@ -296,9 +300,15 @@ export function RemoteImOverview({
               <code>/status</code> — {t("settings.remoteIm.cmd.status")}
             </li>
             <li>
-              <code>/help</code> — {t("settings.remoteIm.cmd.help")}
+              <code>/whoami</code> — {t("settings.remoteIm.cmd.whoami")}
+            </li>
+            <li>
+              <code>/stop</code> — {t("settings.remoteIm.cmd.stop")}
             </li>
           </ul>
+          <div className="settings-row__desc" style={{ marginTop: 8 }}>
+            {t("settings.remoteIm.bridge.telegramNativeCommands")}
+          </div>
         </div>
       </div>
     </div>

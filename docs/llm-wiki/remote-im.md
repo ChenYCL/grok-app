@@ -188,6 +188,7 @@
 
 | 命令 | 行为 |
 |------|------|
+| `/start` `/help` | 欢迎与命令帮助（Telegram 首开默认发 `/start`） |
 | `/p` `/project` | 项目列表：A 档卡片 / C 档编号菜单 |
 | `/p <名\|序号>` | 直接绑定项目 → **mode=new** |
 | `/r` `/resume` | 当前项目历史会话列表（App sessions_index） |
@@ -197,6 +198,8 @@
 | `/stop` | 中断 turn |
 | `/whoami` | 平台 user id |
 | `0` / 取消 | 退出编号选择模式 |
+
+Telegram：启动 / 测试连接时 `setMyCommands` 注册上表到原生 **`/` 菜单**（见 §6.5）。
 
 规则：
 
@@ -373,6 +376,26 @@ Doctor 折叠区可提供「复制调试命令」给高级用户。
 | 群话题隔离 | （thread 行为说明 + 可选配置） | Cb/Help | | 按 cc 默认 |
 
 引导：@BotFather `/newbot` → 复制 token。可选「打开 BotFather 说明」外链。
+
+#### 原生命令菜单（Bot API `setMyCommands`）
+
+Bridge **启动**与 **测试连接成功** 时自动调用 `setMyCommands`，在 Telegram 输入框的 **`/` 菜单** 中展示控制平面命令（与 §4 对齐）：
+
+| 命令 | 说明 |
+|------|------|
+| `/start` · `/help` | 欢迎 / 帮助 |
+| `/p` · `/project` | 列/绑已信任项目 |
+| `/r` · `/resume` | 列/恢复会话 |
+| `/new` | 新会话（保持项目） |
+| `/status` | 状态快照 |
+| `/whoami` | 发送者 id |
+| `/stop` | 中断当前 turn |
+
+实现要点：
+
+- 默认语言（英文描述）+ `zh-hans` / `zh`（中文描述）各注册一份  
+- 入站解析兼容群聊形态 **`/cmd@BotUsername`** 与 `bot_command` entity  
+- 群聊中带 `bot_command` entity 的消息视为已 @ 机器人（满足「群聊需要 @」策略时的原生命令路径）
 
 ---
 

@@ -381,6 +381,7 @@ const TELEGRAM_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.field.telegramTokenHelp",
   },
   ACL_ALLOW_FROM,
   PROXY,

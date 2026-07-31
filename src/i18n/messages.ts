@@ -3032,7 +3032,13 @@ const en = {
   "settings.remoteIm.cmd.resume": "List / resume an App history session",
   "settings.remoteIm.cmd.new": "New session, keep project",
   "settings.remoteIm.cmd.status": "Show binding status",
-  "settings.remoteIm.cmd.help": "Show help",
+  "settings.remoteIm.cmd.help": "Welcome & command help",
+  "settings.remoteIm.cmd.whoami": "Show your sender id",
+  "settings.remoteIm.cmd.stop": "Cancel the current turn",
+  "settings.remoteIm.bridge.telegramNativeCommands":
+    "Telegram: after Test connection or Bridge start, type / in chat to open the native bot command menu (setMyCommands).",
+  "settings.remoteIm.field.telegramTokenHelp":
+    "From @BotFather. On connect we register /start /help /p /r /new /status /whoami /stop in Telegram’s native / menu.",
   "settings.remoteIm.channel.feishu": "Feishu",
   "settings.remoteIm.channel.lark": "Lark",
   "settings.remoteIm.channel.dingtalk": "DingTalk",
@@ -5984,7 +5990,13 @@ const zh: Record<MessageKey, string> = {
   "settings.remoteIm.cmd.resume": "列出 / 恢复 App 历史会话",
   "settings.remoteIm.cmd.new": "新会话，保持项目",
   "settings.remoteIm.cmd.status": "查看绑定状态",
-  "settings.remoteIm.cmd.help": "帮助",
+  "settings.remoteIm.cmd.help": "欢迎与命令帮助",
+  "settings.remoteIm.cmd.whoami": "查看发送者 id",
+  "settings.remoteIm.cmd.stop": "中断当前任务",
+  "settings.remoteIm.bridge.telegramNativeCommands":
+    "Telegram：测试连接或 Bridge 启动后，在聊天输入 / 即可唤起原生命令菜单（setMyCommands）。",
+  "settings.remoteIm.field.telegramTokenHelp":
+    "从 @BotFather 获取。连接时会自动注册 /start /help /p /r /new /status /whoami /stop 到 Telegram 原生 / 菜单。",
   "settings.remoteIm.channel.feishu": "飞书",
   "settings.remoteIm.channel.lark": "Lark",
   "settings.remoteIm.channel.dingtalk": "钉钉",
