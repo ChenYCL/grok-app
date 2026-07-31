@@ -4472,6 +4472,65 @@ const en = {
   "ext.market.badge.mcp": "MCP",
   "ext.market.searchPlaceholder": "Search plugins…",
   "ext.market.error": "Marketplace action failed",
+  "ext.market.clearFilters": "Clear filters",
+  "ext.market.openRuntimeCli": "Open Runtime",
+  "ext.market.emptyCli": "Marketplace needs the Grok CLI",
+  "ext.market.emptyCliHint":
+    "Install or path the Grok CLI in Settings → Runtime, then refresh the catalog.",
+  "ext.market.emptyCliTooOld": "CLI too old for marketplace catalog",
+  "ext.market.emptyCliTooOldHint":
+    "Update Grok CLI (`grok update`) and fully restart the app, then refresh.",
+  "ext.market.emptyOffline": "Could not reach marketplace catalogs",
+  "ext.market.emptyOfflineHint":
+    "Check your network connection, then retry loading the catalog.",
+  "ext.market.emptyError": "Could not load marketplace catalog",
+  "ext.market.emptyNoSourcesHint":
+    "Add a git marketplace source below (xAI Official is recommended).",
+  "ext.market.emptyCatalog": "No available plugins in configured sources",
+  "ext.market.emptyCatalogHint":
+    "Refresh sources or switch filters. Installed plugins stay under the Plugins tab.",
+  "ext.market.emptyFilterHint":
+    "No plugins from this marketplace source. Try All sources or another chip.",
+  "ext.market.emptyQueryHint":
+    "No plugins match this search. Clear the query or try another keyword.",
+  "ext.market.err.cliMissing": "CLI missing",
+  "ext.market.err.cliTooOld": "CLI too old",
+  "ext.market.err.network": "Network error",
+  "ext.market.err.offline": "Offline",
+  "ext.market.err.timeout": "Timed out",
+  "ext.market.err.notFound": "Not found",
+  "ext.market.err.alreadyInstalled": "Already installed",
+  "ext.market.err.permission": "Permission denied",
+  "ext.market.err.auth": "Auth required",
+  "ext.market.err.invalidSource": "Invalid source",
+  "ext.market.err.parse": "Parse error",
+  "ext.market.err.hostOnly": "Desktop host required",
+  "ext.market.err.hostError": "Host error",
+  "ext.market.err.other": "Error",
+  "ext.market.err.hint.cliMissing":
+    "Install or path the Grok CLI in Settings → Runtime, then retry.",
+  "ext.market.err.hint.cliTooOld":
+    "Update Grok CLI (`grok update`) and fully restart the app, then retry.",
+  "ext.market.err.hint.network":
+    "Check your connection and refresh the catalog.",
+  "ext.market.err.hint.offline":
+    "You appear offline — reconnect and refresh the catalog.",
+  "ext.market.err.hint.timeout": "The CLI timed out — retry or refresh sources.",
+  "ext.market.err.hint.notFound":
+    "Plugin or marketplace source was not found — check the name.",
+  "ext.market.err.hint.alreadyInstalled":
+    "Plugin is already installed — use Reinstall to force.",
+  "ext.market.err.hint.permission":
+    "Permission denied — check filesystem or agent trust.",
+  "ext.market.err.hint.auth": "Sign in or fix credentials, then retry.",
+  "ext.market.err.hint.invalidSource":
+    "Use a marketplace name, git URL, owner/repo, or local path.",
+  "ext.market.err.hint.parse":
+    "Catalog JSON could not be parsed — refresh or update the CLI.",
+  "ext.market.err.hint.hostOnly":
+    "Open the desktop app (Tauri) to manage plugins.",
+  "ext.market.err.hint.hostError": "Host invoke failed — see detail.",
+  "ext.market.err.hint.other": "Unexpected result — see detail and retry.",
 
   // Extensions → Agents (definition files under ~/.grok/agents + project)
   "ext.agents.title": "Agents",
@@ -9903,6 +9962,57 @@ const zh: Record<MessageKey, string> = {
   "ext.market.badge.mcp": "MCP",
   "ext.market.searchPlaceholder": "搜索插件…",
   "ext.market.error": "市场操作失败",
+  "ext.market.clearFilters": "清除筛选",
+  "ext.market.openRuntimeCli": "打开运行时",
+  "ext.market.emptyCli": "市场需要 Grok CLI",
+  "ext.market.emptyCliHint":
+    "请在 设置 → 运行时 安装或指定 Grok CLI 路径，然后刷新目录。",
+  "ext.market.emptyCliTooOld": "CLI 过旧，无法加载市场目录",
+  "ext.market.emptyCliTooOldHint":
+    "请更新 Grok CLI（`grok update`）并完全重启应用后刷新。",
+  "ext.market.emptyOffline": "无法访问市场目录",
+  "ext.market.emptyOfflineHint": "请检查网络连接后重试加载目录。",
+  "ext.market.emptyError": "无法加载市场目录",
+  "ext.market.emptyNoSourcesHint":
+    "请在下方添加 git 市场源（推荐 xAI Official）。",
+  "ext.market.emptyCatalog": "已配置源中暂无可用插件",
+  "ext.market.emptyCatalogHint":
+    "可刷新源或切换筛选。已安装插件仍在「插件」标签中。",
+  "ext.market.emptyFilterHint":
+    "该市场源没有插件。可尝试「全部来源」或其他筛选。",
+  "ext.market.emptyQueryHint": "没有匹配此搜索的插件。可清除搜索词或换关键词。",
+  "ext.market.err.cliMissing": "找不到 CLI",
+  "ext.market.err.cliTooOld": "CLI 过旧",
+  "ext.market.err.network": "网络错误",
+  "ext.market.err.offline": "离线",
+  "ext.market.err.timeout": "超时",
+  "ext.market.err.notFound": "未找到",
+  "ext.market.err.alreadyInstalled": "已安装",
+  "ext.market.err.permission": "权限不足",
+  "ext.market.err.auth": "需要登录",
+  "ext.market.err.invalidSource": "源无效",
+  "ext.market.err.parse": "解析错误",
+  "ext.market.err.hostOnly": "需要桌面 Host",
+  "ext.market.err.hostError": "Host 错误",
+  "ext.market.err.other": "错误",
+  "ext.market.err.hint.cliMissing":
+    "请在 设置 → 运行时 安装或指定 Grok CLI 后重试。",
+  "ext.market.err.hint.cliTooOld":
+    "请更新 Grok CLI（`grok update`）并完全重启应用后重试。",
+  "ext.market.err.hint.network": "请检查网络并刷新目录。",
+  "ext.market.err.hint.offline": "当前似乎离线 — 恢复网络后刷新目录。",
+  "ext.market.err.hint.timeout": "CLI 超时 — 可重试或刷新源。",
+  "ext.market.err.hint.notFound": "未找到插件或市场源 — 请检查名称。",
+  "ext.market.err.hint.alreadyInstalled":
+    "插件已安装 — 可用「重新安装」强制刷新。",
+  "ext.market.err.hint.permission": "权限不足 — 请检查文件系统或 Agent 信任。",
+  "ext.market.err.hint.auth": "请登录或修复凭据后重试。",
+  "ext.market.err.hint.invalidSource":
+    "请使用市场名称、git URL、owner/repo 或本地路径。",
+  "ext.market.err.hint.parse": "目录 JSON 无法解析 — 请刷新或更新 CLI。",
+  "ext.market.err.hint.hostOnly": "请在桌面应用（Tauri）中管理插件。",
+  "ext.market.err.hint.hostError": "Host 调用失败 — 见详情。",
+  "ext.market.err.hint.other": "意外结果 — 见详情后重试。",
 
   "ext.agents.title": "Agents",
   "ext.agents.desc":

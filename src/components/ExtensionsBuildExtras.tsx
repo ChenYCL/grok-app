@@ -44,7 +44,6 @@ import {
   availablePluginDetailModel,
   availablePluginMetaLine,
   availablePluginRowKey,
-  clearPluginRowError,
   enrichAvailableFromComponents,
   filterAvailableByMarketplace,
   filterAvailablePlugins,
@@ -55,7 +54,6 @@ import {
   marketplaceSourceLabel,
   normalizeMarketplaceAddSource,
   pickDefaultMarketplaceFilter,
-  setPluginRowError,
   sortAvailablePluginsByName,
   sortMarketplaceSourcesByName,
   XAI_OFFICIAL_MARKETPLACE,
@@ -64,6 +62,19 @@ import {
   type MarketplaceSourceLike,
   type PluginComponentBadgeKind,
 } from "@/lib/pluginMarketplace";
+import {
+  buildPluginMarketErrorView,
+  clearPluginMarketRowError,
+  formatPluginMarketRowErrorMessage,
+  planPluginMarketEmptyRetry,
+  planPluginMarketRetry,
+  pluginMarketErrorHintKey,
+  pluginMarketErrorTitleKey,
+  pluginMarketLoadIsSoftFail,
+  resolvePluginCatalogEmptyState,
+  setPluginMarketRowError,
+  type PluginMarketRowError,
+} from "@/lib/pluginMarketPro";
 
 export type ExtensionsBuildExtrasProps = {
   locale: Locale;
@@ -73,6 +84,8 @@ export type ExtensionsBuildExtrasProps = {
   mode?: "hooks" | "market" | "agents" | "all";
   /** After plugin install — parent can refresh plugins list. */
   onPluginsChanged?: () => void;
+  /** Navigate to Settings → Runtime when CLI is missing / too old. */
+  onOpenRuntime?: () => void;
   /**
    * Installed plugin names (and optional marketplace) so catalog rows can
    * offer Reinstall and match “already installed” state.
@@ -142,6 +155,7 @@ export function ExtensionsBuildExtras({
   cliFound = true,
   mode = "all",
   onPluginsChanged,
+  onOpenRuntime,
   installedPlugins = [],
 }: ExtensionsBuildExtrasProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -198,9 +212,9 @@ export function ExtensionsBuildExtras({
   const [installTarget, setInstallTarget] =
     useState<AvailablePluginLike | null>(null);
   /** Per-plugin last install/update error (row + detail Retry). */
-  const [installErrors, setInstallErrors] = useState<Record<string, string>>(
-    {},
-  );
+  const [installErrors, setInstallErrors] = useState<
+    Record<string, PluginMarketRowError>
+  >({});
 
   const installedNameSet = useMemo(() => {
     const set = new Set<string>();
@@ -396,10 +410,13 @@ export function ExtensionsBuildExtras({
   }, [newAgentName, newAgentScope, runScaffold]);
 
   const loadMarket = useCallback(async (force = false) => {
-    if (!api.isTauri()) {
+    // Soft-fail: no CLI / non-desktop — never hard-crash the marketplace tab.
+    if (!api.isTauri() || cliMissing) {
       setSources([]);
       setAvailable([]);
       setMarketLoading(false);
+      setMarketError(null);
+      setFromCache(false);
       return;
     }
     setMarketLoading(true);
@@ -430,6 +447,7 @@ export function ExtensionsBuildExtras({
       setSources(result.sources);
       setAvailable(result.available);
       setFromCache(result.fromCache);
+      // Soft-fail capability gaps are presented via empty-state, not only a banner.
       if (result.error) setMarketError(result.error);
 
       // Keep official default when that source exists; otherwise stay on filter chip.
@@ -449,7 +467,7 @@ export function ExtensionsBuildExtras({
     } finally {
       setMarketLoading(false);
     }
-  }, []);
+  }, [cliMissing]);
 
   useEffect(() => {
     if (showHooks) void loadHooks();
@@ -495,6 +513,62 @@ export function ExtensionsBuildExtras({
   );
 
   const hasMore = filteredAvailable.length > visibleAvailable.length;
+
+  /** Honest catalog empty / soft-fail presentation (null when rows visible). */
+  const catalogEmpty = useMemo(
+    () =>
+      resolvePluginCatalogEmptyState({
+        loading: marketLoading,
+        cliFound,
+        error: marketError,
+        sourceCount: sources.length,
+        availableCount: available.length,
+        visibleCount: visibleAvailable.length,
+        marketFilter,
+        query: availQuery,
+      }),
+    [
+      marketLoading,
+      cliFound,
+      marketError,
+      sources.length,
+      available.length,
+      visibleAvailable.length,
+      marketFilter,
+      availQuery,
+    ],
+  );
+
+  /** Classified load error for optional banner (suppress when empty-state owns it). */
+  const marketLoadView = useMemo(() => {
+    if (!marketError?.trim()) return null;
+    return buildPluginMarketErrorView(marketError, "list");
+  }, [marketError]);
+
+  /**
+   * Show a top banner only when:
+   * - empty-state does not already own the same soft/hard story, or
+   * - we have visible rows but a soft residual error (e.g. partial cache).
+   */
+  const showMarketErrorBanner = useMemo(() => {
+    if (!marketLoadView) return false;
+    if (catalogEmpty) {
+      // Empty-state already explains cli/offline/error — skip duplicate hard banner
+      // unless the empty kind is filter/query (load succeeded).
+      if (
+        catalogEmpty.kind === "empty_filter" ||
+        catalogEmpty.kind === "empty_query" ||
+        catalogEmpty.kind === "empty_catalog" ||
+        catalogEmpty.kind === "no_sources" ||
+        catalogEmpty.kind === "loading"
+      ) {
+        // Residual load error with an otherwise empty-but-ok catalog shape.
+        return !catalogEmpty.softFail && !!marketError;
+      }
+      return false;
+    }
+    return true;
+  }, [marketLoadView, catalogEmpty, marketError]);
 
   useEffect(() => {
     setPageLimit(PAGE_SIZE);
@@ -606,19 +680,24 @@ export function ExtensionsBuildExtras({
       target.marketplace,
     );
     setMarketBusy(`inst:${rowKey}`);
+    // Install failures stick to the row — do not escalate soft CLI gaps to a hard global banner.
     setMarketError(null);
     try {
       const res = await api.pluginInstall(source);
       if (res && typeof res === "object" && "ok" in res && res.ok === false) {
         const err =
-          (res as { error?: string; message?: string }).error?.trim() ||
+          (res as { error?: string; message?: string; reason?: string })
+            .error?.trim() ||
           (res as { message?: string }).message?.trim() ||
+          (res as { reason?: string }).reason?.trim() ||
           tr("ext.market.error");
-        setInstallErrors((prev) => setPluginRowError(prev, rowKey, err));
+        setInstallErrors((prev) =>
+          setPluginMarketRowError(prev, rowKey, err, "install"),
+        );
         if (opts?.closeConfirm !== false) setInstallTarget(null);
         return;
       }
-      setInstallErrors((prev) => clearPluginRowError(prev, rowKey));
+      setInstallErrors((prev) => clearPluginMarketRowError(prev, rowKey));
       removeAvailablePluginFromCache(target.name, target.marketplace);
       setAvailable((prev) =>
         prev.filter(
@@ -633,11 +712,60 @@ export function ExtensionsBuildExtras({
       setDetailPlugin(null);
       onPluginsChanged?.();
     } catch (e) {
-      const err = String(e);
-      setInstallErrors((prev) => setPluginRowError(prev, rowKey, err));
+      setInstallErrors((prev) =>
+        setPluginMarketRowError(prev, rowKey, e, "install"),
+      );
       if (opts?.closeConfirm !== false) setInstallTarget(null);
     } finally {
       setMarketBusy(null);
+    }
+  };
+
+  const clearCatalogFilters = () => {
+    setAvailQuery("");
+    setMarketFilter("__all__");
+  };
+
+  const runEmptyRetry = (action: ReturnType<typeof planPluginMarketEmptyRetry>["action"]) => {
+    if (action === "retry_load" || action === "refresh_catalog") {
+      void loadMarket(true);
+      return;
+    }
+    if (action === "clear_filter") {
+      clearCatalogFilters();
+      return;
+    }
+    if (action === "open_runtime" || action === "update_cli") {
+      onOpenRuntime?.();
+    }
+  };
+
+  const rowErrorLabel = (row: PluginMarketRowError): string => {
+    const title = tr(pluginMarketErrorTitleKey(row.kind) as MessageKey);
+    return formatPluginMarketRowErrorMessage(row, {
+      title,
+      includeDetail: row.kind === "other" || row.kind === "host_error",
+    });
+  };
+
+  const rowRetryLabel = (row: PluginMarketRowError): string => {
+    const plan = planPluginMarketRetry(row.kind, "install");
+    if (plan.action === "open_runtime") return tr("ext.error.openRuntime");
+    if (plan.action === "update_cli") return tr("ext.market.openRuntimeCli");
+    if (plan.action === "retry_install" && row.kind === "already_installed") {
+      return tr("ext.market.reinstall");
+    }
+    return tr("ext.market.retry");
+  };
+
+  const runRowRetry = (target: AvailablePluginLike, row: PluginMarketRowError) => {
+    const plan = planPluginMarketRetry(row.kind, "install");
+    if (plan.action === "open_runtime" || plan.action === "update_cli") {
+      onOpenRuntime?.();
+      return;
+    }
+    if (plan.canRetry) {
+      void retryInstall(target);
     }
   };
 
@@ -1156,10 +1284,44 @@ export function ExtensionsBuildExtras({
             </button>
           </h2>
           <div className="settings-card ext-card">
-            {marketError ? (
-              <div className="ext-alert ext-alert--error" role="alert">
-                <div className="ext-alert__title">{tr("ext.market.error")}</div>
-                <p className="ext-alert__body">{marketError}</p>
+            {showMarketErrorBanner && marketLoadView ? (
+              <div
+                className={
+                  "ext-alert" +
+                  (marketLoadView.softFail ||
+                  pluginMarketLoadIsSoftFail(marketError)
+                    ? " ext-alert--warn"
+                    : " ext-alert--error")
+                }
+                role={marketLoadView.softFail ? "status" : "alert"}
+              >
+                <div className="ext-alert__title">
+                  {tr(pluginMarketErrorTitleKey(marketLoadView.kind) as MessageKey)}
+                </div>
+                <p className="ext-alert__body">
+                  {tr(pluginMarketErrorHintKey(marketLoadView.kind) as MessageKey)}
+                </p>
+                {marketLoadView.detail ? (
+                  <p className="ext-alert__detail">{marketLoadView.detail}</p>
+                ) : null}
+                {marketLoadView.softFail && onOpenRuntime ? (
+                  <button
+                    type="button"
+                    className="btn btn--solid ext-alert__cta"
+                    onClick={onOpenRuntime}
+                  >
+                    {tr("ext.error.openRuntime")}
+                  </button>
+                ) : !marketLoadView.softFail ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost ext-alert__cta"
+                    disabled={marketLoading || !!marketBusy}
+                    onClick={() => void loadMarket(true)}
+                  >
+                    {tr("ext.market.retry")}
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
@@ -1190,7 +1352,7 @@ export function ExtensionsBuildExtras({
                 className="settings-input ext-market-browse__search"
                 value={availQuery}
                 placeholder={tr("ext.market.searchPlaceholder")}
-                disabled={marketLoading}
+                disabled={marketLoading || cliMissing}
                 autoComplete="off"
                 spellCheck={false}
                 onChange={(e) => setAvailQuery(e.target.value)}
@@ -1200,10 +1362,43 @@ export function ExtensionsBuildExtras({
               ) : null}
             </div>
 
-            {marketLoading ? (
-              <p className="ext-empty">{tr("ext.market.availableLoading")}</p>
-            ) : visibleAvailable.length === 0 ? (
-              <p className="ext-empty">{tr("ext.market.availableEmpty")}</p>
+            {catalogEmpty ? (
+              <div className="ext-empty-cta">
+                <p className="ext-empty-cta__text">
+                  {tr(catalogEmpty.titleKey as MessageKey)}
+                </p>
+                {catalogEmpty.hintKey ? (
+                  <p className="ext-field-hint">
+                    {tr(catalogEmpty.hintKey as MessageKey)}
+                  </p>
+                ) : null}
+                {(() => {
+                  const plan = planPluginMarketEmptyRetry(catalogEmpty);
+                  if (plan.action === "none") return null;
+                  const label =
+                    plan.action === "open_runtime" || plan.action === "update_cli"
+                      ? tr("ext.error.openRuntime")
+                      : plan.action === "clear_filter"
+                        ? tr("ext.market.clearFilters")
+                        : plan.action === "refresh_catalog"
+                          ? tr("ext.market.refreshCatalog")
+                          : tr("ext.market.retry");
+                  const disabled =
+                    plan.action === "open_runtime" || plan.action === "update_cli"
+                      ? !onOpenRuntime
+                      : marketLoading || !!marketBusy;
+                  return (
+                    <button
+                      type="button"
+                      className="btn btn--solid btn--sm"
+                      disabled={disabled}
+                      onClick={() => runEmptyRetry(plan.action)}
+                    >
+                      {label}
+                    </button>
+                  );
+                })()}
+              </div>
             ) : (
               <ul className="ext-list ext-market-browse__list">
                 {visibleAvailable.map((p) => {
@@ -1273,19 +1468,50 @@ export function ExtensionsBuildExtras({
                       </button>
                       {rowError ? (
                         <div
-                          className="ext-item__row-error"
-                          role="alert"
+                          className={
+                            "ext-item__row-error" +
+                            (rowError.softFail ? " ext-item__row-error--soft" : "")
+                          }
+                          role={rowError.softFail ? "status" : "alert"}
                         >
-                          <p className="ext-item__row-error-text">{rowError}</p>
+                          <span
+                            className={
+                              "ext-badge " +
+                              (rowError.softFail
+                                ? "ext-badge--muted"
+                                : "ext-badge--fail")
+                            }
+                          >
+                            {tr(
+                              pluginMarketErrorTitleKey(
+                                rowError.kind,
+                              ) as MessageKey,
+                            )}
+                          </span>
+                          <p className="ext-item__row-error-text">
+                            {rowErrorLabel(rowError)}
+                          </p>
+                          <p className="ext-field-hint">
+                            {tr(
+                              pluginMarketErrorHintKey(
+                                rowError.kind,
+                              ) as MessageKey,
+                            )}
+                          </p>
                           <button
                             type="button"
                             className="btn btn--ghost btn--sm"
-                            disabled={!!marketBusy || cliMissing}
-                            onClick={() => void retryInstall(p)}
+                            disabled={
+                              !!marketBusy ||
+                              (cliMissing &&
+                                planPluginMarketRetry(rowError.kind, "install")
+                                  .action === "retry_install")
+                            }
+                            onClick={() => runRowRetry(p, rowError)}
                           >
                             {busy
                               ? tr("ext.market.installing")
-                              : tr("ext.market.retry")}
+                              : rowRetryLabel(rowError)}
                           </button>
                         </div>
                       ) : null}
@@ -1578,23 +1804,67 @@ export function ExtensionsBuildExtras({
                 {detailPlugin &&
                 installErrors[availablePluginRowKey(detailPlugin)] ? (
                   <div
-                    className="ext-item__row-error ext-item__row-error--detail"
-                    role="alert"
+                    className={
+                      "ext-item__row-error ext-item__row-error--detail" +
+                      (installErrors[availablePluginRowKey(detailPlugin)]
+                        .softFail
+                        ? " ext-item__row-error--soft"
+                        : "")
+                    }
+                    role={
+                      installErrors[availablePluginRowKey(detailPlugin)]
+                        .softFail
+                        ? "status"
+                        : "alert"
+                    }
                   >
+                    <span
+                      className={
+                        "ext-badge " +
+                        (installErrors[availablePluginRowKey(detailPlugin)]
+                          .softFail
+                          ? "ext-badge--muted"
+                          : "ext-badge--fail")
+                      }
+                    >
+                      {tr(
+                        pluginMarketErrorTitleKey(
+                          installErrors[availablePluginRowKey(detailPlugin)]
+                            .kind,
+                        ) as MessageKey,
+                      )}
+                    </span>
                     <p className="ext-item__row-error-text">
-                      {installErrors[availablePluginRowKey(detailPlugin)]}
+                      {rowErrorLabel(
+                        installErrors[availablePluginRowKey(detailPlugin)],
+                      )}
+                    </p>
+                    <p className="ext-field-hint">
+                      {tr(
+                        pluginMarketErrorHintKey(
+                          installErrors[availablePluginRowKey(detailPlugin)]
+                            .kind,
+                        ) as MessageKey,
+                      )}
                     </p>
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"
-                      disabled={!!marketBusy || cliMissing}
-                      onClick={() => void retryInstall(detailPlugin)}
+                      disabled={!!marketBusy}
+                      onClick={() =>
+                        runRowRetry(
+                          detailPlugin,
+                          installErrors[availablePluginRowKey(detailPlugin)],
+                        )
+                      }
                     >
                       {marketBusy ===
                         `inst:${availablePluginRowKey(detailPlugin)}` ||
                       marketBusy === `inst:${detailPlugin.name}`
                         ? tr("ext.market.installing")
-                        : tr("ext.market.retry")}
+                        : rowRetryLabel(
+                            installErrors[availablePluginRowKey(detailPlugin)],
+                          )}
                     </button>
                   </div>
                 ) : null}

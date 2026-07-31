@@ -21684,6 +21684,12 @@ div.composer__input:empty::before {
   border: 1px solid color-mix(in srgb, #e05a5a 28%, transparent);
 }
 
+/* Soft-fail install/list gaps (CLI missing / too old) — warn, not hard red. */
+.ext-item__row-error--soft {
+  background: color-mix(in srgb, var(--warn, #c9a227) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn, #c9a227) 32%, transparent);
+}
+
 .ext-item__row-error--detail {
   margin: 8px 0;
 }
