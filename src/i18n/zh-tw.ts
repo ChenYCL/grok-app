@@ -4170,6 +4170,9 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.honesty.launchAgentTitle": "macOS LaunchAgent 助手",
   "automations.honesty.launchAgentBody":
     "可選：僅在登入與崩潰後啟動完整應用——不是無介面排程守護行程。",
+  "automations.honesty.oneShotTitle": "一次性觸發助手",
+  "automations.honesty.oneShotBody":
+    "完全結束後：使用 --fire-due-schedules（或 fire-due-schedules.sh）啟動應用。最多觸發一個到期任務後退出；無到期任務或 CLI 缺失時軟失敗——不是 KeepAlive 守護行程。",
   "automations.launchAgent.title": "macOS LaunchAgent 助手",
   "automations.launchAgent.desc":
     "可選：在應用資料目錄產生助手腳本，並安裝使用者級 LaunchAgent，在登入時啟動完整 Grok 應用，並在崩潰後重新啟動。不是無介面排程守護行程——任務仍在應用行程內（視窗或系統匣）觸發。",
@@ -4183,6 +4186,22 @@ export const zhTW: Record<MessageKey, string> = {
     "無法開啟助手檔案目錄。可先產生/啟用一次助手，或檢查應用資料目錄權限。",
   "automations.launchAgent.failHonesty":
     "此助手不是背景排程守護行程。即便安裝成功，任務仍只在完整 Grok 應用行程內（視窗或系統匣）觸發。正常結束仍會暫停排程。",
+  "automations.oneshot.title": "一次性觸發已排程任務",
+  "automations.oneshot.desc":
+    "系統匣駐留可在行程存活期間持續檢查。完全結束後，可用 {flag}（應用資料目錄中的助手腳本 {script}）最多觸發一個到期任務（無需完整互動介面），然後退出。",
+  "automations.oneshot.honesty":
+    "不是 KeepAlive 守護行程，也不是持續背景排程。無到期任務、CLI 缺失或專案未信任時軟失敗。不會自動批准工具（不發明 YOLO）。",
+  "automations.oneshot.reveal": "顯示一次性助手檔案",
+  "automations.oneshot.outcome.fired": "一次性助手已觸發到期的已排程任務。",
+  "automations.oneshot.outcome.noneDue":
+    "一次性助手未找到到期任務（無需執行）。",
+  "automations.oneshot.outcome.busy":
+    "一次性助手已略過——目前已有 Agent 回合進行中。",
+  "automations.oneshot.outcome.error":
+    "一次性助手無法觸發（CLI 缺失、專案未信任或連線失敗）。已軟失敗。",
+  "automations.oneshot.outcome.alreadyClaimed":
+    "一次性助手已略過——此到期槽位已在本行程中認領。",
+  "automations.oneshot.outcome.unknown": "一次性助手以未知結果結束。",
   "automations.aiComposerHint":
     "用自然語言描述要做什麼、多久一次——準備好後 Grok 會自動建立已排程任務。",
   "automations.createdToast": "已排程：{title}",

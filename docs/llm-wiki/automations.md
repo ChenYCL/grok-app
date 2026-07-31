@@ -45,7 +45,7 @@
 5. UI 监听 `automation://ran` / `automation://error` 做 toast；**不再**用 WebView `setInterval` 双触发。
 6. 手动「立即执行」仍走前端 `runAutomation`。
 
-### 托盘与「退出后」诚实模型（AUTO-RUNNER + AUTO-HEADLESS-LITE）
+### 托盘与「退出后」诚实模型（AUTO-RUNNER + AUTO-HEADLESS-LITE + A2 one-shot）
 
 | 能力 | 行为 | 不是 |
 |------|------|------|
@@ -53,18 +53,22 @@
 | **Keep tray for schedules**（`keepTrayForSchedules`，默认 on） | 有启用任务时，关窗仍 hide→tray（即使 `closeToTray` 关） | 完全退出后仍跑 |
 | Close to tray | 关窗常驻托盘 | 同上 |
 | **macOS LaunchAgent helper**（可选） | 用户开启后：在 app data 生成脚本+plist，安装用户级 LaunchAgent；登录启动完整 App；**仅崩溃**后 KeepAlive 重启（`SuccessfulExit=false`） | headless daemon；正常 Quit 不强制拉起 |
+| **One-shot fire helper**（A2） | CLI：`grok-app --fire-due-schedules`（或 `GROK_FIRE_DUE_SCHEDULES=1`）；助手脚本 `fire-due-schedules.sh`（与 LaunchAgent 文件同目录，**不**作为 KeepAlive 安装）。启动后 hide→tray，经既有 `fire_due_once` 路径最多触发 **一个**到期任务，回合空闲（软超时）后 **exit 0** | KeepAlive 常驻 daemon；连续 30s tick；自动 YOLO 批准 |
 | Launch at login | 系统登录项重启 App | 同上 |
 
-**AUTO-HEADLESS-LITE（诚实 UI，无假 daemon）**
+**AUTO-HEADLESS-LITE / A2（诚实 UI，无假 daemon）**
 
 | 表面 | 内容 |
 |------|------|
-| 诚实矩阵 | 托盘/窗口 · 完全退出 · LaunchAgent 三行产品真相（`automationsHonestyMatrix`） |
+| 诚实矩阵 | 托盘/窗口 · 完全退出 · LaunchAgent · **One-shot** 四行产品真相（`automationsHonestyMatrix`） |
 | 调度状态行 | Host 是否 running、`lastTickAt`、暂停/风险原因（`deriveAutomationsRunnerSurface`：`process_bound` / `close_exits` / `awaiting_tick` / …） |
+| One-shot 说明 | 托盘驻留 vs 完全退出后一次性触发；flag / 脚本名；soft-fail 无到期 / CLI 缺失（`automationsOneShotHelperSurface`） |
 | LaunchAgent 失败 | 安装/卸载/Reveal **soft-fail**：`GlassModal` + 明细；开关保持上次成功状态；文案重申非守护进程 |
 
+**One-shot 结果 kind**（`FireDueOutcome.kind`，稳定契约）：`fired` · `none_due` · `busy` · `error` · `already_claimed`。
+
 命令：`automation_runner_status` · `schedules_launch_agent_status` / `_set_enabled` / `_reveal_helper`。  
-实现：`automation_runner.rs` · `schedules_launch_agent.rs` · `AutomationsPage` 背景面板 · `src/lib/automationsHeadlessHonesty.ts`。
+实现：`automation_runner.rs`（`fire_due_once` / `start_oneshot`）· `schedules_launch_agent.rs`（生成 `fire-due-schedules.sh`）· `AutomationsPage` 背景面板 · `src/lib/automationsHeadlessHonesty.ts`。
 
 与 Build 的 `/loop`、`scheduler_*` 可并存：用户也可在会话里让 Agent 直接调度；壳层清单是独立 SoT。
 
@@ -97,5 +101,6 @@
 - [x] `automation_runner_status` + 已安排页背景面板（诚实文案；无假 daemon 宣称）
 - [x] 可选 macOS LaunchAgent **助手**（app data 生成；登录/崩溃拉起完整 App；非 headless）
 - [x] **AUTO-HEADLESS-LITE**：诚实矩阵（托盘 vs 退出 vs LaunchAgent）+ runner 状态面（last tick / paused reason）+ LaunchAgent 安装失败 GlassModal soft-fail；纯 helpers + 单测
+- [x] **AUTO-HEADLESS A2 one-shot**：`--fire-due-schedules` / 助手脚本 `fire-due-schedules.sh`；`fire_due_once` 复用 runner 路径；无到期/CLI 软失败；退出码 0（非 KeepAlive）；诚实矩阵 + UI 文案；纯 helpers + 单测
 - [ ] 与 CLI scheduler 双向同步（可选 P2）
-- [ ] 无 UI 进程的真正 headless runner（可选 P2；当前明确不做假宣称）
+- [ ] 无 UI 进程的真正 headless runner（可选 P2；当前明确不做假宣称；A2 仅为 one-shot 助手）

@@ -15,6 +15,7 @@ import {
 import { automationsRunnerBanner } from "@/lib/automationsRunnerPolicy";
 import {
   automationsHonestyMatrix,
+  automationsOneShotHelperSurface,
   deriveAutomationsRunnerSurface,
   launchAgentSoftFail,
   type LaunchAgentSoftFail,
@@ -231,9 +232,13 @@ export function AutomationsPage({
         // unless we already know support (desktop macOS = true from host).
         launchAgentSupported:
           launchAgent == null ? true : !!launchAgent.supported,
+        // One-shot helper is always available on desktop hosts (flag + script).
+        includeOneShot: true,
       }),
     [launchAgent],
   );
+
+  const oneShotSurface = useMemo(() => automationsOneShotHelperSurface(), []);
 
   const onToggleLaunchAgent = async (next: boolean) => {
     setLaunchAgentBusy(true);
@@ -754,6 +759,33 @@ export function AutomationsPage({
               </label>
             </div>
           ) : null}
+
+          {/* AUTO-HEADLESS A2: one-shot helper vs tray residency (not KeepAlive daemon) */}
+          <div className="auto-page__bg-row">
+            <div className="auto-page__bg-row-text">
+              <div className="auto-page__bg-row-label">
+                {t(oneShotSurface.titleKey)}
+              </div>
+              <div className="auto-page__bg-row-desc">
+                {t(oneShotSurface.bodyKey, {
+                  flag: oneShotSurface.flagHint,
+                  script: oneShotSurface.scriptName,
+                })}
+              </div>
+              <div className="auto-page__bg-row-desc auto-page__bg-row-desc--muted">
+                {t(oneShotSurface.honestyKey)}
+              </div>
+              <div className="auto-page__bg-row-actions">
+                <button
+                  type="button"
+                  className="auto-page__bg-banner-link"
+                  onClick={() => void onRevealLaunchAgent()}
+                >
+                  {t("automations.oneshot.reveal")}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -127,7 +127,25 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         // Must be registered first so a second process exits and focuses the primary window.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        // One-shot `--fire-due-schedules`: do not steal focus; ask primary to fire once.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let fire_due = argv.iter().any(|a| a == automation_runner::FIRE_DUE_FLAG);
+            if fire_due {
+                use tauri::Manager;
+                if let Some(mgr) = app.try_state::<Arc<SessionManager>>() {
+                    let h = app.clone();
+                    let m = mgr.inner().clone();
+                    tauri::async_runtime::spawn(async move {
+                        let outcome = automation_runner::fire_due_once(&h, &m).await;
+                        tracing::info!(
+                            target: "automation_runner",
+                            kind = %outcome.kind,
+                            "secondary-instance oneshot relayed to primary"
+                        );
+                    });
+                }
+                return;
+            }
             // Same restore path as tray Open — taskbar + shell styles included.
             tray::show_main_window(app);
         }))
@@ -248,10 +266,18 @@ pub fn run() {
                 mgr.start_stream_stall_watchdog(app.handle().clone());
                 // Scheduled automations: host tick works while window is in tray
                 // (and with --start-in-tray / keep_tray_for_schedules). No daemon.
-                automation_runner::start(app.handle().clone(), mgr);
+                // One-shot `--fire-due-schedules`: fire at most one due task then exit
+                // (honest helper — not KeepAlive continuous daemon).
+                if automation_runner::wants_fire_due_schedules() {
+                    automation_runner::start_oneshot(app.handle().clone(), mgr);
+                } else {
+                    automation_runner::start(app.handle().clone(), mgr);
+                }
             }
-            // LaunchAgent / helper: open into tray so schedules fire without focus steal.
-            if schedules_launch_agent::wants_start_in_tray() {
+            // LaunchAgent / helper / oneshot: open into tray so schedules fire without focus steal.
+            if schedules_launch_agent::wants_start_in_tray()
+                || automation_runner::wants_fire_due_schedules()
+            {
                 tray::hide_to_tray(app.handle());
             }
             // Remote IM: restore Feishu/Weixin connectors after App restart so
