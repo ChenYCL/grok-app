@@ -215,6 +215,17 @@ import {
   type CompactPresetId,
   type ContextUsageState,
 } from "@/lib/contextUsage";
+import {
+  COMPACTION_DETAILS,
+  COMPACTION_MODES,
+  DEFAULT_COMPACTION_DETAIL,
+  DEFAULT_COMPACTION_MODE,
+  compactionDetailApplies,
+  normalizeCompactionDetail,
+  normalizeCompactionMode,
+  type CompactionDetailId,
+  type CompactionModeId,
+} from "@/lib/compactionMode";
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import {
@@ -472,6 +483,7 @@ import {
   shouldOfferCliUpdateNotice,
 } from "@/lib/cliUpdateNotice";
 import { GlassModal } from "@/components/GlassModal";
+import { Select } from "@/components/Select";
 import { ProductTutorial } from "@/components/ProductTutorial";
 import {
   loadDone as loadProductTutorialDone,
@@ -1390,6 +1402,12 @@ export default function App() {
   /** light / standard / aggressive — seeds note templates (CLI has no intensity flag). */
   const [compactPreset, setCompactPreset] =
     useState<CompactPresetId>(DEFAULT_COMPACT_PRESET);
+  /** CLI 0.2.117+ --compaction-mode / GROK_COMPACTION_MODE (global settings). */
+  const [compactionMode, setCompactionMode] =
+    useState<CompactionModeId>(DEFAULT_COMPACTION_MODE);
+  /** CLI 0.2.117+ --compaction-detail (segments only). */
+  const [compactionDetail, setCompactionDetail] =
+    useState<CompactionDetailId>(DEFAULT_COMPACTION_DETAIL);
   const compactNoteRef = useRef<HTMLInputElement>(null);
   /**
    * UI estimate of tokens-before captured when the user confirms manual compact.
@@ -2145,6 +2163,7 @@ export default function App() {
     Array<{ name: string; source: string }>
   >([]);
   const [experimentalMemory, setExperimentalMemory] = useState(false);
+  // compactionMode / compactionDetail state lives near compact modal (shared with Settings).
   const [voiceId, setVoiceId] = useState("eve");
   const [voiceDictationAutoSend, setVoiceDictationAutoSend] = useState(false);
   const [voiceKeepAgentsOnEnd, setVoiceKeepAgentsOnEnd] = useState(true);
@@ -2968,6 +2987,8 @@ export default function App() {
       setAgentProfilePath((settings.agentProfilePath || "").trim());
       setAgentsJson((settings.agentsJson || "").trim());
       setExperimentalMemory(!!settings.experimentalMemory);
+      setCompactionMode(normalizeCompactionMode(settings.compactionMode));
+      setCompactionDetail(normalizeCompactionDetail(settings.compactionDetail));
       setVoiceId((settings.voiceId || "eve").trim() || "eve");
       setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
       setVoiceKeepAgentsOnEnd(
@@ -14547,6 +14568,22 @@ export default function App() {
               api.settingsSet({ ...s, experimentalMemory: v }),
             );
           }}
+          compactionMode={compactionMode}
+          onCompactionMode={(v) => {
+            const next = normalizeCompactionMode(v);
+            setCompactionMode(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, compactionMode: next }),
+            );
+          }}
+          compactionDetail={compactionDetail}
+          onCompactionDetail={(v) => {
+            const next = normalizeCompactionDetail(v);
+            setCompactionDetail(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, compactionDetail: next }),
+            );
+          }}
           voiceId={voiceId}
           onVoiceId={(v) => {
             const next = (v || "eve").trim() || "eve";
@@ -19810,6 +19847,65 @@ export default function App() {
             <p className="compact-modal__hint compact-modal__hint--presets">
               {tr("slash.compactPresetCliNote")}
             </p>
+            <div className="compact-modal__cli-fields">
+              <div className="compact-modal__field-label">
+                {tr("slash.compactMode")}
+              </div>
+              <Select
+                value={compactionMode}
+                aria-label={tr("slash.compactMode")}
+                title={tr("slash.compactModeHint")}
+                onChange={(v) => {
+                  const next = normalizeCompactionMode(v);
+                  setCompactionMode(next);
+                  void api.settingsGet().then((s) =>
+                    api.settingsSet({ ...s, compactionMode: next }),
+                  );
+                }}
+                options={COMPACTION_MODES.map((id) => ({
+                  value: id,
+                  label: tr(
+                    id === "transcript"
+                      ? "settings.compactionMode.transcript"
+                      : id === "segments"
+                        ? "settings.compactionMode.segments"
+                        : "settings.compactionMode.summary",
+                  ),
+                }))}
+              />
+              <p className="compact-modal__hint">{tr("slash.compactModeHint")}</p>
+              <div className="compact-modal__field-label">
+                {tr("slash.compactDetail")}
+              </div>
+              <Select
+                value={compactionDetail}
+                aria-label={tr("slash.compactDetail")}
+                title={tr("slash.compactDetailHint")}
+                disabled={!compactionDetailApplies(compactionMode)}
+                onChange={(v) => {
+                  const next = normalizeCompactionDetail(v);
+                  setCompactionDetail(next);
+                  void api.settingsGet().then((s) =>
+                    api.settingsSet({ ...s, compactionDetail: next }),
+                  );
+                }}
+                options={COMPACTION_DETAILS.map((id) => ({
+                  value: id,
+                  label: tr(
+                    id === "none"
+                      ? "settings.compactionDetail.none"
+                      : id === "minimal"
+                        ? "settings.compactionDetail.minimal"
+                        : id === "balanced"
+                          ? "settings.compactionDetail.balanced"
+                          : "settings.compactionDetail.verbose",
+                  ),
+                }))}
+              />
+              <p className="compact-modal__hint">
+                {tr("slash.compactDetailHint")}
+              </p>
+            </div>
             <div className="compact-modal__usage" aria-live="polite">
               <div className="compact-modal__usage-row">
                 <span className="compact-modal__usage-k">

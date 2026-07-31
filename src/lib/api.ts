@@ -1301,6 +1301,18 @@ export interface AppSettings {
    */
   agentsJson?: string;
   experimentalMemory?: boolean;
+  /**
+   * Compaction mode for spawned agents (CLI 0.2.117+):
+   * summary | transcript | segments. Maps to `--compaction-mode` /
+   * GROK_COMPACTION_MODE. Default "summary". Soft-respawns on change.
+   */
+  compactionMode?: string;
+  /**
+   * Segments detail (CLI 0.2.117+): none | minimal | balanced | verbose.
+   * Only affects segments mode (`--compaction-detail` / GROK_COMPACTION_DETAIL).
+   * Default "verbose". Soft-respawns on change.
+   */
+  compactionDetail?: string;
   disableWebSearch?: boolean;
   /**
    * Built-in tool ids denied via CLI `--disallowed-tools a,b`.

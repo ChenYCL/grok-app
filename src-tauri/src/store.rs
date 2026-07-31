@@ -239,6 +239,16 @@ pub struct AppSettings {
     /// `--no-memory` + `GROK_MEMORY=0` for isolation (esp. independent mode).
     #[serde(default)]
     pub experimental_memory: bool,
+    /// Grok Build compaction mode (CLI 0.2.117+): `summary` | `transcript` | `segments`.
+    /// Passed as top-level `--compaction-mode` / `GROK_COMPACTION_MODE` at spawn.
+    /// Default `summary` (CLI default). Soft-respawns on change.
+    #[serde(default = "default_compaction_mode")]
+    pub compaction_mode: String,
+    /// Segments verbatim detail (CLI 0.2.117+): `none` | `minimal` | `balanced` | `verbose`.
+    /// Only affects `--compaction-mode segments`. Passed as `--compaction-detail` /
+    /// `GROK_COMPACTION_DETAIL`. Default `verbose` (CLI default). Soft-respawns on change.
+    #[serde(default = "default_compaction_detail")]
+    pub compaction_detail: String,
     /// Cap agent turns per process via top-level `grok --max-turns N`.
     /// `None` or `0` = omit the flag (CLI default / unlimited).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -386,6 +396,14 @@ fn default_sandbox_profile() -> String {
     "off".into()
 }
 
+fn default_compaction_mode() -> String {
+    crate::acp_client::DEFAULT_COMPACTION_MODE.into()
+}
+
+fn default_compaction_detail() -> String {
+    crate::acp_client::DEFAULT_COMPACTION_DETAIL.into()
+}
+
 fn default_reopen_last_session() -> bool {
     false
 }
@@ -433,6 +451,8 @@ impl Default for AppSettings {
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
             experimental_memory: false,
+            compaction_mode: default_compaction_mode(),
+            compaction_detail: default_compaction_detail(),
             max_agent_turns: None,
             disable_web_search: false,
             disallowed_tools: Vec::new(),
@@ -2209,6 +2229,8 @@ mod tests {
         assert_eq!(s.stream_stall_seconds, 180);
         assert_eq!(s.sandbox_profile, "off");
         assert!(!s.experimental_memory);
+        assert_eq!(s.compaction_mode, "summary");
+        assert_eq!(s.compaction_detail, "verbose");
         assert_eq!(s.max_agent_turns, None);
         assert!(!s.disable_web_search);
         assert!(s.disallowed_tools.is_empty());
@@ -2391,6 +2413,16 @@ mod tests {
         assert!(AppSettings::default().keep_tray_for_schedules);
         assert!(!s.schedules_launch_agent);
         assert!(!AppSettings::default().schedules_launch_agent);
+    }
+
+    #[test]
+    fn compaction_mode_detail_defaults_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert_eq!(s.compaction_mode, "summary");
+        assert_eq!(s.compaction_detail, "verbose");
+        let d = AppSettings::default();
+        assert_eq!(d.compaction_mode, "summary");
+        assert_eq!(d.compaction_detail, "verbose");
     }
 
     #[test]

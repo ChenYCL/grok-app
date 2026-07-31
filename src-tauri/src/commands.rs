@@ -1114,6 +1114,11 @@ pub async fn settings_set(
     // Normalize / validate optional agents JSON (reject invalid non-empty).
     settings.agents_json =
         crate::agents_catalog::normalize_agents_json(&settings.agents_json)?;
+    // Normalize compaction mode/detail enums (CLI 0.2.117+).
+    settings.compaction_mode =
+        crate::acp_client::normalize_compaction_mode(&settings.compaction_mode).to_string();
+    settings.compaction_detail =
+        crate::acp_client::normalize_compaction_detail(&settings.compaction_detail).to_string();
     let keychain_flip =
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
@@ -1137,6 +1142,13 @@ pub async fn settings_set(
     let agents_json_flip = prev.agents_json.trim() != settings.agents_json.trim();
     let max_turns_flip = prev.max_agent_turns != settings.max_agent_turns;
     let sandbox_flip = prev.sandbox_profile.trim() != settings.sandbox_profile.trim();
+    let compaction_flip = {
+        let prev_m = crate::acp_client::normalize_compaction_mode(&prev.compaction_mode);
+        let next_m = settings.compaction_mode.as_str();
+        let prev_d = crate::acp_client::normalize_compaction_detail(&prev.compaction_detail);
+        let next_d = settings.compaction_detail.as_str();
+        prev_m != next_m || prev_d != next_d
+    };
     // API-mode address is a spawn-path flip (local CLI ↔ TCP). Soft-respawn so
     // the next connect uses the new target; mid-turn sessions stay skipped.
     let acp_addr_flip = {
@@ -1243,6 +1255,7 @@ pub async fn settings_set(
         || agents_json_flip
         || max_turns_flip
         || sandbox_flip
+        || compaction_flip
         || acp_addr_flip
     {
         need_soft_respawn = true;

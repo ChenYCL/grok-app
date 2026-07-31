@@ -432,6 +432,102 @@ pub fn sandbox_spawn_flags(profile: &str) -> Option<(Vec<String>, (String, Strin
     Some((spec.cli_args().to_vec(), spec.env_pair()))
 }
 
+// ── Compaction mode / detail (CLI 0.2.117+) ────────────────────────────────
+//
+// Top-level: `--compaction-mode summary|transcript|segments` → GROK_COMPACTION_MODE
+//            `--compaction-detail none|minimal|balanced|verbose` → GROK_COMPACTION_DETAIL
+// Detail only affects `segments` (CLI default verbose). Host always sets env
+// (ignored by older CLIs); CLI flags pass only when version ≥ 0.2.117.
+
+/// First CLI version that accepts the compaction flags.
+pub const COMPACTION_CLI_FLAGS_MIN: (u64, u64, u64) = (0, 2, 117);
+
+pub const DEFAULT_COMPACTION_MODE: &str = "summary";
+pub const DEFAULT_COMPACTION_DETAIL: &str = "verbose";
+
+/// Normalize settings / UI value → known mode id.
+pub fn normalize_compaction_mode(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "transcript" => "transcript",
+        "segments" => "segments",
+        "summary" | "" => DEFAULT_COMPACTION_MODE,
+        _ => DEFAULT_COMPACTION_MODE,
+    }
+}
+
+/// Normalize settings / UI value → known detail id.
+pub fn normalize_compaction_detail(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "none" => "none",
+        "minimal" => "minimal",
+        "balanced" => "balanced",
+        "verbose" | "" => DEFAULT_COMPACTION_DETAIL,
+        _ => DEFAULT_COMPACTION_DETAIL,
+    }
+}
+
+/// Detail only applies when mode is `segments`.
+pub fn compaction_detail_applies(mode: &str) -> bool {
+    normalize_compaction_mode(mode) == "segments"
+}
+
+/// Top-level CLI argv for mode + optional detail (before `agent`).
+pub fn compaction_spawn_args(mode: &str, detail: &str) -> Vec<String> {
+    let m = normalize_compaction_mode(mode);
+    let mut args = vec!["--compaction-mode".into(), m.into()];
+    if compaction_detail_applies(m) {
+        let d = normalize_compaction_detail(detail);
+        args.push("--compaction-detail".into());
+        args.push(d.into());
+    }
+    args
+}
+
+/// Env pairs for the agent process (always safe on older CLIs).
+pub fn compaction_spawn_env(mode: &str, detail: &str) -> Vec<(String, String)> {
+    let m = normalize_compaction_mode(mode);
+    let mut out = vec![("GROK_COMPACTION_MODE".into(), m.into())];
+    if compaction_detail_applies(m) {
+        out.push((
+            "GROK_COMPACTION_DETAIL".into(),
+            normalize_compaction_detail(detail).into(),
+        ));
+    }
+    out
+}
+
+/// Whether CLI flags should be passed (not only env).
+/// Unknown / unparseable version → false (env-only soft-fail).
+pub fn cli_supports_compaction_flags(raw_version: Option<&str>) -> bool {
+    let Some(raw) = raw_version.map(str::trim).filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    let Some(token) = crate::cli_probe::extract_version_token(raw) else {
+        return false;
+    };
+    let Some(parsed) = crate::app_update::parse_semver(&token) else {
+        return false;
+    };
+    parsed >= COMPACTION_CLI_FLAGS_MIN
+}
+
+/// Apply env always; CLI flags only when `pass_cli_flags` is true.
+pub fn apply_compaction_to_command(
+    cmd: &mut Command,
+    mode: &str,
+    detail: &str,
+    pass_cli_flags: bool,
+) {
+    for (k, v) in compaction_spawn_env(mode, detail) {
+        cmd.env(k, v);
+    }
+    if pass_cli_flags {
+        for a in compaction_spawn_args(mode, detail) {
+            cmd.arg(a);
+        }
+    }
+}
+
 pub const MAX_AGENT_TURNS_CAP: u32 = 200;
 pub const MIN_AGENT_TURNS: u32 = 1;
 
@@ -717,6 +813,8 @@ impl AcpClient {
         let disable_web = settings.disable_web_search;
         let disallowed_tools = settings.disallowed_tools.clone();
         let allowed_tools = settings.allowed_tools.clone();
+        let compaction_mode = settings.compaction_mode.clone();
+        let compaction_detail = settings.compaction_detail.clone();
         let spawn_policy = opts.permission_policy.as_deref().unwrap_or("ask");
         let spawn_product_mode = opts.product_mode.as_deref();
 
@@ -733,6 +831,18 @@ impl AcpClient {
 
         let mut cmd = Command::new(&cli_path);
         cmd.arg("--no-auto-update");
+        // Compaction mode/detail (CLI 0.2.117+): always set env; flags only when
+        // the probed binary is known to accept them (soft-fail on older CLIs).
+        let pass_compaction_flags = {
+            let ver = crate::cli_probe::read_version_of(&cli_path);
+            cli_supports_compaction_flags(ver.as_deref())
+        };
+        apply_compaction_to_command(
+            &mut cmd,
+            &compaction_mode,
+            &compaction_detail,
+            pass_compaction_flags,
+        );
         // Pin CLI permission mode so agent-side enforcement matches App policy / plan.
         for a in permission_mode_spawn_flags(spawn_policy, spawn_product_mode) {
             cmd.arg(a);
@@ -838,7 +948,7 @@ impl AcpClient {
             cmd.env(k, v);
         }
         tracing::info!(
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} leader={} subagents={} memory={} agent_profile={:?} agents_json={}",
+            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} leader={} subagents={} memory={} compaction_mode={} compaction_detail={} compaction_flags={} agent_profile={:?} agents_json={}",
             grok_home.display(),
             session_data_mode,
             sandbox.as_ref().map(|s| s.profile.as_str()),
@@ -847,6 +957,13 @@ impl AcpClient {
             use_leader,
             subagents_enabled,
             memory_enabled,
+            normalize_compaction_mode(&compaction_mode),
+            if compaction_detail_applies(&compaction_mode) {
+                normalize_compaction_detail(&compaction_detail)
+            } else {
+                "-"
+            },
+            pass_compaction_flags,
             agent_profile.as_deref(),
             agents_json_args.is_some(),
         );
@@ -4169,6 +4286,81 @@ mod sandbox_spawn_tests {
             spec.cli_args(),
             ["--sandbox".to_string(), "workspace".to_string()]
         );
+    }
+}
+
+#[cfg(test)]
+mod compaction_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_mode_and_detail() {
+        assert_eq!(normalize_compaction_mode("summary"), "summary");
+        assert_eq!(normalize_compaction_mode(" Transcript "), "transcript");
+        assert_eq!(normalize_compaction_mode("SEGMENTS"), "segments");
+        assert_eq!(normalize_compaction_mode(""), "summary");
+        assert_eq!(normalize_compaction_mode("heavy"), "summary");
+        assert_eq!(normalize_compaction_detail("none"), "none");
+        assert_eq!(normalize_compaction_detail(" Minimal "), "minimal");
+        assert_eq!(normalize_compaction_detail("BALANCED"), "balanced");
+        assert_eq!(normalize_compaction_detail("verbose"), "verbose");
+        assert_eq!(normalize_compaction_detail(""), "verbose");
+        assert_eq!(normalize_compaction_detail("max"), "verbose");
+    }
+
+    #[test]
+    fn detail_only_for_segments() {
+        assert!(compaction_detail_applies("segments"));
+        assert!(!compaction_detail_applies("summary"));
+        assert!(!compaction_detail_applies("transcript"));
+    }
+
+    #[test]
+    fn spawn_args_mode_and_optional_detail() {
+        assert_eq!(
+            compaction_spawn_args("transcript", "none"),
+            vec!["--compaction-mode".to_string(), "transcript".to_string()]
+        );
+        assert_eq!(
+            compaction_spawn_args("segments", "minimal"),
+            vec![
+                "--compaction-mode".to_string(),
+                "segments".to_string(),
+                "--compaction-detail".to_string(),
+                "minimal".to_string(),
+            ]
+        );
+        assert_eq!(
+            compaction_spawn_args("bogus", "bogus"),
+            vec!["--compaction-mode".to_string(), "summary".to_string()]
+        );
+    }
+
+    #[test]
+    fn spawn_env_detail_only_for_segments() {
+        assert_eq!(
+            compaction_spawn_env("summary", "minimal"),
+            vec![("GROK_COMPACTION_MODE".into(), "summary".into())]
+        );
+        assert_eq!(
+            compaction_spawn_env("segments", "none"),
+            vec![
+                ("GROK_COMPACTION_MODE".into(), "segments".into()),
+                ("GROK_COMPACTION_DETAIL".into(), "none".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn flags_gated_at_0_2_117() {
+        assert!(cli_supports_compaction_flags(Some("grok 0.2.117")));
+        assert!(cli_supports_compaction_flags(Some("grok 0.2.200")));
+        assert!(cli_supports_compaction_flags(Some("0.3.0")));
+        assert!(!cli_supports_compaction_flags(Some("grok 0.2.116")));
+        assert!(!cli_supports_compaction_flags(Some("grok 0.2.112")));
+        assert!(!cli_supports_compaction_flags(None));
+        assert!(!cli_supports_compaction_flags(Some("")));
+        assert!(!cli_supports_compaction_flags(Some("unknown")));
     }
 }
 

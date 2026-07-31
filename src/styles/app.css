@@ -18038,6 +18038,12 @@ div.composer__input:empty::before {
   color: color-mix(in srgb, var(--text-primary) 72%, var(--text-secondary));
 }
 
+.compact-modal__cli-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .compact-modal__usage {
   display: flex;
   flex-direction: column;
