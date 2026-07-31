@@ -36,6 +36,7 @@ mod journal_throttle;
 mod logging;
 mod stream_emit;
 mod stream_stall;
+mod streaming_acp_ndjson;
 mod tool_heartbeat;
 mod cli_sessions;
 mod cli_worktrees;
@@ -363,6 +364,7 @@ pub fn run() {
             commands::import_grok_go_config,
             commands::doctor_report,
             commands::network_probe,
+            commands::probe_streaming_acp_ndjson,
             commands::agents_recycle_all,
             commands::cli_doctor_fix,
             commands::export_support_bundle,

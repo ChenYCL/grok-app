@@ -15,6 +15,7 @@ See `docs/llm-wiki/release.md`.
 
 #### Runtime / connection
 - **SDK Connect wizard** (Settings → Runtime → Connection): start local `agent serve`, show masked secret + ws URL, TCP health probe, copy curl / websocat / `grok --remote` examples for external clients, and optional paste remote serve URL + probe. Secrets never logged; full token only via one-time clipboard after start.
+- **Streaming ACP NDJSON diagnostics** (Settings → Runtime → Tools; CLI **0.2.117+**): pure parser for headless `--output-format streaming-json` as agent-native ACP session-update NDJSON (not `streaming-messages-json`); import/paste or soft-gated headless probe; event type counts + copy summary
 
 #### Composer & chat
 - **Live Voice delegate status** (VOX-DELEG): overlay shows listening / thinking / speaking from host `voice://` events, **Stop**, honest empty transcript (no fake STT), delegated session chips, and optional **Send transcript to active session** when a chat is open

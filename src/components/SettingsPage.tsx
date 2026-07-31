@@ -42,6 +42,7 @@ import {
 } from "@/lib/cliSessionsFilter";
 import { ARCHIVE_AGE_DAY_OPTIONS } from "@/lib/sessionArchiveAge";
 import { CostRollupPanel } from "@/components/CostRollupPanel";
+import { StreamingAcpNdjsonPanel } from "@/components/StreamingAcpNdjsonPanel";
 import type {
   CostRollupProjectMeta,
   CostRollupSessionMeta,
@@ -5725,6 +5726,30 @@ export function SettingsPage({
                     sessions={costRollupSessions}
                     projects={costRollupProjects}
                     embedded
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-stream-acp-ndjson")
+                  }
+                  id="settings-anchor-stream-acp-ndjson"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("streamAcpNdjson.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("streamAcpNdjson.settingsDesc")}
+                      </div>
+                    </div>
+                  </div>
+                  <StreamingAcpNdjsonPanel
+                    locale={resolveLocale(locale)}
+                    manualCliPath={manualCliPath}
+                    projectPath={projectPath}
+                    showToast={showSettingsToast}
                   />
                 </div>
                 <div

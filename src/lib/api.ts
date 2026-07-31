@@ -315,6 +315,39 @@ export async function networkProbe() {
   return invoke<NetworkProbeResult>("network_probe");
 }
 
+/**
+ * Headless probe for ACP-shaped NDJSON (`--output-format streaming-json`,
+ * CLI ≥ 0.2.117). Soft-gated on the Host — older CLIs return supported=false.
+ * Distinct from `streaming-messages-json`.
+ */
+export type StreamingAcpNdjsonProbeResult = {
+  ok: boolean;
+  supported: boolean | null;
+  version: string | null;
+  minVersion: string;
+  binary: string | null;
+  args: string[];
+  usedStreamingJson: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  error: string | null;
+  durationMs: number;
+};
+
+export async function probeStreamingAcpNdjson(opts?: {
+  prompt?: string;
+  manualPath?: string;
+  cwd?: string;
+}): Promise<StreamingAcpNdjsonProbeResult> {
+  return invoke<StreamingAcpNdjsonProbeResult>("probe_streaming_acp_ndjson", {
+    prompt: opts?.prompt ?? null,
+    manualPath: opts?.manualPath ?? null,
+    cwd: opts?.cwd ?? null,
+  });
+}
+
 export async function probeCli(manualPath?: string) {
   return invoke<{
     found: boolean;
