@@ -15,6 +15,13 @@ import type {
   RemoteChannelId,
 } from "./types";
 import { maskSecretValue } from "./secretsApi";
+import {
+  normalizeWecomConnectMode,
+  validateWecomConfig,
+  wecomHealthHintKeys,
+  wecomRequiredNonSecretKeys,
+  wecomRequiredSecretKeys,
+} from "./wecomConfig";
 
 /** Health tone for badges / callouts (maps to RimBadge). */
 export type RimChannelHealthTone = "ok" | "warn" | "err" | "neutral";
@@ -74,10 +81,16 @@ export type ClassifyChannelHealthInput = {
    * Used only for incomplete-form hints — never stores values.
    */
   secretKeysFilled?: ReadonlySet<string>;
+  /**
+   * Draft options from the open form (e.g. connect_mode switch).
+   * Merged over instance.options for readiness / transport — never secrets.
+   */
+  draftOptions?: Record<string, unknown>;
 };
 
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
+const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -87,7 +100,7 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   dingtalk: ["client_secret"],
   discord: ["token"],
   slack: ["bot_token", "app_token"],
-  wecom: ["bot_secret", "corp_secret", "callback_token"],
+  // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
   weixin: ["token"],
   matrix: ["access_token"],
   line: ["channel_secret", "channel_access_token"],
@@ -224,14 +237,38 @@ function optionString(
  * Check non-secret required bind fields + optional in-form secret keys.
  * Does not read secret values — only presence of keys in secretKeysFilled
  * or hasCredentials flag.
+ *
+ * WeCom is mode-aware (websocket vs webhook) via {@link validateWecomConfig}.
  */
 export function credentialReadiness(
   channel: RemoteChannelId,
   instance: ChannelInstance,
   secretKeysFilled?: ReadonlySet<string>,
+  /**
+   * When set, treat this as the last-saved connect mode for WeCom
+   * (mode switch must re-supply secrets).
+   */
+  savedOptions?: Record<string, unknown>,
 ): { ready: boolean; missingKeys: string[] } {
-  const missing: string[] = [];
   const opts = isRecord(instance.options) ? instance.options : {};
+
+  if (channel === "wecom") {
+    const savedMode = isRecord(savedOptions)
+      ? normalizeWecomConnectMode(savedOptions)
+      : normalizeWecomConnectMode(opts);
+    const v = validateWecomConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      savedConnectMode: savedMode,
+    });
+    // Ensure required key lists stay aligned with §6.8
+    void wecomRequiredNonSecretKeys(v.mode);
+    void wecomRequiredSecretKeys(v.mode);
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  const missing: string[] = [];
 
   for (const k of NON_SECRET_REQUIRED[channel] ?? []) {
     if (!optionString(opts, k)) missing.push(k);
@@ -289,7 +326,16 @@ export function classifyChannelHealth(
 ): RimChannelHealthDetail {
   const { instance, bridgeRunning } = input;
   const channel = instance.channel;
-  const opts = isRecord(instance.options) ? instance.options : {};
+  const savedOpts = isRecord(instance.options) ? instance.options : {};
+  const opts = {
+    ...savedOpts,
+    ...(isRecord(input.draftOptions) ? input.draftOptions : {}),
+  };
+  // Readiness evaluates against draft-merged options for honest mode switches.
+  const readinessInstance: ChannelInstance = {
+    ...instance,
+    options: opts,
+  };
   const bridgeLinked = !!input.bridgeLinked;
   const openAcl =
     !instance.acl?.allowFrom ||
@@ -298,42 +344,45 @@ export function classifyChannelHealth(
 
   const { ready: credentialsReady, missingKeys } = credentialReadiness(
     channel,
-    instance,
+    readinessInstance,
     input.secretKeysFilled,
+    savedOpts,
   );
+
+  // Honest status: incomplete mode-switch / missing keys cannot look "connected".
+  const credsUsable =
+    !!instance.hasCredentials && (credentialsReady || channel !== "wecom");
 
   let tone: ChannelStatusTone = "unconfigured";
   if (instance.lastError) {
     tone = "error";
   } else if (
-    instance.hasCredentials &&
+    credsUsable &&
     instance.enabled &&
     bridgeRunning &&
     bridgeLinked
   ) {
     tone = "connected";
-  } else if (
-    instance.hasCredentials &&
-    instance.enabled &&
-    bridgeRunning
-  ) {
-    // Enabled + bridge up but not yet linked — still "connected" intent
-    // or "configured" if bridge not reporting this id
+  } else if (credsUsable && instance.enabled && bridgeRunning) {
+    // Enabled + bridge up but not yet linked — "configured" until linked
     tone = bridgeLinked ? "connected" : "configured";
-  } else if (instance.hasCredentials) {
+  } else if (credsUsable) {
+    tone = "configured";
+  } else if (instance.hasCredentials && !credentialsReady) {
+    // Saved vault but current mode incomplete (e.g. WeCom mode switch)
     tone = "configured";
   }
 
   const transport = transportForChannel(channel, opts);
   const hintKeys: string[] = [];
 
-  if (!instance.hasCredentials) {
+  if (!instance.hasCredentials && !credentialsReady) {
     hintKeys.push("settings.remoteIm.health.hint.needCredentials");
   } else if (!instance.enabled) {
     hintKeys.push("settings.remoteIm.health.hint.disabled");
   } else if (!bridgeRunning) {
     hintKeys.push("settings.remoteIm.health.hint.bridgeStopped");
-  } else if (!bridgeLinked && instance.enabled) {
+  } else if (!bridgeLinked && instance.enabled && credentialsReady) {
     hintKeys.push("settings.remoteIm.health.hint.notLinked");
   }
 
@@ -341,7 +390,7 @@ export function classifyChannelHealth(
     hintKeys.push("settings.remoteIm.health.hint.openAcl");
   }
 
-  // Channel-specific depth (shippable for ≥2 types in UI)
+  // Channel-specific depth (shippable for Feishu / Telegram / WeCom)
   if (FEISHU_LIKE.includes(channel)) {
     if (!optionString(opts, "app_id") && !instance.hasCredentials) {
       hintKeys.push("settings.remoteIm.health.hint.feishuAppId");
@@ -361,6 +410,21 @@ export function classifyChannelHealth(
     if (openAcl && instance.hasCredentials) {
       // Telegram open ACL is especially risky
       hintKeys.push("settings.remoteIm.health.hint.telegramAcl");
+    }
+  }
+
+  if (WECOM_LIKE.includes(channel)) {
+    const wecomV = validateWecomConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      savedConnectMode: normalizeWecomConnectMode(savedOpts),
+    });
+    for (const k of wecomHealthHintKeys(wecomV, {
+      openAcl: openAcl && instance.hasCredentials,
+      proxySet: !!optionString(opts, "proxy"),
+    })) {
+      hintKeys.push(k);
     }
   }
 
@@ -393,5 +457,9 @@ export function classifyChannelHealth(
 
 /** True when this channel gets the deeper health card (not just badge). */
 export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
-  return FEISHU_LIKE.includes(channel) || TELEGRAM_LIKE.includes(channel);
+  return (
+    FEISHU_LIKE.includes(channel) ||
+    TELEGRAM_LIKE.includes(channel) ||
+    WECOM_LIKE.includes(channel)
+  );
 }

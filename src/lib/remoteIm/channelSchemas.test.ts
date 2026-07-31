@@ -60,6 +60,75 @@ describe("remoteIm channelSchemas", () => {
     ).toBe(true);
   });
 
+  it("wecom validateBindFields is mode-aware and honest on mode switch", () => {
+    const wecom = getChannelSchema("wecom")!;
+    expect(
+      validateBindFields(wecom, {
+        connect_mode: "websocket",
+        bot_id: "b1",
+        bot_secret: "s1",
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateBindFields(wecom, {
+        connect_mode: "webhook",
+        corp_id: "ww",
+        agent_id: "1",
+        corp_secret: "cs",
+        callback_token: "ct",
+      }).ok,
+    ).toBe(true);
+
+    // Incomplete webhook
+    expect(
+      validateBindFields(wecom, {
+        connect_mode: "webhook",
+        corp_id: "ww",
+      }).ok,
+    ).toBe(false);
+
+    // Vault reuse only for secrets that were already visible under saved mode
+    const switched = validateBindFields(
+      wecom,
+      {
+        connect_mode: "webhook",
+        corp_id: "ww",
+        agent_id: "1",
+      },
+      {
+        hasCredentials: true,
+        savedValues: { connect_mode: "websocket", bot_id: "b" },
+      },
+    );
+    expect(switched.ok).toBe(false);
+    expect(switched.missing).toContain("corp_secret");
+    expect(switched.missing).toContain("callback_token");
+
+    const sameMode = validateBindFields(
+      wecom,
+      {
+        connect_mode: "websocket",
+        bot_id: "b1",
+      },
+      {
+        hasCredentials: true,
+        savedValues: { connect_mode: "websocket", bot_id: "b1" },
+      },
+    );
+    expect(sameMode.ok).toBe(true);
+  });
+
+  it("wecom schema documents mode help + §6.8 fields", () => {
+    const wecom = getChannelSchema("wecom")!;
+    expect(wecom.implemented).toBe(true);
+    expect(wecom.scanSupport).toBe(false);
+    expect(wecom.pasteSupport).toBe(true);
+    const mode = wecom.fields.find((f) => f.key === "connect_mode");
+    expect(mode?.helpKey).toBe("settings.remoteIm.wecom.modeHelp");
+    expect(wecom.fields.some((f) => f.key === "encoding_aes_key")).toBe(true);
+    expect(wecom.fields.some((f) => f.key === "enable_markdown")).toBe(true);
+  });
+
   it("LINE always shows public-URL callout when flagged", () => {
     const line = getChannelSchema("line")!;
     expect(showsPublicUrlCallout(line, {})).toBe(true);

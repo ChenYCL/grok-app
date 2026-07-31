@@ -217,6 +217,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     defaultValue: "websocket",
+    helpKey: "settings.remoteIm.wecom.modeHelp",
     choices: [
       {
         value: "websocket",
@@ -234,6 +235,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.wecom.botIdHelp",
     when: { key: "connect_mode", equals: "websocket" },
   },
   {
@@ -243,6 +245,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.wecom.botSecretHelp",
     when: { key: "connect_mode", equals: "websocket" },
   },
   {
@@ -250,6 +253,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     labelKey: "settings.remoteIm.field.apiBaseUrl",
     control: "text",
     section: "advanced",
+    helpKey: "settings.remoteIm.wecom.apiBaseHelp",
     when: { key: "connect_mode", equals: "websocket" },
   },
   {
@@ -258,6 +262,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.wecom.corpIdHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -275,6 +280,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.wecom.agentIdHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -284,6 +290,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.wecom.callbackTokenHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -292,6 +299,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "password",
     section: "bind",
     secret: true,
+    helpKey: "settings.remoteIm.wecom.encodingAesKeyHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -300,6 +308,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "number",
     section: "advanced",
     defaultValue: 8081,
+    helpKey: "settings.remoteIm.wecom.portHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -936,7 +945,16 @@ export function advancedPanelFields(
 export function validateBindFields(
   schema: ChannelSchema,
   values: Record<string, unknown>,
-  opts?: { hasCredentials?: boolean; secretKeysFilled?: Set<string> },
+  opts?: {
+    hasCredentials?: boolean;
+    secretKeysFilled?: Set<string>;
+    /**
+     * Last-saved options. When a secret field becomes visible only after a
+     * mode change (e.g. WeCom websocket→webhook), vault reuse is denied
+     * until the new secret keys are filled (honest soft-fail).
+     */
+    savedValues?: Record<string, unknown>;
+  },
 ): { ok: boolean; missing: string[] } {
   if (!schema.implemented) {
     return { ok: false, missing: ["_not_implemented"] };
@@ -950,11 +968,23 @@ export function validateBindFields(
       v === null ||
       (typeof v === "string" && v.trim() === "");
     if (empty) {
-      if (f.secret && opts?.hasCredentials && !opts.secretKeysFilled?.has(f.key)) {
-        // Keep existing secret
-        continue;
-      }
       if (f.secret && opts?.secretKeysFilled?.has(f.key)) continue;
+      if (
+        f.secret &&
+        opts?.hasCredentials &&
+        !opts.secretKeysFilled?.has(f.key)
+      ) {
+        // Reuse vault only if this secret was already required under saved values
+        if (opts.savedValues) {
+          const wasVisible =
+            !f.when || opts.savedValues[f.when.key] === f.when.equals;
+          if (wasVisible) continue;
+          // Mode switch → require re-entry
+        } else {
+          // Legacy callers without savedValues keep previous soft reuse
+          continue;
+        }
+      }
       missing.push(f.key);
     }
   }

@@ -190,4 +190,74 @@ describe("classifyChannelHealth", () => {
     expect(h.tone).toBe("error");
     expect(h.badgeTone).toBe("err");
   });
+
+  it("wecom: deep health is mode-aware (ws vs webhook)", () => {
+    expect(channelHasDeepHealth("wecom")).toBe(true);
+
+    const bare = inst("wecom", {
+      hasCredentials: false,
+      enabled: false,
+      options: { connect_mode: "websocket" },
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("websocket");
+    expect(h0.modeLabel).toBe("mode=websocket");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("wecomWs"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("wecomPublicUrl"))).toBe(false);
+
+    const wsReady = inst("wecom", {
+      hasCredentials: true,
+      enabled: true,
+      options: { connect_mode: "websocket", bot_id: "b1" },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: wsReady,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("websocket");
+    expect(h1.hintKeys.some((k) => k.includes("wecomWs"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+
+    // Draft mode switch to webhook without new secrets → not ready, not "connected"
+    const h2 = classifyChannelHealth({
+      instance: wsReady,
+      bridgeRunning: true,
+      bridgeLinked: true,
+      draftOptions: {
+        connect_mode: "webhook",
+        corp_id: "ww",
+        agent_id: "1",
+      },
+    });
+    expect(h2.transport).toBe("webhook");
+    expect(h2.modeLabel).toBe("mode=webhook");
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.tone).not.toBe("connected");
+    expect(h2.hintKeys.some((k) => k.includes("wecomModeSwitch"))).toBe(true);
+    expect(h2.hintKeys.some((k) => k.includes("wecomPublicUrl"))).toBe(true);
+  });
+
+  it("wecom credentialReadiness ignores corp secrets in websocket mode", () => {
+    const i = inst("wecom", {
+      hasCredentials: false,
+      options: { connect_mode: "websocket", bot_id: "b" },
+    });
+    const r = credentialReadiness("wecom", i, new Set(["bot_secret"]));
+    expect(r.ready).toBe(true);
+    expect(r.missingKeys).not.toContain("corp_secret");
+  });
 });
