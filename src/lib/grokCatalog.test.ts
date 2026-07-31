@@ -5,7 +5,9 @@ import {
   effortDisplayLabel,
   effortsForModel,
   isValidEffort,
+  mapEffortToTargetCatalog,
   pickDefaultEffort,
+  type EffortOption,
   type ModelOption,
 } from "./grokCatalog";
 
@@ -99,6 +101,56 @@ describe("pickDefaultEffort", () => {
   it("falls back to medium static default", () => {
     expect(pickDefaultEffort(null)).toBe(DEFAULT_EFFORT);
     expect(pickDefaultEffort({ id: "x", label: "X" })).toBe("medium");
+  });
+});
+
+describe("mapEffortToTargetCatalog", () => {
+  const deepseek: EffortOption[] = [
+    { id: "low" },
+    { id: "high" },
+    { id: "xhigh" },
+    { id: "max" },
+  ];
+
+  it("maps DeepSeek 4-tier onto Grok 3-tier (semantic high≠high)", () => {
+    expect(
+      mapEffortToTargetCatalog("low", GROK_BUILD_EFFORTS, deepseek),
+    ).toBe("low");
+    expect(
+      mapEffortToTargetCatalog("high", GROK_BUILD_EFFORTS, deepseek),
+    ).toBe("medium");
+    expect(
+      mapEffortToTargetCatalog("xhigh", GROK_BUILD_EFFORTS, deepseek),
+    ).toBe("high");
+    expect(
+      mapEffortToTargetCatalog("max", GROK_BUILD_EFFORTS, deepseek),
+    ).toBe("high");
+  });
+
+  it("maps Grok 3-tier onto DeepSeek 4-tier", () => {
+    expect(mapEffortToTargetCatalog("low", deepseek, GROK_BUILD_EFFORTS)).toBe(
+      "low",
+    );
+    expect(
+      mapEffortToTargetCatalog("medium", deepseek, GROK_BUILD_EFFORTS),
+    ).toBe("high");
+    expect(
+      mapEffortToTargetCatalog("high", deepseek, GROK_BUILD_EFFORTS),
+    ).toBe("max");
+  });
+
+  it("keeps the id when same-kind catalog already contains it", () => {
+    expect(
+      mapEffortToTargetCatalog("medium", GROK_BUILD_EFFORTS, GROK_BUILD_EFFORTS),
+    ).toBe("medium");
+    expect(mapEffortToTargetCatalog("xhigh", deepseek, deepseek)).toBe(
+      "xhigh",
+    );
+  });
+
+  it("still maps xhigh/max onto Grok without source catalog", () => {
+    expect(mapEffortToTargetCatalog("xhigh", GROK_BUILD_EFFORTS)).toBe("high");
+    expect(mapEffortToTargetCatalog("max", GROK_BUILD_EFFORTS)).toBe("high");
   });
 });
 

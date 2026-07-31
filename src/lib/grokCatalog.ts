@@ -161,6 +161,104 @@ export function pickDefaultEffort(
   );
 }
 
+/** Classify an effort catalog for cross-channel mapping. */
+export function effortCatalogKind(
+  efforts?: EffortOption[] | null,
+): "grok3" | "deepseek4" | "other" {
+  const list = efforts?.length ? efforts : [];
+  const ids = new Set(list.map((e) => e.id.trim().toLowerCase()));
+  const hasMedium = ids.has("medium");
+  const hasDsTop = ids.has("xhigh") || ids.has("max");
+  // DeepSeek-style: low/high/xhigh/max (no medium).
+  if (hasDsTop && !hasMedium) return "deepseek4";
+  // Grok-style: low/medium/high (no xhigh/max).
+  if (hasMedium && !hasDsTop) return "grok3";
+  if (hasDsTop) return "deepseek4";
+  if (hasMedium) return "grok3";
+  return "other";
+}
+
+/**
+ * Map a reasoning-effort id into a target catalog when switching models/channels.
+ *
+ * DeepSeek 4-tier → Grok 3-tier (product rule; `high` means different things):
+ * - low → low
+ * - high → medium
+ * - xhigh → high
+ * - max → high
+ *
+ * Reverse (Grok 3-tier → DeepSeek 4-tier):
+ * - low → low
+ * - medium → high
+ * - high → max (else xhigh, else high)
+ *
+ * `sourceEfforts` should be the catalog *before* the switch so `high` can be
+ * disambiguated. When omitted, ids unique to one side (`xhigh`/`max`/`medium`)
+ * still map; bare `high` is kept if present in the target.
+ */
+export function mapEffortToTargetCatalog(
+  current: string,
+  targetEfforts?: EffortOption[] | null,
+  sourceEfforts?: EffortOption[] | null,
+): string {
+  const list = effortsForModel(null, targetEfforts);
+  if (list.length === 0) return DEFAULT_EFFORT;
+
+  const byLower = new Map(list.map((e) => [e.id.trim().toLowerCase(), e.id]));
+  const cur = current.trim().toLowerCase();
+  if (!cur) return pickDefaultEffort(null, list);
+
+  const pick = (...candidates: string[]): string | undefined => {
+    for (const c of candidates) {
+      const id = byLower.get(c);
+      if (id) return id;
+    }
+    return undefined;
+  };
+
+  const srcKind = sourceEfforts?.length
+    ? effortCatalogKind(sourceEfforts)
+    : cur === "xhigh" || cur === "max"
+      ? "deepseek4"
+      : cur === "medium"
+        ? "grok3"
+        : "other";
+  const dstKind = effortCatalogKind(list);
+
+  // Semantic bridge when both sides use overlapping ids with different meaning.
+  if (srcKind === "deepseek4" && dstKind === "grok3") {
+    if (cur === "low") return pick("low") ?? pickDefaultEffort(null, list);
+    if (cur === "high") return pick("medium", "high") ?? pickDefaultEffort(null, list);
+    if (cur === "xhigh" || cur === "max") {
+      return pick("high", "medium") ?? pickDefaultEffort(null, list);
+    }
+  }
+  if (srcKind === "grok3" && dstKind === "deepseek4") {
+    if (cur === "low") return pick("low") ?? pickDefaultEffort(null, list);
+    if (cur === "medium") return pick("high", "medium") ?? pickDefaultEffort(null, list);
+    if (cur === "high") {
+      return pick("max", "xhigh", "high") ?? pickDefaultEffort(null, list);
+    }
+  }
+
+  // Same kind / other: keep when valid in target.
+  const hit = byLower.get(cur);
+  if (hit) return hit;
+
+  // Fallbacks without a clear source kind.
+  if (cur === "xhigh" || cur === "max") {
+    return pick("high", "medium", "max", "xhigh") ?? pickDefaultEffort(null, list);
+  }
+  if (cur === "medium") {
+    return pick("high", "medium") ?? pickDefaultEffort(null, list);
+  }
+  if (cur === "none") {
+    return pick("low", "none") ?? pickDefaultEffort(null, list);
+  }
+
+  return pickDefaultEffort(null, list);
+}
+
 /**
  * Strip a shared CLI suffix so "High Effort" / "Medium Effort" collapse to
  * "High" / "Medium" (identical trailing " Effort" is noise in compact UI).

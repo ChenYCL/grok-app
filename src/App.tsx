@@ -373,6 +373,7 @@ import {
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL_ID,
+  GROK_BUILD_EFFORTS,
   GROK_BUILD_MODELS,
   PERMISSION_POLICIES,
   findModel,
@@ -381,6 +382,7 @@ import {
   isValidModelId,
   isValidPolicy,
   isValidPrefsScope,
+  mapEffortToTargetCatalog,
   pickDefaultEffort,
   pickDefaultModelId,
   type ComposerPrefsScope,
@@ -11514,13 +11516,28 @@ export default function App() {
     return effortOptionsFromProvider(activeCustomProvider.efforts);
   }, [providerActiveSource, activeCustomProvider]);
 
-  // When switching channels, snap effort into the active list if needed.
+  /**
+   * Active effort catalog for the composer: custom channel efforts, else Grok 3-tier.
+   * Used when remapping after route/model switches (DeepSeek 4-tier ↔ Grok 3-tier).
+   */
+  const activeEffortCatalog = useMemo(
+    () => channelEffortOptions ?? GROK_BUILD_EFFORTS,
+    [channelEffortOptions],
+  );
+  const prevEffortCatalogRef = useRef(activeEffortCatalog);
+
+  // When switching channels / catalogs, map effort into the target list
+  // (DeepSeek high → Grok medium; xhigh/max → Grok high; reverse accordingly).
   useEffect(() => {
-    if (!channelEffortOptions?.length) return;
-    if (isValidEffort(effort, channelEffortOptions)) return;
-    const next = pickDefaultEffort(null, channelEffortOptions);
-    setEffort(next);
-  }, [channelEffortOptions, effort]);
+    const source = prevEffortCatalogRef.current;
+    prevEffortCatalogRef.current = activeEffortCatalog;
+    const next = mapEffortToTargetCatalog(
+      effort,
+      activeEffortCatalog,
+      source,
+    );
+    if (next !== effort) setEffort(next);
+  }, [activeEffortCatalog, effort]);
 
   const handleModelPick = useCallback(
     async (pick: ComposerModelPick) => {
@@ -11534,6 +11551,14 @@ export default function App() {
           }
           if (!isValidModelId(pick.modelId, availableModels)) return;
           setModelId(pick.modelId);
+          // DeepSeek 4-tier → Grok 3-tier (low→low, high→medium, xhigh/max→high).
+          setEffort((prev) =>
+            mapEffortToTargetCatalog(
+              prev,
+              GROK_BUILD_EFFORTS,
+              channelEffortOptions ?? undefined,
+            ),
+          );
           void api
             .composerPrefsSet({
               projectId: activeProject?.id ?? null,
@@ -11580,11 +11605,16 @@ export default function App() {
             await api.providersActivate("custom", pick.providerId);
           }
           await refreshProviderRoute();
-          // Snap effort to the picked channel's catalog when needed.
-          const nextEfforts = effortOptionsFromProvider(provider.efforts);
-          if (nextEfforts?.length && !isValidEffort(effort, nextEfforts)) {
-            setEffort(pickDefaultEffort(null, nextEfforts));
-          }
+          // Map effort into the picked channel's catalog (Grok ↔ DeepSeek tiers).
+          const nextEfforts =
+            effortOptionsFromProvider(provider.efforts) ?? GROK_BUILD_EFFORTS;
+          setEffort((prev) =>
+            mapEffortToTargetCatalog(
+              prev,
+              nextEfforts,
+              channelEffortOptions ?? GROK_BUILD_EFFORTS,
+            ),
+          );
         }
       } catch (e) {
         showToast(String(e), 4000);
@@ -11603,7 +11633,7 @@ export default function App() {
       refreshProviderRoute,
       showToast,
       tr,
-      effort,
+      channelEffortOptions,
     ],
   );
   const liveBrandKind = useMemo(
