@@ -413,6 +413,7 @@ pub fn run() {
             commands::export_support_bundle,
             commands::audit_ledger_list,
             commands::audit_ledger_clear,
+            commands::audit_ledger_prune,
             commands::audit_ledger_export,
             commands::export_session_bundle,
             commands::session_cli_export,

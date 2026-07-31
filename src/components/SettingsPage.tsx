@@ -475,6 +475,12 @@ export interface SettingsPageProps {
   streamStallSeconds?: number;
   onStreamStallSeconds?: (v: number) => void;
   /**
+   * Tool audit ledger retention days: 7 | 30 | 90 | 0 (unlimited).
+   * Host prunes on write/rotate and when this changes.
+   */
+  auditLedgerRetentionDays?: number;
+  onAuditLedgerRetentionDays?: (v: number) => void;
+  /**
    * Headless partial stream events (CLI 0.2.117+): when on, Remote IM /
    * diagnostics using streaming-messages-json also pass
    * `--include-partial-messages`. Soft-fails on older CLIs.
@@ -1197,6 +1203,8 @@ export function SettingsPage({
   onAgentIdleMinutes,
   streamStallSeconds = 180,
   onStreamStallSeconds,
+  auditLedgerRetentionDays = 0,
+  onAuditLedgerRetentionDays,
   includePartialMessages = false,
   onIncludePartialMessages,
   storeApiKeysInKeychain = false,
@@ -6609,6 +6617,71 @@ export function SettingsPage({
                     </button>
                   </div>
                 </div>
+                {onAuditLedgerRetentionDays ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-auditRetention")
+                    }
+                    id="settings-anchor-auditRetention"
+                  >
+                    <div className="settings-row settings-row--stack">
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("reliability.audit.retention")}
+                        </div>
+                        <div className="settings-row__desc">
+                          {t("reliability.audit.retentionDesc")}
+                        </div>
+                      </div>
+                      <div
+                        className="settings-seg"
+                        role="radiogroup"
+                        aria-label={t("reliability.audit.retentionAria")}
+                        data-testid="settings-audit-retention"
+                      >
+                        {(
+                          [
+                            { days: 7, key: "reliability.audit.retention.7" as const },
+                            { days: 30, key: "reliability.audit.retention.30" as const },
+                            { days: 90, key: "reliability.audit.retention.90" as const },
+                            {
+                              days: 0,
+                              key: "reliability.audit.retention.unlimited" as const,
+                            },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.days}
+                            type="button"
+                            role="radio"
+                            aria-checked={
+                              (auditLedgerRetentionDays === 7 ||
+                              auditLedgerRetentionDays === 30 ||
+                              auditLedgerRetentionDays === 90
+                                ? auditLedgerRetentionDays
+                                : 0) === opt.days
+                            }
+                            className={
+                              "settings-seg__btn" +
+                              ((auditLedgerRetentionDays === 7 ||
+                              auditLedgerRetentionDays === 30 ||
+                              auditLedgerRetentionDays === 90
+                                ? auditLedgerRetentionDays
+                                : 0) === opt.days
+                                ? " is-on"
+                                : "")
+                            }
+                            data-testid={`settings-audit-retention-${opt.days}`}
+                            onClick={() => onAuditLedgerRetentionDays(opt.days)}
+                          >
+                            {t(opt.key)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <div
                   className={
                     "settings-card" +

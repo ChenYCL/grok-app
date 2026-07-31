@@ -1193,6 +1193,12 @@ pub async fn settings_set(
         crate::acp_client::normalize_compaction_mode(&settings.compaction_mode).to_string();
     settings.compaction_detail =
         crate::acp_client::normalize_compaction_detail(&settings.compaction_detail).to_string();
+    // Audit ledger retention presets: 7 / 30 / 90 / 0 (unlimited).
+    settings.audit_ledger_retention_days =
+        crate::audit_ledger::normalize_retention_days(settings.audit_ledger_retention_days);
+    let audit_retention_flip = crate::audit_ledger::normalize_retention_days(
+        prev.audit_ledger_retention_days,
+    ) != settings.audit_ledger_retention_days;
     let keychain_flip =
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
@@ -1416,6 +1422,16 @@ pub async fn settings_set(
     }
     if let Err(e) = crate::tray::refresh_menu(&app) {
         tracing::warn!("settings_set tray refresh: {e}");
+    }
+    // Apply audit ledger retention when the preset changes (soft-fail I/O).
+    if audit_retention_flip {
+        let days = settings.audit_ledger_retention_days;
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if let Err(e) = crate::audit_ledger::prune_ledger(Some(days)) {
+                tracing::warn!(target: "grok_app::audit_ledger", "settings prune: {e}");
+            }
+        })
+        .await;
     }
     Ok(settings)
 }
@@ -10845,12 +10861,32 @@ pub async fn audit_ledger_clear() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "ok": true }))
 }
 
-/// Export redacted JSONL via native save dialog.
+/// Prune audit ledger by retention days (`None` → current AppSettings value).
+/// Soft-fail I/O → error string for UI toast. Returns `{ ok, dropped }`.
 #[tauri::command]
-pub async fn audit_ledger_export() -> Result<serde_json::Value, String> {
-    let text = tauri::async_runtime::spawn_blocking(crate::audit_ledger::export_redacted_jsonl)
-        .await
-        .map_err(|e| format!("audit_ledger_export: {e}"))?;
+pub async fn audit_ledger_prune(
+    retention_days: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    let dropped = tauri::async_runtime::spawn_blocking(move || {
+        crate::audit_ledger::prune_ledger(retention_days)
+    })
+    .await
+    .map_err(|e| format!("audit_ledger_prune: {e}"))??;
+    Ok(serde_json::json!({ "ok": true, "dropped": dropped }))
+}
+
+/// Export redacted JSONL via native save dialog.
+/// Optional filter: `event`, `sessionId`, `fromTs`, `toTs` (camelCase).
+#[tauri::command]
+pub async fn audit_ledger_export(
+    filter: Option<crate::audit_ledger::AuditLedgerFilter>,
+) -> Result<serde_json::Value, String> {
+    let filter = filter.unwrap_or_default();
+    let text = tauri::async_runtime::spawn_blocking(move || {
+        crate::audit_ledger::export_redacted_jsonl_filtered(&filter)
+    })
+    .await
+    .map_err(|e| format!("audit_ledger_export: {e}"))?;
     if text.trim().is_empty() {
         return Err("audit ledger is empty".into());
     }

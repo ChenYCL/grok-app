@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   auditLedgerEventKey,
+  auditLedgerExportFilterActive,
   auditLedgerTsMs,
   filterAuditLedger,
   formatAuditLedgerRow,
   normalizeAuditLedgerLimit,
+  normalizeAuditRetentionDays,
+  parseAuditLedgerBoundMs,
   parseAuditLedgerEntry,
   parseAuditLedgerList,
+  pruneAuditLedgerEntries,
   serializeAuditLedgerJsonl,
+  toAuditLedgerExportFilter,
   AUDIT_LEDGER_DEFAULT_LIMIT,
   AUDIT_LEDGER_MAX_LIMIT,
+  AUDIT_LEDGER_RETENTION_UNLIMITED,
   AUDIT_LEDGER_SUMMARY_MAX,
   type AuditLedgerEntry,
 } from "./auditLedger";
@@ -143,6 +149,68 @@ describe("filterAuditLedger", () => {
 
   it("filters by sessionId exact", () => {
     expect(filterAuditLedger(rows, { sessionId: "sess-1" })).toHaveLength(2);
+  });
+
+  it("filters by date range (date-only inclusive)", () => {
+    const dated: AuditLedgerEntry[] = [
+      { ...sample, ts: "2026-07-01T12:00:00.000Z", toolName: "old" },
+      { ...sample, ts: "2026-07-15T12:00:00.000Z", toolName: "mid" },
+      { ...sample, ts: "2026-07-30T12:00:00.000Z", toolName: "new" },
+    ];
+    const mid = filterAuditLedger(dated, {
+      fromTs: "2026-07-10",
+      toTs: "2026-07-20",
+    });
+    expect(mid.map((e) => e.toolName)).toEqual(["mid"]);
+  });
+});
+
+describe("retention helpers", () => {
+  it("normalizes retention presets", () => {
+    expect(normalizeAuditRetentionDays(7)).toBe(7);
+    expect(normalizeAuditRetentionDays(30)).toBe(30);
+    expect(normalizeAuditRetentionDays(90)).toBe(90);
+    expect(normalizeAuditRetentionDays(0)).toBe(AUDIT_LEDGER_RETENTION_UNLIMITED);
+    expect(normalizeAuditRetentionDays(14)).toBe(AUDIT_LEDGER_RETENTION_UNLIMITED);
+    expect(normalizeAuditRetentionDays("nope")).toBe(
+      AUDIT_LEDGER_RETENTION_UNLIMITED,
+    );
+  });
+
+  it("prunes entries older than retention window", () => {
+    const now = Date.parse("2026-07-31T12:00:00.000Z");
+    const rows: AuditLedgerEntry[] = [
+      { ...sample, ts: "2026-06-01T12:00:00.000Z", toolName: "old" },
+      { ...sample, ts: "2026-07-28T12:00:00.000Z", toolName: "young" },
+    ];
+    const kept = pruneAuditLedgerEntries(rows, 30, now);
+    expect(kept.map((e) => e.toolName)).toEqual(["young"]);
+    expect(pruneAuditLedgerEntries(rows, 0, now)).toHaveLength(2);
+  });
+
+  it("parses date bounds", () => {
+    expect(parseAuditLedgerBoundMs("2026-07-15", false)).toBe(
+      Date.parse("2026-07-15T00:00:00.000Z"),
+    );
+    const end = parseAuditLedgerBoundMs("2026-07-15", true);
+    expect(end).toBe(Date.parse("2026-07-15T00:00:00.000Z") + 86_400_000 - 1);
+  });
+
+  it("builds host export filter", () => {
+    const f = toAuditLedgerExportFilter({
+      event: "permission",
+      sessionId: " s1 ",
+      fromTs: "2026-07-01",
+      toTs: "2026-07-31",
+    });
+    expect(f).toEqual({
+      event: "permission",
+      sessionId: "s1",
+      fromTs: "2026-07-01",
+      toTs: "2026-07-31",
+    });
+    expect(auditLedgerExportFilterActive(f)).toBe(true);
+    expect(auditLedgerExportFilterActive({})).toBe(false);
   });
 });
 

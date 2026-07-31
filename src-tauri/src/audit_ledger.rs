@@ -2,7 +2,9 @@
 //!
 //! Append-only JSONL under `{app_data}/audit/tool_ledger.jsonl`. Soft-fail on
 //! all I/O. Never stores secrets/API keys (summary is redacted + length-capped).
-//! Soft-rotates when the file grows past a size budget.
+//! Soft-rotates when the file grows past a size budget. Optional day-based
+//! retention (7 / 30 / 90 / unlimited) prunes on write, rotate, or explicit
+//! prune. Export can filter by event, session, and date range.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -23,6 +25,13 @@ pub const MAX_LIST_LIMIT: usize = 1_000;
 pub const MAX_SUMMARY_CHARS: usize = 240;
 /// Cap tool_name / permission strings.
 pub const MAX_FIELD_CHARS: usize = 120;
+
+/// Retention presets (days). `0` = unlimited (keep until size rotate / clear).
+pub const RETENTION_UNLIMITED: u32 = 0;
+pub const RETENTION_7: u32 = 7;
+pub const RETENTION_30: u32 = 30;
+pub const RETENTION_90: u32 = 90;
+pub const RETENTION_PRESETS: [u32; 4] = [RETENTION_7, RETENTION_30, RETENTION_90, RETENTION_UNLIMITED];
 
 /// Event kinds written to the ledger.
 pub const EVENT_PERMISSION: &str = "permission";
@@ -88,6 +97,157 @@ pub fn normalize_list_limit(raw: Option<u32>) -> usize {
         None => DEFAULT_LIST_LIMIT,
         Some(n) => (n as usize).clamp(1, MAX_LIST_LIMIT),
     }
+}
+
+/// Normalize retention days to a known preset. Unknown → unlimited (`0`).
+pub fn normalize_retention_days(raw: u32) -> u32 {
+    match raw {
+        RETENTION_7 | RETENTION_30 | RETENTION_90 => raw,
+        _ => RETENTION_UNLIMITED,
+    }
+}
+
+/// Read retention days from AppSettings (normalized). Soft-fail → unlimited.
+pub fn current_retention_days() -> u32 {
+    normalize_retention_days(crate::store::load_settings().audit_ledger_retention_days)
+}
+
+/// Parse entry `ts` to UTC millis since epoch. `None` when unparseable.
+pub fn entry_ts_ms(entry: &AuditLedgerEntry) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(entry.ts.trim())
+        .ok()
+        .map(|dt| dt.timestamp_millis())
+        .or_else(|| {
+            // Accept plain UTC `...Z` already covered by rfc3339; try millis-less fallback.
+            chrono::DateTime::parse_from_str(entry.ts.trim(), "%Y-%m-%dT%H:%M:%SZ")
+                .ok()
+                .map(|dt| dt.timestamp_millis())
+        })
+}
+
+/// Pure: keep entries within retention window. Unlimited (`0`) keeps all.
+/// Unparseable timestamps are kept (never drop opaque rows on time alone).
+pub fn filter_by_retention(
+    entries: Vec<AuditLedgerEntry>,
+    retention_days: u32,
+    now_ms: i64,
+) -> Vec<AuditLedgerEntry> {
+    let days = normalize_retention_days(retention_days);
+    if days == RETENTION_UNLIMITED {
+        return entries;
+    }
+    let window_ms = (days as i64).saturating_mul(86_400_000);
+    let cutoff = now_ms.saturating_sub(window_ms);
+    entries
+        .into_iter()
+        .filter(|e| match entry_ts_ms(e) {
+            Some(ms) => ms >= cutoff,
+            None => true,
+        })
+        .collect()
+}
+
+/// Optional export / list filter (camelCase from UI).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditLedgerFilter {
+    /// `permission` | `tool_start` | `tool_end` | omit/empty = all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Inclusive lower bound RFC3339 (or any parseable timestamp string).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_ts: Option<String>,
+    /// Inclusive upper bound RFC3339.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_ts: Option<String>,
+}
+
+fn parse_bound_ms(raw: Option<&str>) -> Option<i64> {
+    let s = raw?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.timestamp_millis());
+    }
+    // Date-only `YYYY-MM-DD` → start of that UTC day.
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        let dt = d
+            .and_hms_opt(0, 0, 0)
+            .map(|ndt| ndt.and_utc())?;
+        return Some(dt.timestamp_millis());
+    }
+    None
+}
+
+/// Pure: apply event / session / date-range filter.
+pub fn filter_entries(
+    entries: Vec<AuditLedgerEntry>,
+    filter: &AuditLedgerFilter,
+) -> Vec<AuditLedgerEntry> {
+    let event = filter
+        .event
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "all")
+        .map(|s| s.to_string());
+    let sid = filter
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_ascii_lowercase());
+    let from_ms = parse_bound_ms(filter.from_ts.as_deref());
+    let to_ms = parse_bound_ms(filter.to_ts.as_deref()).map(|ms| {
+        // If bound was date-only (midnight), treat as end of that day.
+        let raw = filter.to_ts.as_deref().unwrap_or("").trim();
+        if raw.len() == 10 && chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d").is_ok() {
+            ms + 86_400_000 - 1
+        } else {
+            ms
+        }
+    });
+
+    entries
+        .into_iter()
+        .filter(|e| {
+            if let Some(ref ev) = event {
+                if e.event != *ev {
+                    return false;
+                }
+            }
+            if let Some(ref want) = sid {
+                let got = e
+                    .session_id
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                if got != *want {
+                    return false;
+                }
+            }
+            if from_ms.is_some() || to_ms.is_some() {
+                let Some(ms) = entry_ts_ms(e) else {
+                    // Unparseable ts: keep when no bounds strictness required? Drop for range
+                    // filters so export stays honest about the window.
+                    return false;
+                };
+                if let Some(lo) = from_ms {
+                    if ms < lo {
+                        return false;
+                    }
+                }
+                if let Some(hi) = to_ms {
+                    if ms > hi {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+        .collect()
 }
 
 /// Cap + scrub a free-form field. Soft-fail friendly (never panics).
@@ -241,6 +401,8 @@ fn append_entry_locked(entry: &AuditLedgerEntry) -> Result<(), String> {
     file.flush().map_err(|e| format!("flush: {e}"))?;
 
     maybe_rotate_locked(&path)?;
+    // Time-based retention after size rotate so the rewrite stays small.
+    maybe_prune_locked(&path, current_retention_days())?;
     Ok(())
 }
 
@@ -290,6 +452,87 @@ fn maybe_rotate_locked(path: &std::path::Path) -> Result<(), String> {
         "rotated tool ledger (size budget)"
     );
     Ok(())
+}
+
+/// Rewrite ledger keeping only rows inside the retention window.
+/// Soft-fail → Ok(0). Returns number of rows dropped (best-effort).
+pub fn prune_ledger(retention_days: Option<u32>) -> Result<u32, String> {
+    let days = normalize_retention_days(retention_days.unwrap_or_else(current_retention_days));
+    let _guard = WRITE_LOCK.lock();
+    let path = ledger_path();
+    maybe_prune_locked(&path, days)
+}
+
+fn maybe_prune_locked(path: &std::path::Path, retention_days: u32) -> Result<u32, String> {
+    let days = normalize_retention_days(retention_days);
+    if days == RETENTION_UNLIMITED {
+        return Ok(0);
+    }
+    if !path.is_file() {
+        return Ok(0);
+    }
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => return Ok(0),
+    };
+    let reader = BufReader::new(file);
+    let mut kept_lines: Vec<String> = Vec::new();
+    let mut kept_entries = 0u32;
+    let mut dropped = 0u32;
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let window_ms = (days as i64).saturating_mul(86_400_000);
+    let cutoff = now_ms.saturating_sub(window_ms);
+
+    for line in reader.lines() {
+        let Ok(line) = line else { continue };
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        match parse_entry_line(t) {
+            Some(e) => match entry_ts_ms(&e) {
+                Some(ms) if ms < cutoff => {
+                    dropped = dropped.saturating_add(1);
+                }
+                _ => {
+                    // In-window or unparseable ts: keep (re-serialize redacted).
+                    if let Ok(s) = serde_json::to_string(&e) {
+                        kept_lines.push(crate::store::redact_text(&s));
+                        kept_entries = kept_entries.saturating_add(1);
+                    }
+                }
+            },
+            None => {
+                // Corrupt line: drop (never re-export junk that might hold secrets).
+                dropped = dropped.saturating_add(1);
+            }
+        }
+    }
+
+    if dropped == 0 {
+        return Ok(0);
+    }
+
+    let tmp = path.with_extension("jsonl.tmp");
+    {
+        let mut out = File::create(&tmp).map_err(|e| format!("prune create: {e}"))?;
+        for l in &kept_lines {
+            out.write_all(l.as_bytes())
+                .map_err(|e| format!("prune write: {e}"))?;
+            out.write_all(b"\n")
+                .map_err(|e| format!("prune write nl: {e}"))?;
+        }
+        out.flush().map_err(|e| format!("prune flush: {e}"))?;
+    }
+    fs::rename(&tmp, path).map_err(|e| format!("prune rename: {e}"))?;
+    tracing::info!(
+        target: "grok_app::audit_ledger",
+        kept = kept_entries,
+        dropped,
+        days,
+        "pruned tool ledger by retention"
+    );
+    Ok(dropped)
 }
 
 /// Record a permission decision (user or auto). Soft-fail.
@@ -505,9 +748,14 @@ pub fn clear_ledger() -> Result<(), String> {
     Ok(())
 }
 
-/// Export redacted JSONL text (newest first optional — keeps file order chronological).
-/// Soft-fail → empty string.
+/// Export redacted JSONL text (file order = chronological). Soft-fail → empty string.
 pub fn export_redacted_jsonl() -> String {
+    export_redacted_jsonl_filtered(&AuditLedgerFilter::default())
+}
+
+/// Export redacted JSONL with optional event / session / date-range filter.
+/// Soft-fail → empty string. Never emits unsanitized lines.
+pub fn export_redacted_jsonl_filtered(filter: &AuditLedgerFilter) -> String {
     let _guard = WRITE_LOCK.lock();
     let path = ledger_path();
     if !path.is_file() {
@@ -515,14 +763,18 @@ pub fn export_redacted_jsonl() -> String {
     }
     match fs::read_to_string(&path) {
         Ok(raw) => {
-            // Re-parse each line so free-form junk / secrets cannot leave.
-            let mut out = String::new();
+            let mut entries = Vec::new();
             for line in raw.lines() {
                 if let Some(e) = parse_entry_line(line) {
-                    if let Ok(s) = serde_json::to_string(&e) {
-                        out.push_str(&crate::store::redact_text(&s));
-                        out.push('\n');
-                    }
+                    entries.push(e);
+                }
+            }
+            let filtered = filter_entries(entries, filter);
+            let mut out = String::new();
+            for e in filtered {
+                if let Ok(s) = serde_json::to_string(&e) {
+                    out.push_str(&crate::store::redact_text(&s));
+                    out.push('\n');
                 }
             }
             out
@@ -652,5 +904,177 @@ mod tests {
             normalize_list_limit(Some(99_999)),
             MAX_LIST_LIMIT
         );
+    }
+
+    #[test]
+    fn normalize_retention_presets() {
+        assert_eq!(normalize_retention_days(7), RETENTION_7);
+        assert_eq!(normalize_retention_days(30), RETENTION_30);
+        assert_eq!(normalize_retention_days(90), RETENTION_90);
+        assert_eq!(normalize_retention_days(0), RETENTION_UNLIMITED);
+        assert_eq!(normalize_retention_days(14), RETENTION_UNLIMITED);
+        assert_eq!(normalize_retention_days(999), RETENTION_UNLIMITED);
+    }
+
+    #[test]
+    fn filter_by_retention_drops_old() {
+        let now = chrono::Utc::now();
+        let old = AuditLedgerEntry {
+            ts: (now - chrono::Duration::days(40))
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            session_id: Some("s".into()),
+            project_path: None,
+            tool_name: "bash".into(),
+            event: EVENT_TOOL_END.into(),
+            permission: None,
+            outcome: Some(OUTCOME_OK.into()),
+            summary: Some("old".into()),
+        };
+        let young = AuditLedgerEntry {
+            ts: (now - chrono::Duration::days(2))
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            session_id: Some("s".into()),
+            project_path: None,
+            tool_name: "bash".into(),
+            event: EVENT_TOOL_END.into(),
+            permission: None,
+            outcome: Some(OUTCOME_OK.into()),
+            summary: Some("young".into()),
+        };
+        let kept = filter_by_retention(
+            vec![old.clone(), young.clone()],
+            RETENTION_30,
+            now.timestamp_millis(),
+        );
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].summary.as_deref(), Some("young"));
+
+        let all = filter_by_retention(
+            vec![old, young],
+            RETENTION_UNLIMITED,
+            now.timestamp_millis(),
+        );
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn filter_entries_by_event_session_and_range() {
+        let a = AuditLedgerEntry {
+            ts: "2026-07-01T12:00:00.000Z".into(),
+            session_id: Some("sess-a".into()),
+            project_path: None,
+            tool_name: "bash".into(),
+            event: EVENT_TOOL_END.into(),
+            permission: None,
+            outcome: Some(OUTCOME_OK.into()),
+            summary: None,
+        };
+        let b = AuditLedgerEntry {
+            ts: "2026-07-15T12:00:00.000Z".into(),
+            session_id: Some("sess-b".into()),
+            project_path: None,
+            tool_name: "read_file".into(),
+            event: EVENT_PERMISSION.into(),
+            permission: Some("allow_once".into()),
+            outcome: None,
+            summary: None,
+        };
+        let c = AuditLedgerEntry {
+            ts: "2026-07-20T12:00:00.000Z".into(),
+            session_id: Some("sess-a".into()),
+            project_path: None,
+            tool_name: "bash".into(),
+            event: EVENT_TOOL_START.into(),
+            permission: None,
+            outcome: None,
+            summary: None,
+        };
+
+        let by_event = filter_entries(
+            vec![a.clone(), b.clone(), c.clone()],
+            &AuditLedgerFilter {
+                event: Some(EVENT_PERMISSION.into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(by_event.len(), 1);
+        assert_eq!(by_event[0].tool_name, "read_file");
+
+        let by_sid = filter_entries(
+            vec![a.clone(), b.clone(), c.clone()],
+            &AuditLedgerFilter {
+                session_id: Some("sess-a".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(by_sid.len(), 2);
+
+        let by_range = filter_entries(
+            vec![a, b, c],
+            &AuditLedgerFilter {
+                from_ts: Some("2026-07-10".into()),
+                to_ts: Some("2026-07-18".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(by_range.len(), 1);
+        assert_eq!(by_range[0].session_id.as_deref(), Some("sess-b"));
+    }
+
+    #[test]
+    fn prune_drops_old_rows_on_disk() {
+        with_temp_home(|_home| {
+            let path = ledger_path();
+            let now = chrono::Utc::now();
+            let old_ts = (now - chrono::Duration::days(60))
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let young_ts = (now - chrono::Duration::days(3))
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let body = format!(
+                "{}\n{}\n",
+                serde_json::json!({
+                    "ts": old_ts,
+                    "toolName": "bash",
+                    "event": "tool_end",
+                    "outcome": "ok",
+                    "summary": "old-row"
+                }),
+                serde_json::json!({
+                    "ts": young_ts,
+                    "toolName": "bash",
+                    "event": "tool_end",
+                    "outcome": "ok",
+                    "summary": "young-row"
+                }),
+            );
+            fs::write(&path, body).unwrap();
+
+            let dropped = prune_ledger(Some(RETENTION_30)).expect("prune");
+            assert!(dropped >= 1);
+            let listed = list_recent(Some(10));
+            assert_eq!(listed.len(), 1);
+            assert_eq!(listed[0].summary.as_deref(), Some("young-row"));
+
+            // Unlimited: no further drops.
+            assert_eq!(prune_ledger(Some(RETENTION_UNLIMITED)).unwrap(), 0);
+            assert_eq!(list_recent(Some(10)).len(), 1);
+        });
+    }
+
+    #[test]
+    fn export_filtered_respects_event() {
+        with_temp_home(|_home| {
+            record_permission(Some("s1"), None, "read_file", "allow_once", Some("a.rs"));
+            record_tool_start(Some("s1"), None, "bash", Some("echo"));
+            let all = export_redacted_jsonl();
+            assert!(all.lines().count() >= 2);
+            let only_perm = export_redacted_jsonl_filtered(&AuditLedgerFilter {
+                event: Some(EVENT_PERMISSION.into()),
+                ..Default::default()
+            });
+            assert_eq!(only_perm.lines().count(), 1);
+            assert!(only_perm.contains("permission"));
+            assert!(!only_perm.contains("tool_start"));
+        });
     }
 }
