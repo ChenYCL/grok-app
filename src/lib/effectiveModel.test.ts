@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { effectiveComposerModel } from "./effectiveModel";
+import {
+  composerModelChipLabel,
+  effectiveComposerModel,
+} from "./effectiveModel";
 
 describe("effectiveComposerModel", () => {
   it("keeps the official catalog selection on the official route", () => {
@@ -20,5 +23,37 @@ describe("effectiveComposerModel", () => {
 
   it("keeps the composer selection when no provider is active", () => {
     expect(effectiveComposerModel("grok-4.5", "")).toBe("grok-4.5");
+  });
+});
+
+describe("composerModelChipLabel", () => {
+  it("uses official label when no custom route", () => {
+    expect(
+      composerModelChipLabel({
+        modelId: "grok-4.5",
+        officialLabel: "Grok 4.5",
+        activeCustom: null,
+      }),
+    ).toBe("Grok 4.5");
+  });
+
+  it("uses custom name when set", () => {
+    expect(
+      composerModelChipLabel({
+        modelId: "grok-4.5",
+        officialLabel: "Grok 4.5",
+        activeCustom: { name: "云驿 DeepSeek", model: "deepseek-chat" },
+      }),
+    ).toBe("云驿 DeepSeek");
+  });
+
+  it("falls back to custom model when name empty", () => {
+    expect(
+      composerModelChipLabel({
+        modelId: "grok-4.5",
+        officialLabel: "Grok 4.5",
+        activeCustom: { name: "  ", model: "deepseek-chat" },
+      }),
+    ).toBe("deepseek-chat");
   });
 });

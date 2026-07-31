@@ -23,3 +23,24 @@ export function effectiveComposerModel(
   const custom = activeCustomModel?.trim();
   return custom ? custom : modelId;
 }
+
+/**
+ * Label for the composer model chip.
+ *
+ * Official route: catalog label (or model id).
+ * Custom route: provider display `name`, falling back to request `model`.
+ */
+export function composerModelChipLabel(opts: {
+  modelId: string;
+  officialLabel: string;
+  activeCustom: { name: string; model: string } | null | undefined;
+}): string {
+  const custom = opts.activeCustom;
+  if (custom) {
+    const name = custom.name?.trim();
+    if (name) return name;
+    const model = custom.model?.trim();
+    if (model) return model;
+  }
+  return opts.officialLabel || opts.modelId;
+}
