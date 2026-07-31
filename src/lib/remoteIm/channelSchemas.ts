@@ -480,10 +480,21 @@ const DISCORD_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.discord.tokenHelp",
+    placeholderKey: "settings.remoteIm.discord.tokenPlaceholder",
   },
-  ACL_ALLOW_FROM,
-  THREAD_ISOLATION,
-  PROGRESS_STYLE,
+  {
+    ...ACL_ALLOW_FROM,
+    helpKey: "settings.remoteIm.discord.allowFromHelp",
+  },
+  {
+    ...THREAD_ISOLATION,
+    helpKey: "settings.remoteIm.discord.threadHelp",
+  },
+  {
+    ...PROGRESS_STYLE,
+    helpKey: "settings.remoteIm.discord.progressHelp",
+  },
 ];
 
 const MATRIX_FIELDS: ChannelSchema["fields"] = [

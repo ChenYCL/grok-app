@@ -22,6 +22,9 @@ import {
   weixinHealthHintKeys,
   validateWeixinConfig,
 } from "./weixinConfig";
+  discordHealthHintKeys,
+  validateDiscordConfig,
+} from "./discordConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -103,6 +106,7 @@ const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
 const WEIXIN_LIKE: RemoteChannelId[] = ["weixin"];
+const DISCORD_LIKE: RemoteChannelId[] = ["discord"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -252,6 +256,13 @@ export function channelModeLabel(
     const proxy = String(options.proxy ?? "").trim();
     return proxy ? "proxy=set" : "proxy=none";
   }
+  if (DISCORD_LIKE.includes(channel)) {
+    const thread =
+      options.thread_isolation === true ||
+      options.thread_isolation === "true";
+    const style = String(options.progress_style ?? "compact").trim() || "compact";
+    return thread ? `thread_iso · style=${style}` : `style=${style}`;
+  }
   if (channel === "wecom") {
     const mode = String(options.connect_mode ?? options.mode ?? "websocket");
     return `mode=${mode === "webhook" ? "webhook" : "websocket"}`;
@@ -335,6 +346,16 @@ export function credentialReadiness(
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
 
+  if (DISCORD_LIKE.includes(channel)) {
+    const v = validateDiscordConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      tokenValue,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
   if (FEISHU_LIKE.includes(channel)) {
     const v = validateFeishuConfig({
       options: opts,
@@ -407,6 +428,8 @@ export function classifyChannelHealth(
     readinessInstance,
     input.secretKeysFilled,
     savedOpts,
+    input.tokenValue,
+    input.appIdValue,
   );
 
   // Honest status: incomplete mode-switch / missing keys cannot look "connected".
@@ -483,6 +506,20 @@ export function classifyChannelHealth(
       tokenValue: input.tokenValue,
     });
     for (const k of telegramHealthHintKeys(tgV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
+  if (DISCORD_LIKE.includes(channel)) {
+    const discV = validateDiscordConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      tokenValue: input.tokenValue,
+    });
+    for (const k of discordHealthHintKeys(discV, {
       openAcl: openAcl && instance.hasCredentials,
     })) {
       hintKeys.push(k);
@@ -570,5 +607,6 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     WECOM_LIKE.includes(channel) ||
     DINGTALK_LIKE.includes(channel) ||
     WEIXIN_LIKE.includes(channel)
+    DISCORD_LIKE.includes(channel)
   );
 }

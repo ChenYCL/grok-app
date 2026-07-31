@@ -587,6 +587,11 @@ export function RemoteImChannelPanel({
         .filter(([, v]) => v.trim().length > 0)
         .map(([k]) => k),
     );
+    // Format checks only — never stored by health helpers
+    const tokenValue =
+      channelId === "telegram" || channelId === "discord"
+        ? secrets.token || secrets.bot_token || null
+        : null;
     return classifyChannelHealth({
       instance,
       bridgeRunning,
@@ -594,8 +599,9 @@ export function RemoteImChannelPanel({
       secretKeysFilled: filled,
       // Live form options (e.g. WeCom connect_mode) for honest soft status
       draftOptions: values,
+      tokenValue,
     });
-  }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
+  }, [instance, bridgeRunning, bridgeLinked, secrets, values, channelId]);
 
   const statusTone = health.badgeTone;
   const statusLabel = t(health.statusKey);
@@ -955,6 +961,22 @@ export function RemoteImChannelPanel({
           </p>
         </div>
       ) : null}
+      {channelId === "discord" ? (
+        <div className="rim-callout" data-discord-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.discord.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.discord.guide.step1")}</li>
+            <li>{t("settings.remoteIm.discord.guide.step2")}</li>
+            <li>{t("settings.remoteIm.discord.guide.step3")}</li>
+            <li>{t("settings.remoteIm.discord.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.discord.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
 {channelId === "lark" ? (
         <div className="rim-callout" data-feishu-guide="1" data-validate="validateFeishuConfig">
           <div className="rim-callout__title">
@@ -1118,7 +1140,14 @@ export function RemoteImChannelPanel({
         ) : null}
 
         {channelId === "discord" ? (
-          <div className="rim-callout">
+          <div
+            className="rim-callout rim-callout--warn"
+            data-discord-intent="1"
+          >
+            <div className="rim-callout__title">
+              <IconAlertTriangle size={14} />
+              {t("settings.remoteIm.discord.intentTitle")}
+            </div>
             <p>{t("settings.remoteIm.discord.intentHint")}</p>
           </div>
         ) : null}

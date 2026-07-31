@@ -81,6 +81,14 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("isRetiredChannel");
   });
 
+  it("ChannelPanel Discord guide + intent callout without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-discord-guide");
+    expect(src).toContain("data-discord-intent");
+    expect(src).toContain('channelId === "discord"');
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
   it("Overview has local event timeline without window.confirm", () => {
     const src = readFileSync(join(ROOT, "RemoteImOverview.tsx"), "utf8");
     expect(src).toContain("loadRimEventTimeline");

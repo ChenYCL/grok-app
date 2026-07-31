@@ -266,6 +266,9 @@ describe("classifyChannelHealth", () => {
     expect(transportForChannel("weixin")).toBe("long_poll");
 
     const bare = inst("weixin", {
+  it("discord: gateway deep health with intent + ACL hints", () => {
+    expect(channelHasDeepHealth("discord")).toBe(true);
+    const bare = inst("discord", {
       hasCredentials: false,
       enabled: false,
       options: {},
@@ -287,6 +290,19 @@ describe("classifyChannelHealth", () => {
       hasCredentials: true,
       enabled: true,
       options: { account_id: "default", proxy: "socks5://127.0.0.1:1" },
+    expect(h0.transport).toBe("gateway");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("discordGateway"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("discordIntent"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("discordNoWebhook"))).toBe(true);
+
+    const ready = inst("discord", {
+      hasCredentials: true,
+      enabled: true,
+      options: {
+        progress_style: "compact",
+        thread_isolation: true,
+      },
       acl: {
         allowFrom: "*",
         requireMention: true,
@@ -317,5 +333,23 @@ describe("classifyChannelHealth", () => {
       credentialReadiness("weixin", inst("weixin", { hasCredentials: true }))
         .ready,
     ).toBe(true);
+    expect(h1.transport).toBe("gateway");
+    expect(h1.modeLabel).toContain("thread_iso");
+    expect(h1.hintKeys.some((k) => k.includes("discordGateway"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("discordIntent"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("discordThreadIso"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid form token shape → not ready
+    const h2 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+      secretKeysFilled: new Set(["token"]),
+      tokenValue: "not-a-token",
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.hintKeys.some((k) => k.includes("discordTokenFormat"))).toBe(
+      true,
+    );
   });
 });
