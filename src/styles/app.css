@@ -14284,13 +14284,42 @@ textarea::-webkit-scrollbar-thumb:active,
   min-width: 0;
 }
 
-/* Protocol Select fills the same column width as the API key control */
-.prov-field > .c-select,
-.prov-field .prov-field__control,
-.prov-field > .c-select .c-select__trigger {
+/**
+ * Shared row for protocol Select + API key: [ main control | trailing btn ].
+ * Protocol uses an invisible trail twin so Select width == key input width.
+ */
+.prov-control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.prov-control-row__main {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+}
+
+.prov-control-row > .c-select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.prov-control-row > .c-select .c-select__trigger {
+  display: flex;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  justify-content: space-between;
+}
+
+.prov-control-row__trail {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
 }
 
 .prov-check {

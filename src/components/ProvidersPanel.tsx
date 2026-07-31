@@ -1135,18 +1135,28 @@ export function ProvidersPanel({
                   />
                 </label>
 
-                {/* Side-by-side: protocol | API key (equal column width). */}
+                {/* Side-by-side: protocol | API key. Shared control-row so Select
+                    width matches the key input (not the input+显示 button). */}
                 <div className="prov-field">
                   <span className="prov-field__label">{tr("prov.protocol")}</span>
-                  <Select
-                    value={form.apiBackend}
-                    onChange={(v) =>
-                      setForm((f) => ({ ...f, apiBackend: v }))
-                    }
-                    options={protocolOptions}
-                    aria-label={tr("prov.protocol")}
-                    className="prov-field__control"
-                  />
+                  <div className="prov-control-row">
+                    <Select
+                      value={form.apiBackend}
+                      onChange={(v) =>
+                        setForm((f) => ({ ...f, apiBackend: v }))
+                      }
+                      options={protocolOptions}
+                      aria-label={tr("prov.protocol")}
+                      className="prov-control-row__main"
+                    />
+                    {/* Invisible twin of the key “Show” button keeps column widths equal. */}
+                    <span
+                      className="btn btn--ghost btn--sm prov-control-row__trail"
+                      aria-hidden
+                    >
+                      {tr("prov.keyShow")}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="prov-field">
@@ -1168,9 +1178,9 @@ export function ProvidersPanel({
                       </button>
                     ) : null}
                   </span>
-                  <div className="prov-key-row">
+                  <div className="prov-control-row">
                     <input
-                      className="settings-input"
+                      className="settings-input prov-control-row__main"
                       type={showKey ? "text" : "password"}
                       value={form.apiKey}
                       onChange={(e) =>
