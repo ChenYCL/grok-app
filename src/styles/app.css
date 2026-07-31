@@ -19269,6 +19269,29 @@ div.composer__input:empty::before {
   color: var(--text-secondary, rgba(255, 255, 255, 0.72));
   white-space: pre-wrap;
 }
+.export-md-options__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.export-md-options__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.75));
+  background: var(--surface-muted, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+.export-md-options__empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--warning, #e6a23c);
+}
 .export-md-options__row {
   display: flex;
   align-items: flex-start;
