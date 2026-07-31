@@ -3140,6 +3140,7 @@ impl SessionManager {
             AcpEvent::ProcessExited { .. } => "process_exited",
             AcpEvent::Stderr { .. } => "stderr",
             AcpEvent::HookActivity { .. } => "hook_activity",
+            AcpEvent::GoalUpdated { .. } => "goal_updated",
         }
     }
 
@@ -3889,6 +3890,38 @@ impl SessionManager {
                     }),
                 );
             }
+            AcpEvent::GoalUpdated {
+                goal_id,
+                role,
+                current_deliverable_title,
+                completed_deliverables,
+                total_deliverables,
+                verifying_completion,
+                last_classifier_verdict,
+                raw,
+            } => {
+                let app_sid = {
+                    let guard = self.inner.lock();
+                    guard
+                        .as_ref()
+                        .map(|s| s.app_session_id.clone())
+                        .unwrap_or_default()
+                };
+                let _ = app.emit(
+                    "session://goal",
+                    serde_json::json!({
+                        "sessionId": app_sid,
+                        "goalId": goal_id,
+                        "currentSubagentRole": role,
+                        "currentDeliverableTitle": current_deliverable_title,
+                        "completedDeliverables": completed_deliverables,
+                        "totalDeliverables": total_deliverables,
+                        "verifyingCompletion": verifying_completion,
+                        "lastClassifierVerdict": last_classifier_verdict,
+                        "update": raw,
+                    }),
+                );
+            }
             AcpEvent::RetryState {
                 attempt,
                 max_retries,
@@ -4575,6 +4608,31 @@ impl SessionManager {
                         "toolName": tool_name,
                         "ok": ok,
                         "detail": detail,
+                        "update": raw,
+                    }),
+                );
+            }
+            AcpEvent::GoalUpdated {
+                goal_id,
+                role,
+                current_deliverable_title,
+                completed_deliverables,
+                total_deliverables,
+                verifying_completion,
+                last_classifier_verdict,
+                raw,
+            } => {
+                let _ = app.emit(
+                    "session://goal",
+                    serde_json::json!({
+                        "sessionId": app_session_id,
+                        "goalId": goal_id,
+                        "currentSubagentRole": role,
+                        "currentDeliverableTitle": current_deliverable_title,
+                        "completedDeliverables": completed_deliverables,
+                        "totalDeliverables": total_deliverables,
+                        "verifyingCompletion": verifying_completion,
+                        "lastClassifierVerdict": last_classifier_verdict,
                         "update": raw,
                     }),
                 );

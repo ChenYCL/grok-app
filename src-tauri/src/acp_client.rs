@@ -130,6 +130,21 @@ pub enum AcpEvent {
         /// Raw update object for richer client-side parsing (runs list, etc.).
         raw: Value,
     },
+    /// Goal orchestration progress (CLI 0.2.117+ `sessionUpdate: goal_updated`).
+    /// Forwarded as `session://goal` for Reliability “Goal orchestration”.
+    /// Soft-fail: older CLIs never emit this — UI shows honest empty state.
+    GoalUpdated {
+        goal_id: Option<String>,
+        /// `current_subagent_role` (classifier / planner / strategist / …).
+        role: Option<String>,
+        current_deliverable_title: Option<String>,
+        completed_deliverables: Option<u32>,
+        total_deliverables: Option<u32>,
+        verifying_completion: Option<bool>,
+        last_classifier_verdict: Option<String>,
+        /// Raw update for client-side phase projection.
+        raw: Value,
+    },
     ProcessExited {
         code: Option<i32>,
     },
@@ -2896,6 +2911,78 @@ pub fn parse_hook_activity_update(kind: &str, update: &Value) -> Option<AcpEvent
     })
 }
 
+/// Pure decode of CLI goal harness `goal_updated` (and soft goal_* variants).
+fn parse_goal_updated(update: &Value) -> Option<AcpEvent> {
+    let goal_id = update
+        .get("goalId")
+        .or_else(|| update.get("goal_id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let role = update
+        .get("currentSubagentRole")
+        .or_else(|| update.get("current_subagent_role"))
+        .or_else(|| update.get("role"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let current_deliverable_title = update
+        .get("currentDeliverableTitle")
+        .or_else(|| update.get("current_deliverable_title"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let completed_deliverables = update
+        .get("completedDeliverables")
+        .or_else(|| update.get("completed_deliverables"))
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+    let total_deliverables = update
+        .get("totalDeliverables")
+        .or_else(|| update.get("total_deliverables"))
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+    let verifying_completion = update
+        .get("verifyingCompletion")
+        .or_else(|| update.get("verifying_completion"))
+        .and_then(|v| v.as_bool());
+    let last_classifier_verdict = update
+        .get("lastClassifierVerdict")
+        .or_else(|| update.get("last_classifier_verdict"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // Require at least one goal-shaped field so we never invent empty noise.
+    let has_shape = goal_id.is_some()
+        || role.is_some()
+        || current_deliverable_title.is_some()
+        || completed_deliverables.is_some()
+        || total_deliverables.is_some()
+        || verifying_completion.is_some()
+        || last_classifier_verdict.is_some()
+        || update.get("objective").is_some()
+        || update.get("deliverables").is_some();
+    if !has_shape {
+        // Still forward tagged goal_updated shells so the UI can note an empty pulse.
+        let kind = update
+            .get("sessionUpdate")
+            .or_else(|| update.get("session_update"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if kind != "goal_updated" && kind != "goalUpdated" {
+            return None;
+        }
+    }
+
+    Some(AcpEvent::GoalUpdated {
+        goal_id,
+        role,
+        current_deliverable_title,
+        completed_deliverables,
+        total_deliverables,
+        verifying_completion,
+        last_classifier_verdict,
+        raw: update.clone(),
+    })
+}
+
 /// Pure decode of `session/update` params → host events (no I/O).
 /// Used by the live client and golden fixture tests.
 pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
@@ -3101,7 +3188,21 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 out.push(ev);
             }
         }
+        // Goal harness (CLI 0.2.117+): classifier / planner / strategist / verifier.
+        "goal_updated" | "goalUpdated" => {
+            if let Some(ev) = parse_goal_updated(update) {
+                out.push(ev);
+            }
+        }
         _ => {
+            // Soft-recognize other goal_* sessionUpdate kinds without inventing state.
+            if kind.starts_with("goal_")
+                || (kind.starts_with("goal") && kind.contains("update"))
+            {
+                if let Some(ev) = parse_goal_updated(update) {
+                    out.push(ev);
+                }
+            }
             if let Some(ev) = parse_usage_update(kind, update) {
                 out.push(ev);
             }
@@ -3463,6 +3564,44 @@ mod session_update_decode_tests {
                 ..
             }] if kind == "hook_annotation" && detail.contains("stop_failure")
         ));
+    }
+
+    #[test]
+    fn goal_updated_decodes_classifier_role() {
+        let evs = decode_session_update(&json!({
+            "update": {
+                "sessionUpdate": "goal_updated",
+                "goal_id": "g-1",
+                "current_subagent_role": "goal classifier",
+                "current_deliverable_title": "Ship UI",
+                "completed_deliverables": 1,
+                "total_deliverables": 3,
+                "verifying_completion": true,
+                "last_classifier_verdict": "not_achieved"
+            }
+        }));
+        assert!(matches!(
+            &evs[..],
+            [AcpEvent::GoalUpdated {
+                goal_id: Some(gid),
+                role: Some(role),
+                completed_deliverables: Some(1),
+                total_deliverables: Some(3),
+                verifying_completion: Some(true),
+                last_classifier_verdict: Some(verdict),
+                ..
+            }] if gid == "g-1"
+                && role.contains("classifier")
+                && verdict == "not_achieved"
+        ));
+    }
+
+    #[test]
+    fn goal_updated_empty_shell_still_emits() {
+        let evs = decode_session_update(&json!({
+            "update": { "sessionUpdate": "goal_updated" }
+        }));
+        assert!(matches!(&evs[..], [AcpEvent::GoalUpdated { .. }]));
     }
 }
 

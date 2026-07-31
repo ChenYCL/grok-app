@@ -370,6 +370,13 @@ export interface SettingsPageProps {
    */
   showUsageEstimates?: boolean;
   onShowUsageEstimates?: (v: boolean) => void;
+  /**
+   * Show Goal orchestration section in Reliability center (display only;
+   * localStorage `goalOrchUiEnabled`, default on). Does not enable the CLI
+   * goal harness — only hides/shows observed `goal_updated` events.
+   */
+  goalOrchUiEnabled?: boolean;
+  onGoalOrchUiEnabled?: (v: boolean) => void;
   /** Absolute vs relative message time labels (localStorage). */
   messageTimeFormat?: MessageTimeFormat;
   onMessageTimeFormat?: (v: MessageTimeFormat) => void;
@@ -1093,6 +1100,8 @@ export function SettingsPage({
   onShowReplyLength,
   showUsageEstimates = true,
   onShowUsageEstimates,
+  goalOrchUiEnabled = true,
+  onGoalOrchUiEnabled,
   messageTimeFormat = "absolute",
   onMessageTimeFormat,
   sidebarShowRelativeTime = true,
@@ -5024,6 +5033,31 @@ export function SettingsPage({
                           onShowUsageEstimates(!showUsageEstimates)
                         }
                         ariaLabel={t("settings.showUsageEstimates")}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {onGoalOrchUiEnabled ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-goalOrchUi")
+                    }
+                    id="settings-anchor-goalOrchUi"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.goalOrchUi")}
+                          tip={t("settings.goalOrchUiDesc")}
+                        />
+                      </div>
+                      <UiCheck
+                        checked={!!goalOrchUiEnabled}
+                        onChange={() =>
+                          onGoalOrchUiEnabled(!goalOrchUiEnabled)
+                        }
+                        ariaLabel={t("settings.goalOrchUi")}
                       />
                     </div>
                   </div>

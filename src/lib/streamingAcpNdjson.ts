@@ -44,6 +44,7 @@ export type AcpNdjsonEventKind =
   | "task_backgrounded"
   | "task_completed"
   | "hook"
+  | "goal_updated"
   | "prompt_complete"
   | "rpc_result"
   | "rpc_error"
@@ -154,6 +155,9 @@ function normalizeSessionUpdateKind(raw: string): AcpNdjsonEventKind {
     case "hookexecution":
     case "hookannotation":
       return "hook";
+    case "goal_updated":
+    case "goalupdated":
+      return "goal_updated";
     case "tokens_used":
     case "usage":
     case "token_usage":

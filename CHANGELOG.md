@@ -13,6 +13,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Composer & chat / reliability
+- **Goal orchestration panel** (CLI **0.2.117+** goal harness): Host soft-decodes ACP `sessionUpdate: goal_updated` (classifier / planner / strategist / verifier roles + deliverable progress) → `session://goal`. Reliability center shows a compact **Goal orchestration** timeline when events arrive; honest empty state when the CLI does not emit them (never invents goal progress). Display-only Settings toggle **Goal orchestration panel** (`goalOrchUiEnabled`, default on). Pure `goalOrch` helpers + fixtures/tests; ACP NDJSON diagnostics recognize `goal_updated`.
+
 #### Agent / memory
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 

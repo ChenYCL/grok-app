@@ -1966,6 +1966,9 @@ const en = {
   "settings.showReplyLengthDesc":
     "Show a muted word and character count under finished assistant replies. Off by default.",
   "settings.showUsageEstimates": "Show usage estimates",
+  "settings.goalOrchUi": "Goal orchestration panel",
+  "settings.goalOrchUiDesc":
+    "Show the Goal orchestration section in Reliability when CLI goal events arrive. Display only — does not enable or disable the CLI goal harness. Empty when the agent does not emit goal_updated.",
   "settings.showUsageEstimatesDesc":
     "In the context chip menu, show optional USD cost estimates when a model is in the crude rates table. Always labeled as an estimate — not billing. On by default.",
   "settings.exportLogo": "Share-card logo",
@@ -2600,6 +2603,22 @@ const en = {
     "Aggregate busy chats, stall signals, and recent error cards; export support zip.",
   "reliability.supportZipHint":
     "Redacted Doctor report, recent logs, and stall timeline snapshot (no secrets).",
+  "reliability.goal.title": "Goal orchestration",
+  "reliability.goal.count": "{count}",
+  "reliability.goal.lead":
+    "Shows phases only when the CLI emits goal_updated (classifier / planner / strategist / verifier). Never invents goal progress.",
+  "reliability.goal.empty":
+    "No goal events this session. Use /goal in a chat when the CLI goal harness is available — this panel stays empty until real events arrive.",
+  "reliability.goal.progress": "Deliverables {progress}",
+  "reliability.goal.id": "id {id}",
+  "reliability.goal.phase.planner": "Planner",
+  "reliability.goal.phase.strategist": "Strategist",
+  "reliability.goal.phase.classifier": "Classifier",
+  "reliability.goal.phase.verifier": "Verifier",
+  "reliability.goal.phase.summarizer": "Summarizer",
+  "reliability.goal.phase.worker": "Worker",
+  "reliability.goal.phase.status": "Status",
+  "reliability.goal.phase.unknown": "Goal",
 
   // Cost rollup (Settings → Runtime → Tools) — known tokens only, never invoice-grade
   "costRollup.title": "Cost rollup",
@@ -6014,6 +6033,9 @@ const zh: Record<MessageKey, string> = {
   "settings.showReplyLengthDesc":
     "在已完成的助手回复下方显示词数与字数。默认关闭。",
   "settings.showUsageEstimates": "显示用量估算",
+  "settings.goalOrchUi": "目标编排面板",
+  "settings.goalOrchUiDesc":
+    "在可靠性中心显示「目标编排」区块（仅当 CLI 发出 goal_updated 时有内容）。仅控制显示 — 不启停 CLI 目标系统。无事件时保持空态。",
   "settings.showUsageEstimatesDesc":
     "在上下文芯片菜单中，当模型在粗略费率表内时显示可选美元费用估算。始终标注为估算，非账单。默认开启。",
   "settings.exportLogo": "分享卡片 Logo",
@@ -6633,6 +6655,22 @@ const zh: Record<MessageKey, string> = {
     "汇总忙碌会话、卡顿信号与最近错误卡片；可导出支持包。",
   "reliability.supportZipHint":
     "脱敏后的 Doctor 报告、近期日志与卡顿时间线快照（不含密钥）。",
+  "reliability.goal.title": "目标编排",
+  "reliability.goal.count": "{count}",
+  "reliability.goal.lead":
+    "仅在 CLI 发出 goal_updated（classifier / planner / strategist / verifier）时展示阶段，绝不虚构进度。",
+  "reliability.goal.empty":
+    "本会话尚无目标事件。CLI 目标系统可用时在对话中使用 /goal — 在真实事件到达前此处保持为空。",
+  "reliability.goal.progress": "交付 {progress}",
+  "reliability.goal.id": "id {id}",
+  "reliability.goal.phase.planner": "规划",
+  "reliability.goal.phase.strategist": "策略",
+  "reliability.goal.phase.classifier": "分类器",
+  "reliability.goal.phase.verifier": "验证",
+  "reliability.goal.phase.summarizer": "摘要",
+  "reliability.goal.phase.worker": "执行",
+  "reliability.goal.phase.status": "状态",
+  "reliability.goal.phase.unknown": "目标",
 
   "costRollup.title": "费用汇总",
   "costRollup.settingsDesc":
