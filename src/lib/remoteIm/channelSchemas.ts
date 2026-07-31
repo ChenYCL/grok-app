@@ -444,6 +444,8 @@ const SLACK_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.slack.botTokenHelp",
+    placeholderKey: "settings.remoteIm.slack.botTokenPlaceholder",
   },
   {
     key: "app_token",
@@ -452,8 +454,13 @@ const SLACK_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.slack.appTokenHelp",
+    placeholderKey: "settings.remoteIm.slack.appTokenPlaceholder",
   },
-  ACL_ALLOW_FROM,
+  {
+    ...ACL_ALLOW_FROM,
+    helpKey: "settings.remoteIm.slack.allowFromHelp",
+  },
 ];
 
 const DISCORD_FIELDS: ChannelSchema["fields"] = [

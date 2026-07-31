@@ -18,6 +18,10 @@ import {
   feishuHealthHintKeys,
   validateFeishuConfig,
 } from "./feishuConfig";
+import {
+  slackHealthHintKeys,
+  validateSlackConfig,
+} from "./slackConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -92,12 +96,22 @@ export type ClassifyChannelHealthInput = {
    * When the form has a non-empty Feishu app_id, pass for format check only.
    */
   appIdValue?: string | null;
+  /**
+   * When the form has a non-empty Slack bot_token, pass for format checks only
+   * (never stored by health helpers).
+   */
+  botTokenValue?: string | null;
+  /**
+   * When the form has a non-empty Slack app_token, pass for format checks only.
+   */
+  appTokenValue?: string | null;
 };
 
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
+const SLACK_LIKE: RemoteChannelId[] = ["slack"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -107,6 +121,7 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   // DingTalk secrets are validated via dingtalkConfig
   dingtalk: ["client_secret"],
   discord: ["token"],
+  // Slack secrets validated via slackConfig (bot_token + app_token)
   slack: ["bot_token", "app_token"],
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
   weixin: ["token"],
@@ -119,6 +134,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   lark: ["app_id"],
   telegram: [],
   dingtalk: ["client_id"],
+  slack: [],
 };
 
 
@@ -252,6 +268,9 @@ export function channelModeLabel(
   if (channel === "dingtalk") {
     return "mode=stream";
   }
+  if (channel === "slack") {
+    return "mode=socket";
+  }
   return null;
 }
 
@@ -284,6 +303,10 @@ export function credentialReadiness(
   tokenValue?: string | null,
   /** Optional Feishu app_id for format checks (never stored). */
   appIdValue?: string | null,
+  /** Optional raw Slack bot_token for format checks (never stored). */
+  botTokenValue?: string | null,
+  /** Optional raw Slack app_token for format checks (never stored). */
+  appTokenValue?: string | null,
 ): { ready: boolean; missingKeys: string[] } {
   const opts = isRecord(instance.options) ? instance.options : {};
 
@@ -328,6 +351,17 @@ export function credentialReadiness(
       hasCredentials: instance.hasCredentials,
       appIdValue,
       channel,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (SLACK_LIKE.includes(channel)) {
+    const v = validateSlackConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      botTokenValue,
+      appTokenValue,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -384,6 +418,10 @@ export function classifyChannelHealth(
     readinessInstance,
     input.secretKeysFilled,
     savedOpts,
+    input.tokenValue,
+    input.appIdValue,
+    input.botTokenValue,
+    input.appTokenValue,
   );
 
   // Honest status: incomplete mode-switch / missing keys cannot look "connected".
@@ -499,6 +537,21 @@ export function classifyChannelHealth(
     }
   }
 
+  if (SLACK_LIKE.includes(channel)) {
+    const slackV = validateSlackConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      botTokenValue: input.botTokenValue,
+      appTokenValue: input.appTokenValue,
+    });
+    for (const k of slackHealthHintKeys(slackV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
   // Dedup preserve order
   const seen = new Set<string>();
   const uniqueHints = hintKeys.filter((k) => {
@@ -532,6 +585,7 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     FEISHU_LIKE.includes(channel) ||
     TELEGRAM_LIKE.includes(channel) ||
     WECOM_LIKE.includes(channel) ||
-    DINGTALK_LIKE.includes(channel)
+    DINGTALK_LIKE.includes(channel) ||
+    SLACK_LIKE.includes(channel)
   );
 }

@@ -260,4 +260,62 @@ describe("classifyChannelHealth", () => {
     expect(r.ready).toBe(true);
     expect(r.missingKeys).not.toContain("corp_secret");
   });
+
+  it("slack: socket_mode deep health with dual-token readiness", () => {
+    expect(channelHasDeepHealth("slack")).toBe(true);
+    expect(transportForChannel("slack")).toBe("socket_mode");
+    expect(channelModeLabel("slack", {})).toBe("mode=socket");
+
+    const bare = inst("slack", { hasCredentials: false, enabled: false });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("socket_mode");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("slackSocketMode"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("slackNoPublicUrl"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("slackMissingTokens"))).toBe(
+      true,
+    );
+
+    const ready = inst("slack", {
+      hasCredentials: true,
+      enabled: true,
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.modeLabel).toBe("mode=socket");
+    expect(h1.hintKeys.some((k) => k.includes("slackDualToken"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("slackAcl"))).toBe(true);
+
+    // Only bot_token in form without vault → not ready
+    const partial = credentialReadiness(
+      "slack",
+      bare,
+      new Set(["bot_token"]),
+    );
+    expect(partial.ready).toBe(false);
+    expect(partial.missingKeys).toContain("app_token");
+
+    const both = credentialReadiness(
+      "slack",
+      bare,
+      new Set(["bot_token", "app_token"]),
+    );
+    expect(both.ready).toBe(true);
+  });
 });

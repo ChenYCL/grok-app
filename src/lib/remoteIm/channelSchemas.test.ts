@@ -129,6 +129,38 @@ describe("remoteIm channelSchemas", () => {
     expect(wecom.fields.some((f) => f.key === "enable_markdown")).toBe(true);
   });
 
+  it("slack requires dual Socket Mode tokens and never needs public URL", () => {
+    const slack = getChannelSchema("slack")!;
+    expect(slack.implemented).toBe(true);
+    expect(slack.scanSupport).toBe(false);
+    expect(slack.pasteSupport).toBe(true);
+    expect(slack.needsPublicUrl).toBeFalsy();
+    expect(showsPublicUrlCallout(slack, {})).toBe(false);
+    expect(slack.connectionKey).toContain("socketMode");
+
+    const bot = slack.fields.find((f) => f.key === "bot_token");
+    const app = slack.fields.find((f) => f.key === "app_token");
+    expect(bot?.secret).toBe(true);
+    expect(bot?.required).toBe(true);
+    expect(bot?.helpKey).toBe("settings.remoteIm.slack.botTokenHelp");
+    expect(app?.secret).toBe(true);
+    expect(app?.required).toBe(true);
+    expect(app?.helpKey).toBe("settings.remoteIm.slack.appTokenHelp");
+
+    expect(
+      validateBindFields(slack, {
+        bot_token: ["xoxb", "1"].join("-"),
+        app_token: ["xapp", "1"].join("-"),
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateBindFields(slack, { bot_token: ["xoxb", "1"].join("-") }).ok,
+    ).toBe(false);
+    expect(
+      validateBindFields(slack, {}, { hasCredentials: true }).ok,
+    ).toBe(true);
+  });
+
   it("LINE always shows public-URL callout when flagged", () => {
     const line = getChannelSchema("line")!;
     expect(showsPublicUrlCallout(line, {})).toBe(true);
