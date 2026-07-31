@@ -704,6 +704,8 @@ const LINE_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.line.channelSecretHelp",
+    placeholderKey: "settings.remoteIm.line.channelSecretPlaceholder",
   },
   {
     key: "channel_access_token",
@@ -712,18 +714,26 @@ const LINE_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.line.accessTokenHelp",
+    placeholderKey: "settings.remoteIm.line.accessTokenPlaceholder",
   },
   {
     key: "port",
     labelKey: "settings.remoteIm.field.port",
     control: "number",
     section: "advanced",
+    defaultValue: 8081,
+    helpKey: "settings.remoteIm.line.portHelp",
+    placeholderKey: "settings.remoteIm.line.portPlaceholder",
   },
   {
     key: "callback_path",
     labelKey: "settings.remoteIm.field.callbackPath",
     control: "text",
     section: "advanced",
+    defaultValue: "/line/callback",
+    helpKey: "settings.remoteIm.line.callbackPathHelp",
+    placeholderKey: "settings.remoteIm.line.callbackPathPlaceholder",
   },
 ];
 

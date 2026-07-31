@@ -198,7 +198,22 @@ describe("remoteIm channelSchemas", () => {
 
   it("LINE always shows public-URL callout when flagged", () => {
     const line = getChannelSchema("line")!;
+    expect(line.needsPublicUrl).toBe(true);
+    expect(line.implemented).toBe(true);
+    expect(line.pasteSupport).toBe(true);
+    expect(line.scanSupport).toBe(false);
     expect(showsPublicUrlCallout(line, {})).toBe(true);
+    expect(line.fields.some((f) => f.key === "channel_secret")).toBe(true);
+    expect(line.fields.some((f) => f.key === "channel_access_token")).toBe(
+      true,
+    );
+    expect(line.fields.find((f) => f.key === "port")?.defaultValue).toBe(8081);
+    expect(
+      line.fields.find((f) => f.key === "callback_path")?.defaultValue,
+    ).toBe("/line/callback");
+    expect(line.fields.find((f) => f.key === "channel_secret")?.helpKey).toBe(
+      "settings.remoteIm.line.channelSecretHelp",
+    );
   });
 
   it("feishu never shows public-URL callout", () => {

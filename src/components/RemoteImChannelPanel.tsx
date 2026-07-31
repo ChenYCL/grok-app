@@ -23,6 +23,7 @@ import {
   getChannelSchema,
   isRetiredChannel,
   isSecretControl,
+  lineCloudflaredSnippet,
   parseIdSecretPair,
   primaryBindFields,
   remoteImSecretsPut,
@@ -73,6 +74,16 @@ export interface RemoteImChannelPanelProps {
 }
 
 type BindTab = "scan" | "paste";
+
+/** Coerce bind form `port` for LINE cloudflared helper (values is Record unknown). */
+function lineWebhookPortArg(
+  values: Record<string, unknown>,
+  secrets: Record<string, string>,
+): string | number | null {
+  const raw = values.port ?? secrets.port;
+  if (typeof raw === "string" || typeof raw === "number") return raw;
+  return null;
+}
 
 export function RemoteImChannelPanel({
   locale,
@@ -974,6 +985,19 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.discord.guide.softFail")}
+      {channelId === "line" ? (
+        <div className="rim-callout" data-line-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.line.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.line.guide.step1")}</li>
+            <li>{t("settings.remoteIm.line.guide.step2")}</li>
+            <li>{t("settings.remoteIm.line.guide.step3")}</li>
+            <li>{t("settings.remoteIm.line.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.line.guide.softFail")}
           </p>
         </div>
       ) : null}
@@ -1125,17 +1149,53 @@ export function RemoteImChannelPanel({
           <div
             className="rim-callout rim-callout--warn"
             data-public-url-callout="1"
+            data-channel-public-url={channelId}
           >
             <div className="rim-callout__title">
               <IconAlertTriangle size={14} />
-              {t("settings.remoteIm.publicUrl.title")}
+              {t(
+                channelId === "line"
+                  ? "settings.remoteIm.line.publicUrl.title"
+                  : "settings.remoteIm.publicUrl.title",
+              )}
             </div>
-            <p>{t("settings.remoteIm.publicUrl.body")}</p>
+            <p>
+              {t(
+                channelId === "line"
+                  ? "settings.remoteIm.line.publicUrl.body"
+                  : "settings.remoteIm.publicUrl.body",
+              )}
+            </p>
             <code className="rim-callout__code">
-              {`cloudflared tunnel --url http://127.0.0.1:${
-                String(values.port ?? secrets.port ?? "").trim() || "8081"
-              }`}
+              {channelId === "line"
+                ? lineCloudflaredSnippet(lineWebhookPortArg(values, secrets))
+                : `cloudflared tunnel --url http://127.0.0.1:${
+                    String(values.port ?? secrets.port ?? "").trim() || "8081"
+                  }`}
             </code>
+            {channelId === "line" ? (
+              <div className="rim-btn-row" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => {
+                    const snippet = lineCloudflaredSnippet(
+                      lineWebhookPortArg(values, secrets),
+                    );
+                    void navigator.clipboard?.writeText(snippet).catch(() => {
+                      /* clipboard optional — snippet still visible */
+                    });
+                  }}
+                >
+                  {t("settings.remoteIm.line.publicUrl.copy")}
+                </button>
+              </div>
+            ) : null}
+            {channelId === "line" ? (
+              <p className="settings-row__hint">
+                {t("settings.remoteIm.line.publicUrl.helper")}
+              </p>
+            ) : null}
           </div>
         ) : null}
 

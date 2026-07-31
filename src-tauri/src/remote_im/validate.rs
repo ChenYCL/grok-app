@@ -51,6 +51,21 @@ pub async fn test_connection(
         }
         "wecom" => test_wecom(&creds),
         "weixin" => test_weixin(&creds),
+        "weixin" => {
+            let ok = creds.contains_key("token")
+                || creds.contains_key("bot_token")
+                || !secrets.is_empty();
+            Ok(TestConnectionDto {
+                ok,
+                message: if ok {
+                    "credentials_present_ilink".into()
+                } else {
+                    "missing_weixin_token".into()
+                },
+                mock: false,
+            })
+        }
+        "line" => test_line(&creds),
         _ => {
             let ok = !creds.is_empty() || !secrets.is_empty();
             Ok(TestConnectionDto {
@@ -222,6 +237,45 @@ fn test_weixin(creds: &HashMap<String, String>) -> Result<TestConnectionDto, Str
             return Ok(TestConnectionDto {
                 ok: false,
                 message: "invalid_weixin_proxy".into(),
+/// LINE webhook credential posture — presence + port/path shape only.
+/// Never claims the public callback is reachable (tunnel is user-side helper).
+fn test_line(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let channel_secret = cred_get(creds, &["channel_secret"]);
+    let access_token = cred_get(creds, &["channel_access_token", "access_token"]);
+
+    let mut missing: Vec<&str> = Vec::new();
+    if channel_secret.is_empty() {
+        missing.push("channel_secret");
+    }
+    if access_token.is_empty() {
+        missing.push("channel_access_token");
+    }
+
+    // Soft option shape checks (never prove public HTTPS).
+    let port = cred_get(creds, &["port"]);
+    if !port.is_empty() {
+        let ok_port = port
+            .parse::<u16>()
+            .ok()
+            .filter(|p| *p >= 1)
+            .is_some();
+        if !ok_port {
+            return Ok(TestConnectionDto {
+                ok: false,
+                message: "invalid_line_port".into(),
+                mock: false,
+            });
+        }
+    }
+    let path = cred_get(creds, &["callback_path"]);
+    if !path.is_empty() {
+        let ok_path = path.starts_with('/')
+            && !path.contains("://")
+            && !path.chars().any(|c| c.is_whitespace());
+        if !ok_path {
+            return Ok(TestConnectionDto {
+                ok: false,
+                message: "invalid_line_callback_path".into(),
                 mock: false,
             });
         }
@@ -235,6 +289,26 @@ fn test_weixin(creds: &HashMap<String, String>) -> Result<TestConnectionDto, Str
     Ok(TestConnectionDto {
         ok: true,
         // Honest: token present only — does not prove ilink long-poll is online
+    if !missing.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: if missing.len() == 2 {
+                "missing_line_credentials".into()
+            } else {
+                format!("missing_line_fields:{}", missing.join(","))
+            },
+            mock: false,
+        });
+    }
+
+    let message = if !port.is_empty() && port != "8081" {
+        "line_webhook_credentials_present_custom_port"
+    } else {
+        "line_webhook_credentials_present"
+    };
+    Ok(TestConnectionDto {
+        ok: true,
+        // Honest: secrets present only — does not prove public webhook is live
         message: message.into(),
         mock: false,
     })
@@ -623,5 +697,53 @@ mod tests {
         assert!(!r2.ok);
         assert_eq!(r2.message, "invalid_discord_token_format");
         assert!(!r2.mock);
+    fn line_requires_secret_and_access_token() {
+        let mut c = HashMap::new();
+        let r = test_line(&c).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_line_credentials");
+        assert!(!r.mock);
+
+        c.insert("channel_secret".into(), "sec".into());
+        let r2 = test_line(&c).unwrap();
+        assert!(!r2.ok);
+        assert!(r2.message.contains("channel_access_token"));
+
+        c.insert("channel_access_token".into(), "tok".into());
+        let r3 = test_line(&c).unwrap();
+        assert!(r3.ok);
+        assert_eq!(r3.message, "line_webhook_credentials_present");
+    }
+
+    #[test]
+    fn line_accepts_access_token_alias() {
+        let mut c = HashMap::new();
+        c.insert("channel_secret".into(), "sec".into());
+        c.insert("access_token".into(), "tok".into());
+        let r = test_line(&c).unwrap();
+        assert!(r.ok);
+        assert_eq!(r.message, "line_webhook_credentials_present");
+    }
+
+    #[test]
+    fn line_soft_fails_invalid_port_and_path() {
+        let mut c = HashMap::new();
+        c.insert("channel_secret".into(), "sec".into());
+        c.insert("channel_access_token".into(), "tok".into());
+        c.insert("port".into(), "not-a-port".into());
+        let r = test_line(&c).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "invalid_line_port");
+
+        c.insert("port".into(), "9443".into());
+        c.insert("callback_path".into(), "relative".into());
+        let r2 = test_line(&c).unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_line_callback_path");
+
+        c.insert("callback_path".into(), "/hooks/line".into());
+        let r3 = test_line(&c).unwrap();
+        assert!(r3.ok);
+        assert_eq!(r3.message, "line_webhook_credentials_present_custom_port");
     }
 }

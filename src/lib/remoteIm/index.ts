@@ -14,3 +14,4 @@ export * from "./telegramConfig";
 export * from "./feishuConfig";
 export * from "./weixinConfig";
 export * from "./discordConfig";
+export * from "./lineConfig";

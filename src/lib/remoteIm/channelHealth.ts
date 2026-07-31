@@ -25,6 +25,9 @@ import {
   discordHealthHintKeys,
   validateDiscordConfig,
 } from "./discordConfig";
+  lineHealthHintKeys,
+  validateLineConfig,
+} from "./lineConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -107,6 +110,7 @@ const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
 const WEIXIN_LIKE: RemoteChannelId[] = ["weixin"];
 const DISCORD_LIKE: RemoteChannelId[] = ["discord"];
+const LINE_LIKE: RemoteChannelId[] = ["line"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -121,6 +125,7 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   // Weixin secrets validated via weixinConfig
   weixin: ["token"],
   matrix: ["access_token"],
+  // LINE secrets validated via lineConfig (access_token alias)
   line: ["channel_secret", "channel_access_token"],
 };
 
@@ -130,6 +135,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   telegram: [],
   dingtalk: ["client_id"],
   weixin: [],
+  line: [],
 };
 
 
@@ -275,6 +281,12 @@ export function channelModeLabel(
     if (optionString(options, "proxy")) parts.push("proxy=set");
     if (optionString(options, "base_url")) parts.push("base=custom");
     if (optionString(options, "chat_id")) parts.push("chat=bound");
+  if (channel === "line") {
+    const parts: string[] = ["mode=webhook"];
+    const port = optionString(options, "port");
+    if (port) parts.push(`port=${port}`);
+    const path = optionString(options, "callback_path");
+    if (path) parts.push("path=custom");
     return parts.join(",");
   }
   return null;
@@ -369,6 +381,8 @@ export function credentialReadiness(
 
   if (WEIXIN_LIKE.includes(channel)) {
     const v = validateWeixinConfig({
+  if (LINE_LIKE.includes(channel)) {
+    const v = validateLineConfig({
       options: opts,
       secretKeysFilled,
       hasCredentials: instance.hasCredentials,
@@ -432,9 +446,13 @@ export function classifyChannelHealth(
     input.appIdValue,
   );
 
-  // Honest status: incomplete mode-switch / missing keys cannot look "connected".
+  // Honest status: incomplete mode-switch / missing keys / bad LINE port-path
+  // cannot look "connected".
+  const requireReadyForConnect =
+    channel === "wecom" || channel === "line";
   const credsUsable =
-    !!instance.hasCredentials && (credentialsReady || channel !== "wecom");
+    !!instance.hasCredentials &&
+    (credentialsReady || !requireReadyForConnect);
 
   let tone: ChannelStatusTone = "unconfigured";
   if (instance.lastError) {
@@ -561,11 +579,14 @@ export function classifyChannelHealth(
 
   if (WEIXIN_LIKE.includes(channel)) {
     const wxV = validateWeixinConfig({
+  if (LINE_LIKE.includes(channel)) {
+    const lineV = validateLineConfig({
       options: opts,
       secretKeysFilled: input.secretKeysFilled,
       hasCredentials: instance.hasCredentials,
     });
     for (const k of weixinHealthHintKeys(wxV, {
+    for (const k of lineHealthHintKeys(lineV, {
       openAcl: openAcl && instance.hasCredentials,
     })) {
       hintKeys.push(k);
@@ -608,5 +629,6 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     DINGTALK_LIKE.includes(channel) ||
     WEIXIN_LIKE.includes(channel)
     DISCORD_LIKE.includes(channel)
+    LINE_LIKE.includes(channel)
   );
 }
