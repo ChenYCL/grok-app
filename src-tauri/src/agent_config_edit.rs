@@ -671,6 +671,7 @@ enabled = true
 
     #[test]
     fn path_scope_is_agent_home() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
         let p = agent_config_toml();
         assert!(is_agent_home_config_path(&p));
         let other = PathBuf::from("/tmp/not-agent-home/config.toml");
