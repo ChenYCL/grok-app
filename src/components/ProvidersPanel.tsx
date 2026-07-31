@@ -1135,7 +1135,8 @@ export function ProvidersPanel({
                   />
                 </label>
 
-                <div className="prov-field prov-field--full">
+                {/* Side-by-side: protocol | API key (equal column width). */}
+                <div className="prov-field">
                   <span className="prov-field__label">{tr("prov.protocol")}</span>
                   <Select
                     value={form.apiBackend}
@@ -1144,10 +1145,11 @@ export function ProvidersPanel({
                     }
                     options={protocolOptions}
                     aria-label={tr("prov.protocol")}
+                    className="prov-field__control"
                   />
                 </div>
 
-                <div className="prov-field prov-field--full">
+                <div className="prov-field">
                   <span className="prov-field__label-row">
                     <span className="prov-field__label">{tr("prov.apiKey")}</span>
                     {form.apiKeyUrl ? (
