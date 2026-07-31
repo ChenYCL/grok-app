@@ -2619,8 +2619,35 @@ export const zhTW: Record<MessageKey, string> = {
   "setup.ready.cliOk": "Grok Build",
   "setup.ready.authOk": "帳戶已連線",
   "setup.ready.authSkip": "帳戶稍後設定",
+  "setup.ready.authSoftNote":
+    "帳戶為可選 — 稍後可在設定中登入。對話仍需服務商或 CLI 登入。",
   "setup.ready.enter": "進入 Grok",
   "setup.error": "出錯了",
+  "setup.error.cliMissing": "未找到 Grok Build",
+  "setup.error.cliTooOld": "Grok Build 版本過舊",
+  "setup.error.cliTooOldHint":
+    "請透過本頁安裝最新版，或使用官方指令升級後重新偵測。",
+  "setup.error.checksumMissing": "安裝包未發佈校驗和",
+  "setup.error.checksumMismatch": "安裝包校驗和不匹配",
+  "setup.error.checksumMismatchHint":
+    "下載內容與發佈雜湊不一致。請重試、換鏡像或選擇本機二進位檔 — 校驗失敗時請勿強制略過校驗。",
+  "setup.error.network": "安裝時網路異常",
+  "setup.error.mirror": "所有安裝鏡像均失敗",
+  "setup.error.download": "下載失敗",
+  "setup.error.unsupportedPlatform": "目前平台無法自動安裝",
+  "setup.error.unsupportedPlatformHint":
+    "請使用官方安裝指令，或選擇本機已有的 Grok Build 二進位檔。",
+  "setup.error.binaryInvalid": "下載的二進位檔無法執行",
+  "setup.error.binaryInvalidHint":
+    "請重試安裝，或透過「選擇本機二進位檔」指定可用檔案。",
+  "setup.error.permission": "權限不足",
+  "setup.error.permissionHint":
+    "請檢查 ~/.grok 目錄權限，或改用 shell 安裝指令。",
+  "setup.error.probeFailed": "無法偵測 Grok Build",
+  "setup.error.probeFailedHint": "安裝後重新偵測，或設定手動二進位路徑。",
+  "setup.error.account": "帳戶設定失敗",
+  "setup.error.accountHint": "可暫時跳過，稍後在設定中登入或設定服務商。",
+  "setup.error.cancelled": "已取消",
   "setup.networkHint": "網路異常 — 可換鏡像或使用手動指令。",
 
   "doctor.title": "Doctor",

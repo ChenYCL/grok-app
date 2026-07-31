@@ -58,6 +58,20 @@ Persists `setupWizardCompleted: true`. If account skipped: `authSetupDeferred: t
 - Styles: `src/styles/setup-wizard.css` (overflow hidden, no scrollbars)
 - i18n: `setup.*` keys in `src/i18n/messages.ts`
 
+## Honesty (SETUP-GATE-PRO)
+
+Pure helpers: `src/lib/setupGatePro.ts` (+ tests).
+
+| Rule | Behavior |
+|------|----------|
+| Hard CLI | `canEnterHome` / boot `resolveSetupGateBoot` never mark **ready** without `cliFound` |
+| Soft account | Account step is always skippable; `buildAuthDeferredFlags` never sets deferred when auth is ok |
+| Errors | Install/probe/account failures classified (`checksum_missing`, `mirror`, `network`, …) with stable `setup.error.*` titles + recovery hints |
+| Ready checklist | Never soft-ok CLI; auth row is soft when skipped |
+| Legacy migrate | Older `onboardingDone` / `setupSkipped` + CLI → write `setupWizardCompleted` once |
+
+Checksum: missing sidecar may offer **Install without checksum**; **mismatch never** offers unverified force.
+
 ## CLI probe (mac + Windows)
 
 `cli_probe::probe_cli` must work when the app is launched from Dock / Explorer (sparse PATH):

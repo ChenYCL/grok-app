@@ -462,11 +462,27 @@
   border-style: dashed;
 }
 
+.setup-checklist li.is-fail {
+  color: var(--danger);
+}
+
+.setup-checklist li.is-fail .setup-check {
+  border-color: var(--danger);
+  background: var(--danger-muted);
+}
+
 .setup-check-meta {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-tertiary);
+}
+
+.setup-ready-soft {
+  margin: 6px 0 0 !important;
+  font-size: var(--text-xs) !important;
+  color: var(--text-tertiary) !important;
+  line-height: 1.4 !important;
 }
 
 .setup-error {
@@ -481,8 +497,14 @@
   color: var(--danger);
   line-height: 1.4;
   /* Clip long errors without introducing a page scrollbar */
-  max-height: 72px;
+  max-height: 96px;
   overflow: hidden;
+}
+
+.setup-error--warn {
+  background: var(--warning-muted, var(--accent-muted));
+  border-color: rgba(210, 160, 60, 0.35);
+  color: var(--warning, var(--text-primary));
 }
 
 .setup-error strong {

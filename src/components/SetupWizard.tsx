@@ -1,6 +1,9 @@
 /**
  * Full-screen first-run gate: install Grok Build (required) → account (skippable) → enter home.
  * No page scrollbars; content is centered and compact.
+ *
+ * Honesty (SETUP-GATE-PRO): CLI is hard-required; account is soft/skippable.
+ * Errors are classified via pure `setupGatePro` helpers — never invent success.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,6 +12,19 @@ import { Select } from "@/components/Select";
 import { Spinner } from "@/components/ui/spinner";
 import * as api from "@/lib/api";
 import type { createT } from "@/i18n";
+import type { MessageKey } from "@/i18n";
+import {
+  buildAuthDeferredFlags,
+  buildReadyChecklist,
+  canAdvancePastRuntime,
+  canEnterHome,
+  clampInstallPercent,
+  mirrorHostFromUrl,
+  resolveInitialWizardStep,
+  resolveSetupGateError,
+  type SetupGateErrorView,
+  type SetupWizardStep,
+} from "@/lib/setupGatePro";
 
 type Tr = ReturnType<typeof createT>;
 
@@ -20,7 +36,7 @@ export type SetupCliInfo = {
   cliAuthPresent: boolean;
 };
 
-type Step = "runtime" | "account" | "ready";
+type Step = SetupWizardStep;
 type AccountPanel = "menu" | "key" | "relay";
 
 type Props = {
@@ -32,15 +48,6 @@ type Props = {
   onAccountLoginOauth: () => Promise<boolean>;
 };
 
-function mirrorHost(url: string | null | undefined): string {
-  if (!url) return "";
-  try {
-    return new URL(url).host;
-  } catch {
-    return url.replace(/^https?:\/\//, "").split("/")[0] || url;
-  }
-}
-
 export function SetupWizard({
   tr,
   platform,
@@ -49,12 +56,14 @@ export function SetupWizard({
   onComplete,
   onAccountLoginOauth,
 }: Props) {
-  const [step, setStep] = useState<Step>(initialCli.found ? "account" : "runtime");
+  const [step, setStep] = useState<Step>(() =>
+    resolveInitialWizardStep(initialCli.found),
+  );
   const [cli, setCli] = useState<SetupCliInfo>(initialCli);
   const [probing, setProbing] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState<api.CliInstallProgress | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [errorView, setErrorView] = useState<SetupGateErrorView | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [installCmds, setInstallCmds] = useState<api.CliInstallCommands | null>(
     null,
@@ -71,6 +80,20 @@ export function SetupWizard({
   const [relayKey, setRelayKey] = useState("");
   /** Default: OpenAI Responses — preferred for modern gateways. */
   const [relayBackend, setRelayBackend] = useState("responses");
+
+  const reportError = useCallback((err: unknown) => {
+    const view = resolveSetupGateError(err);
+    if (view.silent) {
+      setErrorView(null);
+      return view;
+    }
+    setErrorView(view);
+    return view;
+  }, []);
+
+  const clearError = useCallback(() => {
+    setErrorView(null);
+  }, []);
 
   const protocolOptions = useMemo(
     () => [
@@ -114,7 +137,7 @@ export function SetupWizard({
 
   const recheck = useCallback(async (manualPath?: string | null) => {
     setProbing(true);
-    setError(null);
+    clearError();
     try {
       const r = await api.probeCli(manualPath || undefined);
       const next: SetupCliInfo = {
@@ -131,12 +154,12 @@ export function SetupWizard({
       }
       return next;
     } catch (e) {
-      setError(String(e));
+      reportError(e);
       return null;
     } finally {
       setProbing(false);
     }
-  }, []);
+  }, [clearError, reportError]);
 
   // Soft auto-detect once when opening runtime step without CLI
   useEffect(() => {
@@ -148,7 +171,7 @@ export function SetupWizard({
     async (opts?: { allowUnverified?: boolean }) => {
       if (installing) return;
       setInstalling(true);
-      setError(null);
+      clearError();
       setProgress({
         phase: "resolving",
         message: tr("setup.detecting"),
@@ -159,18 +182,18 @@ export function SetupWizard({
           opts?.allowUnverified ? { allowUnverified: true } : undefined,
         );
         if (!res.ok) {
-          setError(res.message || tr("setup.error"));
+          reportError(res.message || tr("setup.error"));
           return;
         }
         const next = await recheck(res.path);
-        if (next?.found) {
+        if (next?.found && canAdvancePastRuntime(next.found)) {
           setStep("account");
         } else {
-          setError(tr("setup.cli.missing"));
+          reportError({ code: "cli_missing", message: tr("setup.cli.missing") });
         }
       } catch (e) {
-        const msg = String(e);
-        setError(msg);
+        const view = reportError(e);
+        const msg = view.detail || tr(view.titleKey as MessageKey);
         setProgress((p) =>
           p
             ? { ...p, phase: "error", message: msg }
@@ -180,20 +203,13 @@ export function SetupWizard({
         setInstalling(false);
       }
     },
-    [installing, recheck, tr],
+    [clearError, installing, recheck, reportError, tr],
   );
 
-  const checksumMissing = useMemo(
-    () =>
-      !!error &&
-      /No published SHA-256|checksum required|GROK_CLI_REQUIRE_CHECKSUM|未发布 SHA-256|未發佈 SHA-256/i.test(
-        error,
-      ),
-    [error],
-  );
+  const checksumMissing = !!errorView?.offerUnverifiedInstall;
 
   const pickBinary = useCallback(async () => {
-    setError(null);
+    clearError();
     try {
       const path = await api.pickCliBinary();
       if (!path) return;
@@ -201,15 +217,15 @@ export function SetupWizard({
         api.settingsSet({ ...s, manualCliPath: path }),
       );
       const next = await recheck(path);
-      if (next?.found) {
+      if (next?.found && canAdvancePastRuntime(next.found)) {
         setStep("account");
       } else {
-        setError(tr("setup.cli.missing"));
+        reportError({ code: "cli_missing", message: tr("setup.cli.missing") });
       }
     } catch (e) {
-      setError(String(e));
+      reportError(e);
     }
-  }, [recheck, tr]);
+  }, [clearError, recheck, reportError, tr]);
 
   const copyCmd = useCallback(async () => {
     const cmd = installCmds?.primary;
@@ -219,25 +235,30 @@ export function SetupWizard({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
-      setError(tr("setup.error"));
+      reportError(tr("setup.error"));
     }
-  }, [installCmds, tr]);
+  }, [installCmds, reportError, tr]);
 
   const openDocs = useCallback(() => {
     const url = installCmds?.docsUrl || "https://docs.x.ai/build/overview";
-    void api.openExternalUrl(url).catch((e) => setError(String(e)));
-  }, [installCmds]);
+    void api.openExternalUrl(url).catch((e) => reportError(e));
+  }, [installCmds, reportError]);
 
   const finishWizard = useCallback(
     async (opts: { authDeferred: boolean; authOk: boolean }) => {
+      if (!canEnterHome(cli.found)) return;
+      const flags = buildAuthDeferredFlags({
+        authDeferred: opts.authDeferred,
+        authOk: opts.authOk,
+      });
       try {
         const s = await api.settingsGet();
         await api.settingsSet({
           ...s,
           setupWizardCompleted: true,
-          authSetupDeferred: opts.authDeferred && !opts.authOk,
+          authSetupDeferred: flags.authSetupDeferred,
           onboardingDone: true,
-          setupSkipped: opts.authDeferred && !opts.authOk,
+          setupSkipped: flags.setupSkipped,
         });
       } catch {
         /* still enter if probe ok */
@@ -248,11 +269,12 @@ export function SetupWizard({
   );
 
   const goAccountContinue = useCallback(() => {
-    if (!cli.found) return;
+    if (!canAdvancePastRuntime(cli.found)) return;
     setStep("ready");
   }, [cli.found]);
 
   const skipAccount = useCallback(() => {
+    // Soft gate: account is optional — never blocks home after CLI is ready.
     setAuthDeferred(true);
     setStep("ready");
   }, []);
@@ -261,7 +283,7 @@ export function SetupWizard({
     const key = officialKey.trim();
     if (!key) return;
     setAccountBusy(true);
-    setError(null);
+    clearError();
     try {
       await api.secretsSet({ officialApiKey: key });
       setAuthOk(true);
@@ -269,18 +291,18 @@ export function SetupWizard({
       setAccountPanel("menu");
       setStep("ready");
     } catch (e) {
-      setError(String(e));
+      reportError(e);
     } finally {
       setAccountBusy(false);
     }
-  }, [officialKey, tr]);
+  }, [clearError, officialKey, reportError, tr]);
 
   const saveRelay = useCallback(async () => {
     const base = relayBase.trim();
     const key = relayKey.trim();
     if (!base || !key) return;
     setAccountBusy(true);
-    setError(null);
+    clearError();
     try {
       // Write agent-home config with chosen message format (default Responses).
       // Host recycles warm agents on setAsDefault so the first workbench send
@@ -316,15 +338,15 @@ export function SetupWizard({
       setAccountPanel("menu");
       setStep("ready");
     } catch (e) {
-      setError(String(e));
+      reportError(e);
     } finally {
       setAccountBusy(false);
     }
-  }, [relayBase, relayKey, relayBackend, tr]);
+  }, [clearError, relayBase, relayKey, relayBackend, reportError, tr]);
 
   const runOauth = useCallback(async () => {
     setAccountBusy(true);
-    setError(null);
+    clearError();
     try {
       const ok = await onAccountLoginOauth();
       if (ok) {
@@ -338,15 +360,15 @@ export function SetupWizard({
         setStep("ready");
       }
     } catch (e) {
-      setError(String(e));
+      reportError(e);
     } finally {
       setAccountBusy(false);
     }
-  }, [cli.path, onAccountLoginOauth, recheck, tr]);
+  }, [clearError, cli.path, onAccountLoginOauth, recheck, reportError, tr]);
 
   const importCli = useCallback(async () => {
     setAccountBusy(true);
-    setError(null);
+    clearError();
     try {
       const r = await api.importGrokCli();
       if ((r as { ok?: boolean }).ok) {
@@ -357,26 +379,26 @@ export function SetupWizard({
         setStatusMsg(JSON.stringify((r as { messages?: string[] }).messages || r));
       }
     } catch (e) {
-      setError(String(e));
+      reportError(e);
     } finally {
       setAccountBusy(false);
     }
-  }, [tr]);
+  }, [clearError, reportError, tr]);
 
   const importGo = useCallback(async () => {
     setAccountBusy(true);
-    setError(null);
+    clearError();
     try {
       await api.importGrokGo();
       setAuthOk(true);
       setStatusMsg(tr("setup.account.ok"));
       setStep("ready");
     } catch (e) {
-      setError(String(e));
+      reportError(e);
     } finally {
       setAccountBusy(false);
     }
-  }, [tr]);
+  }, [clearError, reportError, tr]);
 
   /** Abort the running login (OAuth/device) and unlock the UI immediately.
    *  The backend kills the `grok login` child; the pending handler's `finally`
@@ -390,11 +412,21 @@ export function SetupWizard({
     setAccountBusy(false);
   }, []);
 
-  const percent = useMemo(() => {
-    const p = progress?.percent;
-    if (p == null || Number.isNaN(p)) return installing ? 8 : 0;
-    return Math.max(0, Math.min(100, Math.round(p)));
-  }, [progress, installing]);
+  const percent = useMemo(
+    () => clampInstallPercent(progress?.percent, installing),
+    [progress, installing],
+  );
+
+  const readyChecklist = useMemo(
+    () =>
+      buildReadyChecklist({
+        cliFound: cli.found,
+        cliVersion: cli.version,
+        authOk,
+        authDeferred,
+      }),
+    [cli.found, cli.version, authOk, authDeferred],
+  );
 
   const stepIndex = step === "runtime" ? 0 : step === "account" ? 1 : 2;
 
@@ -488,7 +520,7 @@ export function SetupWizard({
                   {progress?.mirror && (
                     <div className="setup-progress__mirror">
                       {tr("setup.mirror", {
-                        host: mirrorHost(progress.mirror),
+                        host: mirrorHostFromUrl(progress.mirror),
                       })}
                     </div>
                   )}
@@ -759,27 +791,34 @@ export function SetupWizard({
             <>
               <div className="setup-card__head">
                 <h2>{tr("setup.ready.title")}</h2>
+                {readyChecklist.authDeferred && (
+                  <p className="setup-ready-soft">
+                    {tr("setup.ready.authSoftNote")}
+                  </p>
+                )}
               </div>
               <ul className="setup-checklist">
-                <li className="is-ok">
-                  <span className="setup-check" />
-                  {tr("setup.ready.cliOk")}
-                  {cli.version ? (
-                    <span className="setup-check-meta">{cli.version}</span>
-                  ) : null}
-                </li>
-                <li className={authOk ? "is-ok" : "is-soft"}>
-                  <span className="setup-check" />
-                  {authOk
-                    ? tr("setup.ready.authOk")
-                    : tr("setup.ready.authSkip")}
-                </li>
+                {readyChecklist.rows.map((row) => (
+                  <li
+                    key={row.id}
+                    className={
+                      row.ok ? "is-ok" : row.soft ? "is-soft" : "is-fail"
+                    }
+                    data-setup-check={row.id}
+                  >
+                    <span className="setup-check" />
+                    {tr(row.labelKey as MessageKey)}
+                    {row.meta ? (
+                      <span className="setup-check-meta">{row.meta}</span>
+                    ) : null}
+                  </li>
+                ))}
               </ul>
               <div className="setup-actions">
                 <button
                   type="button"
                   className="btn btn--primary setup-btn-primary"
-                  disabled={!cli.found}
+                  disabled={!readyChecklist.canEnter}
                   onClick={() =>
                     void finishWizard({
                       authDeferred: authDeferred || !authOk,
@@ -793,23 +832,25 @@ export function SetupWizard({
             </>
           )}
 
-          {error && (
-            <div className="setup-error" role="alert">
-              <strong>{tr("setup.error")}</strong>
-              <span>{error}</span>
-              {checksumMissing && (
+          {errorView && !errorView.silent && (
+            <div
+              className={
+                "setup-error" +
+                (errorView.tone === "warn" ? " setup-error--warn" : "")
+              }
+              role="alert"
+              data-setup-error-kind={errorView.kind}
+            >
+              <strong>{tr(errorView.titleKey as MessageKey)}</strong>
+              {errorView.detail ? <span>{errorView.detail}</span> : null}
+              {errorView.hintKey ? (
                 <span className="setup-error__hint">
-                  {tr("setup.checksumMissingHint")}
+                  {tr(errorView.hintKey as MessageKey)}
                 </span>
-              )}
-              {/network|timeout|mirror|download|HTTP|failed/i.test(error) && (
-                <span className="setup-error__hint">
-                  {tr("setup.networkHint")}
-                </span>
-              )}
+              ) : null}
             </div>
           )}
-          {statusMsg && !error && (
+          {statusMsg && !(errorView && !errorView.silent) && (
             <div className="setup-status" role="status">
               {statusMsg}
             </div>
