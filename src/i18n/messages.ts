@@ -6051,7 +6051,7 @@ const zh: Record<MessageKey, string> = {
   "effort.medium": "中",
   "effort.low": "低",
   "effort.xhigh": "极高",
-  "effort.max": "最大",
+  "effort.max": "最高",
   "mode.agent": "Agent",
   "mode.plan": "Plan",
   "mode.ask": "Ask",

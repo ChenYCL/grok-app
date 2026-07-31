@@ -141,15 +141,15 @@ describe("effortDisplayLabel", () => {
     expect(
       effortDisplayLabel(
         { id: "xhigh", label: "xhigh" },
-        { xhigh: "极高", max: "最大" },
+        { xhigh: "极高", max: "最高" },
       ),
     ).toBe("极高");
     expect(
       effortDisplayLabel(
         { id: "max", label: "Max" },
-        { xhigh: "极高", max: "最大" },
+        { xhigh: "极高", max: "最高" },
       ),
-    ).toBe("最大");
+    ).toBe("最高");
   });
 
   it("strips shared Effort suffix on non-standard catalog labels", () => {
