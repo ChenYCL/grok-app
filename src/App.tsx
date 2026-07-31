@@ -422,6 +422,17 @@ import {
   SHARE_CARD_SKIN_IDS,
   type ShareCardSkinId,
 } from "@/lib/shareCardSkins";
+import {
+  buildExportImageMetaParts,
+  canExportImageActions,
+  deriveExportImagePreviewPhase,
+  exportImageBlobMatchesOptions,
+  formatExportImageBytes,
+  resolveExportImageError,
+  shareCardSkinMessageKey,
+  stampFromPipelineResult,
+  type ExportImageBlobStamp,
+} from "@/lib/exportSharePro";
 import { loadExportLogoPref } from "@/lib/exportLogoPref";
 import { recordTraceExport } from "@/lib/traceHistory";
 import { clearPlanHistory, recordPlanHistory } from "@/lib/planHistory";
@@ -12710,7 +12721,11 @@ export default function App() {
   const [exportImagePreviewError, setExportImagePreviewError] = useState<
     string | null
   >(null);
+  /** Honest meta for the last successful preview (skin / layout / bytes). */
+  const [exportImagePreviewStamp, setExportImagePreviewStamp] =
+    useState<ExportImageBlobStamp | null>(null);
   const exportImagePreviewBlobRef = useRef<Blob | null>(null);
+  const exportImagePreviewStampRef = useRef<ExportImageBlobStamp | null>(null);
   /**
    * Freeze chat rows when the export dialog opens so live streaming does not
    * re-trigger rasterization (modal flicker).
@@ -13007,6 +13022,8 @@ export default function App() {
       return null;
     });
     exportImagePreviewBlobRef.current = null;
+    exportImagePreviewStampRef.current = null;
+    setExportImagePreviewStamp(null);
     setExportImagePreviewError(null);
   }, []);
 
@@ -13026,7 +13043,7 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.exportImageFail"));
+        showToast(tr("session.exportImageNoTarget"));
         return;
       }
       // Invalidate any prior session's preview immediately so session B never
@@ -13177,7 +13194,23 @@ export default function App() {
       pixelRatio: 2,
       locale,
     });
-    return { blob: result.blob, title, id, skinId: result.skinId };
+    const stamp = stampFromPipelineResult(
+      { sessionId: id, skinId: exportImageSkin, smart: exportImageSmart },
+      {
+        skinId: result.skinId,
+        mode: result.mode,
+        layout: result.layout ?? null,
+        byteLength: result.byteLength,
+        messageCount: result.messageCount,
+      },
+    );
+    return {
+      blob: result.blob,
+      title,
+      id,
+      skinId: result.skinId,
+      stamp,
+    };
   }, [
     exportImageTarget,
     exportImageSmart,
@@ -13217,23 +13250,36 @@ export default function App() {
         // Guard: never attach a blob built for another session id.
         const targetId = exportImageTarget?.id;
         if (targetId && built.id !== targetId) return;
-        const { blob } = built;
+        const { blob, stamp } = built;
+        // Honesty: stamp must match the options this effect was built for.
+        if (
+          !exportImageBlobMatchesOptions(stamp, {
+            sessionId: targetId || stamp.sessionId,
+            skinId: exportImageSkin,
+            smart: exportImageSmart,
+          })
+        ) {
+          return;
+        }
         const url = URL.createObjectURL(blob);
         setExportImagePreviewUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
           return url;
         });
         exportImagePreviewBlobRef.current = blob;
+        exportImagePreviewStampRef.current = stamp;
+        setExportImagePreviewStamp(stamp);
         setExportImagePreviewError(null);
       } catch (e) {
         if (cancelled || gen !== exportImageGenRef.current) return;
-        const code = (e as { code?: string } | null)?.code;
-        if (code === "empty" || String(e).includes("empty")) {
-          revokeExportImagePreview();
-          setExportImagePreviewError(tr("session.exportImageEmpty"));
+        revokeExportImagePreview();
+        const resolved = resolveExportImageError(e);
+        if (resolved.silent) {
+          setExportImagePreviewError(null);
         } else {
+          const base = tr(resolved.messageKey as Parameters<typeof tr>[0]);
           setExportImagePreviewError(
-            `${tr("session.exportImageFail")}: ${String(e)}`,
+            resolved.detail ? `${base}: ${resolved.detail}` : base,
           );
         }
       } finally {
@@ -13255,23 +13301,64 @@ export default function App() {
     tr,
   ]);
 
+  const exportImageOptionsMatch = exportImageBlobMatchesOptions(
+    exportImagePreviewStamp,
+    {
+      sessionId: exportImageTarget?.id ?? "",
+      skinId: exportImageSkin,
+      smart: exportImageSmart,
+    },
+  );
+  // Ready for Save/Copy only when preview URL + stamp match current options.
+  const exportImageCanAct = canExportImageActions({
+    open: !!exportImageTarget,
+    hasMatchingBlob: !!exportImagePreviewUrl && exportImageOptionsMatch,
+  });
+  const exportImagePreviewPhase = deriveExportImagePreviewPhase({
+    open: !!exportImageTarget,
+    busy: exportImageBusy,
+    hasPreviewUrl: !!exportImagePreviewUrl && exportImageOptionsMatch,
+    hasError: !!exportImagePreviewError,
+  });
+  const exportImageMetaParts = buildExportImageMetaParts({
+    stamp: exportImageOptionsMatch ? exportImagePreviewStamp : null,
+    skinId: exportImageSkin,
+    smart: exportImageSmart,
+  });
+  const exportImageBytesLabel = formatExportImageBytes(
+    exportImageOptionsMatch ? exportImagePreviewStamp?.byteLength : null,
+  );
+
   const runExportSessionImage = useCallback(
     async (mode: "download" | "copy") => {
       if (!exportImageTarget) return;
-      // Never save a mid-rebuild preview (smart toggle / session switch).
-      if (exportImageBusy && !exportImagePreviewBlobRef.current) return;
+      // Never save a mid-rebuild / stale-skin preview.
+      const options = {
+        sessionId: exportImageTarget.id,
+        skinId: exportImageSkin,
+        smart: exportImageSmart,
+      };
+      const stampOk = exportImageBlobMatchesOptions(
+        exportImagePreviewStampRef.current,
+        options,
+      );
+      if (exportImageBusy && !(exportImagePreviewBlobRef.current && stampOk)) {
+        return;
+      }
       setExportImageBusy(true);
       try {
-        let blob = exportImagePreviewBlobRef.current;
+        let blob = stampOk ? exportImagePreviewBlobRef.current : null;
         let title = exportImageTarget.title;
         let id = exportImageTarget.id;
-        // Always rebuild when no ready blob (cleared on smart toggle / open).
+        // Rebuild when no matching blob (cleared on smart/skin toggle / open).
         if (!blob) {
           const built = await buildExportImageBlob();
           blob = built.blob;
           title = built.title;
           id = built.id;
           exportImagePreviewBlobRef.current = blob;
+          exportImagePreviewStampRef.current = built.stamp;
+          setExportImagePreviewStamp(built.stamp);
         } else {
           title =
             exportImageTarget.title ||
@@ -13287,7 +13374,11 @@ export default function App() {
             await api.clipboardWriteImage(b64);
           } else {
             const ok = await copyPngBlob(blob);
-            if (!ok) throw new Error(tr("session.exportImageClipboardFail"));
+            if (!ok) {
+              const err = new Error("clipboard blocked");
+              (err as Error & { code?: string }).code = "clipboard";
+              throw err;
+            }
           }
           showToast(tr("session.exportImageCopied"));
         } else if (api.isTauri()) {
@@ -13300,11 +13391,13 @@ export default function App() {
             extensions: ["png"],
           });
           if (result.cancelled) {
-            // User dismissed the native save dialog — keep modal open.
+            // User dismissed the native save dialog — keep modal open (silent).
             return;
           }
           if (!result.ok) {
-            throw new Error(result.path || "save failed");
+            const err = new Error(result.path || "save failed");
+            (err as Error & { code?: string }).code = "save_failed";
+            throw err;
           }
           showToast(
             result.path
@@ -13320,12 +13413,10 @@ export default function App() {
         exportImageMsgsSnapRef.current = null;
         setExportImageTarget(null);
       } catch (e) {
-        const code = (e as { code?: string } | null)?.code;
-        if (code === "empty" || String(e).includes("empty")) {
-          showToast(tr("session.exportImageEmpty"));
-        } else {
-          showToast(`${tr("session.exportImageFail")}: ${String(e)}`);
-        }
+        const resolved = resolveExportImageError(e);
+        if (resolved.silent) return;
+        const base = tr(resolved.messageKey as Parameters<typeof tr>[0]);
+        showToast(resolved.detail ? `${base}: ${resolved.detail}` : base);
       } finally {
         setExportImageBusy(false);
       }
@@ -13333,6 +13424,8 @@ export default function App() {
     [
       exportImageBusy,
       exportImageTarget,
+      exportImageSkin,
+      exportImageSmart,
       buildExportImageBlob,
       session.sessionId,
       session.title,
@@ -19855,39 +19948,77 @@ export default function App() {
                 />
                 <span className="export-image-skin__label">
                   {tr(
-                    (
-                      {
-                        noir: "session.exportImageSkin.noir",
-                        paper: "session.exportImageSkin.paper",
-                        terminal: "session.exportImageSkin.terminal",
-                        stone: "session.exportImageSkin.stone",
-                        rose: "session.exportImageSkin.rose",
-                      } as const
-                    )[skinId],
+                    shareCardSkinMessageKey(skinId) as Parameters<
+                      typeof tr
+                    >[0],
                   )}
                 </span>
               </button>
             ))}
           </div>
           <div
-            key={exportImagePreviewUrl || "export-image-preview-empty"}
-            className="export-image-preview"
+            className="export-image-meta"
+            aria-live="polite"
+            data-phase={exportImagePreviewPhase}
+          >
+            <span className="export-image-meta__chip">
+              {tr(
+                exportImageMetaParts.modeKey as Parameters<typeof tr>[0],
+              )}
+            </span>
+            <span className="export-image-meta__chip">
+              {tr(
+                exportImageMetaParts.skinKey as Parameters<typeof tr>[0],
+              )}
+            </span>
+            {exportImageMetaParts.layoutKey ? (
+              <span className="export-image-meta__chip export-image-style-chip">
+                {tr(
+                  exportImageMetaParts.layoutKey as Parameters<typeof tr>[0],
+                )}
+              </span>
+            ) : null}
+            {exportImageBytesLabel && exportImagePreviewPhase === "ready" ? (
+              <span
+                className="export-image-meta__chip export-image-meta__chip--muted"
+                title={tr("session.exportImageSize")}
+              >
+                {exportImageBytesLabel}
+              </span>
+            ) : null}
+          </div>
+          <div
+            key={
+              exportImagePreviewUrl && exportImageOptionsMatch
+                ? exportImagePreviewUrl
+                : "export-image-preview-empty"
+            }
+            className={
+              "export-image-preview" +
+              (exportImagePreviewPhase === "error"
+                ? " export-image-preview--error"
+                : "") +
+              (exportImagePreviewPhase === "rendering"
+                ? " export-image-preview--busy"
+                : "")
+            }
             aria-busy={exportImageBusy}
             aria-live="polite"
+            data-phase={exportImagePreviewPhase}
           >
-            {exportImagePreviewUrl ? (
+            {exportImagePreviewUrl && exportImageOptionsMatch ? (
               <img
                 src={exportImagePreviewUrl}
                 alt={tr("session.exportImagePreview")}
                 className="export-image-preview__img"
               />
             ) : exportImagePreviewError ? (
-              <p className="export-image-preview__err">
+              <p className="export-image-preview__err" role="alert">
                 {exportImagePreviewError}
               </p>
             ) : (
               <p className="export-image-preview__placeholder">
-                {exportImageBusy
+                {exportImagePreviewPhase === "rendering" || exportImageBusy
                   ? tr("session.exportImageWorking")
                   : tr("session.exportImagePreview")}
               </p>
@@ -19900,7 +20031,13 @@ export default function App() {
               disabled={exportImageBusy}
               onChange={(e) => setExportImageSmart(e.target.checked)}
             />
-            <span>{tr("session.exportImageSmart")}</span>
+            <span>
+              {tr("session.exportImageSmart")}
+              <span className="export-image-smart-hint">
+                {" "}
+                — {tr("session.exportImageSmartDesc")}
+              </span>
+            </span>
           </label>
           <div className="export-md-options__actions" role="group">
             <button
@@ -19914,11 +20051,7 @@ export default function App() {
             <button
               type="button"
               className="btn btn--ghost"
-              disabled={
-                exportImageBusy ||
-                !exportImageTarget ||
-                !!exportImagePreviewError
-              }
+              disabled={!exportImageCanAct || exportImageBusy}
               onClick={() => void runExportSessionImage("copy")}
             >
               {tr("session.exportImageCopy")}
@@ -19926,11 +20059,7 @@ export default function App() {
             <button
               type="button"
               className="btn btn--solid"
-              disabled={
-                exportImageBusy ||
-                !exportImageTarget ||
-                !!exportImagePreviewError
-              }
+              disabled={!exportImageCanAct || exportImageBusy}
               onClick={() => void runExportSessionImage("download")}
             >
               {exportImageBusy

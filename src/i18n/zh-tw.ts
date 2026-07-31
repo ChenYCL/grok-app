@@ -2700,6 +2700,9 @@ export const zhTW: Record<MessageKey, string> = {
   "session.exportImageLayout.editorial": "編排",
   "session.exportImageLayout.stack": "列表",
   "session.exportImageLayout.compact": "緊湊",
+  "session.exportImageMode.smart": "智慧海報",
+  "session.exportImageMode.full": "完整對話",
+  "session.exportImageSize": "PNG 大小",
   "session.exportImageDownload": "儲存 PNG…",
   "session.exportImageCopy": "複製圖片",
   "session.exportImageWorking": "渲染中…",
@@ -2707,6 +2710,12 @@ export const zhTW: Record<MessageKey, string> = {
   "session.exportImageCopied": "分享卡片已複製",
   "session.exportImageFail": "匯出分享卡片失敗",
   "session.exportImageEmpty": "目前對話沒有可匯出的內容",
+  "session.exportImageRasterFail":
+    "無法渲染分享卡片圖片。可嘗試更換主題或改為完整對話。",
+  "session.exportImageSaveFail": "無法儲存分享卡片 PNG",
+  "session.exportImageLoadFail": "無法載入對話訊息以匯出",
+  "session.exportImageNoTarget": "未選擇要匯出的對話",
+  "session.exportImageCancelled": "已取消儲存",
   "session.exportImagePreview": "分享卡片預覽",
   "session.exportImageSaveTitle": "儲存分享卡片 PNG",
   "session.exportImageClipboardFail":

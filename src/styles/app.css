@@ -17875,6 +17875,7 @@ div.composer__input:empty::before {
 }
 .export-image-skin__swatch[data-skin="paper"] {
   background: linear-gradient(135deg, #1e3a5f, #f3f4f6);
+  border-color: rgba(15, 23, 42, 0.28);
 }
 .export-image-skin__swatch[data-skin="terminal"] {
   background: linear-gradient(135deg, #3dd6c6, #0b0f14);
@@ -17884,6 +17885,37 @@ div.composer__input:empty::before {
 }
 .export-image-skin__swatch[data-skin="rose"] {
   background: linear-gradient(135deg, #c9899a, #151218);
+}
+/* Honest meta chips: mode · skin · layout · size (from stamp, not guessed). */
+.export-image-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 22px;
+}
+.export-image-meta__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background: color-mix(in srgb, var(--bg-elevated, #1a1b1e) 70%, transparent);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.78));
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+.export-image-meta__chip--muted {
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  font-weight: 500;
+  border-style: dashed;
+}
+.export-image-smart-hint {
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  font-weight: 450;
+  font-size: 12px;
 }
 /*
  * Preview scrollport.
@@ -17905,6 +17937,15 @@ div.composer__input:empty::before {
   box-sizing: border-box;
   /* Block layout: content starts at top; full image is scrollable. */
   display: block;
+  transition: border-color 0.15s ease;
+}
+.export-image-preview--busy {
+  border-style: dashed;
+  opacity: 0.92;
+}
+.export-image-preview--error {
+  border-color: color-mix(in srgb, var(--danger, #f87171) 45%, transparent);
+  background: color-mix(in srgb, var(--danger, #f87171) 6%, transparent);
 }
 .export-image-preview__img {
   display: block;

@@ -13,6 +13,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Composer & chat
+- **Share-card export pro (EXPORT-SHARE-PRO)**: export-image dialog shows honest meta chips (smart/full · skin · structural layout · PNG size from the rendered stamp); Save/Copy only enable when the preview blob matches the selected skin/mode/session (no stale PNG); classified preview/save/clipboard errors with en/zh/zh-TW copy instead of raw `Error:` dumps; pure `exportSharePro` helpers + tests
+
 #### Agent / memory
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 
