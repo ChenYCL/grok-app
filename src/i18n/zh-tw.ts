@@ -4501,12 +4501,19 @@ export const zhTW: Record<MessageKey, string> = {
   "voice.toolSoftFail":
     "Build 工具軟失敗（{name}）：{reason}。語音工作階段保持開啟 — 請修復 CLI/麥克風後重試。",
   "voice.toolFailed": "Build 工具失敗：{name}",
+  "voice.permissionPending":
+    "Build 工具需要授權（{title}）。請在下方允許或拒絕。",
+  "voice.permissionAllowed": "已允許 {name}。Agent 繼續執行。",
   "voice.err.mic_denied":
     "麥克風權限被拒絕。即時語音仍可播放音訊並執行 Build 工具（無擷取）。",
   "voice.err.mic_missing":
     "未偵測到麥克風。即時語音仍可播放音訊並執行 Build 工具（無擷取）。",
   "voice.err.cli_missing":
     "未找到 Grok Build CLI。請安裝 Grok Build，或在 設定 → 執行階段 中設定路徑。",
+  "voice.err.permission_denied":
+    "Build 工具權限被拒絕。語音保持開啟 — 下次允許或調整權限模式。",
+  "voice.err.cancelled":
+    "因結束即時語音，Build 工具已取消。是否停止委派工作階段取決於「結束後保留編碼工作階段」設定。",
   "voice.err.auth":
     "語音驗證失敗。請用 Grok CLI 登入（`grok login`），或在帳戶中新增官方 API key。",
   "voice.err.network": "無法連線語音服務，請檢查網路後重試。",

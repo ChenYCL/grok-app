@@ -1,15 +1,18 @@
 /**
  * Live Voice overlay — full-duplex session UI + delegated agent chips.
  *
- * Status (listening / thinking / speaking / Build tool loop) comes from
- * host voice:// events only. Transcript text is never invented (no fake STT).
- * Mic / CLI missing soft-fails with clear copy; host tools surface running →
- * ok / soft_fail / error. Optional “send transcript to active session”
- * only when host/app provides a send callback and conversational text exists.
+ * Status (listening / thinking / speaking / Build tool+permission path)
+ * comes from host voice:// events + real session://permission for
+ * delegated sessions. Transcript text is never invented (no fake STT).
+ * Mic / CLI missing soft-fails with clear copy; host tools surface
+ * tool_running → completed / soft_fail / error; permission_pending lets
+ * the user allow/deny in-overlay (no window.confirm). Stopping voice
+ * cancels in-flight host tools; optional cancel of delegated agents.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
+  sessionResolvePermission,
   voiceInvokeTool,
   voicePushPcm,
   voiceStart,
@@ -25,20 +28,28 @@ import {
   formatTranscriptAsPrompt,
   hasDelegatedSessions,
   initialToolLoopState,
+  isPermissionDenyDecision,
+  isPermissionForDelegatedSession,
+  isPermissionPending,
   isSoftMicFailure,
   isToolLoopBusy,
   liveVoiceErrorMessageKey,
   mergeTranscriptLine,
   nextAwaitingResponse,
   parseToolLoopEvent,
+  parseVoicePermissionPrompt,
+  permissionPendingToolLoopState,
   reduceToolLoopState,
+  softFailFromPermissionBlocked,
   toolLoopStatusMessageKey,
   transcriptEmptyKind,
   type VoiceDelegatePhase,
   type VoiceLiveErrorClass,
+  type VoicePermissionPrompt,
   type VoiceToolLoopState,
   type VoiceTranscriptLine,
 } from "@/lib/voiceOverlay";
+import { mapPermissionButtons } from "@/lib/permissionOptions";
 import type { Locale, MessageKey } from "@/i18n";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -127,8 +138,14 @@ export function VoiceOverlay({
   const [toolLoop, setToolLoop] = useState<VoiceToolLoopState>(
     initialToolLoopState,
   );
+  /** Real ACP permission for a voice-delegated session (allow/deny in overlay). */
+  const [pendingPermission, setPendingPermission] =
+    useState<VoicePermissionPrompt | null>(null);
+  const [resolvingPermission, setResolvingPermission] = useState(false);
   const stopCapture = useRef<(() => void) | null>(null);
   const started = useRef(false);
+  /** Latest delegated ids for permission listener (avoid stale closure). */
+  const delegatedIdsRef = useRef<string[]>([]);
 
   const appendLine = useCallback(
     (role: string, text: string, final?: boolean) => {
@@ -150,14 +167,23 @@ export function VoiceOverlay({
       session_id?: string | null;
       result?: unknown;
       errorClass?: string | null;
+      permissionTitle?: string | null;
+      title?: string | null;
     }) => {
       const parsed = parseToolLoopEvent(payload);
       if (!parsed) return;
       setToolLoop((prev) => reduceToolLoopState(prev, parsed));
+      // Clear overlay permission bar when tool leaves permission_pending.
+      if (parsed.status !== "permission_pending") {
+        // Keep bar if soft-fail reason is not permission-related cancel of same.
+      }
       const key = toolLoopStatusMessageKey(parsed);
-      if (key && parsed.name) {
-        const vars: Record<string, string | number> = { name: parsed.name };
-        if (parsed.reason) vars.reason = parsed.reason;
+      if (key) {
+        const vars: Record<string, string | number> = {
+          name: parsed.name ?? "tool",
+          reason: parsed.reason ?? "",
+          title: parsed.permissionTitle ?? parsed.name ?? "",
+        };
         appendLine("system", tt(key, vars), true);
       }
       if (
@@ -170,8 +196,92 @@ export function VoiceOverlay({
       }
       // Refresh delegated chips after host tool updates.
       void voiceState()
-        .then(setState)
+        .then((st) => {
+          setState(st);
+          delegatedIdsRef.current = st.delegatedSessionIds ?? [];
+        })
         .catch(() => {});
+    },
+    [appendLine, tt],
+  );
+
+  const resolveVoicePermission = useCallback(
+    async (
+      prompt: VoicePermissionPrompt,
+      decision: "allow_once" | "allow_session" | "deny",
+      optionId: string,
+    ) => {
+      setResolvingPermission(true);
+      try {
+        await sessionResolvePermission({
+          rpcId: prompt.rpcId,
+          decision,
+          optionId,
+          scopeKey: prompt.scopeKey || undefined,
+          sessionId: prompt.sessionId,
+        });
+        setPendingPermission(null);
+        if (isPermissionDenyDecision(decision)) {
+          const soft = softFailFromPermissionBlocked({
+            toolName: prompt.toolName,
+            sessionId: prompt.sessionId,
+          });
+          setToolLoop((prev) => reduceToolLoopState(prev, soft));
+          appendLine(
+            "system",
+            tt("voice.toolSoftFail", {
+              name: soft.name ?? "permission",
+              reason: soft.reason ?? "permission_denied",
+            }),
+            true,
+          );
+        } else {
+          // Allowed — tool continues on agent; clear pending chrome.
+          setToolLoop((prev) =>
+            prev.status === "permission_pending"
+              ? {
+                  ...prev,
+                  status: "tool_running",
+                  permissionTitle: null,
+                }
+              : prev,
+          );
+          appendLine(
+            "system",
+            tt("voice.permissionAllowed", {
+              name: prompt.toolName || prompt.title || "tool",
+            }),
+            true,
+          );
+        }
+        window.dispatchEvent(
+          new CustomEvent("grok-app:voice-permission-resolved", {
+            detail: {
+              sessionId: prompt.sessionId,
+              decision,
+              rpcId: prompt.rpcId,
+            },
+          }),
+        );
+      } catch (e) {
+        // Soft-fail resolve errors — voice stays open.
+        const soft = softFailFromPermissionBlocked({
+          toolName: prompt.toolName,
+          sessionId: prompt.sessionId,
+          reason: "permission_denied",
+        });
+        setToolLoop((prev) => reduceToolLoopState(prev, soft));
+        appendLine(
+          "system",
+          tt("voice.toolSoftFail", {
+            name: soft.name ?? "permission",
+            reason: String(e),
+          }),
+          true,
+        );
+      } finally {
+        setResolvingPermission(false);
+      }
     },
     [appendLine, tt],
   );
@@ -184,6 +294,8 @@ export function VoiceOverlay({
       setAwaitingResponse(false);
       setToolLoop(initialToolLoopState());
       setSoftMicWarning(null);
+      setPendingPermission(null);
+      delegatedIdsRef.current = [];
       return;
     }
     if (started.current) return;
@@ -194,6 +306,7 @@ export function VoiceOverlay({
     setLines([]);
     setAwaitingResponse(false);
     setToolLoop(initialToolLoopState());
+    setPendingPermission(null);
 
     let unsubs: Array<() => void> = [];
 
@@ -207,6 +320,7 @@ export function VoiceOverlay({
           keepAgentsOnEnd,
         });
         setState(st);
+        delegatedIdsRef.current = st.delegatedSessionIds ?? [];
         appendLine(
           "system",
           st.mock ? tt("voice.mockReady") : tt("voice.ready"),
@@ -232,20 +346,27 @@ export function VoiceOverlay({
 
         const u1 = await listen<VoiceSessionState>("voice://state", (e) => {
           setState(e.payload);
+          delegatedIdsRef.current = e.payload.delegatedSessionIds ?? [];
           if (e.payload.speaking) {
             setAwaitingResponse(false);
           }
-          // Host activeTool mirrors tool-loop busy when present.
+          // Host activeTool / toolStatus mirror tool-loop busy when present.
           const active = e.payload.activeTool?.trim();
+          const hostStatus = (e.payload.toolStatus ?? "").trim().toLowerCase();
           if (active) {
+            const status =
+              hostStatus === "permission_pending"
+                ? "permission_pending"
+                : "tool_running";
             setToolLoop((prev) =>
-              prev.status === "running" && prev.name === active
+              prev.status === status && prev.name === active
                 ? prev
                 : {
-                    status: "running",
+                    status,
                     name: active,
                     reason: null,
                     sessionId: prev.sessionId,
+                    permissionTitle: prev.permissionTitle,
                   },
             );
           }
@@ -298,13 +419,48 @@ export function VoiceOverlay({
         unsubs.push(u5);
 
         const u6 = await listen("voice://tool_result", () => {
-          // Lifecycle lines come from voice://tool (running/ok/soft_fail/error).
+          // Lifecycle lines come from voice://tool.
           // tool_result only refreshes delegated chips — avoid double-append.
           void voiceState()
-            .then(setState)
+            .then((st) => {
+              setState(st);
+              delegatedIdsRef.current = st.delegatedSessionIds ?? [];
+            })
             .catch(() => {});
         });
         unsubs.push(u6);
+
+        // Permission prompts for voice-delegated Build sessions only.
+        // Same path as the main workbench bar (sessionResolvePermission);
+        // never window.confirm. Soft-fail if user denies.
+        const u7 = await listen<Record<string, unknown>>(
+          "session://permission",
+          (e) => {
+            const prompt = parseVoicePermissionPrompt(e.payload);
+            if (!prompt) return;
+            if (
+              !isPermissionForDelegatedSession(
+                prompt.sessionId,
+                delegatedIdsRef.current,
+              )
+            ) {
+              return;
+            }
+            setPendingPermission(prompt);
+            setToolLoop((prev) =>
+              reduceToolLoopState(prev, permissionPendingToolLoopState(prompt)),
+            );
+            appendLine(
+              "system",
+              tt("voice.permissionPending", {
+                name: prompt.toolName || "tool",
+                title: prompt.title || prompt.toolName || "tool",
+              }),
+              true,
+            );
+          },
+        );
+        unsubs.push(u7);
       } catch (e) {
         setError(formatLiveError(tt, String(e)));
       } finally {
@@ -336,7 +492,9 @@ export function VoiceOverlay({
   const handleEnd = async () => {
     stopCapture.current?.();
     stopCapture.current = null;
+    setPendingPermission(null);
     try {
+      // Host cancels in-flight tools; cancels agents when keepAgentsOnEnd=false.
       await voiceStop();
     } catch {
       /* ignore */
@@ -374,12 +532,13 @@ export function VoiceOverlay({
   });
   const emptyKind = transcriptEmptyKind(lines);
   const toolBusy = isToolLoopBusy(toolLoop);
+  const permPending = isPermissionPending(toolLoop) || !!pendingPermission;
   const phase = deriveVoiceDelegatePhase({
     connecting: busy,
     uiError: error,
     softMicWarning,
     state,
-    toolBusy,
+    toolBusy: toolBusy || permPending,
     awaitingResponse,
   });
   const statusLabel = tt(phaseMessageKey(phase));
@@ -387,6 +546,13 @@ export function VoiceOverlay({
   const softMicLabel = softMicWarning
     ? tt(liveVoiceErrorMessageKey(softMicWarning) as MessageKey)
     : null;
+  const permButtons = pendingPermission
+    ? mapPermissionButtons(pendingPermission.options, {
+        allowOnce: tt("perm.allowOnce"),
+        allowSession: tt("perm.allowSession"),
+        deny: tt("perm.deny"),
+      })
+    : [];
 
   const handleSendTranscript = async () => {
     if (!showSend || !onSendTranscriptAsPrompt || !transcriptPrompt.trim()) {
@@ -422,20 +588,36 @@ export function VoiceOverlay({
               data-phase={phase}
               data-tool-status={toolLoop.status}
               data-tool-name={toolLoop.name ?? undefined}
+              data-permission-pending={permPending ? "true" : undefined}
             >
               <span
                 className={cn(
                   "voice-overlay__phase-dot",
                   `is-${phase}`,
+                  permPending && "is-permission",
                 )}
                 aria-hidden
               />
               {statusLabel}
-              {toolStatusKey && toolLoop.name && toolBusy ? (
-                <span className="voice-overlay__tool-chip">
+              {toolStatusKey &&
+              (toolBusy ||
+                toolLoop.status === "completed" ||
+                toolLoop.status === "ok" ||
+                toolLoop.status === "soft_fail" ||
+                toolLoop.status === "error") ? (
+                <span
+                  className={cn(
+                    "voice-overlay__tool-chip",
+                    `is-${toolLoop.status === "running" ? "tool_running" : toolLoop.status === "ok" ? "completed" : toolLoop.status}`,
+                  )}
+                >
                   {tt(toolStatusKey, {
-                    name: toolLoop.name,
+                    name: toolLoop.name ?? "tool",
                     reason: toolLoop.reason ?? "",
+                    title:
+                      toolLoop.permissionTitle ??
+                      toolLoop.name ??
+                      "",
                   })}
                 </span>
               ) : null}
@@ -454,6 +636,58 @@ export function VoiceOverlay({
         {!error && softMicLabel ? (
           <div className="voice-overlay__warn" role="status">
             {softMicLabel}
+          </div>
+        ) : null}
+
+        {pendingPermission ? (
+          <div
+            className="voice-overlay__perm"
+            role="region"
+            aria-label={tt("voice.permissionPending", {
+              name: pendingPermission.toolName || "tool",
+              title: pendingPermission.title || pendingPermission.toolName || "tool",
+            })}
+          >
+            <div className="voice-overlay__perm-title">
+              {tt("voice.permissionPending", {
+                name: pendingPermission.toolName || "tool",
+                title:
+                  pendingPermission.title ||
+                  pendingPermission.toolName ||
+                  "tool",
+              })}
+            </div>
+            {pendingPermission.preview ? (
+              <div className="voice-overlay__perm-preview">
+                {pendingPermission.preview.length > 280
+                  ? `${pendingPermission.preview.slice(0, 280)}…`
+                  : pendingPermission.preview}
+              </div>
+            ) : null}
+            <div className="voice-overlay__perm-actions">
+              {permButtons.map((btn) => (
+                <button
+                  key={`${btn.decision}-${btn.optionId}`}
+                  type="button"
+                  className={cn(
+                    "voice-overlay__perm-btn",
+                    btn.decision === "deny" && "is-deny",
+                    btn.decision === "allow_once" && "is-allow",
+                    btn.decision === "allow_session" && "is-session",
+                  )}
+                  disabled={resolvingPermission}
+                  onClick={() =>
+                    void resolveVoicePermission(
+                      pendingPermission,
+                      btn.decision,
+                      btn.optionId,
+                    )
+                  }
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
           </div>
         ) : null}
 

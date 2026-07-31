@@ -220,12 +220,31 @@ pub fn classify_tool_error(raw: &str) -> &'static str {
     {
         return "cli_missing";
     }
-    if s.contains("permission")
-        || s.contains("denied")
-        || s.contains("notallowed")
+    // OS mic denial (getUserMedia) — before generic permission_denied.
+    if s.contains("notallowed")
         || s.contains("mic_denied")
+        || (s.contains("microphone") && (s.contains("denied") || s.contains("permission")))
+        || (s.contains("getusermedia") && s.contains("denied"))
     {
         return "mic_denied";
+    }
+    // Agent / tool permission blocked by user or policy (not OS mic).
+    if s.contains("permission_denied")
+        || s.contains("permission denied")
+        || s.contains("permission_blocked")
+        || s.contains("user denied")
+        || s.contains("user_denied")
+        || s.contains("reject_once")
+        || s.contains("reject_always")
+    {
+        return "permission_denied";
+    }
+    if s.contains("cancelled")
+        || s.contains("canceled")
+        || s.contains("voice_stop")
+        || s.contains("user_stop")
+    {
+        return "cancelled";
     }
     if s.contains("no microphone")
         || s.contains("mic_missing")
@@ -265,8 +284,31 @@ pub fn classify_tool_error(raw: &str) -> &'static str {
 }
 
 /// Soft-fail classes: return structured tool result instead of killing the loop.
+/// CLI missing, user permission deny, and voice-stop cancel keep voice open.
 pub fn is_soft_tool_error(class: &str) -> bool {
-    matches!(class, "cli_missing")
+    matches!(
+        class,
+        "cli_missing" | "permission_denied" | "cancelled"
+    )
+}
+
+/// Whether stopping Live Voice should cancel delegated Build agent turns.
+/// Product default: keep agents (`keep_agents_on_end = true`).
+pub fn should_cancel_delegated_agents_on_voice_stop(keep_agents_on_end: bool) -> bool {
+    !keep_agents_on_end
+}
+
+/// Canonical tool-loop status tokens emitted on `voice://tool` (VOX-BUILD-FULL).
+pub fn normalize_tool_status(raw: &str) -> &'static str {
+    match raw.trim().to_lowercase().as_str() {
+        "running" | "tool_running" | "in_progress" => "tool_running",
+        "permission_pending" | "permission" | "awaiting_permission" => "permission_pending",
+        "ok" | "completed" | "success" | "done" => "completed",
+        "soft_fail" | "softfail" | "cancelled" | "canceled" => "soft_fail",
+        "error" | "failed" | "err" | "failure" => "error",
+        "idle" => "idle",
+        _ => "tool_running",
+    }
 }
 
 /// Honest soft-fail payload for the voice model (never invent success).
@@ -402,5 +444,37 @@ mod tests {
             classify_tool_error("voice websocket connect failed"),
             "network"
         );
+    }
+
+    #[test]
+    fn classifies_permission_denied_and_cancelled_as_soft() {
+        assert_eq!(
+            classify_tool_error("permission denied by user"),
+            "permission_denied"
+        );
+        assert_eq!(
+            classify_tool_error("tool cancelled on voice_stop"),
+            "cancelled"
+        );
+        assert!(is_soft_tool_error("permission_denied"));
+        assert!(is_soft_tool_error("cancelled"));
+        assert_eq!(
+            classify_tool_error("NotAllowedError: microphone permission"),
+            "mic_denied"
+        );
+    }
+
+    #[test]
+    fn cancel_agents_only_when_keep_false() {
+        assert!(!should_cancel_delegated_agents_on_voice_stop(true));
+        assert!(should_cancel_delegated_agents_on_voice_stop(false));
+    }
+
+    #[test]
+    fn normalizes_tool_status_tokens() {
+        assert_eq!(normalize_tool_status("running"), "tool_running");
+        assert_eq!(normalize_tool_status("ok"), "completed");
+        assert_eq!(normalize_tool_status("permission_pending"), "permission_pending");
+        assert_eq!(normalize_tool_status("cancelled"), "soft_fail");
     }
 }

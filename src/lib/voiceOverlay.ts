@@ -1,9 +1,10 @@
 /**
  * Pure helpers for Live Voice overlay — delegate phase, transcript merge,
- * Build tool-loop status (VOX-BUILD-LOOP), and optional “send transcript
+ * Build tool/permission path (VOX-BUILD-FULL), and optional “send transcript
  * as prompt” gating.
  *
- * Sources: host `voice://state` / transcript / tool events only.
+ * Sources: host `voice://state` / transcript / tool events + real
+ * `session://permission` for delegated sessions only.
  * Never invent STT partials, fake tool results, or speech text.
  */
 
@@ -25,6 +26,8 @@ export type VoiceLiveErrorClass =
   | "mic_denied"
   | "mic_missing"
   | "cli_missing"
+  | "permission_denied"
+  | "cancelled"
   | "auth"
   | "network"
   | "timeout"
@@ -32,13 +35,22 @@ export type VoiceLiveErrorClass =
   | "not_available"
   | "unknown";
 
-/** Host Build tool lifecycle for voice → agent delegation. */
+/**
+ * Host Build tool lifecycle for voice → agent delegation (VOX-BUILD-FULL).
+ * Canonical tokens: tool_running / permission_pending / completed /
+ * soft_fail / error. Legacy host events still use running / ok.
+ */
 export type VoiceToolLoopStatus =
   | "idle"
-  | "running"
-  | "ok"
+  | "tool_running"
+  | "permission_pending"
+  | "completed"
   | "soft_fail"
-  | "error";
+  | "error"
+  /** @deprecated Prefer tool_running — accepted by parse for back-compat. */
+  | "running"
+  /** @deprecated Prefer completed — accepted by parse for back-compat. */
+  | "ok";
 
 /** Client-side tool-loop snapshot (from host events only). */
 export type VoiceToolLoopState = {
@@ -49,6 +61,20 @@ export type VoiceToolLoopState = {
   reason: string | null;
   /** Delegated session id from tool result when present. */
   sessionId: string | null;
+  /** Permission tool title when status is permission_pending. */
+  permissionTitle?: string | null;
+};
+
+/** Permission prompt for a voice-delegated Build session (real ACP only). */
+export type VoicePermissionPrompt = {
+  rpcId: number;
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+  title: string;
+  preview: string;
+  scopeKey: string;
+  options: unknown;
 };
 
 /** Subset of host VoiceSessionState used for phase derivation. */
@@ -107,6 +133,8 @@ const KNOWN_LIVE_ERRORS: readonly VoiceLiveErrorClass[] = [
   "mic_denied",
   "mic_missing",
   "cli_missing",
+  "permission_denied",
+  "cancelled",
   "auth",
   "network",
   "timeout",
@@ -150,13 +178,34 @@ export function classifyLiveVoiceError(
   ) {
     return "not_available";
   }
+  // OS mic denial first (getUserMedia NotAllowedError often says "Permission denied").
   if (
-    s.includes("permission") ||
-    s.includes("denied") ||
     s.includes("notallowed") ||
-    s.includes("mic_denied")
+    s.includes("mic_denied") ||
+    (s.includes("microphone") && (s.includes("denied") || s.includes("permission"))) ||
+    (s.includes("getusermedia") && s.includes("denied"))
   ) {
     return "mic_denied";
+  }
+  // Agent / tool permission blocked (not OS mic).
+  if (
+    s.includes("permission_denied") ||
+    s.includes("permission denied") ||
+    s.includes("permission_blocked") ||
+    s.includes("user denied") ||
+    s.includes("user_denied") ||
+    s.includes("reject_once") ||
+    s.includes("reject_always")
+  ) {
+    return "permission_denied";
+  }
+  if (
+    s.includes("cancelled") ||
+    s.includes("canceled") ||
+    s.includes("voice_stop") ||
+    s.includes("user_stop")
+  ) {
+    return "cancelled";
   }
   if (
     s.includes("notfound") ||
@@ -226,13 +275,52 @@ export function liveVoiceErrorMessageKey(
 }
 
 export function initialToolLoopState(): VoiceToolLoopState {
-  return { status: "idle", name: null, reason: null, sessionId: null };
+  return {
+    status: "idle",
+    name: null,
+    reason: null,
+    sessionId: null,
+    permissionTitle: null,
+  };
+}
+
+/**
+ * Normalize host status tokens to VOX-BUILD-FULL canonical set.
+ * Accepts legacy `running` / `ok` and aliases `tool_running` / `completed`.
+ */
+export function normalizeToolLoopStatus(
+  raw: string | null | undefined,
+): VoiceToolLoopStatus | null {
+  const s = (raw ?? "").trim().toLowerCase();
+  if (!s) return null;
+  if (s === "idle") return "idle";
+  if (s === "running" || s === "tool_running" || s === "in_progress") {
+    return "tool_running";
+  }
+  if (
+    s === "permission_pending" ||
+    s === "permission" ||
+    s === "awaiting_permission"
+  ) {
+    return "permission_pending";
+  }
+  if (s === "ok" || s === "completed" || s === "success" || s === "done") {
+    return "completed";
+  }
+  if (s === "soft_fail" || s === "softfail" || s === "cancelled" || s === "canceled") {
+    // cancelled is a soft-fail class (voice stays open); status stays soft_fail.
+    return "soft_fail";
+  }
+  if (s === "error" || s === "failed" || s === "err" || s === "failure") {
+    return "error";
+  }
+  return null;
 }
 
 /**
  * Normalize a host `voice://tool` payload. Returns null when name is absent
- * (never invents a tool). Status defaults: result present → ok, else running
- * when status omitted for backward compatibility with finish-only events.
+ * (never invents a tool). Status defaults: result present → completed, else
+ * tool_running when status omitted for backward compatibility.
  */
 export function parseToolLoopEvent(payload: {
   name?: string | null;
@@ -243,41 +331,42 @@ export function parseToolLoopEvent(payload: {
   session_id?: string | null;
   result?: unknown;
   errorClass?: string | null;
+  permissionTitle?: string | null;
+  title?: string | null;
 } | null | undefined): VoiceToolLoopState | null {
   const name = toolEventName(payload);
   if (!name) return null;
 
   const statusRaw = (payload?.status ?? "").trim().toLowerCase();
   let status: VoiceToolLoopStatus;
-  if (
-    statusRaw === "running" ||
-    statusRaw === "ok" ||
-    statusRaw === "soft_fail" ||
-    statusRaw === "error" ||
-    statusRaw === "idle"
-  ) {
-    status = statusRaw;
+  const normalized = normalizeToolLoopStatus(statusRaw);
+  if (normalized && normalized !== "idle") {
+    status = normalized;
   } else if (payload?.result !== undefined && payload?.result !== null) {
     // Legacy finish event with result but no status.
     const soft = softFailReasonFromToolResult(payload.result);
-    status = soft ? "soft_fail" : "ok";
-  } else if (statusRaw === "failed" || statusRaw === "err") {
-    status = "error";
+    status = soft ? "soft_fail" : "completed";
+  } else if (statusRaw === "idle") {
+    status = "idle";
   } else {
     // Name-only without status: treat as in-flight (start event).
-    status = "running";
+    status = "tool_running";
   }
 
   let reason =
     (payload?.reason ?? "").trim() ||
     softFailReasonFromToolResult(payload?.result) ||
     null;
-  if (!reason && status === "error") {
+  if (!reason && (status === "error" || status === "soft_fail")) {
     const cls = classifyLiveVoiceError(
       payload?.message,
       payload?.errorClass,
     );
     reason = cls === "unknown" ? null : cls;
+  }
+  // Cancelled status without explicit reason.
+  if (!reason && statusRaw === "cancelled") {
+    reason = "cancelled";
   }
 
   const sessionId =
@@ -285,11 +374,15 @@ export function parseToolLoopEvent(payload: {
     sessionIdFromToolResult(payload?.result) ||
     null;
 
+  const permissionTitle =
+    (payload?.permissionTitle ?? payload?.title ?? "").trim() || null;
+
   return {
     status,
     name,
     reason,
     sessionId,
+    permissionTitle,
   };
 }
 
@@ -305,12 +398,24 @@ export function reduceToolLoopState(
     name: next.name ?? prev.name,
     reason: next.reason,
     sessionId: next.sessionId ?? prev.sessionId,
+    permissionTitle:
+      next.permissionTitle !== undefined
+        ? next.permissionTitle
+        : prev.permissionTitle,
   };
 }
 
-/** True while a Build tool is in-flight. */
+/** True while a Build tool is in-flight or waiting on permission. */
 export function isToolLoopBusy(loop: VoiceToolLoopState | null | undefined): boolean {
-  return loop?.status === "running";
+  const s = loop?.status;
+  return s === "tool_running" || s === "running" || s === "permission_pending";
+}
+
+/** True while a delegated agent is blocked on user allow/deny. */
+export function isPermissionPending(
+  loop: VoiceToolLoopState | null | undefined,
+): boolean {
+  return loop?.status === "permission_pending";
 }
 
 /**
@@ -339,7 +444,7 @@ function sessionIdFromToolResult(result: unknown): string | null {
 
 /**
  * i18n key for the tool-loop status line. Null when idle (no chrome).
- * Callers interpolate `{name}` / `{reason}` as needed.
+ * Callers interpolate `{name}` / `{reason}` / `{title}` as needed.
  */
 export function toolLoopStatusMessageKey(
   loop: VoiceToolLoopState | null | undefined,
@@ -348,11 +453,19 @@ export function toolLoopStatusMessageKey(
   | "voice.toolRan"
   | "voice.toolSoftFail"
   | "voice.toolFailed"
+  | "voice.permissionPending"
   | null {
-  if (!loop || loop.status === "idle" || !loop.name) return null;
+  if (!loop || loop.status === "idle") return null;
+  // permission_pending may use tool name or a generic "permission" label.
+  if (loop.status === "permission_pending") {
+    return "voice.permissionPending";
+  }
+  if (!loop.name) return null;
   switch (loop.status) {
+    case "tool_running":
     case "running":
       return "voice.toolRunning";
+    case "completed":
     case "ok":
       return "voice.toolRan";
     case "soft_fail":
@@ -362,6 +475,144 @@ export function toolLoopStatusMessageKey(
     default:
       return null;
   }
+}
+
+/**
+ * Whether a `session://permission` session id belongs to a voice-delegated
+ * Build session. Never invents membership — only exact id match.
+ */
+export function isPermissionForDelegatedSession(
+  sessionId: string | null | undefined,
+  delegatedIds: readonly string[] | null | undefined,
+): boolean {
+  const sid = (sessionId ?? "").trim();
+  if (!sid) return false;
+  if (!delegatedIds?.length) return false;
+  return delegatedIds.some((id) => id === sid);
+}
+
+/**
+ * Parse a real host permission payload into a voice prompt. Returns null when
+ * rpcId / sessionId are missing (never invents a prompt).
+ */
+export function parseVoicePermissionPrompt(payload: {
+  rpcId?: number | null;
+  rpc_id?: number | null;
+  sessionId?: string | null;
+  session_id?: string | null;
+  toolCallId?: string | null;
+  tool_call_id?: string | null;
+  toolName?: string | null;
+  tool_name?: string | null;
+  title?: string | null;
+  preview?: string | null;
+  scopeKey?: string | null;
+  scope_key?: string | null;
+  options?: unknown;
+} | null | undefined): VoicePermissionPrompt | null {
+  if (!payload) return null;
+  const rpcId = Number(payload.rpcId ?? payload.rpc_id);
+  if (!Number.isFinite(rpcId) || rpcId <= 0) return null;
+  const sessionId = String(
+    payload.sessionId ?? payload.session_id ?? "",
+  ).trim();
+  if (!sessionId) return null;
+  const toolName = String(
+    payload.toolName ?? payload.tool_name ?? "",
+  ).trim();
+  const title = String(payload.title ?? "").trim() || toolName;
+  return {
+    rpcId,
+    sessionId,
+    toolCallId: String(
+      payload.toolCallId ?? payload.tool_call_id ?? "",
+    ).trim(),
+    toolName,
+    title,
+    preview: String(payload.preview ?? "").trim(),
+    scopeKey: String(payload.scopeKey ?? payload.scope_key ?? "").trim(),
+    options: payload.options ?? null,
+  };
+}
+
+/**
+ * Build tool-loop state for a permission wait (status permission_pending).
+ * Uses real tool name / title only — never invents a tool.
+ */
+export function permissionPendingToolLoopState(
+  prompt: VoicePermissionPrompt,
+): VoiceToolLoopState {
+  const name = prompt.toolName.trim() || "permission";
+  return {
+    status: "permission_pending",
+    name,
+    reason: null,
+    sessionId: prompt.sessionId,
+    permissionTitle: prompt.title || name,
+  };
+}
+
+/**
+ * Soft-fail when the user denies (or permission is otherwise blocked).
+ * Voice stays open — agent work is blocked honestly, not silently.
+ */
+export function softFailFromPermissionBlocked(opts: {
+  toolName?: string | null;
+  sessionId?: string | null;
+  reason?: string | null;
+}): VoiceToolLoopState {
+  return {
+    status: "soft_fail",
+    name: (opts.toolName ?? "").trim() || "permission",
+    reason: (opts.reason ?? "").trim() || "permission_denied",
+    sessionId: (opts.sessionId ?? "").trim() || null,
+    permissionTitle: null,
+  };
+}
+
+/**
+ * Soft-fail when voice stop cancels an in-flight host tool.
+ */
+export function softFailFromToolCancelled(opts: {
+  toolName?: string | null;
+  sessionId?: string | null;
+}): VoiceToolLoopState {
+  return {
+    status: "soft_fail",
+    name: (opts.toolName ?? "").trim() || "tool",
+    reason: "cancelled",
+    sessionId: (opts.sessionId ?? "").trim() || null,
+    permissionTitle: null,
+  };
+}
+
+/**
+ * Whether stopping Live Voice should cancel delegated Build agents.
+ * Default product: keep agents (`keepAgentsOnEnd === true`).
+ */
+export function shouldCancelDelegatedAgentsOnVoiceStop(
+  keepAgentsOnEnd: boolean | null | undefined,
+): boolean {
+  // Explicit false → cancel; undefined/true → keep.
+  return keepAgentsOnEnd === false;
+}
+
+/**
+ * Decision string → soft-fail (deny) vs clear pending (allow).
+ * Only trusts explicit decision tokens — never invents allow.
+ */
+export function isPermissionDenyDecision(
+  decision: string | null | undefined,
+): boolean {
+  const d = (decision ?? "").trim().toLowerCase();
+  return (
+    d === "deny" ||
+    d === "reject" ||
+    d === "reject_once" ||
+    d === "reject_always" ||
+    d === "cancelled" ||
+    d === "canceled"
+  );
 }
 
 /**
