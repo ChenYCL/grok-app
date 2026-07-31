@@ -470,6 +470,127 @@ pub fn max_turns_cli_args(raw: Option<u32>) -> Option<Vec<String>> {
     Some(spec.cli_args().to_vec())
 }
 
+// ── Background wait policy (CLI 0.2.117+, headless-first) ──────────────────
+
+/// First CLI that accepts `--no-wait-for-background` / `--background-wait-timeout`.
+pub const BACKGROUND_WAIT_MIN_CLI: (u64, u64, u64) = (0, 2, 117);
+
+pub const MIN_BACKGROUND_WAIT_TIMEOUT_SEC: u32 = 1;
+pub const MAX_BACKGROUND_WAIT_TIMEOUT_SEC: u32 = 3600;
+pub const DEFAULT_BACKGROUND_WAIT_TIMEOUT_SEC: u32 = 600;
+
+/// `wait` (default) | `no_wait` | `timeout`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackgroundWaitPolicy {
+    Wait,
+    NoWait,
+    Timeout,
+}
+
+impl BackgroundWaitPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Wait => "wait",
+            Self::NoWait => "no_wait",
+            Self::Timeout => "timeout",
+        }
+    }
+}
+
+/// Normalize a settings policy string. Unknown / empty → `wait`.
+pub fn normalize_background_wait_policy(raw: &str) -> BackgroundWaitPolicy {
+    let s = raw.trim().to_ascii_lowercase().replace('-', "_");
+    match s.as_str() {
+        "" | "wait" | "default" => BackgroundWaitPolicy::Wait,
+        "no_wait" | "nowait" | "no_wait_for_background" | "false" => {
+            BackgroundWaitPolicy::NoWait
+        }
+        "timeout" | "timed" | "secs" | "seconds" => BackgroundWaitPolicy::Timeout,
+        _ => BackgroundWaitPolicy::Wait,
+    }
+}
+
+/// Clamp timeout seconds for `--background-wait-timeout` (1–3600).
+pub fn normalize_background_wait_timeout_sec(raw: u32) -> u32 {
+    raw.clamp(
+        MIN_BACKGROUND_WAIT_TIMEOUT_SEC,
+        MAX_BACKGROUND_WAIT_TIMEOUT_SEC,
+    )
+}
+
+/// Top-level CLI argv for the policy. Empty for `wait` (CLI default).
+pub fn background_wait_spawn_flags(policy: &str, timeout_sec: u32) -> Vec<String> {
+    match normalize_background_wait_policy(policy) {
+        BackgroundWaitPolicy::Wait => Vec::new(),
+        BackgroundWaitPolicy::NoWait => vec!["--no-wait-for-background".into()],
+        BackgroundWaitPolicy::Timeout => {
+            let secs = normalize_background_wait_timeout_sec(timeout_sec);
+            vec![
+                "--background-wait-timeout".into(),
+                secs.to_string(),
+            ]
+        }
+    }
+}
+
+/// Whether two policy+timeout pairs are equivalent after normalize.
+pub fn background_wait_settings_equal(
+    a_policy: &str,
+    a_timeout: u32,
+    b_policy: &str,
+    b_timeout: u32,
+) -> bool {
+    let pa = normalize_background_wait_policy(a_policy);
+    let pb = normalize_background_wait_policy(b_policy);
+    if pa != pb {
+        return false;
+    }
+    if pa != BackgroundWaitPolicy::Timeout {
+        return true;
+    }
+    normalize_background_wait_timeout_sec(a_timeout)
+        == normalize_background_wait_timeout_sec(b_timeout)
+}
+
+/// `Some(true)` when CLI ≥ 0.2.117; `Some(false)` when older; `None` unparseable.
+pub fn cli_supports_background_wait(raw_version: &str) -> Option<bool> {
+    let token = crate::cli_probe::extract_version_token(raw_version)?;
+    let parsed = crate::app_update::parse_semver(&token)?;
+    Some(parsed >= BACKGROUND_WAIT_MIN_CLI)
+}
+
+/// Soft-fail gate: emit flags only when the CLI is known to support them.
+///
+/// - Known ≥ 0.2.117 → policy flags
+/// - Known older / unknown + non-default → omit (avoid clap crash)
+/// - Default `wait` → empty always
+pub fn background_wait_spawn_flags_soft(
+    policy: &str,
+    timeout_sec: u32,
+    raw_cli_version: Option<&str>,
+) -> Vec<String> {
+    let args = background_wait_spawn_flags(policy, timeout_sec);
+    if args.is_empty() {
+        return args;
+    }
+    match raw_cli_version {
+        Some(v) if cli_supports_background_wait(v) == Some(true) => args,
+        _ => Vec::new(),
+    }
+}
+
+/// Load AppSettings + soft-gate for spawn sites (headless / ACP).
+pub fn background_wait_spawn_flags_from_settings(
+    settings: &crate::store::AppSettings,
+    raw_cli_version: Option<&str>,
+) -> Vec<String> {
+    background_wait_spawn_flags_soft(
+        &settings.background_wait_policy,
+        settings.background_wait_timeout_sec,
+        raw_cli_version,
+    )
+}
+
 pub fn disable_web_search_spawn_flags(disable: bool) -> Vec<&'static str> {
     if disable {
         vec!["--disable-web-search"]
@@ -719,6 +840,13 @@ impl AcpClient {
         let allowed_tools = settings.allowed_tools.clone();
         let spawn_policy = opts.permission_policy.as_deref().unwrap_or("ask");
         let spawn_product_mode = opts.product_mode.as_deref();
+        // Headless-only in effect; still pass top-level when CLI ≥ 0.2.117 so
+        // automations / future ACP paths share one policy. Soft-fail older CLIs.
+        let cli_ver = crate::cli_probe::read_version_of(&cli_path);
+        let bg_wait_args = background_wait_spawn_flags_from_settings(
+            &settings,
+            cli_ver.as_deref(),
+        );
 
         if session_data_mode != "shared" {
             let _ = crate::agent_subagents::sync_subagents_to_agent_profile(
@@ -746,6 +874,9 @@ impl AcpClient {
             for a in mt.cli_args() {
                 cmd.arg(a);
             }
+        }
+        for a in &bg_wait_args {
+            cmd.arg(a);
         }
         // Top-level `grok --json-schema <SCHEMA>` (before `agent`). Constrains
         // model output; headless docs mention --output-format json, but ACP
@@ -3765,6 +3896,107 @@ mod prompt_wait_timeout_tests {
             prompt_wait_should_timeout(Some(last), started, now, idle(), absolute()),
             Some("absolute")
         );
+    }
+}
+
+#[cfg(test)]
+mod background_wait_policy_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_policy_defaults_and_aliases() {
+        assert_eq!(
+            normalize_background_wait_policy(""),
+            BackgroundWaitPolicy::Wait
+        );
+        assert_eq!(
+            normalize_background_wait_policy("wait"),
+            BackgroundWaitPolicy::Wait
+        );
+        assert_eq!(
+            normalize_background_wait_policy("NO-WAIT"),
+            BackgroundWaitPolicy::NoWait
+        );
+        assert_eq!(
+            normalize_background_wait_policy("timeout"),
+            BackgroundWaitPolicy::Timeout
+        );
+        assert_eq!(
+            normalize_background_wait_policy("garbage"),
+            BackgroundWaitPolicy::Wait
+        );
+    }
+
+    #[test]
+    fn timeout_clamps_1_to_3600() {
+        assert_eq!(normalize_background_wait_timeout_sec(0), 1);
+        assert_eq!(normalize_background_wait_timeout_sec(1), 1);
+        assert_eq!(normalize_background_wait_timeout_sec(600), 600);
+        assert_eq!(normalize_background_wait_timeout_sec(3600), 3600);
+        assert_eq!(normalize_background_wait_timeout_sec(99999), 3600);
+    }
+
+    #[test]
+    fn spawn_flags_for_each_policy() {
+        assert!(background_wait_spawn_flags("wait", 600).is_empty());
+        assert_eq!(
+            background_wait_spawn_flags("no_wait", 600),
+            vec!["--no-wait-for-background".to_string()]
+        );
+        assert_eq!(
+            background_wait_spawn_flags("timeout", 90),
+            vec![
+                "--background-wait-timeout".to_string(),
+                "90".to_string()
+            ]
+        );
+        assert_eq!(
+            background_wait_spawn_flags("timeout", 0),
+            vec![
+                "--background-wait-timeout".to_string(),
+                "1".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn soft_gate_omits_on_old_or_unknown() {
+        assert!(background_wait_spawn_flags_soft("no_wait", 600, Some("0.2.112")).is_empty());
+        assert!(background_wait_spawn_flags_soft("timeout", 30, Some("grok 0.2.100")).is_empty());
+        assert!(background_wait_spawn_flags_soft("no_wait", 600, None).is_empty());
+        assert!(background_wait_spawn_flags_soft("no_wait", 600, Some("nope")).is_empty());
+        assert!(background_wait_spawn_flags_soft("wait", 600, Some("0.2.112")).is_empty());
+    }
+
+    #[test]
+    fn soft_gate_emits_on_new_cli() {
+        assert_eq!(
+            background_wait_spawn_flags_soft("no_wait", 600, Some("grok 0.2.117")),
+            vec!["--no-wait-for-background".to_string()]
+        );
+        assert_eq!(
+            background_wait_spawn_flags_soft("timeout", 45, Some("0.2.120")),
+            vec![
+                "--background-wait-timeout".to_string(),
+                "45".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn settings_equal_ignores_timeout_when_not_timeout_policy() {
+        assert!(background_wait_settings_equal("wait", 1, "wait", 999));
+        assert!(background_wait_settings_equal("no_wait", 1, "no_wait", 2));
+        assert!(!background_wait_settings_equal("wait", 1, "no_wait", 1));
+        assert!(background_wait_settings_equal("timeout", 60, "timeout", 60));
+        assert!(!background_wait_settings_equal("timeout", 60, "timeout", 120));
+    }
+
+    #[test]
+    fn cli_supports_background_wait_semver() {
+        assert_eq!(cli_supports_background_wait("grok 0.2.117"), Some(true));
+        assert_eq!(cli_supports_background_wait("0.2.116"), Some(false));
+        assert_eq!(cli_supports_background_wait(""), None);
     }
 }
 

@@ -1290,6 +1290,15 @@ const en = {
   "settings.maxAgentTurnsDesc":
     "Pass `grok --max-turns N` when starting the agent (1–200). Leave empty or 0 for the CLI default. Applies on the next agent start — reconnect the session after changing.",
   "settings.maxAgentTurnsPlaceholder": "Default (no limit)",
+  "settings.backgroundWaitPolicy": "Background wait (headless)",
+  "settings.backgroundWaitPolicyDesc":
+    "After the first headless turn (`grok -p`, Remote IM, automations-like paths), whether to wait for pending background bash/monitor tasks and background subagents (CLI 0.2.117+). Default waits (CLI default). Top-level flags are also passed on ACP spawn when the CLI is new enough; older CLIs soft-fail (flags omitted).",
+  "settings.backgroundWait.wait": "Wait (default)",
+  "settings.backgroundWait.noWait": "No wait — exit after first turn",
+  "settings.backgroundWait.timeout": "Wait with timeout…",
+  "settings.backgroundWaitTimeout": "Background wait timeout (seconds)",
+  "settings.backgroundWaitTimeoutDesc":
+    "Pass `grok --background-wait-timeout N` (1–3600). Only used when policy is “Wait with timeout”. Soft-respawns after change.",
   "agent.idleRecycledToast":
     "Agent process recycled after idle — session kept; next message will reconnect.",
   "agent.capacityRecycledToast":
@@ -4969,6 +4978,15 @@ const zh: Record<MessageKey, string> = {
   "settings.maxAgentTurnsDesc":
     "启动 Agent 时传入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 默认。下次启动 Agent 时生效——更改后请重连会话。",
   "settings.maxAgentTurnsPlaceholder": "默认（不限制）",
+  "settings.backgroundWaitPolicy": "后台等待（无头）",
+  "settings.backgroundWaitPolicyDesc":
+    "无头首轮结束后（`grok -p`、远程 IM、类自动化路径）是否继续等待后台 bash/monitor 与后台子代理（CLI 0.2.117+）。默认等待（CLI 默认）。CLI 足够新时 ACP 启动也会传入顶层 flag；更旧 CLI soft-fail（省略 flag）。",
+  "settings.backgroundWait.wait": "等待（默认）",
+  "settings.backgroundWait.noWait": "不等待 — 首轮结束即退出",
+  "settings.backgroundWait.timeout": "限时等待…",
+  "settings.backgroundWaitTimeout": "后台等待超时（秒）",
+  "settings.backgroundWaitTimeoutDesc":
+    "传入 `grok --background-wait-timeout N`（1–3600）。仅在策略为「限时等待」时使用。更改后 soft-respawn。",
   "agent.idleRecycledToast":
     "Agent 进程因闲置已回收 — 会话仍在；下次发送将重新连接。",
   "agent.capacityRecycledToast":

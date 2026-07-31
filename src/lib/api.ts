@@ -1288,6 +1288,17 @@ export interface AppSettings {
   sandboxProfile?: string;
 
   maxAgentTurns?: number | null;
+  /**
+   * Headless background-wait after first turn: `wait` | `no_wait` | `timeout`.
+   * CLI 0.2.117+ (`--no-wait-for-background` / `--background-wait-timeout`).
+   * Default `wait` (omit flags). Soft-fails on older CLIs.
+   */
+  backgroundWaitPolicy?: string;
+  /**
+   * Seconds for `--background-wait-timeout` when policy is `timeout` (1–3600).
+   * Default 600.
+   */
+  backgroundWaitTimeoutSec?: number;
   preferredAgent?: string;
   /**
    * Optional path for `grok agent --agent-profile <PATH>`.

@@ -74,7 +74,19 @@ pub async fn run_turn(
     on_delta: Option<tokio::sync::mpsc::Sender<String>>,
 ) -> GrokTurnResult {
     let binary = resolve_grok_binary();
-    let args = super::control_plane::grok_turn_cli_args(prompt, session_id, always_approve);
+    // Soft-fail older CLIs: only pass bg-wait flags when version ≥ 0.2.117.
+    let settings = crate::store::load_settings();
+    let cli_ver = crate::cli_probe::read_version_of(&binary);
+    let bg_wait = crate::acp_client::background_wait_spawn_flags_from_settings(
+        &settings,
+        cli_ver.as_deref(),
+    );
+    let args = super::control_plane::grok_turn_cli_args_with_bg_wait(
+        prompt,
+        session_id,
+        always_approve,
+        &bg_wait,
+    );
 
     let mut cmd = Command::new(&binary);
     cmd.args(&args)

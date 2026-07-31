@@ -2133,6 +2133,9 @@ export default function App() {
   const [streamStallSeconds, setStreamStallSeconds] = useState(180);
   /** 0 = omit `--max-turns` (CLI default). */
   const [maxAgentTurns, setMaxAgentTurns] = useState(0);
+  /** Headless bg wait: wait | no_wait | timeout (CLI 0.2.117+). */
+  const [backgroundWaitPolicy, setBackgroundWaitPolicy] = useState("wait");
+  const [backgroundWaitTimeoutSec, setBackgroundWaitTimeoutSec] = useState(600);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
   /** Preferred CLI agent definition for spawn (`""` = CLI default). */
@@ -2956,6 +2959,21 @@ export default function App() {
           typeof raw === "number" && raw > 0
             ? Math.min(200, Math.round(raw))
             : 0,
+        );
+      }
+      {
+        const p = (settings.backgroundWaitPolicy || "wait")
+          .trim()
+          .toLowerCase()
+          .replace(/-/g, "_");
+        setBackgroundWaitPolicy(
+          p === "no_wait" || p === "timeout" ? p : "wait",
+        );
+        const ts = settings.backgroundWaitTimeoutSec;
+        setBackgroundWaitTimeoutSec(
+          typeof ts === "number" && Number.isFinite(ts)
+            ? Math.min(3600, Math.max(1, Math.round(ts)))
+            : 600,
         );
       }
       setStoreApiKeysInKeychain(!!settings.storeApiKeysInKeychain);
@@ -14495,6 +14513,23 @@ export default function App() {
                 // null clears the optional field; 0 would also omit on spawn.
                 maxAgentTurns: n > 0 ? n : null,
               }),
+            );
+          }}
+          backgroundWaitPolicy={backgroundWaitPolicy}
+          onBackgroundWaitPolicy={(v) => {
+            const next =
+              v === "no_wait" || v === "timeout" ? v : "wait";
+            setBackgroundWaitPolicy(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, backgroundWaitPolicy: next }),
+            );
+          }}
+          backgroundWaitTimeoutSec={backgroundWaitTimeoutSec}
+          onBackgroundWaitTimeoutSec={(v) => {
+            const n = Math.min(3600, Math.max(1, Math.round(v)));
+            setBackgroundWaitTimeoutSec(n);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, backgroundWaitTimeoutSec: n }),
             );
           }}
           storeApiKeysInKeychain={storeApiKeysInKeychain}

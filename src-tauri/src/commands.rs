@@ -1114,6 +1114,15 @@ pub async fn settings_set(
     // Normalize / validate optional agents JSON (reject invalid non-empty).
     settings.agents_json =
         crate::agents_catalog::normalize_agents_json(&settings.agents_json)?;
+    // Headless background-wait policy (CLI 0.2.117+); clamp timeout 1–3600.
+    settings.background_wait_policy =
+        crate::acp_client::normalize_background_wait_policy(&settings.background_wait_policy)
+            .as_str()
+            .to_string();
+    settings.background_wait_timeout_sec =
+        crate::acp_client::normalize_background_wait_timeout_sec(
+            settings.background_wait_timeout_sec,
+        );
     let keychain_flip =
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
@@ -1136,6 +1145,12 @@ pub async fn settings_set(
     let agent_profile_flip = prev.agent_profile_path.trim() != settings.agent_profile_path.trim();
     let agents_json_flip = prev.agents_json.trim() != settings.agents_json.trim();
     let max_turns_flip = prev.max_agent_turns != settings.max_agent_turns;
+    let bg_wait_flip = !crate::acp_client::background_wait_settings_equal(
+        &prev.background_wait_policy,
+        prev.background_wait_timeout_sec,
+        &settings.background_wait_policy,
+        settings.background_wait_timeout_sec,
+    );
     let sandbox_flip = prev.sandbox_profile.trim() != settings.sandbox_profile.trim();
     // API-mode address is a spawn-path flip (local CLI ↔ TCP). Soft-respawn so
     // the next connect uses the new target; mid-turn sessions stay skipped.
@@ -1242,6 +1257,7 @@ pub async fn settings_set(
         || agent_profile_flip
         || agents_json_flip
         || max_turns_flip
+        || bg_wait_flip
         || sandbox_flip
         || acp_addr_flip
     {

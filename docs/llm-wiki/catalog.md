@@ -50,6 +50,21 @@ Spawn：`--reasoning-effort <id>`。无模型级默认时 App 默认 **`medium`*
 2. 中途切换：优先 `set_mode`；失败则 soft-respawn。  
 3. 按 `composerPrefsScope` 记忆。
 
+## 后台等待（headless，CLI 0.2.117+）
+
+首轮 agent turn 结束后，无头 `grok -p` 默认可等待后台 bash/monitor 与后台子代理完成。
+
+| App 设置 | Spawn | 说明 |
+|----------|-------|------|
+| `backgroundWaitPolicy: "wait"`（默认） | 省略 flag | CLI 默认等待（自带超时） |
+| `backgroundWaitPolicy: "no_wait"` | top-level `--no-wait-for-background` | 首轮结束即退出 |
+| `backgroundWaitPolicy: "timeout"` + `backgroundWaitTimeoutSec` | top-level `--background-wait-timeout N` | N 钳制 **1–3600**（默认 600） |
+
+- 纯 helper：`src/lib/backgroundWaitPolicy.ts`；Host：`acp_client::background_wait_spawn_flags*`。
+- **Soft-fail**：CLI &lt; 0.2.117 或版本不可解析时省略非默认 flag（避免 clap 拒识导致 AGENT_CRASHED）。
+- 生效路径：Remote IM headless、壁纸搜索 headless、ACP `agent stdio` 顶层（效果仍以 headless 语义为主；stdio 下 flag 可接受但主要无操作）。
+- 更改后 soft-respawn（`settings_spawn`）。设置：Settings → General → Agent。
+
 ## 内置工具 allowlist / denylist
 
 | App 设置 | Spawn | 说明 |
