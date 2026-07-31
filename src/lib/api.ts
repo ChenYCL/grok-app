@@ -1551,6 +1551,12 @@ export interface AppSettings {
    * Default "verbose". Soft-respawns on change.
    */
   compactionDetail?: string;
+  /**
+   * Prefire two-pass compaction (CLI 0.2.117+).
+   * Default false. Writes agent-home `two_pass_compaction_enabled` in
+   * independent mode; spawn sets `GROK_TWO_PASS_COMPACTION`. Soft-respawns.
+   */
+  twoPassCompactionEnabled?: boolean;
   disableWebSearch?: boolean;
   /**
    * When true, spawn with top-level `--no-ask-user` (CLI ≥ 0.2.117) so the

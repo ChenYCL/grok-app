@@ -15,6 +15,7 @@ mod updater;
 mod agent_subagents;
 mod agent_todo_gate;
 mod agent_subagent_wt_snap;
+mod agent_two_pass_compaction;
 mod extensions;
 mod hooks;
 mod supergrok_quota;

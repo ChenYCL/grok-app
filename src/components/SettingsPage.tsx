@@ -497,6 +497,12 @@ export interface SettingsPageProps {
    */
   compactionDetail?: string;
   onCompactionDetail?: (v: string) => void;
+  /**
+   * Prefire two-pass compaction (CLI 0.2.117+ config
+   * two_pass_compaction_enabled + GROK_TWO_PASS_COMPACTION).
+   */
+  twoPassCompactionEnabled?: boolean;
+  onTwoPassCompactionEnabled?: (v: boolean) => void;
   disableWebSearch?: boolean;
   onDisableWebSearch?: (v: boolean) => void;
   /**
@@ -1168,6 +1174,8 @@ export function SettingsPage({
   onCompactionMode,
   compactionDetail = "verbose",
   onCompactionDetail,
+  twoPassCompactionEnabled = false,
+  onTwoPassCompactionEnabled,
   subagentsEnabled = true,
   onSubagentsEnabled,
   subagentWorktreeSnapshotEnabled = false,
@@ -2986,6 +2994,31 @@ export function SettingsPage({
                   <div className="settings-row__desc" style={{ marginTop: 8 }}>
                     {t("settings.compactionDetail.help")}
                   </div>
+                </div>
+              ) : null}
+              {onTwoPassCompactionEnabled ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-twoPassCompaction")
+                  }
+                  id="settings-anchor-twoPassCompaction"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.twoPassCompaction")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.twoPassCompactionDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!twoPassCompactionEnabled}
+                    onChange={() =>
+                      onTwoPassCompactionEnabled(!twoPassCompactionEnabled)
+                    }
+                    ariaLabel={t("settings.twoPassCompaction")}
+                  />
                 </div>
               ) : null}
               {onExperimentalMemory ? (

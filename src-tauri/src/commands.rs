@@ -1204,6 +1204,8 @@ pub async fn settings_set(
     let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
     let subagent_wt_snap_flip = prev.subagent_worktree_snapshot_enabled
         != settings.subagent_worktree_snapshot_enabled;
+    let two_pass_compaction_flip =
+        prev.two_pass_compaction_enabled != settings.two_pass_compaction_enabled;
     let preferred_agent_flip =
         prev.preferred_agent.trim() != settings.preferred_agent.trim();
     let agent_profile_flip = prev.agent_profile_path.trim() != settings.agent_profile_path.trim();
@@ -1335,6 +1337,15 @@ pub async fn settings_set(
             settings.subagent_worktree_snapshot_enabled,
         ) {
             tracing::warn!("settings_set sync subagent_wt_snap profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
+    if two_pass_compaction_flip {
+        if let Err(e) = crate::agent_two_pass_compaction::sync_two_pass_compaction_to_agent_profile(
+            &settings.session_data_mode,
+            settings.two_pass_compaction_enabled,
+        ) {
+            tracing::warn!("settings_set sync two_pass_compaction profile: {e}");
         }
         need_soft_respawn = true;
     }

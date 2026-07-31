@@ -1037,6 +1037,7 @@ impl AcpClient {
         let agents_json_args = agents_json_spawn_flags(&settings.agents_json);
         let subagents_enabled = settings.subagents_enabled;
         let subagent_wt_snap = settings.subagent_worktree_snapshot_enabled;
+        let two_pass_compaction = settings.two_pass_compaction_enabled;
         let memory_enabled = settings.experimental_memory;
         let use_leader = settings.use_leader;
         let plan_enabled = settings.plan_enabled;
@@ -1080,6 +1081,10 @@ impl AcpClient {
             let _ = crate::agent_subagent_wt_snap::sync_subagent_wt_snap_to_agent_profile(
                 session_data_mode,
                 subagent_wt_snap,
+            );
+            let _ = crate::agent_two_pass_compaction::sync_two_pass_compaction_to_agent_profile(
+                session_data_mode,
+                two_pass_compaction,
             );
         }
 
@@ -1174,6 +1179,12 @@ impl AcpClient {
         crate::agent_subagent_wt_snap::apply_subagent_wt_snap_to_command(
             &mut cmd,
             subagent_wt_snap,
+            cli_ver.as_deref(),
+        );
+        // Two-pass prefire compaction (CLI 0.2.117+): env + independent agent-home.
+        crate::agent_two_pass_compaction::apply_two_pass_compaction_to_command(
+            &mut cmd,
+            two_pass_compaction,
             cli_ver.as_deref(),
         );
         cmd.arg("agent");

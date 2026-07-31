@@ -2183,6 +2183,8 @@ export default function App() {
   >([]);
   const [experimentalMemory, setExperimentalMemory] = useState(false);
   // compactionMode / compactionDetail state lives near compact modal (shared with Settings).
+  const [twoPassCompactionEnabled, setTwoPassCompactionEnabled] =
+    useState(false);
   const [voiceId, setVoiceId] = useState("eve");
   const [voiceDictationAutoSend, setVoiceDictationAutoSend] = useState(false);
   const [voiceKeepAgentsOnEnd, setVoiceKeepAgentsOnEnd] = useState(true);
@@ -3030,6 +3032,7 @@ export default function App() {
       setExperimentalMemory(!!settings.experimentalMemory);
       setCompactionMode(normalizeCompactionMode(settings.compactionMode));
       setCompactionDetail(normalizeCompactionDetail(settings.compactionDetail));
+      setTwoPassCompactionEnabled(!!settings.twoPassCompactionEnabled);
       setVoiceId((settings.voiceId || "eve").trim() || "eve");
       setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
       setVoiceKeepAgentsOnEnd(
@@ -14736,6 +14739,13 @@ export default function App() {
             setCompactionDetail(next);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, compactionDetail: next }),
+            );
+          }}
+          twoPassCompactionEnabled={twoPassCompactionEnabled}
+          onTwoPassCompactionEnabled={(v) => {
+            setTwoPassCompactionEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, twoPassCompactionEnabled: v }),
             );
           }}
           voiceId={voiceId}

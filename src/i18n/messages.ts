@@ -1290,6 +1290,9 @@ const en = {
   "settings.compactionDetail.verbose": "Verbose",
   "settings.compactionDetail.help":
     "Only applies when Compaction mode is Segments. CLI default is Verbose.",
+  "settings.twoPassCompaction": "Two-pass prefire compaction",
+  "settings.twoPassCompactionDesc":
+    "When on, Grok Build may prefire a hierarchical two-pass compact before the main compact (CLI 0.2.117+ config two_pass_compaction_enabled + GROK_TWO_PASS_COMPACTION). Default off. Independent mode writes agent-home config.toml; shared mode keeps the App setting only (does not rewrite ~/.grok). Soft-respawns after change; older CLIs soft-fail (env omitted).",
   "settings.clearWorkspaceMemory": "Clear workspace memory",
   "settings.clearWorkspaceMemoryDesc":
     "Run grok memory clear for the current project workspace (MEMORY.md, session logs, index). Does not delete chat history in the app.",
@@ -5364,6 +5367,9 @@ const zh: Record<MessageKey, string> = {
   "settings.compactionDetail.verbose": "详细",
   "settings.compactionDetail.help":
     "仅在压缩模式为「分段」时生效。CLI 默认为「详细」。",
+  "settings.twoPassCompaction": "双遍预热压缩",
+  "settings.twoPassCompactionDesc":
+    "开启后，Grok Build 可在主压缩前预热层次化双遍 compact（CLI 0.2.117+ 配置 two_pass_compaction_enabled 与 GROK_TWO_PASS_COMPACTION）。默认关闭。独立模式写入 agent-home config.toml；共享模式仅保留 App 设置（不改写 ~/.grok）。更改后 soft-respawn；旧版 CLI soft-fail（省略 env）。",
   "settings.clearWorkspaceMemory": "清除工作区记忆",
   "settings.clearWorkspaceMemoryDesc":
     "对当前项目执行 grok memory clear（MEMORY.md、会话摘要、索引）。不会删除应用内聊天记录。",
