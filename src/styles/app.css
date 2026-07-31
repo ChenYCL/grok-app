@@ -1235,6 +1235,46 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
   color: var(--text-tertiary);
 }
 
+.search-panel__clear-filters {
+  margin: 0;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent, #6b8cff);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.search-panel__clear-filters:hover {
+  background: color-mix(in srgb, var(--accent, #6b8cff) 12%, transparent);
+}
+
+.search-panel__empty {
+  padding: 12px 14px 14px;
+}
+
+.search-panel__empty-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.search-panel__empty-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.search-panel__empty-clear {
+  margin-top: 10px;
+}
+
 .search-panel__section {
   padding: 10px 14px 4px;
   font-size: 11px;

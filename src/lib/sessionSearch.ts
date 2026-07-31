@@ -43,6 +43,8 @@ export const SESSION_SEARCH_MODES: readonly SessionSearchMode[] = [
   "content",
 ] as const;
 
+export const DEFAULT_SESSION_SEARCH_MODE: SessionSearchMode = "all";
+
 /**
  * Ranking strategy for session search.
  * - `keyword` — substring match only (default; stable order)
@@ -59,6 +61,9 @@ export const SESSION_SEARCH_RANK_MODES: readonly SessionSearchRankMode[] = [
 
 export const DEFAULT_SESSION_SEARCH_RANK_MODE: SessionSearchRankMode =
   "keyword";
+
+/** Default for include-archived chip (off = live sessions only). */
+export const DEFAULT_SESSION_SEARCH_INCLUDE_ARCHIVED = false;
 
 export type SessionSearchFilterOpts = {
   maxSessions?: number;
@@ -148,6 +153,208 @@ export function parseSessionSearchRankMode(
     return "hybrid";
   }
   return "keyword";
+}
+
+/**
+ * Parse / normalize a search mode. Invalid → all.
+ */
+export function parseSessionSearchMode(raw: unknown): SessionSearchMode {
+  if (raw === "title" || raw === "content" || raw === "all") return raw;
+  return DEFAULT_SESSION_SEARCH_MODE;
+}
+
+/** Stable i18n key for a mode chip label. */
+export function sessionSearchModeLabelKey(
+  mode: SessionSearchMode,
+): "search.modeAll" | "search.modeTitle" | "search.modeContent" {
+  switch (mode) {
+    case "title":
+      return "search.modeTitle";
+    case "content":
+      return "search.modeContent";
+    case "all":
+    default:
+      return "search.modeAll";
+  }
+}
+
+/** Stable i18n key for a rank-mode chip label. */
+export function sessionSearchRankModeLabelKey(
+  mode: SessionSearchRankMode,
+): "search.rankKeyword" | "search.rankHybrid" {
+  return mode === "hybrid" ? "search.rankHybrid" : "search.rankKeyword";
+}
+
+/**
+ * Palette filter chip state (scope + archived). Rank mode is a separate pref.
+ * Query is free text and not considered a "filter chip" for clear-filters.
+ */
+export type SessionSearchFilterState = {
+  mode: SessionSearchMode;
+  includeArchived: boolean;
+};
+
+export function defaultSessionSearchFilterState(): SessionSearchFilterState {
+  return {
+    mode: DEFAULT_SESSION_SEARCH_MODE,
+    includeArchived: DEFAULT_SESSION_SEARCH_INCLUDE_ARCHIVED,
+  };
+}
+
+/**
+ * Whether non-default scope chips are active.
+ * - mode other than `all` narrows the search
+ * - includeArchived expands to archived sessions (non-default, still "active")
+ */
+export function hasActiveSessionSearchFilters(
+  state: Partial<SessionSearchFilterState> | undefined,
+): boolean {
+  if (!state) return false;
+  const mode = state.mode ?? DEFAULT_SESSION_SEARCH_MODE;
+  const includeArchived =
+    state.includeArchived ?? DEFAULT_SESSION_SEARCH_INCLUDE_ARCHIVED;
+  if (mode !== DEFAULT_SESSION_SEARCH_MODE) return true;
+  if (includeArchived !== DEFAULT_SESSION_SEARCH_INCLUDE_ARCHIVED) return true;
+  return false;
+}
+
+/** Reset scope chips to defaults (does not touch query or rank mode). */
+export function clearSessionSearchFilters(): SessionSearchFilterState {
+  return defaultSessionSearchFilterState();
+}
+
+/**
+ * Empty-state kinds for the chats list in the command palette.
+ * `null` means there are session hits — no empty UI.
+ */
+export type SessionSearchEmptyKind =
+  | "idle"
+  | "loading"
+  | "no_matches"
+  | "filtered";
+
+export type SessionSearchEmptyInput = {
+  query: string;
+  /** Merged session hit count for the chats section. */
+  sessionHitCount: number;
+  contentLoading: boolean;
+  mode: SessionSearchMode;
+  includeArchived: boolean;
+  rankMode: SessionSearchRankMode;
+};
+
+export type SessionSearchEmptyTitleKey =
+  | "search.noRecent"
+  | "search.searchingContent"
+  | "search.noMatches";
+
+export type SessionSearchEmptyHintKey =
+  | "search.noRecentHint"
+  | "search.searchingContentHint"
+  | "search.noMatchesHintTitle"
+  | "search.noMatchesHintContent"
+  | "search.noMatchesHintKeyword"
+  | "search.noMatchesHintHybrid"
+  | "search.noMatchesHintArchived";
+
+export type SessionSearchEmptyPresentation = {
+  kind: SessionSearchEmptyKind;
+  titleKey: SessionSearchEmptyTitleKey;
+  hintKey: SessionSearchEmptyHintKey;
+  /** Offer "Clear filters" when scope chips are non-default. */
+  showClearFilters: boolean;
+};
+
+/**
+ * Resolve empty-state presentation for the palette chats section.
+ * Returns `null` when there are session hits (no empty UI).
+ *
+ * Honest local search only — hints never claim cloud embeddings.
+ */
+export function resolveSessionSearchEmptyState(
+  input: SessionSearchEmptyInput,
+): SessionSearchEmptyPresentation | null {
+  if (input.sessionHitCount > 0) return null;
+
+  const q = input.query.trim();
+  const mode = parseSessionSearchMode(input.mode);
+  const rankMode = parseSessionSearchRankMode(input.rankMode);
+  const includeArchived = !!input.includeArchived;
+  const filtersActive = hasActiveSessionSearchFilters({
+    mode,
+    includeArchived,
+  });
+
+  if (!q) {
+    return {
+      kind: "idle",
+      titleKey: "search.noRecent",
+      hintKey: "search.noRecentHint",
+      showClearFilters: filtersActive,
+    };
+  }
+
+  if (
+    input.contentLoading &&
+    shouldScanSessionContent(q, mode)
+  ) {
+    return {
+      kind: "loading",
+      titleKey: "search.searchingContent",
+      hintKey: "search.searchingContentHint",
+      showClearFilters: false,
+    };
+  }
+
+  if (mode === "title") {
+    return {
+      kind: "filtered",
+      titleKey: "search.noMatches",
+      hintKey: "search.noMatchesHintTitle",
+      showClearFilters: true,
+    };
+  }
+
+  if (mode === "content") {
+    return {
+      kind: "filtered",
+      titleKey: "search.noMatches",
+      hintKey: "search.noMatchesHintContent",
+      showClearFilters: true,
+    };
+  }
+
+  // mode === "all"
+  if (includeArchived) {
+    // Already expanded archived; rank-based hint.
+    return {
+      kind: "filtered",
+      titleKey: "search.noMatches",
+      hintKey:
+        rankMode === "keyword"
+          ? "search.noMatchesHintKeyword"
+          : "search.noMatchesHintHybrid",
+      showClearFilters: true,
+    };
+  }
+
+  // Default filters: soft hint to try archived when keyword/hybrid still empty.
+  if (rankMode === "keyword") {
+    return {
+      kind: "no_matches",
+      titleKey: "search.noMatches",
+      hintKey: "search.noMatchesHintKeyword",
+      showClearFilters: false,
+    };
+  }
+
+  return {
+    kind: "no_matches",
+    titleKey: "search.noMatches",
+    // Hybrid already on → suggest archived as next step.
+    hintKey: "search.noMatchesHintArchived",
+    showClearFilters: false,
+  };
 }
 
 /** Tiny English stop set — not a full NLP pipeline. */

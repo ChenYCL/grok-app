@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  clearSessionSearchFilters,
+  defaultSessionSearchFilterState,
   filterSessionSearch,
+  hasActiveSessionSearchFilters,
   matchMessageContent,
   mergeSessionSearchHits,
+  parseSessionSearchMode,
+  parseSessionSearchRankMode,
+  resolveSessionSearchEmptyState,
+  scoreSessionSearchHit,
   sessionSearchBadge,
   sessionSearchBadgeLabelKey,
+  sessionSearchModeLabelKey,
+  sessionSearchRankModeLabelKey,
   shouldScanSessionContent,
-  parseSessionSearchRankMode,
-  scoreSessionSearchHit,
   tokenizeSearchText,
   tokenOverlapScore,
 } from "./sessionSearch";
@@ -299,6 +306,137 @@ describe("parseSessionSearchRankMode", () => {
     expect(parseSessionSearchRankMode("keyword")).toBe("keyword");
     expect(parseSessionSearchRankMode("nope")).toBe("keyword");
     expect(parseSessionSearchRankMode(null)).toBe("keyword");
+  });
+});
+
+describe("parseSessionSearchMode / label keys", () => {
+  it("parses modes and defaults to all", () => {
+    expect(parseSessionSearchMode("title")).toBe("title");
+    expect(parseSessionSearchMode("content")).toBe("content");
+    expect(parseSessionSearchMode("all")).toBe("all");
+    expect(parseSessionSearchMode("nope")).toBe("all");
+    expect(parseSessionSearchMode(null)).toBe("all");
+  });
+
+  it("maps mode / rank chips to stable i18n keys", () => {
+    expect(sessionSearchModeLabelKey("all")).toBe("search.modeAll");
+    expect(sessionSearchModeLabelKey("title")).toBe("search.modeTitle");
+    expect(sessionSearchModeLabelKey("content")).toBe("search.modeContent");
+    expect(sessionSearchRankModeLabelKey("keyword")).toBe("search.rankKeyword");
+    expect(sessionSearchRankModeLabelKey("hybrid")).toBe("search.rankHybrid");
+  });
+});
+
+describe("hasActiveSessionSearchFilters / clear", () => {
+  it("defaults are inactive", () => {
+    expect(hasActiveSessionSearchFilters(undefined)).toBe(false);
+    expect(hasActiveSessionSearchFilters(defaultSessionSearchFilterState())).toBe(
+      false,
+    );
+    expect(hasActiveSessionSearchFilters({ mode: "all", includeArchived: false })).toBe(
+      false,
+    );
+  });
+
+  it("mode or includeArchived marks filters active", () => {
+    expect(hasActiveSessionSearchFilters({ mode: "title" })).toBe(true);
+    expect(hasActiveSessionSearchFilters({ mode: "content" })).toBe(true);
+    expect(
+      hasActiveSessionSearchFilters({ mode: "all", includeArchived: true }),
+    ).toBe(true);
+  });
+
+  it("clearSessionSearchFilters resets to defaults", () => {
+    expect(clearSessionSearchFilters()).toEqual({
+      mode: "all",
+      includeArchived: false,
+    });
+  });
+});
+
+describe("resolveSessionSearchEmptyState", () => {
+  const base = {
+    query: "doctor",
+    sessionHitCount: 0,
+    contentLoading: false,
+    mode: "all" as const,
+    includeArchived: false,
+    rankMode: "keyword" as const,
+  };
+
+  it("returns null when there are session hits", () => {
+    expect(
+      resolveSessionSearchEmptyState({ ...base, sessionHitCount: 2 }),
+    ).toBeNull();
+  });
+
+  it("idle when query empty and no recents", () => {
+    const empty = resolveSessionSearchEmptyState({
+      ...base,
+      query: "",
+      sessionHitCount: 0,
+    });
+    expect(empty?.kind).toBe("idle");
+    expect(empty?.titleKey).toBe("search.noRecent");
+    expect(empty?.showClearFilters).toBe(false);
+  });
+
+  it("loading while content scan is in flight", () => {
+    const empty = resolveSessionSearchEmptyState({
+      ...base,
+      contentLoading: true,
+      mode: "all",
+    });
+    expect(empty?.kind).toBe("loading");
+    expect(empty?.titleKey).toBe("search.searchingContent");
+    expect(empty?.showClearFilters).toBe(false);
+  });
+
+  it("does not loading-empty in title-only mode", () => {
+    const empty = resolveSessionSearchEmptyState({
+      ...base,
+      contentLoading: true,
+      mode: "title",
+    });
+    expect(empty?.kind).toBe("filtered");
+    expect(empty?.hintKey).toBe("search.noMatchesHintTitle");
+    expect(empty?.showClearFilters).toBe(true);
+  });
+
+  it("content mode uses content hint + clear filters", () => {
+    const empty = resolveSessionSearchEmptyState({
+      ...base,
+      mode: "content",
+    });
+    expect(empty?.kind).toBe("filtered");
+    expect(empty?.hintKey).toBe("search.noMatchesHintContent");
+    expect(empty?.showClearFilters).toBe(true);
+  });
+
+  it("keyword all-mode suggests hybrid", () => {
+    const empty = resolveSessionSearchEmptyState(base);
+    expect(empty?.kind).toBe("no_matches");
+    expect(empty?.hintKey).toBe("search.noMatchesHintKeyword");
+    expect(empty?.showClearFilters).toBe(false);
+  });
+
+  it("hybrid all-mode suggests archived", () => {
+    const empty = resolveSessionSearchEmptyState({
+      ...base,
+      rankMode: "hybrid",
+    });
+    expect(empty?.kind).toBe("no_matches");
+    expect(empty?.hintKey).toBe("search.noMatchesHintArchived");
+  });
+
+  it("includeArchived active still offers clear filters", () => {
+    const empty = resolveSessionSearchEmptyState({
+      ...base,
+      includeArchived: true,
+      rankMode: "hybrid",
+    });
+    expect(empty?.kind).toBe("filtered");
+    expect(empty?.showClearFilters).toBe(true);
   });
 });
 

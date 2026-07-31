@@ -55,6 +55,7 @@ See `docs/llm-wiki/release.md`.
 - **CLI-aligned worktrees**: create under `~/.grok/worktrees/<repo>/<name>` by default (matches `grok --worktree`); optional sibling layout; start-ref validation; sidebar **CLI** vs **WT** badge
 - **Hybrid session search** (command palette): mode chips **All / Title / Content**, optional **Include archived**, keyword content snippets + Title/Content badges — no embeddings (honest keyword hybrid only)
 - **Hybrid session search ranking** (optional): command palette Keyword / Hybrid chips + Settings → Appearance → Interface; Hybrid = keyword + local token-overlap ranking on titles/snippets (honest local hybrid — not cloud embeddings / no embedding API); pref in localStorage
+- **Session search pro** (command palette): remembered scope chips + include-archived (localStorage); Keyword/Hybrid rank hints; contextual empty states (idle / loading / no matches / filtered) with mode-aware hints and **Clear filters**; pure `resolveSessionSearchEmptyState` / filter-pref helpers + tests; en/zh/zh-TW
 
 #### Appearance / app shell
 - **Theme schedule** (System + clock) · **follow system language**

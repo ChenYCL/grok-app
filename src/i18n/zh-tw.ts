@@ -890,6 +890,20 @@ export const zhTW: Record<MessageKey, string> = {
   "search.chats": "對話",
   "search.actions": "操作",
   "search.noMatches": "無相符結果",
+  "search.noRecent": "暫無最近對話",
+  "search.noRecentHint": "新增對話或專案後會出現在這裡。",
+  "search.noMatchesHintTitle":
+    "沒有標題相符。可切換到「全部」或「內容」，或清除篩選。",
+  "search.noMatchesHintContent":
+    "沒有訊息正文相符。可切換到「全部」或「標題」，或清除篩選。",
+  "search.noMatchesHintKeyword":
+    "可嘗試「混合」排序以匹配多詞查詢，或包含已封存對話。",
+  "search.noMatchesHintHybrid":
+    "本機無相符。可換關鍵字，或包含已封存對話。",
+  "search.noMatchesHintArchived":
+    "本機無相符。可換關鍵字，或開啟「包含已封存」。",
+  "search.searchingContentHint": "正在掃描訊息日誌…",
+  "search.clearFilters": "清除篩選",
   "search.newChat": "新增對話",
   "search.addProject": "新增專案",
   "search.matchCount": "{n} 處相符",
@@ -905,11 +919,12 @@ export const zhTW: Record<MessageKey, string> = {
   "search.rankModeLabel": "搜尋排序",
   "search.rankKeyword": "關鍵字",
   "search.rankHybrid": "混合",
+  "search.rankKeywordHint": "子字串匹配；標題優先、再內容的穩定順序",
   "search.rankHybridHint":
     "本機混合：關鍵字 + 標題/摘要詞元重疊排序（非雲端嵌入）",
   "settings.sessionSearchRank": "對話搜尋排序",
   "settings.sessionSearchRankDesc":
-    "命令面板排序：關鍵字（子字串）或混合（關鍵字 + 標題/摘要本機詞元重疊）。非雲端嵌入，無 embedding API。",
+    "命令面板排序：關鍵字（子字串）或混合（關鍵字 + 標題/摘要本機詞元重疊）。非雲端嵌入，無 embedding API。範圍芯片（全部/標題/內容）與「包含已封存」會在本瀏覽器記住。",
   "settings.sessionSearchRank.keyword": "關鍵字",
   "settings.sessionSearchRank.hybrid": "混合（本機詞元）",
 
