@@ -24,7 +24,14 @@ import {
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
-import { filterModelsForMenu } from "@/lib/modelMenuSearch";
+import {
+  buildComposerModelGroups,
+  filterComposerModelGroups,
+  isComposerModelEntryActive,
+  type ComposerModelPick,
+  type ComposerProviderInput,
+} from "@/lib/composerModelGroups";
+import { composerModelChipLabel } from "@/lib/effectiveModel";
 import { Tip } from "@/components/ui/tooltip";
 import {
   IconAlertTriangle,
@@ -186,6 +193,11 @@ export interface ComposerModelMenuProps {
   effort: string;
   /** Live selectable models only (from Host catalog). */
   models?: ModelOption[];
+  /** Configured custom providers for grouped menu entries. */
+  providers?: ComposerProviderInput[];
+  /** Active inference route: official | custom. */
+  activeSource?: string;
+  activeProviderId?: string | null;
   labels: {
     model: string;
     effort: string;
@@ -196,10 +208,14 @@ export interface ComposerModelMenuProps {
     modelSearchPlaceholder: string;
     /** Empty state when filter matches nothing. */
     modelSearchEmpty: string;
-    /** Caption on the active entry when the current model comes from a custom provider (optional). */
+    /** Section header for official catalog models. */
+    modelGroupOfficial: string;
+    /** @deprecated Prefer real custom groups via `providers`. */
     modelViaProvider?: string;
   };
-  onModel: (id: string) => void;
+  /** Prefer over onModel when provided. */
+  onModelPick?: (pick: ComposerModelPick) => void;
+  onModel?: (id: string) => void;
   onEffort: (id: string) => void;
 }
 
@@ -220,7 +236,11 @@ export function ComposerModelMenu({
   modelId,
   effort,
   models = GROK_BUILD_MODELS,
+  providers = [],
+  activeSource = "official",
+  activeProviderId = null,
   labels,
+  onModelPick,
   onModel,
   onEffort,
 }: ComposerModelMenuProps) {
@@ -229,14 +249,25 @@ export function ComposerModelMenu({
   const modelSearchRef = useRef<HTMLInputElement>(null);
   const menu = usePortalMenu(240, 280, nested ?? "root");
   const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
-  const filteredModels = filterModelsForMenu(modelList, modelQuery);
+  const groups = buildComposerModelGroups({
+    officialModels: modelList,
+    providers,
+    officialGroupTitle: labels.modelGroupOfficial,
+  });
+  const filteredGroups = filterComposerModelGroups(groups, modelQuery);
   const activeModel = findModel(modelId, modelList);
   const effortList = effortsForModel(activeModel);
-  /** Custom-provider route: the current model is not in the official catalog. */
-  const showViaProviderEntry =
-    !activeModel && modelId.trim().length > 0 && !modelQuery.trim();
 
   const clearModelQuery = () => setModelQuery("");
+
+  const selectPick = (pick: ComposerModelPick) => {
+    if (onModelPick) {
+      onModelPick(pick);
+    } else if (pick.kind === "official" && onModel) {
+      onModel(pick.modelId);
+    }
+    setNested(null);
+  };
 
   useEffect(() => {
     if (!menu.open) {
@@ -291,7 +322,21 @@ export function ComposerModelMenu({
     return () => document.removeEventListener("keydown", onKey, true);
   }, [menu.open, nested]);
 
-  const modelLabel = activeModel?.label ?? modelId;
+  const activeCustom =
+    activeSource === "custom" && activeProviderId
+      ? (() => {
+          const p = providers.find((x) => x.id === activeProviderId);
+          return p
+            ? { name: p.name, model: p.model }
+            : null;
+        })()
+      : null;
+  const officialLabel = activeModel?.label ?? modelId;
+  const modelLabel = composerModelChipLabel({
+    modelId,
+    officialLabel,
+    activeCustom,
+  });
   const eLabel = resolveEffortLabel(effort, effortList, labels);
   // Compact trigger: model + short effort (locale), no middle-dot noise.
   const triggerText = `${modelLabel} ${eLabel}`;
@@ -348,7 +393,7 @@ export function ComposerModelMenu({
             {nested === "model" ? labels.model : labels.effort}
           </button>
           {nested === "model" &&
-            (modelList.length === 0 ? (
+            (groups.length === 0 ? (
               <div className="cmm__opt cmm__opt--muted" role="status">
                 <span className="cmm__opt-main">
                   <span className="cmm__opt-title">{modelId || "—"}</span>
@@ -373,26 +418,7 @@ export function ComposerModelMenu({
                     }}
                   />
                 </div>
-                {showViaProviderEntry ? (
-                  <button
-                    type="button"
-                    className="cmm__opt is-active"
-                    onClick={() => setNested(null)}
-                  >
-                    <span className="cmm__opt-main">
-                      <span className="cmm__opt-title">{modelId}</span>
-                      {labels.modelViaProvider ? (
-                        <span className="cmm__opt-desc">
-                          {labels.modelViaProvider}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="cmm__opt-check" aria-hidden>
-                      <IconCheck size={16} />
-                    </span>
-                  </button>
-                ) : null}
-                {filteredModels.length === 0 ? (
+                {filteredGroups.length === 0 ? (
                   <div className="cmm__opt cmm__opt--muted" role="status">
                     <span className="cmm__opt-main">
                       <span className="cmm__opt-title">
@@ -401,27 +427,41 @@ export function ComposerModelMenu({
                     </span>
                   </div>
                 ) : (
-                  filteredModels.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className={
-                        "cmm__opt" + (m.id === modelId ? " is-active" : "")
-                      }
-                      onClick={() => {
-                        onModel(m.id);
-                        setNested(null);
-                      }}
-                    >
-                      <span className="cmm__opt-main">
-                        <span className="cmm__opt-title">{m.label}</span>
-                      </span>
-                      {m.id === modelId && (
-                        <span className="cmm__opt-check" aria-hidden>
-                          <IconCheck size={16} />
-                        </span>
-                      )}
-                    </button>
+                  filteredGroups.map((group) => (
+                    <div key={group.key}>
+                      <div className="cmm__section">{group.title}</div>
+                      {group.entries.map((entry) => {
+                        const active = isComposerModelEntryActive(entry, {
+                          activeSource,
+                          activeProviderId,
+                          modelId,
+                        });
+                        return (
+                          <button
+                            key={entry.key}
+                            type="button"
+                            className={"cmm__opt" + (active ? " is-active" : "")}
+                            onClick={() => selectPick(entry.pick)}
+                          >
+                            <span className="cmm__opt-main">
+                              <span className="cmm__opt-title">
+                                {entry.title}
+                              </span>
+                              {entry.subtitle ? (
+                                <span className="cmm__opt-desc">
+                                  {entry.subtitle}
+                                </span>
+                              ) : null}
+                            </span>
+                            {active ? (
+                              <span className="cmm__opt-check" aria-hidden>
+                                <IconCheck size={16} />
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
                   ))
                 )}
               </>

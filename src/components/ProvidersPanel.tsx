@@ -499,7 +499,17 @@ export function ProvidersPanel({
         setHint(tr("prov.loaded", { n: r.models.length }));
         setHintTone("ok");
         if (!form.model && r.models[0]?.id) {
-          setForm((f) => ({ ...f, model: r.models[0].id }));
+          const nextModel = r.models[0].id;
+          setForm((f) => {
+            const prevModel = f.model;
+            const nameWasAuto =
+              !f.name.trim() || f.name.trim() === prevModel.trim();
+            return {
+              ...f,
+              model: nextModel,
+              name: nameWasAuto ? nextModel.trim() : f.name,
+            };
+          });
         }
       } else {
         setHint(tr("prov.emptyList"));
@@ -824,6 +834,7 @@ export function ProvidersPanel({
                     placeholder={tr("prov.namePh")}
                     autoComplete="off"
                   />
+                  <span className="prov-field__hint">{tr("prov.nameChipHint")}</span>
                 </label>
 
                 {!editingId && (
@@ -917,9 +928,20 @@ export function ProvidersPanel({
                   <input
                     className="settings-input"
                     value={form.model}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, model: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      const nextModel = e.target.value;
+                      setForm((f) => {
+                        const prevModel = f.model;
+                        const nameWasAuto =
+                          !f.name.trim() ||
+                          f.name.trim() === prevModel.trim();
+                        return {
+                          ...f,
+                          model: nextModel,
+                          name: nameWasAuto ? nextModel.trim() : f.name,
+                        };
+                      });
+                    }}
                     placeholder={tr("prov.modelPh")}
                     list="prov-model-suggestions"
                     autoComplete="off"

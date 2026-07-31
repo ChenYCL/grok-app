@@ -63,7 +63,7 @@ Verified working combinations:
 | Custom relay | provider id (`yunyi`) | **provider id** | **removed** (api_key only) |
 | Official | `grok` | catalog id (`grok-4.5`) | **synced** from `~/.grok` |
 
-Host must rebind both sides on every switch and before each ACP spawn (`prepare_route_auth_for_agent` + `agent_spawn_model_id`). Composer model stays a catalog id for the UI; spawn resolves the channel id separately.
+Host must rebind both sides on every switch and before each ACP spawn (`prepare_route_auth_for_agent` + `agent_spawn_model_id`). Composer catalog `modelId` remains the official selection preference; spawn resolves the channel id separately. **Alternate activate entry:** picking a custom provider row in the composer model menu also calls `providers_activate` (same Host path as Settings **Use**).
 
 ## Host commands
 

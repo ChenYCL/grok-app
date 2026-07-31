@@ -27,6 +27,13 @@ import {
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
+import {
+  buildComposerModelGroups,
+  isComposerModelEntryActive,
+  type ComposerModelPick,
+  type ComposerProviderInput,
+} from "@/lib/composerModelGroups";
+import { composerModelChipLabel } from "@/lib/effectiveModel";
 import type { ContextUsageDisplay } from "@/lib/contextUsage";
 import {
   formatTokenCount,
@@ -67,7 +74,9 @@ export type PhoneComposerToolsSheetProps = {
     modeAgent: string;
     modePlan: string;
     modeAsk: string;
-    /** Caption under a current model that comes from a custom provider (optional). */
+    /** Section header for official catalog models. */
+    modelGroupOfficial: string;
+    /** @deprecated Prefer real custom groups via `providers`. */
     modelViaProvider?: string;
     policyAsk: string;
     policyAcceptEdits: string;
@@ -91,13 +100,20 @@ export type PhoneComposerToolsSheetProps = {
   modelId: string;
   effort: string;
   models?: ModelOption[];
+  /** Configured custom providers for grouped menu entries. */
+  providers?: ComposerProviderInput[];
+  /** Active inference route: official | custom. */
+  activeSource?: string;
+  activeProviderId?: string | null;
   mode: string;
   policy: string;
   contextDisplay: ContextUsageDisplay;
   onAttach: () => void;
   onSelectProject: (project: PhoneProjectOption | null) => void;
   onAddProject: () => void;
-  onModel: (id: string) => void;
+  /** Prefer over onModel when provided. */
+  onModelPick?: (pick: ComposerModelPick) => void;
+  onModel?: (id: string) => void;
   onEffort: (id: EffortOption["id"]) => void;
   onMode: (id: string) => void;
   onPolicy: (id: PermissionPolicyId) => void;
@@ -182,12 +198,16 @@ export function PhoneComposerToolsSheet({
   modelId,
   effort,
   models = GROK_BUILD_MODELS,
+  providers = [],
+  activeSource = "official",
+  activeProviderId = null,
   mode,
   policy,
   contextDisplay,
   onAttach,
   onSelectProject,
   onAddProject,
+  onModelPick,
   onModel,
   onEffort,
   onMode,
@@ -202,8 +222,34 @@ export function PhoneComposerToolsSheet({
   const toolsPanelRef = useRef(panel);
   toolsPanelRef.current = panel;
   const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
-  const modelLabel =
+  const modelGroups = buildComposerModelGroups({
+    officialModels: modelList,
+    providers,
+    officialGroupTitle: labels.modelGroupOfficial,
+  });
+  const activeCustom =
+    activeSource === "custom" && activeProviderId
+      ? (() => {
+          const p = providers.find((x) => x.id === activeProviderId);
+          return p ? { name: p.name, model: p.model } : null;
+        })()
+      : null;
+  const officialLabel =
     modelList.find((m) => m.id === modelId)?.label ?? modelId;
+  const modelLabel = composerModelChipLabel({
+    modelId,
+    officialLabel,
+    activeCustom,
+  });
+
+  const selectPick = (pick: ComposerModelPick) => {
+    if (onModelPick) {
+      onModelPick(pick);
+    } else if (pick.kind === "official" && onModel) {
+      onModel(pick.modelId);
+    }
+    onClose();
+  };
 
   useEffect(() => {
     if (!open) setPanel("root");
@@ -373,48 +419,49 @@ export function PhoneComposerToolsSheet({
 
           {panel === "model" && (
             <>
-              <div className="phone-sheet__section">{labels.model}</div>
-              {!modelList.some((m) => m.id === modelId) && modelId ? (
-                <button
-                  type="button"
-                  className={
-                    "phone-sheet__row is-active" +
-                    (labels.modelViaProvider
-                      ? " phone-sheet__row--stacked"
-                      : "")
-                  }
-                  onClick={() => onClose()}
-                >
-                  <span className="phone-sheet__row-label">
-                    <span className="phone-sheet__row-title">{modelId}</span>
-                    {labels.modelViaProvider ? (
-                      <span className="phone-sheet__row-sub">
-                        {labels.modelViaProvider}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="phone-sheet__row-value" aria-hidden>
-                    <IconCheck size={18} />
-                  </span>
-                </button>
-              ) : null}
-              {modelList.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={
-                    "phone-sheet__row" +
-                    (m.id === modelId ? " is-active" : "")
-                  }
-                  onClick={() => onModel(m.id)}
-                >
-                  <span className="phone-sheet__row-label">{m.label}</span>
-                  {m.id === modelId ? (
-                    <span className="phone-sheet__row-value" aria-hidden>
-                      <IconCheck size={18} />
-                    </span>
-                  ) : null}
-                </button>
+              {modelGroups.map((group) => (
+                <div key={group.key}>
+                  <div className="phone-sheet__section">{group.title}</div>
+                  {group.entries.map((entry) => {
+                    const active = isComposerModelEntryActive(entry, {
+                      activeSource,
+                      activeProviderId,
+                      modelId,
+                    });
+                    return (
+                      <button
+                        key={entry.key}
+                        type="button"
+                        className={
+                          "phone-sheet__row" +
+                          (active ? " is-active" : "") +
+                          (entry.subtitle ? " phone-sheet__row--stacked" : "")
+                        }
+                        onClick={() => selectPick(entry.pick)}
+                      >
+                        <span className="phone-sheet__row-label">
+                          {entry.subtitle ? (
+                            <>
+                              <span className="phone-sheet__row-title">
+                                {entry.title}
+                              </span>
+                              <span className="phone-sheet__row-sub">
+                                {entry.subtitle}
+                              </span>
+                            </>
+                          ) : (
+                            entry.title
+                          )}
+                        </span>
+                        {active ? (
+                          <span className="phone-sheet__row-value" aria-hidden>
+                            <IconCheck size={18} />
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
               ))}
               <SheetRow
                 icon={<IconActivity size={20} />}

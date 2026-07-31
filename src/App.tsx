@@ -850,7 +850,7 @@ import {
   ComposerAccessMenu,
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
-import { effectiveComposerModel } from "@/lib/effectiveModel";
+import type { ComposerModelPick } from "@/lib/composerModelGroups";
 import {
   ResourceViewer,
   type ResourceOpenTarget,
@@ -11451,23 +11451,37 @@ export default function App() {
   /** Active inference channel: custom relay identity replaces official account chrome. */
   const [activeCustomProvider, setActiveCustomProvider] =
     useState<api.CustomProvider | null>(null);
+  /** Full provider list for composer model menu groups. */
+  const [customProviders, setCustomProviders] = useState<api.CustomProvider[]>(
+    [],
+  );
+  const [providerActiveSource, setProviderActiveSource] =
+    useState<string>("official");
+  const [providerActiveId, setProviderActiveId] = useState<string | null>(null);
+  const [modelPickBusy, setModelPickBusy] = useState(false);
   const customRouteActive = activeCustomProvider != null;
-  /**
-   * Model the composer chip must show: on a custom relay the agent spawns with
-   * the provider request model (composer selection is ignored), so display it
-   * instead of a stale official pick like "Grok 4.5".
-   */
-  const effectiveModelId = effectiveComposerModel(
-    modelId,
-    customRouteActive ? activeCustomProvider?.model ?? null : null,
+  const composerProviderInputs = useMemo(
+    () =>
+      customProviders.map((p) => ({
+        id: p.id,
+        name: p.name,
+        model: p.model,
+      })),
+    [customProviders],
   );
   const refreshProviderRoute = useCallback(async () => {
     if (!api.isTauri()) {
       setActiveCustomProvider(null);
+      setCustomProviders([]);
+      setProviderActiveSource("official");
+      setProviderActiveId(null);
       return;
     }
     try {
       const list = await api.providersList();
+      setCustomProviders(list.providers);
+      setProviderActiveSource(list.activeSource);
+      setProviderActiveId(list.activeProviderId);
       const active =
         list.activeSource === "custom"
           ? list.providers.find((provider) => provider.id === list.activeProviderId) ?? null
@@ -11484,6 +11498,47 @@ export default function App() {
   useEffect(() => {
     void refreshVoiceGate();
   }, [customRouteActive, refreshVoiceGate]);
+
+  const handleModelPick = useCallback(
+    async (pick: ComposerModelPick) => {
+      if (modelPickBusy) return;
+      setModelPickBusy(true);
+      try {
+        if (pick.kind === "official") {
+          if (providerActiveSource === "custom" && api.isTauri()) {
+            await api.providersActivate("official");
+            await refreshProviderRoute();
+          }
+          if (!isValidModelId(pick.modelId, availableModels)) return;
+          setModelId(pick.modelId);
+          void api
+            .composerPrefsSet({
+              projectId: activeProject?.id ?? null,
+              sessionId: session.sessionId ?? null,
+              modelId: pick.modelId,
+            })
+            .catch((e) => showToast(String(e), 4000));
+        } else {
+          if (!api.isTauri()) return;
+          await api.providersActivate("custom", pick.providerId);
+          await refreshProviderRoute();
+        }
+      } catch (e) {
+        showToast(String(e), 4000);
+      } finally {
+        setModelPickBusy(false);
+      }
+    },
+    [
+      modelPickBusy,
+      providerActiveSource,
+      availableModels,
+      activeProject?.id,
+      session.sessionId,
+      refreshProviderRoute,
+      showToast,
+    ],
+  );
   const liveBrandKind = useMemo(
     () =>
       superGrokBrandKind(
@@ -18789,11 +18844,15 @@ export default function App() {
                       </Tip>
                     ) : null}
                     <ComposerModelMenu
-                      modelId={effectiveModelId}
+                      modelId={modelId}
                       effort={effort}
                       models={availableModels}
+                      providers={composerProviderInputs}
+                      activeSource={providerActiveSource}
+                      activeProviderId={providerActiveId}
                       labels={{
                         model: tr("composer.model"),
+                        modelGroupOfficial: tr("composer.modelGroupOfficial"),
                         modelViaProvider: tr("composer.modelViaProvider"),
                         effort: tr("composer.effort"),
                         effortHigh: tr("effort.high"),
@@ -18804,16 +18863,8 @@ export default function App() {
                         ),
                         modelSearchEmpty: tr("composer.modelSearchEmpty"),
                       }}
-                      onModel={(v) => {
-                        if (!isValidModelId(v, availableModels)) return;
-                        setModelId(v);
-                        void api
-                          .composerPrefsSet({
-                            projectId: activeProject?.id ?? null,
-                            sessionId: session.sessionId ?? null,
-                            modelId: v,
-                          })
-                          .catch((e) => showToast(String(e), 4000));
+                      onModelPick={(pick) => {
+                        void handleModelPick(pick);
                       }}
                       onEffort={(v) => {
                         if (!isValidEffort(v)) return;
@@ -19262,6 +19313,7 @@ export default function App() {
               modeAgent: tr("mode.agent"),
               modePlan: tr("mode.plan"),
               modeAsk: tr("mode.ask"),
+              modelGroupOfficial: tr("composer.modelGroupOfficial"),
               modelViaProvider: tr("composer.modelViaProvider"),
               policyAsk: tr("policy.ask"),
               policyAcceptEdits: tr("policy.accept_edits"),
@@ -19282,9 +19334,12 @@ export default function App() {
             }}
             activeProject={activeProject}
             projects={projects}
-            modelId={effectiveModelId}
+            modelId={modelId}
             effort={effort}
             models={availableModels}
+            providers={composerProviderInputs}
+            activeSource={providerActiveSource}
+            activeProviderId={providerActiveId}
             mode={mode}
             policy={policy}
             contextDisplay={contextUsageDisplay}
@@ -19303,16 +19358,8 @@ export default function App() {
             onAddProject={() => {
               void addProjectFromPicker({ bindSession: true });
             }}
-            onModel={(v) => {
-              if (!isValidModelId(v, availableModels)) return;
-              setModelId(v);
-              void api
-                .composerPrefsSet({
-                  projectId: activeProject?.id ?? null,
-                  sessionId: session.sessionId ?? null,
-                  modelId: v,
-                })
-                .catch((e) => showToast(String(e), 4000));
+            onModelPick={(pick) => {
+              void handleModelPick(pick);
             }}
             onEffort={(v) => {
               if (!isValidEffort(v)) return;
