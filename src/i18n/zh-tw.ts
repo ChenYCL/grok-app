@@ -294,6 +294,7 @@ export const zhTW: Record<MessageKey, string> = {
   "main.openLocationMenu": "選擇應用程式",
   "main.openInFinder": "在 Finder 中顯示",
   "main.openInExplorer": "在檔案總管中顯示",
+  "main.openInFileManager": "在檔案管理員中顯示",
   "main.openSystemDefault": "以系統預設應用程式開啟",
   "main.connecting": "連線中…",
   "main.reconnect": "重新連線 Agent",
