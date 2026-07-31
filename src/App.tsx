@@ -15986,7 +15986,7 @@ export default function App() {
             );
           }}
           todoGateMaxFiresPerPrompt={todoGateMaxFiresPerPrompt}
-          {/* Host has no fire-activity channel yet — Settings shows honest N/A. */}
+          // Host has no fire-activity channel yet — Settings shows honest N/A.
           todoGateFireSignal={null}
           onTodoGateMaxFiresPerPrompt={(v) => {
             const n =
