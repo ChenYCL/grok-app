@@ -234,7 +234,11 @@ export const zhTW: Record<MessageKey, string> = {
   "session.forkCliSession":
     "分叉 CLI Agent 工作階段（新 agent id — grok --fork-session）",
   "session.forkCliSessionHint":
-    "以父工作階段完整內容建立新的 agent session id（ACP session/fork）。原 agent 工作階段保持不變。尚未關聯 agent 工作階段時不可用。",
+    "以父工作階段完整內容建立新的 agent session id（ACP session/fork）。原 agent 工作階段保持不變。已關聯 agent 工作階段時預設開啟。",
+  "session.forkCliSessionNoAgent":
+    "尚未關聯 agent 工作階段，無法分叉新的 agent id",
+  "session.forkCliSessionNoAgentHint":
+    "請先連線或傳送訊息，讓本對話關聯 agent session。在此之前仍可僅分叉對話內容（不新建 agent id）。",
   "session.resumeForkCliSessionHint":
     "在此 worktree 上分配新的 agent session id，而不是沿用原工作階段（CLI --fork-session）。不勾選則繼續同一 agent 工作階段。",
   "session.forkOkCli": "已分叉 · 新 agent 工作階段 · 已開啟新對話",
@@ -243,6 +247,9 @@ export const zhTW: Record<MessageKey, string> = {
   "session.resumeRestoreOkCli":
     "已恢復 · 新 agent 工作階段 · 已在乾淨 worktree 中開啟",
   "session.forkCliFailed": "無法啟用 CLI Agent 工作階段分叉",
+  "session.forkWorktreeCollision":
+    "無法建立 worktree — 名稱或路徑已被占用，請重試。",
+  "session.forkCancelled": "已取消分叉",
   "session.resumeRestore": "恢復對話並還原程式碼",
   "session.resumeRestoreTitle": "恢復對話並還原程式碼",
   "session.resumeRestoreConfirm":
