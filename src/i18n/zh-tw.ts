@@ -1401,6 +1401,46 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.memoryEmbed.save": "儲存記憶 embedding 鍵",
   "settings.memoryEmbed.saving": "儲存中…",
   "settings.memoryEmbed.needTauri": "記憶 embedding 設定需要桌面應用程式。",
+  "settings.codebaseIndexing": "程式碼庫索引（程式碼圖）",
+  "settings.codebaseIndexingDesc":
+    "如實展示目前 GROK_HOME config.toml 中的 Grok Build `[features].codebase_indexing`（0.2.117+）。用於搜尋/code-nav 的程式碼**圖**索引——不是記憶 embedding。缺失鍵保持未設定（CLI 預設開啟）。獨立 agent-home 可寫入 bool 並 soft-respawn；共用模式唯讀。非 bool 形式（glob）保持自訂唯讀。已知舊版 CLI 時 soft-fail。",
+  "settings.codebaseIndexing.path": "設定：{path}",
+  "settings.codebaseIndexing.loading": "正在載入程式碼庫索引設定…",
+  "settings.codebaseIndexing.error": "無法載入或更新程式碼庫索引設定",
+  "settings.codebaseIndexing.saved": "程式碼庫索引設定已儲存（agent 已 soft-respawn）",
+  "settings.codebaseIndexing.sharedWarning":
+    "共用模式顯示 ~/.grok/config.toml（唯讀探測）。切換到獨立工作階段資料模式後，才能將 `[features].codebase_indexing` 寫入 App agent-home。",
+  "settings.codebaseIndexing.mode.independent": "獨立（agent-home）",
+  "settings.codebaseIndexing.mode.shared": "共用（~/.grok）",
+  "settings.codebaseIndexing.missing": "檔案尚不存在",
+  "settings.codebaseIndexing.writable": "可編輯",
+  "settings.codebaseIndexing.readOnly": "唯讀",
+  "settings.codebaseIndexing.presence.unset": "未設定",
+  "settings.codebaseIndexing.presence.on": "開",
+  "settings.codebaseIndexing.presence.off": "關",
+  "settings.codebaseIndexing.presence.custom": "自訂",
+  "settings.codebaseIndexing.status.effectiveOn": "生效：開",
+  "settings.codebaseIndexing.status.effectiveOff": "生效：關",
+  "settings.codebaseIndexing.cliOld":
+    "CLI 低於 {min} — 可能忽略該鍵（soft-fail）",
+  "settings.codebaseIndexing.cliUnknown": "CLI 版本未知（soft-fail）",
+  "settings.codebaseIndexing.noEmbeddings":
+    "此處僅為程式碼圖索引。應用不會在此虛構 embedding 或向量檢索狀態——記憶 embedding 請使用 `[memory.embedding]` 設定。",
+  "settings.codebaseIndexing.enable": "啟用程式碼庫索引",
+  "settings.codebaseIndexing.enableDesc":
+    "設為開時，Grok Build 可建置本機程式碼圖以供搜尋/code-nav。設為關時略過 code-nav 索引建立。未設定則遵循 CLI 預設（開）。",
+  "settings.codebaseIndexing.unsetDefaultHint":
+    "鍵未設定 — CLI 預設為開。切換一次即可在 config.toml 中寫入明確 bool。",
+  "settings.codebaseIndexing.customHint":
+    "自訂（非 bool）值：{raw}。請在 config.toml 中編輯 glob；本面板僅寫入 true/false。",
+  "settings.codebaseIndexing.preview": "features 鍵（codebase_indexing）",
+  "settings.codebaseIndexing.previewEmpty":
+    "此設定中尚未找到 `[features].codebase_indexing` 賦值。",
+  "settings.codebaseIndexing.refresh": "重新整理",
+  "settings.codebaseIndexing.reset": "重設",
+  "settings.codebaseIndexing.save": "儲存程式碼庫索引",
+  "settings.codebaseIndexing.saving": "儲存中…",
+  "settings.codebaseIndexing.needTauri": "程式碼庫索引設定需要桌面應用程式。",
   "settings.allowUnverifiedCli": "允許未校驗的 CLI 安裝",
   "settings.allowUnverifiedCliDesc":
     "官方鏡像通常不發佈 SHA-256 校驗檔；缺少校驗時預設仍可安裝（HTTPS 白名單 + 二進位探測）。開啟此項可在設定了 GROK_CLI_REQUIRE_CHECKSUM=1 時仍允許安裝。校驗和不一致一律拒絕。",

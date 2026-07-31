@@ -10174,6 +10174,35 @@ pub async fn privacy_config_set(
     Ok(result)
 }
 
+/// Read `[features].codebase_indexing` from active GROK_HOME config.toml.
+/// Soft-fails missing key as unset; never invents embeddings.
+#[tauri::command]
+pub async fn codebase_indexing_get(
+) -> Result<crate::agent_codebase_indexing::CodebaseIndexingSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(crate::agent_codebase_indexing::load_codebase_indexing)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write `[features].codebase_indexing` bool into agent-home config.toml only
+/// (independent mode). Soft-respawns so the next turn reloads the agent profile.
+#[tauri::command]
+pub async fn codebase_indexing_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    enabled: Option<bool>,
+) -> Result<crate::agent_codebase_indexing::CodebaseIndexingSnapshot, String> {
+    let patch = crate::agent_codebase_indexing::CodebaseIndexingPatch { enabled };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_codebase_indexing::save_codebase_indexing(&patch)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.soft_respawn_with_reason(&app, "codebase_indexing").await;
+    Ok(result)
+}
+
 // marketplace
 // ── Plugin marketplace (`grok plugin marketplace …` + available list) ───────
 //

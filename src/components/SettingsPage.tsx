@@ -215,6 +215,7 @@ import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { GlassModal } from "@/components/GlassModal";
 import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
 import { MemoryEmbedPanel } from "@/components/MemoryEmbedPanel";
+import { CodebaseIndexingPanel } from "@/components/CodebaseIndexingPanel";
 import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
@@ -3129,6 +3130,24 @@ export function SettingsPage({
                   locale={resolveLocale(locale)}
                   onSaved={() =>
                     showSettingsToast(t("settings.memoryEmbed.saved"), 2200)
+                  }
+                  onError={(msg) => showSettingsToast(msg, 3200)}
+                />
+              </div>
+              <div
+                className={
+                  "settings-codebase-indexing-wrap" +
+                  rowHighlight("settings-anchor-codebaseIndexing")
+                }
+              >
+                <CodebaseIndexingPanel
+                  locale={resolveLocale(locale)}
+                  cliVersion={cliInfo.version}
+                  onSaved={() =>
+                    showSettingsToast(
+                      t("settings.codebaseIndexing.saved"),
+                      2200,
+                    )
                   }
                   onError={(msg) => showSettingsToast(msg, 3200)}
                 />
