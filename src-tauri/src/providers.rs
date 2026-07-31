@@ -298,8 +298,18 @@ fn write_text(path: &Path, text: &str) -> Result<(), String> {
     fs::write(path, text).map_err(|e| e.to_string())
 }
 
+/// Split config text into lines for section indexing.
+///
+/// Must match [`remove_section`]: use `str::lines()` (not `split('\n')`).
+/// `split('\n')` keeps a trailing empty element when the file ends with `\n`,
+/// so `end = lines.len()` would be one past what `lines()` produces and panic
+/// on `drain(start..end)`.
+fn config_lines(text: &str) -> Vec<&str> {
+    text.lines().collect()
+}
+
 fn parse_model_sections(text: &str) -> Vec<Section> {
-    let lines: Vec<&str> = text.split('\n').collect();
+    let lines = config_lines(text);
     let mut sections = Vec::new();
     let mut cur: Option<Section> = None;
     for (i, line) in lines.iter().enumerate() {
@@ -401,8 +411,16 @@ fn remove_section(text: &str, id: &str) -> String {
     let Some(hit) = sections.iter().find(|s| s.id == id) else {
         return text.to_string();
     };
-    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
-    lines.drain(hit.start..hit.end);
+    // Same line basis as parse_model_sections (str::lines).
+    let mut lines: Vec<String> = config_lines(text)
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+    let start = hit.start.min(lines.len());
+    let end = hit.end.min(lines.len()).max(start);
+    if start < end {
+        lines.drain(start..end);
+    }
     let joined = lines.join("\n");
     // collapse excess blank lines
     let mut out = String::new();
@@ -418,6 +436,10 @@ fn remove_section(text: &str, id: &str) -> String {
             out.push_str(line);
             out.push('\n');
         }
+    }
+    // Preserve trailing newline if original file had one (common for config.toml).
+    if text.ends_with('\n') && !out.ends_with('\n') && !out.is_empty() {
+        out.push('\n');
     }
     out
 }
@@ -1323,6 +1345,53 @@ mod tests {
             resolve_active_model(&list, "missing"),
             "deepseek-v4-flash"
         );
+    }
+
+    #[test]
+    fn remove_section_handles_trailing_newline() {
+        // File ends with `\n` — previously split('\n') vs lines() disagreed on len.
+        let text = "\
+[models]
+default = \"deepseek\"
+
+[model.deepseek]
+model = \"deepseek-v4-flash\"
+base_url = \"https://api.deepseek.com/v1\"
+name = \"DeepSeek\"
+api_key = \"sk-test\"
+api_backend = \"chat_completions\"
+app_models = \"[{\\\"id\\\":\\\"deepseek-v4-flash\\\",\\\"name\\\":\\\"Flash\\\"}]\"
+";
+        assert!(text.ends_with('\n'));
+        let sections = parse_model_sections(text);
+        let deep = sections.iter().find(|s| s.id == "deepseek").expect("section");
+        // end must not exceed lines() length
+        let n = text.lines().count();
+        assert!(deep.end <= n, "end {} > lines {}", deep.end, n);
+
+        let next = remove_section(text, "deepseek");
+        assert!(
+            !parse_model_sections(&next)
+                .iter()
+                .any(|s| s.id == "deepseek"),
+            "section should be gone: {next}"
+        );
+        // Other content preserved
+        assert!(next.contains("[models]"));
+        assert!(next.contains("default"));
+    }
+
+    #[test]
+    fn remove_section_last_section_without_trailing_newline() {
+        let text = "\
+[model.a]
+model = \"m\"
+base_url = \"https://ex/v1\"
+name = \"A\"
+api_key = \"k\"
+api_backend = \"responses\"";
+        let next = remove_section(text, "a");
+        assert!(parse_model_sections(&next).is_empty());
     }
 
     #[test]
