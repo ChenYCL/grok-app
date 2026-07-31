@@ -7,7 +7,7 @@
  * No secrets from logs.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   IconActivity,
@@ -17,6 +17,7 @@ import {
 } from "@/components/icons";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
+import { installDialogFocus } from "@/lib/a11yFocus";
 import {
   auditLedgerEventKey,
   filterAuditLedger,
@@ -423,11 +424,18 @@ export function ReliabilityCenterModal({
     };
   }, [open]);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const confirmClearRef = useRef(confirmClearHistory);
+  confirmClearRef.current = confirmClearHistory;
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (confirmClearHistory) {
+    // Nested clear-confirm uses its own Escape; main panel traps Tab + Escape.
+    return installDialogFocus(() => panelRef.current, {
+      onEscape: () => {
+        if (confirmClearRef.current) {
           setConfirmClearHistory(false);
           return;
         }
@@ -441,6 +449,13 @@ export function ReliabilityCenterModal({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose, confirmClearHistory, confirmClearAudit]);
+        onCloseRef.current();
+      },
+      capture: true,
+      initialFocus: "first",
+      restoreFocus: true,
+    });
+  }, [open]);
 
   const filteredHistory = useMemo(
     () =>
@@ -674,6 +689,7 @@ export function ReliabilityCenterModal({
       role="presentation"
     >
       <div
+        ref={panelRef}
         className="modal doctor-modal reliab-modal"
         onClick={(e) => e.stopPropagation()}
         role="dialog"

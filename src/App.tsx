@@ -806,6 +806,8 @@ import {
 import { ConversationThread } from "@/components/lobe-chat";
 import { dispatchCollapseAllActivity } from "@/lib/collapseAllActivity";
 import {
+  installDialogFocus,
+  isTypingTarget,
   preferPermissionFocus,
   trapTabKey,
 } from "@/lib/a11yFocus";
@@ -1560,6 +1562,10 @@ export default function App() {
   const [dialogInput, setDialogInput] = useState("");
   const dialogInputRef = useRef<HTMLInputElement>(null);
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  const appDialogPanelRef = useRef<HTMLDivElement>(null);
+  const searchPanelRef = useRef<HTMLDivElement>(null);
+  const compactModalRef = useRef<HTMLFormElement>(null);
+  const rewindModalRef = useRef<HTMLDivElement>(null);
   /** Latest dialog for Enter/Escape handlers (avoids stale chained confirms). */
   const appDialogRef = useRef<AppDialog>(null);
   appDialogRef.current = appDialog;
@@ -1652,17 +1658,25 @@ export default function App() {
     }
   }, [appDialog]);
 
+  // appDialog: Tab focus trap + Escape dismiss + restore previous focus.
+  // Enter-confirm stays in a separate capture handler below.
+  useEffect(() => {
+    if (!appDialog) return;
+    return installDialogFocus(() => appDialogPanelRef.current, {
+      onEscape: () => setAppDialog(null),
+      capture: true,
+      // Initial focus handled by the prompt/confirm effect above.
+      initialFocus: "none",
+      restoreFocus: true,
+    });
+  }, [appDialog]);
+
   useEffect(() => {
     if (!appDialog) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setAppDialog(null);
-        return;
-      }
       // Confirm dialogs: Enter always accepts (including chained YOLO steps).
       // Capture phase + preventDefault so we don't double-fire with a focused
-      // submit button's native activation.
+      // submit button's native activation. Escape is handled by installDialogFocus.
       if (e.key !== "Enter" && e.key !== "NumpadEnter") return;
       if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
       const dialog = appDialogRef.current;
@@ -1677,14 +1691,44 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey, true);
   }, [appDialog]);
 
+  // Command palette: Tab trap + Escape (autoFocus on input).
   useEffect(() => {
     if (!showSearch) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setShowSearch(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return installDialogFocus(() => searchPanelRef.current, {
+      onEscape: () => setShowSearch(false),
+      capture: true,
+      initialFocus: "none",
+      restoreFocus: true,
+    });
   }, [showSearch]);
+
+  // Compact slash dialog — focus trap + Escape.
+  useEffect(() => {
+    if (!showCompactModal) return;
+    return installDialogFocus(() => compactModalRef.current, {
+      onEscape: () => {
+        setShowCompactModal(false);
+        setCompactNote("");
+        setCompactPreset(DEFAULT_COMPACT_PRESET);
+      },
+      capture: true,
+      initialFocus: "first",
+      restoreFocus: true,
+    });
+  }, [showCompactModal]);
+
+  // Rewind timeline dialog — focus trap + Escape.
+  useEffect(() => {
+    if (!rewindTimeline) return;
+    return installDialogFocus(() => rewindModalRef.current, {
+      onEscape: () => {
+        if (!rewindBusy) setRewindTimeline(null);
+      },
+      capture: true,
+      initialFocus: "first",
+      restoreFocus: true,
+    });
+  }, [rewindTimeline, rewindBusy]);
 
   // Settings (or other windows) may change hybrid rank pref via localStorage event.
   useEffect(() => {
@@ -1867,13 +1911,10 @@ export default function App() {
       // Mod-based catalog actions — single registry in lib/shortcuts.ts.
       // Esc-stop stays special-cased above (order vs voice cancel / overlays).
       const target = e.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      const typing =
-        tag === "input" ||
-        tag === "textarea" ||
-        !!target?.isContentEditable;
-      // Sidebar j/k: next/prev chat when focus is inside the open sidebar list.
-      // Never steals from inputs/textareas/contenteditable or when modifiers held.
+      const typing = isTypingTarget(target);
+      // Sidebar j/k and ArrowUp/Down: next/prev chat when focus is inside the
+      // open sidebar list. Never steals from inputs/textareas/contenteditable
+      // or when modifiers are held.
       if (
         !typing &&
         !e.metaKey &&
@@ -1882,10 +1923,14 @@ export default function App() {
         !e.shiftKey
       ) {
         const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-        if (key === "j" || key === "k") {
+        const navNext =
+          key === "j" || key === "arrowdown" || e.key === "ArrowDown";
+        const navPrev =
+          key === "k" || key === "arrowup" || e.key === "ArrowUp";
+        if (navNext || navPrev) {
           const sidebar = querySidebarEl();
           if (sidebar && target && sidebar.contains(target)) {
-            const dir = key === "j" ? "next" : "prev";
+            const dir = navNext ? "next" : "prev";
             const nextId = nextSessionId(
               sidebarNavIdsRef.current,
               sidebarNavCurrentIdRef.current,
@@ -15326,6 +15371,7 @@ export default function App() {
             (dragZone === "main" ? " is-drop-idle" : "") +
             (phoneLayout ? " sidebar--phone-drawer" : "")
           }
+          aria-label={tr("a11y.sidebar")}
           aria-hidden={layout.sidebarCollapsed}
         >
           {dragZone === "sidebar" && (
@@ -15351,6 +15397,7 @@ export default function App() {
               <button
                 type="button"
                 className="chrome-btn chrome-btn--traffic main__pane-toggle is-on"
+                aria-label={tr("main.leftPaneHide")}
                 onClick={() =>
                   setLayout((l) => {
                     const n = { ...l, sidebarCollapsed: true };
@@ -15375,6 +15422,7 @@ export default function App() {
               <button
                 type="button"
                 className="chrome-btn"
+                aria-label={tr("sidebar.search")}
                 onClick={() => {
                   setShowSearch(true);
                   setSearchQuery("");
@@ -16384,6 +16432,7 @@ export default function App() {
                     <button
                       type="button"
                       className="chrome-btn chrome-btn--traffic main__pane-toggle"
+                      aria-label={tr("main.leftPaneShow")}
                       onClick={() => openSidebarPane()}
                     >
                       <IconPanel size={16} />
@@ -16670,6 +16719,12 @@ export default function App() {
                         "chrome-btn main__pane-toggle" +
                         (!layout.asideCollapsed ? " is-on" : "")
                       }
+                      aria-label={
+                        layout.asideCollapsed
+                          ? tr("main.rightPaneShow")
+                          : tr("main.rightPaneHide")
+                      }
+                      aria-pressed={!layout.asideCollapsed}
                       onClick={() => {
                         if (layout.asideCollapsed) {
                           openAsidePane();
@@ -17786,6 +17841,7 @@ export default function App() {
                 value={draft}
                 disabled={!canType(session.state)}
                 spellCheck={composerSpellcheck}
+                aria-label={tr("a11y.composerInput")}
                 placeholder={
                   goalMode
                     ? tr("composer.goalPlaceholder")
@@ -18459,6 +18515,7 @@ export default function App() {
             (resizingAside ? " is-resizing" : "") +
             (phoneLayout ? " aside--phone-overlay" : "")
           }
+          aria-label={tr("a11y.resourcesPane")}
           aria-hidden={layout.asideCollapsed}
           style={
             !layout.asideCollapsed && !phoneLayout
@@ -19254,6 +19311,7 @@ export default function App() {
           }}
         >
           <div
+            ref={rewindModalRef}
             className="modal rewind-modal"
             role="dialog"
             aria-modal="true"
@@ -20403,6 +20461,7 @@ export default function App() {
           }}
         >
           <form
+            ref={compactModalRef}
             className="modal compact-modal"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
@@ -20735,13 +20794,16 @@ export default function App() {
       {showSearch && (
         <div
           className="overlay"
+          role="presentation"
           onClick={() => setShowSearch(false)}
         >
           <div
+            ref={searchPanelRef}
             className="search-panel"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
-            aria-label={tr("sidebar.search")}
+            aria-modal="true"
+            aria-label={tr("search.title")}
           >
             <div className="search-panel__head">
               <IconSearch size={16} />
@@ -21032,6 +21094,7 @@ export default function App() {
             }}
           >
             <div
+              ref={appDialogPanelRef}
               className="modal app-dialog"
               role="dialog"
               aria-modal="true"
