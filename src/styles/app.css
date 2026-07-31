@@ -3583,6 +3583,30 @@ html[data-sidebar-density="compact"] .session-row__meta {
   word-break: break-word;
 }
 
+/* Ship success: PR URL + open hub / browser */
+.wt-ship--success {
+  gap: 14px;
+}
+
+.wt-ship__success-url {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-hover);
+  font-size: 12.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  line-height: 1.4;
+  word-break: break-all;
+  color: var(--text-primary);
+}
+
+.wt-ship__success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .rp-changes-section__ship {
   display: inline-flex;
   align-items: center;
@@ -25044,6 +25068,12 @@ html[data-theme="light"] .rim-sidebar {
   background: var(--bg-hover);
   padding: 8px 10px;
   min-width: 0;
+}
+
+.pr-hub__row--highlight {
+  border-color: var(--accent, #6b8afd);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #6b8afd) 35%, transparent);
+  background: color-mix(in srgb, var(--accent, #6b8afd) 10%, var(--bg-hover));
 }
 
 .pr-hub__row-main {

@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -21,6 +22,10 @@ import {
   type PrChecksSummary,
 } from "@/lib/gitPrHub";
 import {
+  isHighlightedPr,
+  sanitizePrNumber,
+} from "@/lib/prHubDeepLink";
+import {
   IconChevronDown,
   IconChevronRight,
   IconExternalLink,
@@ -33,6 +38,11 @@ export interface GitPrHubPanelProps {
   projectPath?: string | null;
   /** When true, omit title/desc (parent card already shows them). */
   hideHeader?: boolean;
+  /**
+   * Optional PR number to expand + highlight (ship deep link / `?pr=`).
+   * Soft-no-op when the number is missing from the current list.
+   */
+  highlightPrNumber?: number | null;
 }
 
 function ChecksBadge({
@@ -189,9 +199,11 @@ export function GitPrHubPanel({
   locale,
   projectPath = null,
   hideHeader = false,
+  highlightPrNumber = null,
 }: GitPrHubPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const cwd = projectPath?.trim() || null;
+  const highlightN = sanitizePrNumber(highlightPrNumber);
 
   const [prs, setPrs] = useState<GitPrHubEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -209,6 +221,8 @@ export function GitPrHubPanel({
   const [checksError, setChecksError] = useState<Record<number, string | null>>(
     {},
   );
+  /** Avoid re-scrolling the same highlight on every refresh. */
+  const scrolledHighlightRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     if (!cwd) {
@@ -257,6 +271,7 @@ export function GitPrHubPanel({
     setChecksByPr({});
     setChecksLoading({});
     setChecksError({});
+    scrolledHighlightRef.current = null;
   }, [cwd]);
 
   const loadChecks = useCallback(
@@ -289,6 +304,32 @@ export function GitPrHubPanel({
     },
     [cwd, tr],
   );
+
+  // Deep-link / ship: expand + scroll to highlighted PR when it appears.
+  // Soft-no-op if the number is absent from the open list (just-created PR may
+  // lag gh list briefly — user can Refresh).
+  useEffect(() => {
+    if (highlightN == null) {
+      scrolledHighlightRef.current = null;
+      return;
+    }
+    const found = prs.some((p) => p.number === highlightN);
+    if (!found) return;
+    setExpanded((prev) => {
+      if (prev[highlightN]) return prev;
+      return { ...prev, [highlightN]: true };
+    });
+    if (checksByPr[highlightN] === undefined) {
+      void loadChecks(highlightN);
+    }
+    if (scrolledHighlightRef.current === highlightN) return;
+    scrolledHighlightRef.current = highlightN;
+    const timer = window.setTimeout(() => {
+      const el = document.getElementById(`pr-hub-row-${highlightN}`);
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [highlightN, prs, checksByPr, loadChecks]);
 
   const toggleExpand = (n: number) => {
     setExpanded((prev) => {
@@ -358,8 +399,16 @@ export function GitPrHubPanel({
       <ul className="pr-hub__list" data-testid="pr-hub-list">
         {prs.map((pr) => {
           const open = Boolean(expanded[pr.number]);
+          const highlighted = isHighlightedPr(pr.number, highlightN);
           return (
-            <li key={pr.number} className="pr-hub__row">
+            <li
+              key={pr.number}
+              id={`pr-hub-row-${pr.number}`}
+              className={
+                "pr-hub__row" + (highlighted ? " pr-hub__row--highlight" : "")
+              }
+              data-highlighted={highlighted ? "true" : undefined}
+            >
               <div className="pr-hub__row-main">
                 <button
                   type="button"
