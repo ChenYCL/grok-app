@@ -124,6 +124,14 @@ const en = {
   "project.continueCwdOk": "Continued “{title}”",
   "project.continueCwdFailed": "Could not continue last agent",
   "project.continueCwdNoProject": "Select a project first.",
+  "project.continueCwdNoCli":
+    "Grok Build CLI not found — install or set the CLI path, then try Continue again.",
+  "project.continueCwdUntrusted":
+    "Trust this project first, then continue the last agent session.",
+  "project.continueCwdHostOnly":
+    "Continue last agent requires the desktop app window.",
+  "project.continueCwdImportFailed":
+    "Found an agent session but could not import it into the app.",
 
   "session.pin": "Pin chat",
   "session.unpin": "Unpin chat",
@@ -5275,6 +5283,13 @@ const zh: Record<MessageKey, string> = {
   "project.continueCwdOk": "已继续「{title}」",
   "project.continueCwdFailed": "无法继续最近的 Agent",
   "project.continueCwdNoProject": "请先选择一个项目。",
+  "project.continueCwdNoCli":
+    "未找到 Grok Build CLI — 请先安装或设置 CLI 路径，再试「继续」。",
+  "project.continueCwdUntrusted":
+    "请先信任此项目，再继续最近的 Agent 会话。",
+  "project.continueCwdHostOnly": "继续最近的 Agent 需要在桌面应用窗口中操作。",
+  "project.continueCwdImportFailed":
+    "找到了 Agent 会话，但无法导入到应用中。",
 
   "session.pin": "置顶会话",
   "session.unpin": "取消置顶",

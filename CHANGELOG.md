@@ -80,6 +80,7 @@ See `docs/llm-wiki/release.md`.
 
 #### Sessions & sidebar
 - **Continue last agent for this project** (CLI `grok -c/--continue`): project menu + command palette finds the newest agent session under active `GROK_HOME` for the project path, then opens the linked App chat or imports history; soft-fails with a toast when none exist
+- **Continue last agent (cwd) pro**: classified soft-fail toasts (no session · no CLI · untrusted · host-only · import failed) with empty honesty when none exist; pure `continueCwd` preflight/classify helpers + tests; en/zh/zh-TW
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
 - **Open session in new window** — session menu opens a second Tauri webview with `#/session/<id>` deep link; re-open focuses the existing window; close secondary for real (main still tray/confirm)
 - **Multi-window live (lite)**: secondary session windows can **send / stop** via the shared Host (session-targeted); still skip *passive* warm-connect on open so browsing does not demote main’s agent; honest secondary tip + **Focus main window**; pure `canLiveParticipate` / `shouldSkipWarmConnect` policy + tests

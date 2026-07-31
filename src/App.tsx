@@ -434,7 +434,15 @@ import {
   filterPaletteActions,
   type PaletteActionDef,
 } from "@/lib/paletteActions";
-import { canOfferContinueCwd } from "@/lib/continueCwd";
+import {
+  canOfferContinueCwd,
+  classifyContinueCwdEmptyResult,
+  continueCwdSoftFailMessageKey,
+  evaluateContinueCwd,
+  resolveContinueCwdEmptyHonesty,
+  resolveContinueCwdSoftFail,
+  type ContinueCwdSoftFailKind,
+} from "@/lib/continueCwd";
 import {
   sessionExportFilename,
   sessionExportFilenameFor,
@@ -7645,16 +7653,22 @@ export default function App() {
   /**
    * CLI `grok -c/--continue` for a project folder: find newest agent session
    * under active GROK_HOME for that path, import if needed, open App chat.
-   * Soft-fails with a toast when no agent session exists.
+   * Classified soft-fail (no session / no CLI / untrusted / host-only / import)
+   * with empty honesty when none exist — never invents a session id.
    */
   const continueLastAgentForProject = async (proj: Project) => {
     setCtxMenu(null);
-    if (!canOfferContinueCwd(proj.path)) {
-      showToast(tr("project.continueCwdNoProject"), 3500);
-      return;
-    }
-    if (!api.isTauri()) {
-      setLocalError(tr("error.needTauri"));
+    const toastContinueSoftFail = (kind: ContinueCwdSoftFailKind, detail = "") => {
+      const key = continueCwdSoftFailMessageKey(kind) as MessageKey;
+      const base = tr(key);
+      showToast(detail ? `${base}: ${detail}` : base, kind === "no_session" ? 4200 : 4500);
+    };
+    const gate = evaluateContinueCwd(
+      { path: proj.path, trusted: proj.trusted },
+      { isTauri: api.isTauri() },
+    );
+    if (!gate.ok) {
+      toastContinueSoftFail(gate.kind);
       return;
     }
     showToast(tr("project.continueCwdWorking"), 2000);
@@ -7662,20 +7676,23 @@ export default function App() {
       const meta = await api.cliSessionContinueCwd(proj.path, {
         projectId: proj.id,
       });
-      if (!meta?.id) {
-        showToast(tr("project.continueCwdNone"), 4200);
+      const emptyKind = classifyContinueCwdEmptyResult(meta);
+      if (emptyKind) {
+        const honesty = resolveContinueCwdEmptyHonesty();
+        showToast(tr(honesty.messageKey as MessageKey), 4200);
         return;
       }
+      const id = meta!.id;
       await refreshSessions();
       const list = (await api.sessionsList()) as SessionRow[];
       const row =
-        list.map((s) => normalizeSessionRow(s)).find((s) => s.id === meta.id) ??
+        list.map((s) => normalizeSessionRow(s)).find((s) => s.id === id) ??
         normalizeSessionRow({
-          id: meta.id,
-          title: meta.title || tr("session.untitled"),
-          projectId: meta.projectId ?? proj.id,
-          updatedAt: meta.updatedAt || new Date().toISOString(),
-          agentSessionId: meta.agentSessionId ?? null,
+          id,
+          title: meta!.title || tr("session.untitled"),
+          projectId: meta!.projectId ?? proj.id,
+          updatedAt: meta!.updatedAt || new Date().toISOString(),
+          agentSessionId: meta!.agentSessionId ?? null,
         });
       const openProj =
         (row.projectId && projects.find((p) => p.id === row.projectId)) || proj;
@@ -7683,12 +7700,13 @@ export default function App() {
       await openSession(row, openProj);
       showToast(
         tr("project.continueCwdOk", {
-          title: row.title || meta.title || tr("session.untitled"),
+          title: row.title || meta!.title || tr("session.untitled"),
         }),
         2800,
       );
     } catch (e) {
-      showToast(tr("project.continueCwdFailed") + ": " + String(e), 4500);
+      const soft = resolveContinueCwdSoftFail(e);
+      toastContinueSoftFail(soft.kind, soft.detail);
     }
   };
 
@@ -13124,7 +13142,12 @@ export default function App() {
       case "continue-cwd": {
         const proj = activeProject;
         if (!proj || !canOfferContinueCwd(proj.path)) {
-          showToast(tr("project.continueCwdNoProject"), 3500);
+          showToast(
+            tr(
+              continueCwdSoftFailMessageKey("no_project") as MessageKey,
+            ),
+            3500,
+          );
           break;
         }
         void continueLastAgentForProject(proj);
