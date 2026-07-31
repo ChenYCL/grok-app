@@ -3969,6 +3969,33 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.bridge.lastError": "最近错误",
   "settings.remoteIm.bridge.commands": "IM 命令",
   "settings.remoteIm.bridge.commandsDesc": "绑定项目后，所有渠道命令语义一致。",
+  "settings.remoteIm.resilience.phase.idle": "閒置",
+  "settings.remoteIm.resilience.phase.listening": "監聽中",
+  "settings.remoteIm.resilience.phase.starting": "啟動中…",
+  "settings.remoteIm.resilience.phase.restarting": "失敗後重啟中…",
+  "settings.remoteIm.resilience.phase.backing_off": "等待重試",
+  "settings.remoteIm.resilience.phase.degraded": "未監聽 — 將自動恢復",
+  "settings.remoteIm.resilience.phase.rate_limited": "已限速",
+  "settings.remoteIm.resilience.phase.error": "Bridge 錯誤",
+  "settings.remoteIm.resilience.phase.stopped": "已停止",
+  "settings.remoteIm.resilience.body.restarting":
+    "Bridge 正在重啟連接器。會話歷史保留；恢復監聽後遠端回合繼續。",
+  "settings.remoteIm.resilience.body.backingOff":
+    "自動重連正在退避，避免打爆平台。下次嘗試使用指數延遲（上限 60 秒）。",
+  "settings.remoteIm.resilience.body.degraded":
+    "Bridge 已啟用但尚未監聽。健康看門狗將按退避策略重試。",
+  "settings.remoteIm.resilience.body.rateLimited":
+    "觸發了配額或速率限制（API 或 Bridge 軟限制）。這不是靜默丟棄 — 請等待後重試；若持續請檢查帳號 / 中轉額度。",
+  "settings.remoteIm.resilience.body.error":
+    "Bridge 啟動或保活失敗。請修復憑證 / 網路後點「啟動」，或等待自動恢復。",
+  "settings.remoteIm.resilience.retryMeta": "第 {attempt} 次 · 約 {secs} 秒後重試",
+  "settings.remoteIm.resilience.errorKindLabel": "原因類別",
+  "settings.remoteIm.resilience.errorKind.rate_limit": "速率限制 / 配額",
+  "settings.remoteIm.resilience.errorKind.auth": "鑑權",
+  "settings.remoteIm.resilience.errorKind.network": "網路 / 連通性",
+  "settings.remoteIm.resilience.errorKind.crash": "異常結束 / 崩潰",
+  "settings.remoteIm.resilience.errorKind.config": "設定",
+  "settings.remoteIm.resilience.errorKind.unknown": "未知",
   "settings.remoteIm.cmd.project": "列出 / 綁定已信任專案（新會話）",
   "settings.remoteIm.cmd.resume": "列出 / 恢復 App 歷史會話",
   "settings.remoteIm.cmd.new": "新會話，保持專案",

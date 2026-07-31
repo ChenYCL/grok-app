@@ -11,6 +11,7 @@ import type {
   RemoteChannelId,
 } from "@/lib/remoteIm";
 import {
+  classifyRecoveryStatus,
   clearRimEventTimeline,
   formatRimEventAt,
   getChannelSchema,
@@ -88,6 +89,20 @@ export function RemoteImOverview({
   const connected = bridge?.connectedChannels ?? [];
   const configured = instances.filter((i) => i.hasCredentials);
 
+  const recovery = useMemo(
+    () =>
+      classifyRecoveryStatus({
+        state: bridge?.state,
+        enabled: bridge?.enabled ?? false,
+        restartAttempt: bridge?.restartAttempt,
+        nextRetrySecs: bridge?.nextRetrySecs,
+        lastError: bridge?.lastError,
+        errorKind: bridge?.errorKind,
+        rateLimited: bridge?.rateLimited,
+      }),
+    [bridge],
+  );
+
   const stateLabel =
     state === "running" || state === "listening"
       ? t("settings.remoteIm.bridge.listening")
@@ -102,9 +117,11 @@ export function RemoteImOverview({
   const badgeTone =
     state === "running" || state === "listening"
       ? "ok"
-      : state === "error" || state === "degraded"
+      : state === "error" || state === "degraded" || recovery.phase === "rate_limited"
         ? "err"
-        : "neutral";
+        : recovery.phase === "backing_off" || recovery.phase === "restarting"
+          ? "warn"
+          : "neutral";
 
   return (
     <div className="rim-overview">
@@ -290,7 +307,43 @@ export function RemoteImOverview({
         )}
       </div>
 
-      {bridge?.lastError ? (
+      {recovery.showCard ? (
+        <div
+          className={
+            recovery.severity === "err"
+              ? "rim-callout rim-callout--error"
+              : "rim-callout rim-callout--warn"
+          }
+          role="status"
+          data-rim-recovery={recovery.phase}
+        >
+          <div className="rim-callout__title">{t(recovery.titleKey)}</div>
+          {recovery.bodyKey ? (
+            <p className="rim-callout__body" style={{ margin: "0.35rem 0 0" }}>
+              {t(recovery.bodyKey)}
+            </p>
+          ) : null}
+          {recovery.errorKindKey ? (
+            <p className="settings-row__desc" style={{ margin: "0.35rem 0 0" }}>
+              {t("settings.remoteIm.resilience.errorKindLabel")}:{" "}
+              {t(recovery.errorKindKey)}
+            </p>
+          ) : null}
+          {recovery.showRetryMeta ? (
+            <p className="settings-row__desc" style={{ margin: "0.35rem 0 0" }}>
+              {t("settings.remoteIm.resilience.retryMeta", {
+                attempt: recovery.attempt,
+                secs: recovery.nextRetrySecs ?? 0,
+              })}
+            </p>
+          ) : null}
+          {bridge?.lastError ? (
+            <code className="rim-callout__code" style={{ marginTop: "0.5rem" }}>
+              {bridge.lastError}
+            </code>
+          ) : null}
+        </div>
+      ) : bridge?.lastError ? (
         <div className="rim-callout rim-callout--error" role="alert">
           <div className="rim-callout__title">
             {t("settings.remoteIm.bridge.lastError")}
