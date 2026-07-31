@@ -9,3 +9,4 @@ export * from "./eventTimeline";
 export * from "./channelHealth";
 export * from "./wecomConfig";
 export * from "./resilience";
+export * from "./dingtalkConfig";

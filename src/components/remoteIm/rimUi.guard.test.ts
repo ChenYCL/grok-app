@@ -60,6 +60,10 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("data-wecom-guide");
     expect(src).toContain("draftOptions");
     expect(src).toContain("savedValues");
+  it("ChannelPanel DingTalk guide + draft health without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-dingtalk-guide");
+    expect(src).toContain("draftOptions");
     expect(src).not.toMatch(/window\.confirm/);
     expect(src).not.toMatch(/window\.alert/);
     expect(src).not.toMatch(/window\.prompt/);

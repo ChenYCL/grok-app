@@ -513,6 +513,7 @@ export function RemoteImChannelPanel({
       bridgeLinked,
       secretKeysFilled: filled,
       // Live form options (e.g. WeCom connect_mode) for honest soft status
+      // Live form options for honest soft status (e.g. cleared client_id)
       draftOptions: values,
     });
   }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
@@ -825,6 +826,19 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.wecom.guide.softFail")}
+      {channelId === "dingtalk" ? (
+        <div className="rim-callout" data-dingtalk-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.dingtalk.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.dingtalk.guide.step1")}</li>
+            <li>{t("settings.remoteIm.dingtalk.guide.step2")}</li>
+            <li>{t("settings.remoteIm.dingtalk.guide.step3")}</li>
+            <li>{t("settings.remoteIm.dingtalk.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.dingtalk.guide.softFail")}
           </p>
         </div>
       ) : null}

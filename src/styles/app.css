@@ -22356,6 +22356,18 @@ html[data-theme="dark"] .rim-badge--err { color: #ff6961; }
   background: color-mix(in srgb, #34c759 8%, var(--bg-card));
 }
 
+.rim-guide-steps {
+  margin: 0 0 8px;
+  padding-left: 1.25em;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.rim-guide-steps li + li {
+  margin-top: 4px;
+}
+
 .rim-callout__title {
   display: flex;
   align-items: center;

@@ -127,6 +127,41 @@ describe("remoteIm channelSchemas", () => {
     expect(mode?.helpKey).toBe("settings.remoteIm.wecom.modeHelp");
     expect(wecom.fields.some((f) => f.key === "encoding_aes_key")).toBe(true);
     expect(wecom.fields.some((f) => f.key === "enable_markdown")).toBe(true);
+  it("dingtalk schema documents Stream bind + field help (§6.2)", () => {
+    const ding = getChannelSchema("dingtalk")!;
+    expect(ding.implemented).toBe(true);
+    expect(ding.scanSupport).toBe(false);
+    expect(ding.pasteSupport).toBe(true);
+    expect(ding.connectionKey).toBe("settings.remoteIm.conn.stream");
+    const clientId = ding.fields.find((f) => f.key === "client_id");
+    expect(clientId?.required).toBe(true);
+    expect(clientId?.helpKey).toBe("settings.remoteIm.dingtalk.clientIdHelp");
+    const secret = ding.fields.find((f) => f.key === "client_secret");
+    expect(secret?.secret).toBe(true);
+    expect(secret?.helpKey).toBe(
+      "settings.remoteIm.dingtalk.clientSecretHelp",
+    );
+    expect(ding.fields.some((f) => f.key === "enable_ai_card")).toBe(true);
+    expect(showsPublicUrlCallout(ding, {})).toBe(false);
+  });
+
+  it("dingtalk validateBindFields requires client_id + client_secret", () => {
+    const ding = getChannelSchema("dingtalk")!;
+    expect(validateBindFields(ding, {}).ok).toBe(false);
+    expect(
+      validateBindFields(ding, {
+        client_id: "dingxxx",
+        client_secret: "sec",
+      }).ok,
+    ).toBe(true);
+    // Vault reuse for secret when hasCredentials
+    expect(
+      validateBindFields(
+        ding,
+        { client_id: "dingxxx" },
+        { hasCredentials: true },
+      ).ok,
+    ).toBe(true);
   });
 
   it("LINE always shows public-URL callout when flagged", () => {

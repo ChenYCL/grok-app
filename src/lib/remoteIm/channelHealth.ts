@@ -22,6 +22,9 @@ import {
   wecomRequiredNonSecretKeys,
   wecomRequiredSecretKeys,
 } from "./wecomConfig";
+  dingtalkHealthHintKeys,
+  validateDingtalkConfig,
+} from "./dingtalkConfig";
 
 /** Health tone for badges / callouts (maps to RimBadge). */
 export type RimChannelHealthTone = "ok" | "warn" | "err" | "neutral";
@@ -83,6 +86,7 @@ export type ClassifyChannelHealthInput = {
   secretKeysFilled?: ReadonlySet<string>;
   /**
    * Draft options from the open form (e.g. connect_mode switch).
+   * Draft options from the open form (e.g. cleared client_id).
    * Merged over instance.options for readiness / transport — never secrets.
    */
   draftOptions?: Record<string, unknown>;
@@ -91,13 +95,14 @@ export type ClassifyChannelHealthInput = {
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
+const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   feishu: ["app_secret"],
   lark: ["app_secret"],
   telegram: ["token"],
-  dingtalk: ["client_secret"],
+  // DingTalk secrets are validated via dingtalkConfig
   discord: ["token"],
   slack: ["bot_token", "app_token"],
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
@@ -110,7 +115,6 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   feishu: ["app_id"],
   lark: ["app_id"],
   telegram: [],
-  dingtalk: ["client_id"],
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -239,6 +243,7 @@ function optionString(
  * or hasCredentials flag.
  *
  * WeCom is mode-aware (websocket vs webhook) via {@link validateWecomConfig}.
+ * DingTalk is Stream-mode-aware via {@link validateDingtalkConfig}.
  */
 export function credentialReadiness(
   channel: RemoteChannelId,
@@ -265,6 +270,12 @@ export function credentialReadiness(
     // Ensure required key lists stay aligned with §6.8
     void wecomRequiredNonSecretKeys(v.mode);
     void wecomRequiredSecretKeys(v.mode);
+  if (channel === "dingtalk") {
+    const v = validateDingtalkConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
 
@@ -332,6 +343,7 @@ export function classifyChannelHealth(
     ...(isRecord(input.draftOptions) ? input.draftOptions : {}),
   };
   // Readiness evaluates against draft-merged options for honest mode switches.
+  // Readiness evaluates against draft-merged options for honest form edits.
   const readinessInstance: ChannelInstance = {
     ...instance,
     options: opts,
@@ -352,6 +364,10 @@ export function classifyChannelHealth(
   // Honest status: incomplete mode-switch / missing keys cannot look "connected".
   const credsUsable =
     !!instance.hasCredentials && (credentialsReady || channel !== "wecom");
+  // Honest status: incomplete bind (e.g. DingTalk missing client_id) cannot look "connected".
+  const credsUsable =
+    !!instance.hasCredentials &&
+    (credentialsReady || channel !== "dingtalk");
 
   let tone: ChannelStatusTone = "unconfigured";
   if (instance.lastError) {
@@ -370,6 +386,7 @@ export function classifyChannelHealth(
     tone = "configured";
   } else if (instance.hasCredentials && !credentialsReady) {
     // Saved vault but current mode incomplete (e.g. WeCom mode switch)
+    // Vault present but current form incomplete (cleared client_id, etc.)
     tone = "configured";
   }
 
@@ -391,6 +408,7 @@ export function classifyChannelHealth(
   }
 
   // Channel-specific depth (shippable for Feishu / Telegram / WeCom)
+  // Channel-specific depth (shippable for Feishu / Telegram / DingTalk)
   if (FEISHU_LIKE.includes(channel)) {
     if (!optionString(opts, "app_id") && !instance.hasCredentials) {
       hintKeys.push("settings.remoteIm.health.hint.feishuAppId");
@@ -423,6 +441,19 @@ export function classifyChannelHealth(
     for (const k of wecomHealthHintKeys(wecomV, {
       openAcl: openAcl && instance.hasCredentials,
       proxySet: !!optionString(opts, "proxy"),
+  if (DINGTALK_LIKE.includes(channel)) {
+    const dingV = validateDingtalkConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    const enableAiCard =
+      opts.enable_ai_card === undefined
+        ? true
+        : opts.enable_ai_card === true || opts.enable_ai_card === "true";
+    for (const k of dingtalkHealthHintKeys(dingV, {
+      openAcl: openAcl && instance.hasCredentials,
+      enableAiCard,
     })) {
       hintKeys.push(k);
     }
@@ -461,5 +492,6 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     FEISHU_LIKE.includes(channel) ||
     TELEGRAM_LIKE.includes(channel) ||
     WECOM_LIKE.includes(channel)
+    DINGTALK_LIKE.includes(channel)
   );
 }
