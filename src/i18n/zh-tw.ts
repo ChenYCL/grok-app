@@ -3474,6 +3474,48 @@ export const zhTW: Record<MessageKey, string> = {
     "沒有無頭的 `grok mcp oauth` 命令 — 授權需互動（TUI）或透過診斷提供的瀏覽器 URL。應用不會將用戶端密鑰寫入日誌。",
   "mcpModal.oauth.unknownServer": "伺服器",
 
+  // MCP OAuth recovery wizard
+  "mcpOauth.wizard.progress": "第 {n} / {total} 步",
+  "mcpOauth.wizard.next": "繼續",
+  "mcpOauth.wizard.back": "上一步",
+  "mcpOauth.wizard.iAuthorized": "我已授權 — 重新整理診斷",
+  "mcpOauth.wizard.refreshing": "正在重新整理診斷…",
+  "mcpOauth.wizard.refreshingDetail":
+    "正在對 {name} 重新執行 MCP 診斷。不會假裝成功 — 請等待報告。",
+  "mcpOauth.wizard.openingUrl": "正在開啟…",
+  "mcpOauth.wizard.urlOpened": "已在瀏覽器開啟授權 URL。請完成登入，然後繼續。",
+  "mcpOauth.wizard.retryAuth": "重試授權步驟",
+  "mcpOauth.wizard.retryRefresh": "返回確認",
+  "mcpOauth.wizard.serverLabel": "伺服器",
+  "mcpOauth.wizard.reasonLabel": "原因",
+  "mcpOauth.wizard.authLeadUrl":
+    "開啟下方已消毒的授權 URL（查詢字串中的密鑰已剝離），完成提供方同意頁，然後繼續。",
+  "mcpOauth.wizard.authLeadTui":
+    "診斷未提供該伺服器的瀏覽器授權 URL。請使用 Grok Build TUI 互動式 OAuth，然後繼續。",
+  "mcpOauth.wizard.waitingLead":
+    "提供方登入完成且權杖已儲存後，點下方確認以重新執行 MCP 診斷。",
+  "mcpOauth.wizard.waitingHint":
+    "診斷是唯一的誠實校驗 — 應用不會在沒有新報告時假定 OAuth 已成功。",
+  "mcpOauth.wizard.successLead":
+    "診斷不再報告 {name} 需要 OAuth。可以關閉此精靈。",
+  "mcpOauth.wizard.failDoctor":
+    "無法重新整理診斷。請依下方資訊修復 Host/CLI 問題後重試 — 這是 soft-fail，不會強行標為成功。",
+  "mcpOauth.wizard.failStillAuth":
+    "診斷仍報告 {name} 存在 OAuth / 認證問題。請完成提供方流程（或 TUI）後再次重新整理。",
+  "mcpOauth.wizard.softHint": "Soft-fail — 僅作指引，不是硬崩潰。",
+  "mcpOauth.wizard.step.intro": "伺服器與原因",
+  "mcpOauth.wizard.step.auth": "授權",
+  "mcpOauth.wizard.step.waiting": "確認",
+  "mcpOauth.wizard.step.refreshing": "重新整理診斷",
+  "mcpOauth.wizard.step.success": "成功",
+  "mcpOauth.wizard.step.fail": "需處理",
+  "mcpOauth.wizard.soft.none": "正常",
+  "mcpOauth.wizard.soft.noUrl": "無授權 URL",
+  "mcpOauth.wizard.soft.noCliHelper": "無無頭 OAuth CLI",
+  "mcpOauth.wizard.soft.openUrlFailed": "無法開啟 URL",
+  "mcpOauth.wizard.soft.doctorFailed": "診斷重新整理失敗",
+  "mcpOauth.wizard.soft.stillNeedsAuth": "仍需 OAuth",
+
   // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":
     "管理本機外掛、技能與 MCP。外掛為使用者全域；有目前專案時技能/MCP 以該目錄為範圍。",

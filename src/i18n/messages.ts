@@ -3607,6 +3607,48 @@ const en = {
     "There is no headless `grok mcp oauth` command — authorization is interactive (TUI) or via a doctor-provided browser URL. The app never stores client secrets in logs.",
   "mcpModal.oauth.unknownServer": "server",
 
+  // MCP OAuth recovery wizard
+  "mcpOauth.wizard.progress": "Step {n} of {total}",
+  "mcpOauth.wizard.next": "Continue",
+  "mcpOauth.wizard.back": "Back",
+  "mcpOauth.wizard.iAuthorized": "I’ve authorized — refresh doctor",
+  "mcpOauth.wizard.refreshing": "Refreshing doctor…",
+  "mcpOauth.wizard.refreshingDetail":
+    "Re-running MCP doctor for {name}. This does not invent success — wait for the report.",
+  "mcpOauth.wizard.openingUrl": "Opening…",
+  "mcpOauth.wizard.urlOpened": "Auth URL opened in your browser. Finish sign-in there, then continue.",
+  "mcpOauth.wizard.retryAuth": "Retry auth steps",
+  "mcpOauth.wizard.retryRefresh": "Back to confirm",
+  "mcpOauth.wizard.serverLabel": "Server",
+  "mcpOauth.wizard.reasonLabel": "Reason",
+  "mcpOauth.wizard.authLeadUrl":
+    "Open the sanitized auth URL below (query secrets stripped), complete the provider consent screen, then continue.",
+  "mcpOauth.wizard.authLeadTui":
+    "No doctor-provided browser URL for this server. Use the Grok Build TUI interactive OAuth flow, then continue.",
+  "mcpOauth.wizard.waitingLead":
+    "When the provider sign-in finishes and tokens are saved, confirm below to re-run MCP doctor.",
+  "mcpOauth.wizard.waitingHint":
+    "Doctor is the only honesty check — the app does not assume OAuth succeeded without a fresh report.",
+  "mcpOauth.wizard.successLead":
+    "Doctor no longer reports OAuth required for {name}. You can close this wizard.",
+  "mcpOauth.wizard.failDoctor":
+    "Could not refresh doctor. Fix the host/CLI issue below, then try again — this is a soft-fail, not a forced success.",
+  "mcpOauth.wizard.failStillAuth":
+    "Doctor still reports OAuth / auth issues for {name}. Complete the provider flow (or TUI), then refresh again.",
+  "mcpOauth.wizard.softHint": "Soft-fail — guidance only; not a hard crash.",
+  "mcpOauth.wizard.step.intro": "Server & reason",
+  "mcpOauth.wizard.step.auth": "Authorize",
+  "mcpOauth.wizard.step.waiting": "Confirm",
+  "mcpOauth.wizard.step.refreshing": "Doctor refresh",
+  "mcpOauth.wizard.step.success": "Success",
+  "mcpOauth.wizard.step.fail": "Needs attention",
+  "mcpOauth.wizard.soft.none": "OK",
+  "mcpOauth.wizard.soft.noUrl": "No auth URL",
+  "mcpOauth.wizard.soft.noCliHelper": "No headless OAuth CLI",
+  "mcpOauth.wizard.soft.openUrlFailed": "Could not open URL",
+  "mcpOauth.wizard.soft.doctorFailed": "Doctor refresh failed",
+  "mcpOauth.wizard.soft.stillNeedsAuth": "Still needs OAuth",
+
   // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":
     "Manage plugins, skills, and MCP for this machine. Plugins are user-global; skills/MCP respect the active project when set.",
@@ -8590,6 +8632,48 @@ const zh: Record<MessageKey, string> = {
   "mcpModal.oauth.noCliHelper":
     "没有无头的 `grok mcp oauth` 命令 — 授权需交互（TUI）或通过诊断提供的浏览器 URL。应用不会将客户端密钥写入日志。",
   "mcpModal.oauth.unknownServer": "服务器",
+
+  // MCP OAuth recovery wizard
+  "mcpOauth.wizard.progress": "第 {n} / {total} 步",
+  "mcpOauth.wizard.next": "继续",
+  "mcpOauth.wizard.back": "上一步",
+  "mcpOauth.wizard.iAuthorized": "我已授权 — 刷新诊断",
+  "mcpOauth.wizard.refreshing": "正在刷新诊断…",
+  "mcpOauth.wizard.refreshingDetail":
+    "正在对 {name} 重新运行 MCP 诊断。不会假装成功 — 请等待报告。",
+  "mcpOauth.wizard.openingUrl": "正在打开…",
+  "mcpOauth.wizard.urlOpened": "已在浏览器打开授权 URL。请完成登录，然后继续。",
+  "mcpOauth.wizard.retryAuth": "重试授权步骤",
+  "mcpOauth.wizard.retryRefresh": "返回确认",
+  "mcpOauth.wizard.serverLabel": "服务器",
+  "mcpOauth.wizard.reasonLabel": "原因",
+  "mcpOauth.wizard.authLeadUrl":
+    "打开下方已消毒的授权 URL（查询串中的密钥已剥离），完成提供方同意页，然后继续。",
+  "mcpOauth.wizard.authLeadTui":
+    "诊断未提供该服务器的浏览器授权 URL。请使用 Grok Build TUI 交互式 OAuth，然后继续。",
+  "mcpOauth.wizard.waitingLead":
+    "提供方登录完成且令牌已保存后，点下方确认以重新运行 MCP 诊断。",
+  "mcpOauth.wizard.waitingHint":
+    "诊断是唯一的诚实校验 — 应用不会在没有新报告时假定 OAuth 已成功。",
+  "mcpOauth.wizard.successLead":
+    "诊断不再报告 {name} 需要 OAuth。可以关闭此向导。",
+  "mcpOauth.wizard.failDoctor":
+    "无法刷新诊断。请根据下方信息修复 Host/CLI 问题后重试 — 这是 soft-fail，不会强行标为成功。",
+  "mcpOauth.wizard.failStillAuth":
+    "诊断仍报告 {name} 存在 OAuth / 认证问题。请完成提供方流程（或 TUI）后再次刷新。",
+  "mcpOauth.wizard.softHint": "Soft-fail — 仅作指引，不是硬崩溃。",
+  "mcpOauth.wizard.step.intro": "服务器与原因",
+  "mcpOauth.wizard.step.auth": "授权",
+  "mcpOauth.wizard.step.waiting": "确认",
+  "mcpOauth.wizard.step.refreshing": "刷新诊断",
+  "mcpOauth.wizard.step.success": "成功",
+  "mcpOauth.wizard.step.fail": "需处理",
+  "mcpOauth.wizard.soft.none": "正常",
+  "mcpOauth.wizard.soft.noUrl": "无授权 URL",
+  "mcpOauth.wizard.soft.noCliHelper": "无无头 OAuth CLI",
+  "mcpOauth.wizard.soft.openUrlFailed": "无法打开 URL",
+  "mcpOauth.wizard.soft.doctorFailed": "诊断刷新失败",
+  "mcpOauth.wizard.soft.stillNeedsAuth": "仍需 OAuth",
 
   // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":

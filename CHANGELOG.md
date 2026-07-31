@@ -18,6 +18,8 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### MCP
+- **OAuth recovery wizard**: multi-step GlassModal from MCP status modal and Extensions MCP rows — detect OAuth need → show server + reason → open sanitized auth URL (or honest TUI `/mcps` → `i` fallback when no headless `grok mcp oauth`) → “I’ve authorized” re-runs doctor → success / classified soft-fail (`no_url` · `no_cli_helper` · `open_url_failed` · `doctor_failed` · `still_needs_auth`). Pure step-machine helpers + vitest; secrets never logged; no `window.confirm`; en/zh/zh-TW
 #### Runtime / workflows
 - **Sandbox profile pro** (Settings → General → Permissions): polish OS sandbox presets (`off` / `workspace` / `read-only` / `strict` / `devbox`) with pure `sandboxProfile` helpers (spawn args/env, project resolve, danger confirm keys), **honest soft-fail** when CLI is missing/too old for `--sandbox` (flag omitted) or when the platform has no kernel enforcement (Windows honesty; Linux-only child-network note on macOS), Settings banners + recommended-workspace tip; Host soft-gates spawn flags on known-old CLI; i18n en/zh/zh-TW; `settingsCatalog`; tests
 - **Grok Build workflows** (Settings → Runtime → Tools): opt-in `workflowsEnabled` AppSettings toggle writes top-level `workflows_enabled` into independent agent-home `config.toml` (shared mode never rewrites `~/.grok`); honest copy that workflows run via CLI / Rhai (`workflow` tool, `/workflow`, `/workflows`) — **no in-app runner/editor**; read-only soft-fail discovery of `~/.grok/workflows` + project `.grok/workflows` names; command palette **Open workflows docs** / jump to settings; pure helpers + tests; `settingsCatalog` + en/zh/zh-TW
@@ -225,6 +227,7 @@ See `docs/llm-wiki/release.md`.
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**项目检查深度**（分区芯片、钩子/技能名清单、展开列表、分节复制 JSON/路径）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP doctor** 诊断结果列表（`mcp_doctor` + 扁平 findings；斜杠 MCP 弹窗可运行/筛选；与 inspect 刷新共存）
 - **扩展/市场**：**MCP OAuth GUI**（诊断标记需 OAuth / 凭证过期时显示「授权…」/「重试 OAuth」；打开脱敏后的授权 URL；无 URL 时 GlassModal 指引 TUI `/mcps` → `i`；无头 CLI 无 `mcp oauth`；不写客户端密钥日志）
+- **扩展/市场**：**MCP OAuth 恢复向导**（状态弹窗 + Extensions 多步 GlassModal：检测 → 服务器/原因 → 脱敏 URL 或 TUI 回退 →「我已授权」重跑 doctor → 成功/分类 soft-fail；纯 step-machine + 测试；无 `window.confirm`；en/zh/zh-TW）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑**（仅 hooks 目录内脚本、可选 JSON stdin、超时、脱敏输出；目录外拒绝；仅 exit 0 成功）
 - **权限/CLI**：**`--no-ask-user`**（设置 → 通用 → Agent；**CLI ≥ 0.2.117**）：顶层 flag 禁用 ask_user 问卷；可选会话覆盖（`null` 继承全局）；soft-respawn；纯 resolve/spawn 助手与测试
 - **权限/CLI**：**包含部分流式事件**（CLI 0.2.117+：`--include-partial-messages`；仅 `streaming-messages-json`；设置 → 运行时 → 进程池；远程 IM 升级 format；旧 CLI soft-fail）
