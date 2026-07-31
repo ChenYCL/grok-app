@@ -129,6 +129,37 @@ describe("remoteIm channelSchemas", () => {
     expect(wecom.fields.some((f) => f.key === "enable_markdown")).toBe(true);
   });
 
+  it("qqbot official schema: app_id + app_secret, gateway, default INTERACTION, no public URL", () => {
+    const qqbot = getChannelSchema("qqbot")!;
+    expect(qqbot.implemented).toBe(true);
+    expect(qqbot.scanSupport).toBe(false);
+    expect(qqbot.pasteSupport).toBe(true);
+    expect(qqbot.connectionKey).toContain("gateway");
+    const appId = qqbot.fields.find((f) => f.key === "app_id");
+    expect(appId?.required).toBe(true);
+    expect(appId?.secret).not.toBe(true);
+    expect(appId?.helpKey).toBe("settings.remoteIm.qqbot.appIdHelp");
+    const secret = qqbot.fields.find((f) => f.key === "app_secret");
+    expect(secret?.required).toBe(true);
+    expect(secret?.secret).toBe(true);
+    expect(secret?.helpKey).toBe("settings.remoteIm.qqbot.appSecretHelp");
+    const intents = qqbot.fields.find((f) => f.key === "intents");
+    expect(intents?.required).not.toBe(true);
+    expect(intents?.helpKey).toBe("settings.remoteIm.qqbot.intentsHelp");
+    expect(showsPublicUrlCallout(qqbot, {})).toBe(false);
+    expect(validateBindFields(qqbot, {}).ok).toBe(false);
+    expect(
+      validateBindFields(qqbot, {
+        app_id: "102012345",
+        app_secret: "sec",
+      }).ok,
+    ).toBe(true);
+    // Distinct from OneBot `qq`
+    const qq = getChannelSchema("qq")!;
+    expect(qq.connectionKey).toContain("forwardWs");
+    expect(qqbot.id).not.toBe(qq.id);
+  });
+
   it("LINE always shows public-URL callout when flagged", () => {
     const line = getChannelSchema("line")!;
     expect(showsPublicUrlCallout(line, {})).toBe(true);

@@ -18,6 +18,10 @@ import {
   feishuHealthHintKeys,
   validateFeishuConfig,
 } from "./feishuConfig";
+import {
+  qqbotHealthHintKeys,
+  validateQqbotConfig,
+} from "./qqbotConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -98,6 +102,7 @@ const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
+const QQBOT_LIKE: RemoteChannelId[] = ["qqbot"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -110,6 +115,8 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   slack: ["bot_token", "app_token"],
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
   weixin: ["token"],
+  // QQ official bot: readiness via qqbotConfig (app_id + app_secret)
+  qqbot: ["app_secret"],
   matrix: ["access_token"],
   line: ["channel_secret", "channel_access_token"],
 };
@@ -119,6 +126,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   lark: ["app_id"],
   telegram: [],
   dingtalk: ["client_id"],
+  // QQ official bot validated via qqbotConfig (app_id + app_secret)
 };
 
 
@@ -252,6 +260,12 @@ export function channelModeLabel(
   if (channel === "dingtalk") {
     return "mode=stream";
   }
+  if (QQBOT_LIKE.includes(channel)) {
+    const intents = optionString(options, "intents");
+    return intents
+      ? "gateway · intents=custom"
+      : "gateway · intents=default";
+  }
   return null;
 }
 
@@ -328,6 +342,16 @@ export function credentialReadiness(
       hasCredentials: instance.hasCredentials,
       appIdValue,
       channel,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (QQBOT_LIKE.includes(channel)) {
+    const v = validateQqbotConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -499,6 +523,20 @@ export function classifyChannelHealth(
     }
   }
 
+  if (QQBOT_LIKE.includes(channel)) {
+    const qqbotV = validateQqbotConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue: input.appIdValue,
+    });
+    for (const k of qqbotHealthHintKeys(qqbotV, {
+      openAcl: openAcl && (instance.hasCredentials || qqbotV.ok),
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
   // Dedup preserve order
   const seen = new Set<string>();
   const uniqueHints = hintKeys.filter((k) => {
@@ -532,6 +570,7 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     FEISHU_LIKE.includes(channel) ||
     TELEGRAM_LIKE.includes(channel) ||
     WECOM_LIKE.includes(channel) ||
-    DINGTALK_LIKE.includes(channel)
+    DINGTALK_LIKE.includes(channel) ||
+    QQBOT_LIKE.includes(channel)
   );
 }

@@ -260,4 +260,92 @@ describe("classifyChannelHealth", () => {
     expect(r.ready).toBe(true);
     expect(r.missingKeys).not.toContain("corp_secret");
   });
+
+  it("qqbot: official gateway deep health · default INTERACTION · never live without Bridge", () => {
+    expect(channelHasDeepHealth("qqbot")).toBe(true);
+    expect(transportForChannel("qqbot")).toBe("gateway");
+
+    const bare = inst("qqbot", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("gateway");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("qqbotGateway"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqbotNoWebhook"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqbotNotOneBot"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqbotMissingAppId"))).toBe(
+      true,
+    );
+    expect(h0.hintKeys.some((k) => k.includes("qqbotIntentsDefault"))).toBe(
+      true,
+    );
+
+    const ready = inst("qqbot", {
+      hasCredentials: true,
+      enabled: true,
+      options: { app_id: "102012345" },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("gateway");
+    expect(h1.modeLabel).toContain("gateway");
+    expect(h1.modeLabel).toContain("intents=default");
+    expect(h1.hintKeys.some((k) => k.includes("qqbotGateway"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("qqbotIntentsDefault"))).toBe(
+      true,
+    );
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid app_id soft-fail — not ready; never claims Gateway live
+    const bad = inst("qqbot", {
+      hasCredentials: true,
+      enabled: true,
+      options: { app_id: "x" },
+    });
+    const h2 = classifyChannelHealth({
+      instance: bad,
+      bridgeRunning: true,
+      bridgeLinked: false,
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.tone).not.toBe("connected");
+    expect(h2.hintKeys.some((k) => k.includes("qqbotAppIdFormat"))).toBe(true);
+
+    // Custom intents mode label + form secret readiness
+    const custom = inst("qqbot", {
+      hasCredentials: false,
+      options: { app_id: "1020999", intents: "INTERACTION" },
+    });
+    const r = credentialReadiness("qqbot", custom, new Set(["app_secret"]));
+    expect(r.ready).toBe(true);
+    expect(r.missingKeys).not.toContain("app_secret");
+    const h3 = classifyChannelHealth({
+      instance: custom,
+      bridgeRunning: false,
+      secretKeysFilled: new Set(["app_secret"]),
+      draftOptions: { intents: "INTERACTION" },
+    });
+    expect(h3.modeLabel).toContain("intents=custom");
+    expect(h3.hintKeys.some((k) => k.includes("qqbotIntentsCustom"))).toBe(
+      true,
+    );
+  });
 });

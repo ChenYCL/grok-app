@@ -859,6 +859,22 @@ export function RemoteImChannelPanel({
           </p>
         </div>
       ) : null}
+      {channelId === "qqbot" ? (
+        <div className="rim-callout" data-qqbot-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.qqbot.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.qqbot.guide.step1")}</li>
+            <li>{t("settings.remoteIm.qqbot.guide.step2")}</li>
+            <li>{t("settings.remoteIm.qqbot.guide.step3")}</li>
+            <li>{t("settings.remoteIm.qqbot.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.qqbot.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
 {channelId === "lark" ? (
         <div className="rim-callout" data-feishu-guide="1" data-validate="validateFeishuConfig">
           <div className="rim-callout__title">
@@ -1016,6 +1032,18 @@ export function RemoteImChannelPanel({
         {channelId === "discord" ? (
           <div className="rim-callout">
             <p>{t("settings.remoteIm.discord.intentHint")}</p>
+          </div>
+        ) : null}
+
+        {channelId === "qqbot" ? (
+          <div
+            className="rim-callout"
+            data-qqbot-intents="1"
+          >
+            <div className="rim-callout__title">
+              {t("settings.remoteIm.qqbot.intentsTitle")}
+            </div>
+            <p>{t("settings.remoteIm.qqbot.intentsHint")}</p>
           </div>
         ) : null}
 

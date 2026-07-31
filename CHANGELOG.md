@@ -18,6 +18,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Remote control / IM
+- **QQ official bot channel pack** (Settings → Remote control → IM → QQ official bot / `qqbot`): official Gateway setup guide + default INTERACTION intents callout; field help for `app_id` / `app_secret` / optional intents / allow-from; **deep health** (gateway · not OneBot · never claims live Gateway without Bridge link); pure `qqbotConfig` validation (App ID shape, secret required, intents default note); host test soft-fails missing/invalid credentials and may mint access token when online without opening Gateway; distinct from community OneBot `qq`; i18n en/zh/zh-TW; no `window.confirm`
+
 #### Runtime / workflows
 - **Sandbox profile pro** (Settings → General → Permissions): polish OS sandbox presets (`off` / `workspace` / `read-only` / `strict` / `devbox`) with pure `sandboxProfile` helpers (spawn args/env, project resolve, danger confirm keys), **honest soft-fail** when CLI is missing/too old for `--sandbox` (flag omitted) or when the platform has no kernel enforcement (Windows honesty; Linux-only child-network note on macOS), Settings banners + recommended-workspace tip; Host soft-gates spawn flags on known-old CLI; i18n en/zh/zh-TW; `settingsCatalog`; tests
 - **Grok Build workflows** (Settings → Runtime → Tools): opt-in `workflowsEnabled` AppSettings toggle writes top-level `workflows_enabled` into independent agent-home `config.toml` (shared mode never rewrites `~/.grok`); honest copy that workflows run via CLI / Rhai (`workflow` tool, `/workflow`, `/workflows`) — **no in-app runner/editor**; read-only soft-fail discovery of `~/.grok/workflows` + project `.grok/workflows` names; command palette **Open workflows docs** / jump to settings; pure helpers + tests; `settingsCatalog` + en/zh/zh-TW

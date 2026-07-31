@@ -65,6 +65,14 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).not.toMatch(/window\.prompt/);
   });
 
+  it("ChannelPanel QQ official bot guide + intents callout without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-qqbot-guide");
+    expect(src).toContain("data-qqbot-intents");
+    expect(src).toContain('channelId === "qqbot"');
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
   it("Overview has local event timeline without window.confirm", () => {
     const src = readFileSync(join(ROOT, "RemoteImOverview.tsx"), "utf8");
     expect(src).toContain("loadRimEventTimeline");

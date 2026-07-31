@@ -556,6 +556,8 @@ const QQBOT_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.qqbot.appIdHelp",
+    placeholderKey: "settings.remoteIm.qqbot.appIdPlaceholder",
   },
   {
     key: "app_secret",
@@ -564,15 +566,21 @@ const QQBOT_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.qqbot.appSecretHelp",
+    placeholderKey: "settings.remoteIm.qqbot.appSecretPlaceholder",
   },
   {
     key: "intents",
     labelKey: "settings.remoteIm.field.intents",
     control: "text",
     section: "advanced",
-    helpKey: "settings.remoteIm.field.intentsHelp",
+    helpKey: "settings.remoteIm.qqbot.intentsHelp",
+    placeholderKey: "settings.remoteIm.qqbot.intentsPlaceholder",
   },
-  ACL_ALLOW_FROM,
+  {
+    ...ACL_ALLOW_FROM,
+    helpKey: "settings.remoteIm.qqbot.allowFromHelp",
+  },
 ];
 
 const WEIBO_FIELDS: ChannelSchema["fields"] = [
@@ -797,7 +805,7 @@ export const CHANNEL_SCHEMAS: ChannelSchema[] = [
     implemented: true,
     scanSupport: false,
     pasteSupport: true,
-    connectionKey: "settings.remoteIm.conn.websocket",
+    connectionKey: "settings.remoteIm.conn.gateway",
     nameKey: "settings.remoteIm.channel.qqbot",
     fields: QQBOT_FIELDS,
   },
