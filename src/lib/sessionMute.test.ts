@@ -1,14 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CLEAR_ALL_MUTES_CONFIRM_THRESHOLD,
   SESSION_MUTE_CHANGE_EVENT,
   SESSION_MUTE_STORAGE_KEY,
+  clearAllMutes,
   isMuted,
+  listMutedSessionIds,
   load,
   loadMutedSessionIds,
   parseMutedSessionIds,
   save,
   saveMutedSessionIds,
   setMuted,
+  shouldConfirmClearAllMutes,
   toggle,
   type SessionMuteStorage,
 } from "./sessionMute";
@@ -157,5 +161,43 @@ describe("isMuted / toggle / setMuted", () => {
     const storage = memoryStorage();
     saveMutedSessionIds(["sess-x"], storage);
     expect(isMuted("  sess-x  ", storage)).toBe(true);
+  });
+});
+
+describe("listMutedSessionIds / clearAllMutes", () => {
+  it("list returns sorted muted ids", () => {
+    const storage = memoryStorage();
+    setMuted("z", true, storage);
+    setMuted("a", true, storage);
+    setMuted("m", true, storage);
+    expect(listMutedSessionIds(storage)).toEqual(["a", "m", "z"]);
+  });
+
+  it("clearAllMutes empties the set and reports count", () => {
+    const storage = memoryStorage();
+    setMuted("a", true, storage);
+    setMuted("b", true, storage);
+    expect(clearAllMutes(storage)).toBe(2);
+    expect(listMutedSessionIds(storage)).toEqual([]);
+    expect(isMuted("a", storage)).toBe(false);
+    expect(clearAllMutes(storage)).toBe(0);
+  });
+
+  it("shouldConfirmClearAllMutes uses exclusive threshold", () => {
+    expect(CLEAR_ALL_MUTES_CONFIRM_THRESHOLD).toBe(3);
+    expect(shouldConfirmClearAllMutes(0)).toBe(false);
+    expect(shouldConfirmClearAllMutes(3)).toBe(false);
+    expect(shouldConfirmClearAllMutes(4)).toBe(true);
+    expect(shouldConfirmClearAllMutes(2, 1)).toBe(true);
+  });
+
+  it("mute does not imply unread is suppressed (honesty contract)", () => {
+    // sessionMute only owns desktop-notify mute; unread is independent storage.
+    // This test documents the product rule used by UI copy.
+    const storage = memoryStorage();
+    setMuted("sess-1", true, storage);
+    expect(isMuted("sess-1", storage)).toBe(true);
+    // No API here clears or blocks unread — mute set is orthogonal.
+    expect(listMutedSessionIds(storage)).toEqual(["sess-1"]);
   });
 });
