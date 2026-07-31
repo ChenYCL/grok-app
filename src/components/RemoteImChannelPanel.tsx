@@ -195,6 +195,8 @@ export function RemoteImChannelPanel({
       const v = validateBindFields(sch, merged, {
         hasCredentials: instance.hasCredentials,
         secretKeysFilled: filled,
+        // Mode switch (WeCom ws↔webhook) must re-enter newly required secrets
+        savedValues: instance.options,
       });
       if (!v.ok) {
         setFormError(
@@ -510,8 +512,10 @@ export function RemoteImChannelPanel({
       bridgeRunning,
       bridgeLinked,
       secretKeysFilled: filled,
+      // Live form options (e.g. WeCom connect_mode) for honest soft status
+      draftOptions: values,
     });
-  }, [instance, bridgeRunning, bridgeLinked, secrets]);
+  }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
 
   const statusTone = health.badgeTone;
   const statusLabel = t(health.statusKey);
@@ -590,6 +594,9 @@ export function RemoteImChannelPanel({
         <div key={f.key} className="settings-row settings-row--stack">
           <div className="settings-row__text">
             <div className="settings-row__label">{t(f.labelKey)}</div>
+            {f.helpKey ? (
+              <div className="settings-row__desc">{t(f.helpKey)}</div>
+            ) : null}
           </div>
           <RimChoiceRow
             value={String(val ?? f.defaultValue ?? "")}
@@ -806,6 +813,21 @@ export function RemoteImChannelPanel({
 
       {/* Bind */}
       <h3 className="settings-page__h2">{t("settings.remoteIm.bind")}</h3>
+      {channelId === "wecom" ? (
+        <div className="rim-callout" data-wecom-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.wecom.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.wecom.guide.step1")}</li>
+            <li>{t("settings.remoteIm.wecom.guide.step2")}</li>
+            <li>{t("settings.remoteIm.wecom.guide.step3")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.wecom.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
       <div className="settings-card">
         {schema.scanSupport ? (
           <div className="settings-row settings-row--stack">
