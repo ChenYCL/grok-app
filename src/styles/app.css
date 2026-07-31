@@ -18579,6 +18579,95 @@ div.composer__input:empty::before {
   color: var(--text-primary);
 }
 
+/* MCP OAuth recovery wizard */
+.mcp-oauth-wizard__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mcp-oauth-wizard__progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.mcp-oauth-wizard__progress-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.mcp-oauth-wizard__progress-step {
+  color: var(--text-tertiary);
+}
+.mcp-oauth-wizard__dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+.mcp-oauth-wizard__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--border-subtle, rgba(128, 128, 128, 0.28));
+}
+.mcp-oauth-wizard__dot.is-active {
+  background: color-mix(in srgb, var(--accent, #6b8afd) 55%, transparent);
+}
+.mcp-oauth-wizard__dot.is-current {
+  background: var(--accent, #6b8afd);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #6b8afd) 28%, transparent);
+}
+.mcp-oauth-wizard__dot.is-ok {
+  background: var(--ok, #3d9a6a);
+}
+.mcp-oauth-wizard__dot.is-fail {
+  background: var(--warn, #c9a227);
+}
+.mcp-oauth-wizard__chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+}
+.mcp-oauth-wizard__soft-hint {
+  color: var(--text-tertiary);
+}
+.mcp-oauth-wizard__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mcp-oauth-wizard__meta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.mcp-oauth-wizard__meta > div {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.mcp-oauth-wizard__meta dt {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+.mcp-oauth-wizard__meta dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.mcp-oauth-wizard__success {
+  color: var(--text-primary);
+}
+
 /* Rewind timeline picker */
 .rewind-modal {
   width: min(var(--modal-width-md, 480px), 100%);

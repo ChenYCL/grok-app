@@ -9525,10 +9525,16 @@ export default function App() {
    * (must already exist in CLI config — host does not invent servers).
    */
   const runMcpDoctor = useCallback(
-    async (name?: string | null) => {
+    async (
+      name?: string | null,
+    ): Promise<{
+      report: api.McpDoctorReport | null;
+      error: string | null;
+    }> => {
       if (!api.isTauri()) {
-        setMcpDoctorError(tr("ext.needTauri"));
-        return;
+        const error = tr("ext.needTauri");
+        setMcpDoctorError(error);
+        return { report: null, error };
       }
       const focus = name?.trim() || null;
       setMcpDoctorFocus(focus);
@@ -9537,9 +9543,12 @@ export default function App() {
       try {
         const report = await api.mcpDoctor(focus);
         setMcpDoctorReport(report);
+        return { report, error: null };
       } catch (e) {
+        const error = String(e);
         setMcpDoctorReport(null);
-        setMcpDoctorError(String(e));
+        setMcpDoctorError(error);
+        return { report: null, error };
       } finally {
         setMcpDoctorLoading(false);
       }
@@ -20298,6 +20307,7 @@ export default function App() {
         doctorLoading={mcpDoctorLoading}
         doctorFocus={mcpDoctorFocus}
         onRunDoctor={(name) => void runMcpDoctor(name)}
+        onRefreshDoctor={(name) => runMcpDoctor(name)}
       />
       {rewindTimeline && (
         <div

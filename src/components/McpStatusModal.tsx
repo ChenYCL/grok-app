@@ -14,10 +14,9 @@ import {
   classifyMcpOauthFinding,
   classifyMcpOauthFromStatus,
   mcpOauthActionLabelKey,
-  planMcpOauthOpen,
-  redactMcpOauthText,
   type McpOauthAction,
 } from "@/lib/mcpOauth";
+import { McpOauthWizard } from "@/components/McpOauthWizard";
 import {
   classifyMcpRowHealth,
   countMcpDoctorFindings,
@@ -52,9 +51,11 @@ export type McpServerRow = {
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
-type OauthHelpTarget = {
+type OauthWizardTarget = {
   action: McpOauthAction;
   status?: McpServerStatus | null;
+  /** Extra redacted reason (e.g. finding detail). */
+  reason?: string | null;
 };
 
 function healthFilterLabel(filter: McpRowStatusFilter, t: TFn): string {
@@ -163,6 +164,7 @@ export function McpStatusModal({
   doctorFocus,
   onRunDoctor,
   onOpenExternalUrl,
+  onRefreshDoctor,
 }: {
   open: boolean;
   locale: Locale;
@@ -187,14 +189,25 @@ export function McpStatusModal({
    * Never pass secrets — callers only receive sanitized http(s).
    */
   onOpenExternalUrl?: (url: string) => void | Promise<void>;
+  /**
+   * Optional doctor runner that returns the report so the OAuth wizard can
+   * evaluate success/soft-fail after “I’ve authorized”.
+   */
+  onRefreshDoctor?: (
+    name?: string | null,
+  ) => Promise<{
+    report?: McpDoctorReportLike | null;
+    error?: string | null;
+  }>;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<McpRowStatusFilter>("all");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [oauthHelp, setOauthHelp] = useState<OauthHelpTarget | null>(null);
+  const [oauthWizard, setOauthWizard] = useState<OauthWizardTarget | null>(
+    null,
+  );
   const [oauthBusy, setOauthBusy] = useState(false);
-  const [oauthOpenError, setOauthOpenError] = useState<string | null>(null);
 
   const statusCounts = useMemo(() => countMcpRowsByHealth(servers), [servers]);
   const filtered = useMemo(
@@ -273,30 +286,46 @@ export function McpStatusModal({
   );
 
   const handleOauth = useCallback(
-    async (action: McpOauthAction, status?: McpServerStatus | null) => {
-      setOauthOpenError(null);
-      const plan = planMcpOauthOpen(action);
-      if (!plan) return;
-
-      if (plan.mode === "open_url") {
-        setOauthBusy(true);
-        try {
-          await openExternal(plan.url);
-          // Still show brief instructions so the user re-runs doctor after auth.
-          setOauthHelp({ action, status: status ?? null });
-        } catch (e) {
-          setOauthOpenError(redactMcpOauthText(String(e)).slice(0, 240));
-          setOauthHelp({ action, status: status ?? null });
-        } finally {
-          setOauthBusy(false);
-        }
-        return;
-      }
-
-      // No URL / no CLI helper — instructions only (GlassModal, never confirm()).
-      setOauthHelp({ action, status: status ?? null });
+    (
+      action: McpOauthAction,
+      status?: McpServerStatus | null,
+      reason?: string | null,
+    ) => {
+      // Open multi-step OAuth recovery wizard (never window.confirm).
+      setOauthWizard({
+        action,
+        status: status ?? null,
+        reason: reason ?? status?.reason ?? null,
+      });
     },
-    [openExternal],
+    [],
+  );
+
+  const refreshDoctorForWizard = useCallback(
+    async (serverName: string | null) => {
+      if (onRefreshDoctor) {
+        return onRefreshDoctor(serverName);
+      }
+      // Fallback: run host doctor and also notify parent (fire-and-forget).
+      setOauthBusy(true);
+      try {
+        if (!api.isTauri()) {
+          return { report: null, error: tr("ext.needTauri") };
+        }
+        try {
+          const report = await api.mcpDoctor(serverName);
+          onRunDoctor?.(serverName);
+          return { report, error: null };
+        } catch (e) {
+          const msg = String(e);
+          onRunDoctor?.(serverName);
+          return { report: null, error: msg };
+        }
+      } finally {
+        setOauthBusy(false);
+      }
+    },
+    [onRefreshDoctor, onRunDoctor, tr],
   );
 
   const copyField = useCallback(
@@ -316,11 +345,6 @@ export function McpStatusModal({
     },
     [],
   );
-
-  const oauthHelpName =
-    oauthHelp?.action.server ||
-    oauthHelp?.status?.name ||
-    tr("mcpModal.oauth.unknownServer");
 
   return (
     <>
@@ -725,7 +749,11 @@ export function McpStatusModal({
                               action.server,
                             )
                           : null;
-                        void handleOauth(action, st);
+                        handleOauth(
+                          action,
+                          st,
+                          st?.reason ?? null,
+                        );
                       }}
                       oauthBusy={oauthBusy}
                     />
@@ -744,105 +772,17 @@ export function McpStatusModal({
       ) : null}
     </GlassModal>
 
-    <GlassModal
-      open={!!oauthHelp}
-      onClose={() => {
-        setOauthHelp(null);
-        setOauthOpenError(null);
-      }}
-      title={tr(
-        oauthHelp?.action.isRetry
-          ? "mcpModal.oauth.retryTitle"
-          : "mcpModal.oauth.authorizeTitle",
-        { name: oauthHelpName },
-      )}
-      size="md"
-      closeLabel={tr("common.close")}
-      wrapBody
-      footer={
-        <>
-          {oauthHelp?.action.preferredUrl ? (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={oauthBusy}
-              onClick={() => {
-                const url = oauthHelp.action.preferredUrl;
-                if (!url) return;
-                setOauthBusy(true);
-                void openExternal(url)
-                  .catch((e) => {
-                    setOauthOpenError(
-                      redactMcpOauthText(String(e)).slice(0, 240),
-                    );
-                  })
-                  .finally(() => setOauthBusy(false));
-              }}
-            >
-              <IconExternalLink size={14} />
-              <span>{tr("mcpModal.oauth.openUrl")}</span>
-            </button>
-          ) : null}
-          {canDoctor && oauthHelp?.action.server ? (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={!!doctorLoading}
-              onClick={() => {
-                const name = oauthHelp.action.server;
-                setOauthHelp(null);
-                setOauthOpenError(null);
-                if (name) onRunDoctor?.(name);
-              }}
-            >
-              <IconDoctor size={14} />
-              <span>{tr("mcpModal.doctor.rerun")}</span>
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="btn btn--solid"
-            onClick={() => {
-              setOauthHelp(null);
-              setOauthOpenError(null);
-            }}
-          >
-            {tr("common.close")}
-          </button>
-        </>
+    <McpOauthWizard
+      open={!!oauthWizard}
+      locale={locale}
+      action={oauthWizard?.action ?? null}
+      statusReason={
+        oauthWizard?.reason ?? oauthWizard?.status?.reason ?? null
       }
-    >
-      <p className="app-dialog__msg">
-        {oauthHelp?.action.isRetry
-          ? tr("mcpModal.oauth.retryLead")
-          : tr("mcpModal.oauth.authorizeLead")}
-      </p>
-      {oauthHelp?.status?.reason ? (
-        <p className="ext-mcp-status-reason">
-          {redactMcpText(oauthHelp.status.reason)}
-        </p>
-      ) : null}
-      {oauthOpenError ? (
-        <p className="modal-status modal-status--error">{oauthOpenError}</p>
-      ) : null}
-      {oauthHelp?.action.preferredUrl ? (
-        <p className="mcp-modal__oauth-url" title={oauthHelp.action.preferredUrl}>
-          <span className="mcp-modal__oauth-url-label">
-            {tr("mcpModal.oauth.urlLabel")}
-          </span>{" "}
-          <code className="mcp-modal__oauth-url-value">
-            {oauthHelp.action.preferredUrl}
-          </code>
-        </p>
-      ) : null}
-      <ol className="ext-mcp-auth-steps">
-        <li>{tr("mcpModal.oauth.stepTui")}</li>
-        <li>{tr("mcpModal.oauth.stepBrowser")}</li>
-        <li>{tr("mcpModal.oauth.stepDoctor")}</li>
-        <li>{tr("ext.mcp.auth.stepReadd")}</li>
-      </ol>
-      <p className="ext-field-hint">{tr("mcpModal.oauth.noCliHelper")}</p>
-    </GlassModal>
+      onClose={() => setOauthWizard(null)}
+      onOpenExternalUrl={openExternal}
+      onRefreshDoctor={refreshDoctorForWizard}
+    />
     </>
   );
 }

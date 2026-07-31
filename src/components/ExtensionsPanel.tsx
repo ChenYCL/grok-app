@@ -67,9 +67,9 @@ import {
 import {
   classifyMcpOauthFromStatus,
   mcpOauthActionLabelKey,
-  planMcpOauthOpen,
-  redactMcpOauthText,
+  type McpOauthAction,
 } from "@/lib/mcpOauth";
+import { McpOauthWizard } from "@/components/McpOauthWizard";
 import {
   isSkillEditable,
   resolveSkillMdPath,
@@ -279,9 +279,9 @@ export function ExtensionsPanel({
   const [doctorStatusIndex, setDoctorStatusIndex] = useState<McpStatusIndex>(
     () => new Map(),
   );
-  /** In-app “How to refresh” guidance for auth-expired / auth-required. */
-  const [authHelpTarget, setAuthHelpTarget] = useState<{
-    name: string;
+  /** OAuth recovery wizard target (Authorize / Retry / How to refresh). */
+  const [oauthWizardTarget, setOauthWizardTarget] = useState<{
+    action: McpOauthAction;
     status: McpServerStatus;
   } | null>(null);
 
@@ -1170,8 +1170,12 @@ export function ExtensionsPanel({
   };
 
   const runDoctor = useCallback(
-    async (focusName?: string | null) => {
-      if (!api.isTauri()) return;
+    async (
+      focusName?: string | null,
+    ): Promise<{ report: unknown; error: string | null }> => {
+      if (!api.isTauri()) {
+        return { report: null, error: tr("ext.needTauri") };
+      }
       setDoctorOpen(true);
       setDoctorLoading(true);
       setDoctorError(null);
@@ -1188,12 +1192,38 @@ export function ExtensionsPanel({
           for (const [k, v] of next) merged.set(k, v);
           return merged;
         });
+        return { report, error: null };
       } catch (e) {
+        const error = String(e);
         setDoctorReport(null);
-        setDoctorError(String(e));
+        setDoctorError(error);
+        return { report: null, error };
       } finally {
         setDoctorLoading(false);
       }
+    },
+    [tr],
+  );
+
+  const openOauthWizard = useCallback(
+    (action: McpOauthAction | null, status: McpServerStatus) => {
+      if (action) {
+        setOauthWizardTarget({ action, status });
+        return;
+      }
+      // No OAuth classifier hit — still open wizard with a synthetic action
+      // so the user gets TUI / re-add instructions (soft-fail path).
+      const isRetry = status.tone === "auth_expired";
+      setOauthWizardTarget({
+        action: {
+          kind: isRetry ? "retry" : "authorize",
+          authUrls: [],
+          preferredUrl: null,
+          server: status.name,
+          isRetry,
+        },
+        status,
+      });
     },
     [],
   );
@@ -1992,20 +2022,7 @@ export function ExtensionsPanel({
                       <button
                         type="button"
                         className="btn btn--ghost btn--sm"
-                        onClick={() => {
-                          const plan = planMcpOauthOpen(oauthAction);
-                          if (plan?.mode === "open_url") {
-                            void api
-                              .openExternalUrl(plan.url)
-                              .catch((e) => {
-                                console.error(
-                                  "[mcp] open auth url failed",
-                                  redactMcpOauthText(String(e)),
-                                );
-                              });
-                          }
-                          setAuthHelpTarget({ name: s.name, status: st });
-                        }}
+                        onClick={() => openOauthWizard(oauthAction, st)}
                       >
                         {tr(
                           (oauthAction
@@ -2587,23 +2604,7 @@ export function ExtensionsPanel({
                           <button
                             type="button"
                             className="btn btn--ghost btn--sm"
-                            onClick={() => {
-                              const plan = planMcpOauthOpen(oauthAction);
-                              if (plan?.mode === "open_url") {
-                                void api
-                                  .openExternalUrl(plan.url)
-                                  .catch((e) => {
-                                    console.error(
-                                      "[mcp] open auth url failed",
-                                      redactMcpOauthText(String(e)),
-                                    );
-                                  });
-                              }
-                              setAuthHelpTarget({
-                                name: s.name,
-                                status: st,
-                              });
-                            }}
+                            onClick={() => openOauthWizard(oauthAction, st)}
                           >
                             {tr(
                               (oauthAction
@@ -2656,60 +2657,41 @@ export function ExtensionsPanel({
         )}
       </GlassModal>
 
-      <GlassModal
-        open={!!authHelpTarget}
-        onClose={() => setAuthHelpTarget(null)}
-        title={tr("ext.mcp.auth.refreshTitle", {
-          name: authHelpTarget?.name ?? "",
-        })}
-        size="md"
-        closeLabel={tr("common.close")}
-        wrapBody
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={doctorLoading || cliMissing}
-              onClick={() => {
-                const name = authHelpTarget?.name;
-                setAuthHelpTarget(null);
-                if (name) void runDoctor(name);
-              }}
-            >
-              <IconDoctor size={14} />
-              <span>{tr("ext.mcp.doctorRerun")}</span>
-            </button>
-            <button
-              type="button"
-              className="btn btn--solid"
-              onClick={() => setAuthHelpTarget(null)}
-            >
-              {tr("common.close")}
-            </button>
-          </>
-        }
-      >
-        <p className="app-dialog__msg">
-          {authHelpTarget?.status.tone === "auth_expired"
-            ? tr("ext.mcp.auth.refreshLeadExpired")
-            : tr("ext.mcp.auth.refreshLeadRequired")}
-        </p>
-        {authHelpTarget?.status.reason ? (
-          <p className="ext-mcp-status-reason">
-            {redactMcpText(authHelpTarget.status.reason)}
-          </p>
-        ) : null}
-        <ol className="ext-mcp-auth-steps">
-          <li>{tr("mcpModal.oauth.stepTui")}</li>
-          <li>{tr("mcpModal.oauth.stepBrowser")}</li>
-          <li>{tr("ext.mcp.auth.stepReauth")}</li>
-          <li>{tr("ext.mcp.auth.stepReadd")}</li>
-          <li>{tr("ext.mcp.auth.stepRemoteUrl")}</li>
-          <li>{tr("ext.mcp.auth.stepDoctor")}</li>
-        </ol>
-        <p className="ext-field-hint">{tr("mcpModal.oauth.noCliHelper")}</p>
-      </GlassModal>
+      <McpOauthWizard
+        open={!!oauthWizardTarget}
+        locale={locale}
+        action={oauthWizardTarget?.action ?? null}
+        statusReason={oauthWizardTarget?.status.reason ?? null}
+        onClose={() => setOauthWizardTarget(null)}
+        onRefreshDoctor={async (serverName) => {
+          // Keep doctor modal closed when refreshing from wizard; still update index.
+          if (!api.isTauri()) {
+            return { report: null, error: tr("ext.needTauri") };
+          }
+          setDoctorLoading(true);
+          setDoctorError(null);
+          setDoctorFocus(serverName?.trim() || null);
+          try {
+            const report = await api.mcpDoctor(serverName?.trim() || null);
+            setDoctorReport(report);
+            setDoctorLastAt(Date.now());
+            const next = indexDoctorServerStatuses(report);
+            setDoctorStatusIndex((prev) => {
+              if (!serverName?.trim()) return next;
+              const merged = new Map(prev);
+              for (const [k, v] of next) merged.set(k, v);
+              return merged;
+            });
+            return { report, error: null };
+          } catch (e) {
+            const error = String(e);
+            setDoctorError(error);
+            return { report: null, error };
+          } finally {
+            setDoctorLoading(false);
+          }
+        }}
+      />
 
       <GlassModal
         open={skillNewOpen}
