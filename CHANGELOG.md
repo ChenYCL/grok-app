@@ -13,6 +13,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Setup / first-run
+- **Setup gate pro** (SETUP-GATE-PRO): pure `setupGatePro` helpers + tests for boot decision (CLI hard-required, account optional), classified install/probe/account errors with recovery hints, ready-step checklist honesty (never soft-ok CLI; never invent auth-connected on skip); SetupWizard + App boot wire-up; i18n en/zh/zh-TW
+
 #### Agent / memory
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 

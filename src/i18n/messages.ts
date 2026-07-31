@@ -2469,8 +2469,37 @@ const en = {
   "setup.ready.cliOk": "Grok Build",
   "setup.ready.authOk": "Account connected",
   "setup.ready.authSkip": "Account later",
+  "setup.ready.authSoftNote":
+    "Account is optional — you can sign in later in Settings. Chat needs a provider or CLI login.",
   "setup.ready.enter": "Enter Grok",
   "setup.error": "Something went wrong",
+  "setup.error.cliMissing": "Grok Build not found",
+  "setup.error.cliTooOld": "Grok Build is too old",
+  "setup.error.cliTooOldHint":
+    "Update Grok Build (install latest from this screen or the official command), then recheck.",
+  "setup.error.checksumMissing": "Install checksum not published",
+  "setup.error.checksumMismatch": "Install checksum mismatch",
+  "setup.error.checksumMismatchHint":
+    "The download did not match the published hash. Retry, switch mirror, or pick a local binary — do not force unverified if mismatch is reported.",
+  "setup.error.network": "Network error during install",
+  "setup.error.mirror": "All install mirrors failed",
+  "setup.error.download": "Download failed",
+  "setup.error.unsupportedPlatform": "This platform cannot auto-install",
+  "setup.error.unsupportedPlatformHint":
+    "Use the official install command or choose a local Grok Build binary.",
+  "setup.error.binaryInvalid": "Downloaded binary is not runnable",
+  "setup.error.binaryInvalidHint":
+    "Retry the install, or pick a known-good local binary via Choose local binary.",
+  "setup.error.permission": "Permission denied",
+  "setup.error.permissionHint":
+    "Check folder permissions for ~/.grok, or install via the shell command.",
+  "setup.error.probeFailed": "Could not probe Grok Build",
+  "setup.error.probeFailedHint":
+    "Recheck after install, or set a manual binary path.",
+  "setup.error.account": "Account setup failed",
+  "setup.error.accountHint":
+    "You can skip and configure login or a provider later in Settings.",
+  "setup.error.cancelled": "Cancelled",
   "setup.networkHint": "Network error — try another mirror or the manual command.",
 
   "doctor.title": "Doctor",
@@ -6504,8 +6533,35 @@ const zh: Record<MessageKey, string> = {
   "setup.ready.cliOk": "Grok Build",
   "setup.ready.authOk": "账户已连接",
   "setup.ready.authSkip": "账户稍后配置",
+  "setup.ready.authSoftNote":
+    "账户为可选项 — 稍后可在设置中登录。对话仍需服务商或 CLI 登录。",
   "setup.ready.enter": "进入 Grok",
   "setup.error": "出错了",
+  "setup.error.cliMissing": "未找到 Grok Build",
+  "setup.error.cliTooOld": "Grok Build 版本过旧",
+  "setup.error.cliTooOldHint":
+    "请通过本页安装最新版，或使用官方命令升级后重新检测。",
+  "setup.error.checksumMissing": "安装包未发布校验和",
+  "setup.error.checksumMismatch": "安装包校验和不匹配",
+  "setup.error.checksumMismatchHint":
+    "下载内容与发布哈希不一致。请重试、换镜像或选择本地二进制 — 校验失败时请勿强制跳过校验。",
+  "setup.error.network": "安装时网络异常",
+  "setup.error.mirror": "所有安装镜像均失败",
+  "setup.error.download": "下载失败",
+  "setup.error.unsupportedPlatform": "当前平台无法自动安装",
+  "setup.error.unsupportedPlatformHint":
+    "请使用官方安装命令，或选择本机已有的 Grok Build 二进制。",
+  "setup.error.binaryInvalid": "下载的二进制无法运行",
+  "setup.error.binaryInvalidHint":
+    "请重试安装，或通过「选择本地二进制」指定可用文件。",
+  "setup.error.permission": "权限不足",
+  "setup.error.permissionHint":
+    "请检查 ~/.grok 目录权限，或改用 shell 安装命令。",
+  "setup.error.probeFailed": "无法探测 Grok Build",
+  "setup.error.probeFailedHint": "安装后重新检测，或设置手动二进制路径。",
+  "setup.error.account": "账户设置失败",
+  "setup.error.accountHint": "可暂时跳过，稍后在设置中登录或配置服务商。",
+  "setup.error.cancelled": "已取消",
   "setup.networkHint": "网络异常 — 可换镜像或使用手动命令。",
 
   "doctor.title": "Doctor",

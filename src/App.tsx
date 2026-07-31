@@ -611,6 +611,12 @@ import { sortSessionsForSidebar } from "@/lib/sidebarDateGroups";
 import { GrokLogo } from "@/components/GrokLogo";
 import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
 import {
+  buildAuthDeferredFlags,
+  formatCliTooOldDetail,
+  isCliVersionUnsupported,
+  resolveSetupGateBoot,
+} from "@/lib/setupGatePro";
+import {
   ComposerEditor,
   getComposerCaretOffset,
 } from "@/components/ComposerEditor";
@@ -2952,11 +2958,12 @@ export default function App() {
           );
         }
       }
-      if (cli.versionSupported === false) {
+      if (isCliVersionUnsupported(cli.versionSupported)) {
         setLocalError(
-          `CLI_TOO_OLD: grok CLI ${cli.version ?? "?"} < required ${
-            cli.minVersion ?? ""
-          }`.trim(),
+          formatCliTooOldDetail({
+            version: cli.version,
+            minVersion: cli.minVersion,
+          }),
         );
       }
       setSessionDataMode(settings.sessionDataMode || "independent");
@@ -3130,28 +3137,33 @@ export default function App() {
       };
       setSetupCliSeed(cliSeed);
 
+      // SETUP-GATE-PRO: pure decision — CLI hard-required; account never blocks.
       const wizardCompleted = !!settings.setupWizardCompleted;
       const legacyDone =
         !!settings.onboardingDone || !!settings.setupSkipped;
-
-      if (cli.found && !wizardCompleted && legacyDone) {
-        // Migrate older installs that already finished the account modal.
+      const gate = resolveSetupGateBoot({
+        cliFound: !!cli.found,
+        wizardCompleted,
+        legacyDone,
+        isMirror: isMirrorClient(),
+      });
+      if (gate.shouldMigrateLegacy) {
+        // Older installs that finished the account modal before setupWizardCompleted.
+        const flags = buildAuthDeferredFlags({
+          authDeferred: !!settings.setupSkipped,
+          authOk,
+        });
         try {
           await api.settingsSet({
             ...settings,
             setupWizardCompleted: true,
-            authSetupDeferred: !!settings.setupSkipped && !authOk,
+            authSetupDeferred: flags.authSetupDeferred,
           });
         } catch {
           /* ignore */
         }
-        setAppGate("ready");
-      } else if (!cli.found || !wizardCompleted) {
-        // No CLI → always wizard. First launch with CLI → account step.
-        setAppGate("setup");
-      } else {
-        setAppGate("ready");
       }
+      setAppGate(gate.phase);
 
       // One-shot: corrupt store JSON was renamed aside on load (shared-mode safety).
       void api
