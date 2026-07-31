@@ -39,6 +39,7 @@ See `docs/llm-wiki/release.md`.
 - **Compaction mode / detail** (Grok Build CLI **0.2.117+**): Settings → Agent + Compact dialog selectors for `--compaction-mode` `summary|transcript|segments` and `--compaction-detail` `none|minimal|balanced|verbose` (segments only); Host always sets `GROK_COMPACTION_MODE` / `GROK_COMPACTION_DETAIL` env and passes CLI flags when the probed binary is ≥ 0.2.117 (soft-fail on older CLIs); soft-respawn on change
 
 #### Sessions & sidebar
+- **Continue last agent for this project** (CLI `grok -c/--continue`): project menu + command palette finds the newest agent session under active `GROK_HOME` for the project path, then opens the linked App chat or imports history; soft-fails with a toast when none exist
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
 - **Open session in new window** — session menu opens a second Tauri webview with `#/session/<id>` deep link; secondary is **view-only** (no warm-connect / send) so it cannot steal the Host live slot; re-open focuses the existing window; close secondary for real (main still tray/confirm)
 - **Resume with code restore** — open an existing chat on a clean sibling git worktree at HEAD (session menu + command palette; dirty tree refused; same safety as Fork → restore code)

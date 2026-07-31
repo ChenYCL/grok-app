@@ -1234,6 +1234,42 @@ export async function cliSessionImport(
   });
 }
 
+/**
+ * Find the most recent CLI agent session for a project path
+ * (CLI `grok -c/--continue`). Soft-fails → null when none exist.
+ */
+export async function cliSessionFindLatestForCwd(projectPath: string) {
+  if (!isTauri()) return null;
+  const path = projectPath.trim();
+  if (!path) return null;
+  return invoke<CliSessionSummary | null>("cli_session_find_latest_for_cwd", {
+    projectPath: path,
+  });
+}
+
+/**
+ * CLI `-c/--continue`: find latest agent session for project path and
+ * open/import it as an App session. Soft-fails → null when none exist.
+ */
+export async function cliSessionContinueCwd(
+  projectPath: string,
+  opts?: { projectId?: string | null },
+) {
+  if (!isTauri()) return null;
+  const path = projectPath.trim();
+  if (!path) return null;
+  return invoke<{
+    id: string;
+    title: string;
+    projectId: string | null;
+    updatedAt: string;
+    agentSessionId?: string | null;
+  } | null>("cli_session_continue_cwd", {
+    projectPath: path,
+    projectId: opts?.projectId ?? null,
+  });
+}
+
 export async function cliSessionsImportAll(limit?: number) {
   return invoke<
     Array<{

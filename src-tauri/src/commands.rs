@@ -578,6 +578,36 @@ pub async fn cli_session_import(
     )
 }
 
+/// Find the most recent CLI agent session for a project path (CLI `-c/--continue`).
+/// Returns `None` when no session exists (soft-fail).
+#[tauri::command]
+pub async fn cli_session_find_latest_for_cwd(
+    project_path: String,
+) -> Result<Option<crate::cli_sessions::CliSessionSummary>, String> {
+    let mode = store::load_settings().session_data_mode;
+    let path = project_path;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::cli_sessions::find_latest_cli_session_for_cwd(&path, &mode)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// CLI `-c/--continue`: find latest agent session for project path and
+/// open/import it as an App session. `None` when no agent session exists.
+#[tauri::command]
+pub async fn cli_session_continue_cwd(
+    project_path: String,
+    project_id: Option<String>,
+) -> Result<Option<SessionMeta>, String> {
+    let mode = store::load_settings().session_data_mode;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::cli_sessions::continue_cli_session_for_cwd(&project_path, project_id, &mode)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Import up to `limit` not-yet-linked CLI sessions (default 50).
 #[tauri::command]
 pub async fn cli_sessions_import_all(limit: Option<u32>) -> Result<Vec<SessionMeta>, String> {

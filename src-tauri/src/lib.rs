@@ -339,6 +339,8 @@ pub fn run() {
             commands::cli_session_import,
             commands::cli_sessions_import_all,
             commands::cli_sessions_delete,
+            commands::cli_session_find_latest_for_cwd,
+            commands::cli_session_continue_cwd,
             commands::session_create,
             commands::open_session_window,
             commands::session_delete,

@@ -392,6 +392,7 @@ import {
   filterPaletteActions,
   type PaletteActionDef,
 } from "@/lib/paletteActions";
+import { canOfferContinueCwd } from "@/lib/continueCwd";
 import {
   sessionExportFilename,
   sessionExportFilenameFor,
@@ -725,6 +726,7 @@ import {
   IconExternalLink,
   IconFork,
   IconRewind,
+  IconHistory,
   IconDeviceMobile,
   IconShield,
   IconCheck,
@@ -851,6 +853,10 @@ function paletteActionIcon(id: string) {
       return <IconHelp size={size} />;
     case "copy-conversation-md":
       return <IconCopy size={size} />;
+    case "continue-cwd":
+      return <IconHistory size={size} />;
+    case "resume-with-code-restore":
+      return <IconRewind size={size} />;
     case "settings-appearance":
       return <IconAppearance size={size} />;
     case "settings-account":
@@ -7257,6 +7263,56 @@ export default function App() {
     }
   };
 
+  /**
+   * CLI `grok -c/--continue` for a project folder: find newest agent session
+   * under active GROK_HOME for that path, import if needed, open App chat.
+   * Soft-fails with a toast when no agent session exists.
+   */
+  const continueLastAgentForProject = async (proj: Project) => {
+    setCtxMenu(null);
+    if (!canOfferContinueCwd(proj.path)) {
+      showToast(tr("project.continueCwdNoProject"), 3500);
+      return;
+    }
+    if (!api.isTauri()) {
+      setLocalError(tr("error.needTauri"));
+      return;
+    }
+    showToast(tr("project.continueCwdWorking"), 2000);
+    try {
+      const meta = await api.cliSessionContinueCwd(proj.path, {
+        projectId: proj.id,
+      });
+      if (!meta?.id) {
+        showToast(tr("project.continueCwdNone"), 4200);
+        return;
+      }
+      await refreshSessions();
+      const list = (await api.sessionsList()) as SessionRow[];
+      const row =
+        list.map((s) => normalizeSessionRow(s)).find((s) => s.id === meta.id) ??
+        normalizeSessionRow({
+          id: meta.id,
+          title: meta.title || tr("session.untitled"),
+          projectId: meta.projectId ?? proj.id,
+          updatedAt: meta.updatedAt || new Date().toISOString(),
+          agentSessionId: meta.agentSessionId ?? null,
+        });
+      const openProj =
+        (row.projectId && projects.find((p) => p.id === row.projectId)) || proj;
+      setExpandedProjects((e) => ({ ...e, [openProj.id]: true }));
+      await openSession(row, openProj);
+      showToast(
+        tr("project.continueCwdOk", {
+          title: row.title || meta.title || tr("session.untitled"),
+        }),
+        2800,
+      );
+    } catch (e) {
+      showToast(tr("project.continueCwdFailed") + ": " + String(e), 4500);
+    }
+  };
+
   /** One-line muted relative updated time for sidebar session rows. */
   const renderSessionRelativeTime = (updatedAt: string | undefined) => {
     // Keep tick in the render graph so the shared 60s interval refreshes labels.
@@ -12005,6 +12061,15 @@ export default function App() {
           ...row,
           projectId: row.projectId ?? proj?.id ?? null,
         });
+        break;
+      }
+      case "continue-cwd": {
+        const proj = activeProject;
+        if (!proj || !canOfferContinueCwd(proj.path)) {
+          showToast(tr("project.continueCwdNoProject"), 3500);
+          break;
+        }
+        void continueLastAgentForProject(proj);
         break;
       }
       case "settings-general":
@@ -20693,6 +20758,18 @@ export default function App() {
                   });
                 },
               },
+              ...(canOfferContinueCwd(proj.path)
+                ? [
+                    {
+                      id: "continue-cwd",
+                      label: tr("project.continueCwd"),
+                      icon: <IconHistory size={16} />,
+                      onClick: () => {
+                        void continueLastAgentForProject(proj);
+                      },
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
               ...(proj.trusted
                 ? [
                     {
