@@ -2090,6 +2090,7 @@ export function ExtensionsPanel({
             name: p.name,
             marketplace: p.marketplace,
           }))}
+          onOpenRuntime={onOpenRuntime}
           onPluginsChanged={() => {
             void refresh();
           }}

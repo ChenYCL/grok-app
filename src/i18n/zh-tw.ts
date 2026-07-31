@@ -3914,6 +3914,57 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.market.badge.mcp": "MCP",
   "ext.market.searchPlaceholder": "搜尋外掛…",
   "ext.market.error": "市集操作失敗",
+  "ext.market.clearFilters": "清除篩選",
+  "ext.market.openRuntimeCli": "開啟執行階段",
+  "ext.market.emptyCli": "市集需要 Grok CLI",
+  "ext.market.emptyCliHint":
+    "請在 設定 → 執行階段 安裝或指定 Grok CLI 路徑，然後重新整理目錄。",
+  "ext.market.emptyCliTooOld": "CLI 過舊，無法載入市集目錄",
+  "ext.market.emptyCliTooOldHint":
+    "請更新 Grok CLI（`grok update`）並完全重新啟動應用程式後再重新整理。",
+  "ext.market.emptyOffline": "無法連線市集目錄",
+  "ext.market.emptyOfflineHint": "請檢查網路連線後重試載入目錄。",
+  "ext.market.emptyError": "無法載入市集目錄",
+  "ext.market.emptyNoSourcesHint":
+    "請在下方新增 git 市集來源（建議 xAI Official）。",
+  "ext.market.emptyCatalog": "已設定來源中暫無可用外掛",
+  "ext.market.emptyCatalogHint":
+    "可重新整理來源或切換篩選。已安裝外掛仍在「外掛」分頁。",
+  "ext.market.emptyFilterHint":
+    "此市集來源沒有外掛。可試試「全部來源」或其他篩選。",
+  "ext.market.emptyQueryHint": "沒有符合此搜尋的外掛。可清除搜尋詞或換關鍵字。",
+  "ext.market.err.cliMissing": "找不到 CLI",
+  "ext.market.err.cliTooOld": "CLI 過舊",
+  "ext.market.err.network": "網路錯誤",
+  "ext.market.err.offline": "離線",
+  "ext.market.err.timeout": "逾時",
+  "ext.market.err.notFound": "找不到",
+  "ext.market.err.alreadyInstalled": "已安裝",
+  "ext.market.err.permission": "權限不足",
+  "ext.market.err.auth": "需要登入",
+  "ext.market.err.invalidSource": "來源無效",
+  "ext.market.err.parse": "解析錯誤",
+  "ext.market.err.hostOnly": "需要桌面 Host",
+  "ext.market.err.hostError": "Host 錯誤",
+  "ext.market.err.other": "錯誤",
+  "ext.market.err.hint.cliMissing":
+    "請在 設定 → 執行階段 安裝或指定 Grok CLI 後重試。",
+  "ext.market.err.hint.cliTooOld":
+    "請更新 Grok CLI（`grok update`）並完全重新啟動應用程式後重試。",
+  "ext.market.err.hint.network": "請檢查網路並重新整理目錄。",
+  "ext.market.err.hint.offline": "目前似乎離線 — 恢復網路後重新整理目錄。",
+  "ext.market.err.hint.timeout": "CLI 逾時 — 可重試或重新整理來源。",
+  "ext.market.err.hint.notFound": "找不到外掛或市集來源 — 請檢查名稱。",
+  "ext.market.err.hint.alreadyInstalled":
+    "外掛已安裝 — 可用「重新安裝」強制更新。",
+  "ext.market.err.hint.permission": "權限不足 — 請檢查檔案系統或 Agent 信任。",
+  "ext.market.err.hint.auth": "請登入或修復憑證後重試。",
+  "ext.market.err.hint.invalidSource":
+    "請使用市集名稱、git URL、owner/repo 或本機路徑。",
+  "ext.market.err.hint.parse": "目錄 JSON 無法解析 — 請重新整理或更新 CLI。",
+  "ext.market.err.hint.hostOnly": "請在桌面應用程式（Tauri）中管理外掛。",
+  "ext.market.err.hint.hostError": "Host 呼叫失敗 — 見詳情。",
+  "ext.market.err.hint.other": "意外結果 — 見詳情後重試。",
 
   "ext.agents.title": "Agents",
   "ext.agents.desc":
