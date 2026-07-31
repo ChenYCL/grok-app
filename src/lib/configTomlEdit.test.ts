@@ -12,6 +12,12 @@ const base: ConfigEditValues = {
   yolo: false,
   subagentsEnabled: true,
   memoryEnabled: false,
+  workflowsEnabled: true,
+  autoWakeEnabled: true,
+  twoPassCompactionEnabled: false,
+  lspToolsEnabled: false,
+  codebaseIndexing: true,
+  remoteFetch: true,
 };
 
 describe("normalizePermissionMode", () => {
@@ -32,9 +38,16 @@ describe("buildConfigEditPatch", () => {
       ...base,
       yolo: true,
       memoryEnabled: true,
+      workflowsEnabled: false,
+      twoPassCompactionEnabled: true,
     };
     const patch = buildConfigEditPatch(draft, base);
-    expect(patch).toEqual({ yolo: true, memoryEnabled: true });
+    expect(patch).toEqual({
+      yolo: true,
+      memoryEnabled: true,
+      workflowsEnabled: false,
+      twoPassCompactionEnabled: true,
+    });
     expect(hasConfigEditChanges(patch)).toBe(true);
     expect(hasConfigEditChanges(buildConfigEditPatch(base, base))).toBe(false);
   });
@@ -46,6 +59,22 @@ describe("buildConfigEditPatch", () => {
     };
     expect(buildConfigEditPatch(draft, base).permissionMode).toBe("dontAsk");
   });
+
+  it("tracks feature toggles", () => {
+    const draft: ConfigEditValues = {
+      ...base,
+      autoWakeEnabled: false,
+      lspToolsEnabled: true,
+      codebaseIndexing: false,
+      remoteFetch: false,
+    };
+    expect(buildConfigEditPatch(draft, base)).toEqual({
+      autoWakeEnabled: false,
+      lspToolsEnabled: true,
+      codebaseIndexing: false,
+      remoteFetch: false,
+    });
+  });
 });
 
 describe("valuesFromSnapshot", () => {
@@ -55,6 +84,12 @@ describe("valuesFromSnapshot", () => {
       yolo: false,
       subagentsEnabled: true,
       memoryEnabled: false,
+      workflowsEnabled: true,
+      autoWakeEnabled: true,
+      twoPassCompactionEnabled: false,
+      lspToolsEnabled: false,
+      codebaseIndexing: true,
+      remoteFetch: true,
     });
     expect(
       valuesFromSnapshot({
@@ -62,12 +97,24 @@ describe("valuesFromSnapshot", () => {
         yolo: true,
         subagentsEnabled: false,
         memoryEnabled: true,
+        workflowsEnabled: false,
+        autoWakeEnabled: false,
+        twoPassCompactionEnabled: true,
+        lspToolsEnabled: true,
+        codebaseIndexing: false,
+        remoteFetch: false,
       }),
     ).toEqual({
       permissionMode: "acceptEdits",
       yolo: true,
       subagentsEnabled: false,
       memoryEnabled: true,
+      workflowsEnabled: false,
+      autoWakeEnabled: false,
+      twoPassCompactionEnabled: true,
+      lspToolsEnabled: true,
+      codebaseIndexing: false,
+      remoteFetch: false,
     });
   });
 });

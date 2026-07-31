@@ -4009,7 +4009,7 @@ const en = {
   "settings.agentsJsonClear": "Clear",
   "settings.configTomlEdit": "Agent config.toml (sections)",
   "settings.configTomlEditDesc":
-    "Safe section edit for independent agent-home config.toml — [ui] permission_mode / yolo, [subagents] enabled, [memory] enabled only. Never rewrites secrets or full files. Writes soft-respawn the agent.",
+    "Safe section edit for independent agent-home config.toml — [ui] permission_mode / yolo, [subagents]/[memory]/[workflows] enabled, and [features] auto_wake / two_pass_compaction / lsp_tools / codebase_indexing / remote_fetch. Never rewrites secrets or full files. Writes soft-respawn the agent. Shared mode is read-only.",
   "settings.configTomlEdit.path": "Config: {path}",
   "settings.configTomlEdit.loading": "Loading agent-home config…",
   "settings.configTomlEdit.error": "Could not update agent config.toml",
@@ -4034,6 +4034,24 @@ const en = {
   "settings.configTomlEdit.memory": "[memory] enabled",
   "settings.configTomlEdit.memoryDesc":
     "Experimental cross-session memory flag in agent-home config.toml. Mirrored to App Settings.",
+  "settings.configTomlEdit.workflows": "workflows_enabled",
+  "settings.configTomlEdit.workflowsDesc":
+    "Background workflows (workflow tool, .rhai scripts, /deep-research). Writes [workflows].enabled + top-level workflows_enabled. Also selects the /goal driver. Default on in Grok Build.",
+  "settings.configTomlEdit.autoWake": "auto_wake_enabled",
+  "settings.configTomlEdit.autoWakeDesc":
+    "When on, the agent may resume after background bash/monitor/subagent tasks complete (auto-wake). Writes top-level auto_wake_enabled + [features].auto_wake.",
+  "settings.configTomlEdit.twoPass": "two_pass_compaction_enabled",
+  "settings.configTomlEdit.twoPassDesc":
+    "Opt-in prefire two-pass compaction (default off). Writes [features].two_pass_compaction + top-level two_pass_compaction_enabled. Independent of App compaction-mode spawn flags.",
+  "settings.configTomlEdit.lspTools": "[features] lsp_tools",
+  "settings.configTomlEdit.lspToolsDesc":
+    "Expose the lsp tool to the agent (default off).",
+  "settings.configTomlEdit.codebaseIndexing": "[features] codebase_indexing",
+  "settings.configTomlEdit.codebaseIndexingDesc":
+    "Code graph indexing for search (default on). Turn off for air-gapped or minimal profiles.",
+  "settings.configTomlEdit.remoteFetch": "[features] remote_fetch",
+  "settings.configTomlEdit.remoteFetchDesc":
+    "Allow optional online model-catalog fetches (default on). Set off for firewalled deployments.",
   "settings.configTomlEdit.permissionMode.unset": "Leave unset / missing",
   "settings.configTomlEdit.permissionMode.default": "default (ask)",
   "settings.configTomlEdit.permissionMode.acceptEdits": "acceptEdits",
@@ -8330,7 +8348,7 @@ const zh: Record<MessageKey, string> = {
   "settings.agentsJsonClear": "清除",
   "settings.configTomlEdit": "Agent config.toml（分区编辑）",
   "settings.configTomlEditDesc":
-    "独立 agent-home 下安全分区写入：仅 [ui] permission_mode / yolo、[subagents] enabled、[memory] enabled。不会整文件改写密钥。保存后 soft-respawn Agent。",
+    "独立 agent-home 下安全分区写入：[ui] permission_mode / yolo、[subagents]/[memory]/[workflows] enabled，以及 [features] auto_wake / two_pass_compaction / lsp_tools / codebase_indexing / remote_fetch。不会整文件改写密钥。保存后 soft-respawn Agent。共享模式只读。",
   "settings.configTomlEdit.path": "配置：{path}",
   "settings.configTomlEdit.loading": "正在加载 agent-home 配置…",
   "settings.configTomlEdit.error": "无法更新 agent config.toml",
@@ -8355,6 +8373,24 @@ const zh: Record<MessageKey, string> = {
   "settings.configTomlEdit.memory": "[memory] enabled",
   "settings.configTomlEdit.memoryDesc":
     "agent-home 中的实验性跨会话记忆开关。会同步到应用设置。",
+  "settings.configTomlEdit.workflows": "workflows_enabled",
+  "settings.configTomlEdit.workflowsDesc":
+    "后台工作流（workflow 工具、.rhai 脚本、/deep-research）。写入 [workflows].enabled 与顶层 workflows_enabled。同时选择 /goal 驱动。Grok Build 默认开启。",
+  "settings.configTomlEdit.autoWake": "auto_wake_enabled",
+  "settings.configTomlEdit.autoWakeDesc":
+    "开启后，后台 bash/monitor/子代理任务完成时 Agent 可自动唤醒继续。写入顶层 auto_wake_enabled 与 [features].auto_wake。",
+  "settings.configTomlEdit.twoPass": "two_pass_compaction_enabled",
+  "settings.configTomlEdit.twoPassDesc":
+    "可选的两遍预压缩（默认关闭）。写入 [features].two_pass_compaction 与顶层 two_pass_compaction_enabled。与应用内 compaction-mode 启动参数独立。",
+  "settings.configTomlEdit.lspTools": "[features] lsp_tools",
+  "settings.configTomlEdit.lspToolsDesc":
+    "向 Agent 暴露 lsp 工具（默认关闭）。",
+  "settings.configTomlEdit.codebaseIndexing": "[features] codebase_indexing",
+  "settings.configTomlEdit.codebaseIndexingDesc":
+    "代码图索引以供检索（默认开启）。隔离/极简环境可关闭。",
+  "settings.configTomlEdit.remoteFetch": "[features] remote_fetch",
+  "settings.configTomlEdit.remoteFetchDesc":
+    "允许可选的在线模型目录拉取（默认开启）。防火墙环境可关闭。",
   "settings.configTomlEdit.permissionMode.unset": "未设置 / 缺失",
   "settings.configTomlEdit.permissionMode.default": "default（询问）",
   "settings.configTomlEdit.permissionMode.acceptEdits": "acceptEdits",

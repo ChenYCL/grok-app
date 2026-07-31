@@ -91,6 +91,12 @@ export function AgentConfigEditPanel({
       yolo: s.yolo,
       subagentsEnabled: s.subagentsEnabled,
       memoryEnabled: s.memoryEnabled,
+      workflowsEnabled: s.workflowsEnabled,
+      autoWakeEnabled: s.autoWakeEnabled,
+      twoPassCompactionEnabled: s.twoPassCompactionEnabled,
+      lspToolsEnabled: s.lspToolsEnabled,
+      codebaseIndexing: s.codebaseIndexing,
+      remoteFetch: s.remoteFetch,
     });
     setBaseline(vals);
     setDraft(vals);
@@ -146,6 +152,12 @@ export function AgentConfigEditPanel({
         yolo: patch.yolo ?? null,
         subagentsEnabled: patch.subagentsEnabled ?? null,
         memoryEnabled: patch.memoryEnabled ?? null,
+        workflowsEnabled: patch.workflowsEnabled ?? null,
+        autoWakeEnabled: patch.autoWakeEnabled ?? null,
+        twoPassCompactionEnabled: patch.twoPassCompactionEnabled ?? null,
+        lspToolsEnabled: patch.lspToolsEnabled ?? null,
+        codebaseIndexing: patch.codebaseIndexing ?? null,
+        remoteFetch: patch.remoteFetch ?? null,
       });
       applySnap(res);
       onSaved?.();
@@ -315,6 +327,138 @@ export function AgentConfigEditPanel({
                   }))
                 }
                 ariaLabel={t("settings.configTomlEdit.memory")}
+              />
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.configTomlEdit.workflows")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.configTomlEdit.workflowsDesc")}
+                </div>
+              </div>
+              <Toggle
+                checked={draft.workflowsEnabled}
+                disabled={disabled}
+                onChange={() =>
+                  setDraft((d) => ({
+                    ...d,
+                    workflowsEnabled: !d.workflowsEnabled,
+                  }))
+                }
+                ariaLabel={t("settings.configTomlEdit.workflows")}
+              />
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.configTomlEdit.autoWake")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.configTomlEdit.autoWakeDesc")}
+                </div>
+              </div>
+              <Toggle
+                checked={draft.autoWakeEnabled}
+                disabled={disabled}
+                onChange={() =>
+                  setDraft((d) => ({
+                    ...d,
+                    autoWakeEnabled: !d.autoWakeEnabled,
+                  }))
+                }
+                ariaLabel={t("settings.configTomlEdit.autoWake")}
+              />
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.configTomlEdit.twoPass")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.configTomlEdit.twoPassDesc")}
+                </div>
+              </div>
+              <Toggle
+                checked={draft.twoPassCompactionEnabled}
+                disabled={disabled}
+                onChange={() =>
+                  setDraft((d) => ({
+                    ...d,
+                    twoPassCompactionEnabled: !d.twoPassCompactionEnabled,
+                  }))
+                }
+                ariaLabel={t("settings.configTomlEdit.twoPass")}
+              />
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.configTomlEdit.lspTools")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.configTomlEdit.lspToolsDesc")}
+                </div>
+              </div>
+              <Toggle
+                checked={draft.lspToolsEnabled}
+                disabled={disabled}
+                onChange={() =>
+                  setDraft((d) => ({
+                    ...d,
+                    lspToolsEnabled: !d.lspToolsEnabled,
+                  }))
+                }
+                ariaLabel={t("settings.configTomlEdit.lspTools")}
+              />
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.configTomlEdit.codebaseIndexing")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.configTomlEdit.codebaseIndexingDesc")}
+                </div>
+              </div>
+              <Toggle
+                checked={draft.codebaseIndexing}
+                disabled={disabled}
+                onChange={() =>
+                  setDraft((d) => ({
+                    ...d,
+                    codebaseIndexing: !d.codebaseIndexing,
+                  }))
+                }
+                ariaLabel={t("settings.configTomlEdit.codebaseIndexing")}
+              />
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.configTomlEdit.remoteFetch")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.configTomlEdit.remoteFetchDesc")}
+                </div>
+              </div>
+              <Toggle
+                checked={draft.remoteFetch}
+                disabled={disabled}
+                onChange={() =>
+                  setDraft((d) => ({
+                    ...d,
+                    remoteFetch: !d.remoteFetch,
+                  }))
+                }
+                ariaLabel={t("settings.configTomlEdit.remoteFetch")}
               />
             </div>
           </div>

@@ -10088,12 +10088,24 @@ pub async fn agent_config_edit_set(
     yolo: Option<bool>,
     subagents_enabled: Option<bool>,
     memory_enabled: Option<bool>,
+    workflows_enabled: Option<bool>,
+    auto_wake_enabled: Option<bool>,
+    two_pass_compaction_enabled: Option<bool>,
+    lsp_tools_enabled: Option<bool>,
+    codebase_indexing: Option<bool>,
+    remote_fetch: Option<bool>,
 ) -> Result<crate::agent_config_edit::AgentConfigEditSnapshot, String> {
     let patch = crate::agent_config_edit::AgentConfigEditPatch {
         permission_mode,
         yolo,
         subagents_enabled,
         memory_enabled,
+        workflows_enabled,
+        auto_wake_enabled,
+        two_pass_compaction_enabled,
+        lsp_tools_enabled,
+        codebase_indexing,
+        remote_fetch,
     };
     let result = tauri::async_runtime::spawn_blocking(move || {
         crate::agent_config_edit::save_agent_config_edit(&patch)
