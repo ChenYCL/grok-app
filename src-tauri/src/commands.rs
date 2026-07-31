@@ -10052,8 +10052,9 @@ pub async fn agent_config_toml_read(
 /// Snippets are redacted; hard caps on hits and bytes read per file.
 ///
 /// Always keyword / file-body scan — never invents embeddings client-side.
-/// CLI `memory_search` hybrid (vector + full-text) is controlled by
-/// `[memory.embedding]` keys (see `memory_embed_config_get`).
+/// Agent-tool hybrid (vector + full-text) needs `[memory.embedding].model`
+/// (see `memory_embed_config_get`). No host-invocable `grok memory search` CLI
+/// as of 0.2.117 — when model is set, `search_kind` is `hybrid_unavailable`.
 #[tauri::command]
 pub async fn memory_search(
     query: String,
@@ -10068,11 +10069,17 @@ pub async fn memory_search(
         .map(std::path::PathBuf::from);
     let q = query;
     tokio::task::spawn_blocking(move || {
-        Ok(crate::agent_memory::search_workspace_memory(
+        // Soft-probe embedding.model for search_kind honesty (never runs vectors).
+        let embedding_configured =
+            crate::agent_memory_embed::load_memory_embed_config()
+                .map(|s| s.embedding_configured)
+                .unwrap_or(false);
+        Ok(crate::agent_memory::search_workspace_memory_with_kind(
             &q,
             path.as_deref(),
             &settings.session_data_mode,
             limit,
+            embedding_configured,
         ))
     })
     .await
