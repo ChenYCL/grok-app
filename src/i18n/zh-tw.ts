@@ -2903,20 +2903,32 @@ export const zhTW: Record<MessageKey, string> = {
 
   "costRollup.title": "費用彙總",
   "costRollup.settingsDesc":
-    "依專案或工作階段與日期彙總已知 token 用量（來自即時 usage 與工作階段 journal，若有）。僅為估算 — 非帳單。可匯出摘要。",
+    "依專案或工作階段與日期彙總已知 token 用量（來自即時 usage 與工作階段 journal，若有）。可依專案／工作階段篩選、匯出純文字摘要，或清除本機樣本環。僅為估算 — 非帳單。",
   "costRollup.lead":
-    "近 {days} 天 agent 回報 token。下方可切換依專案 / 依工作階段。無已知用量的工作階段記為「未知」。",
+    "近 {days} 天 agent 回報 token。下方可切換依專案 / 依工作階段，並用篩選晶片收窄範圍。無已知用量的工作階段記為「未知」。",
   "costRollup.disclaimer":
     "基於靜態費率表的粗估 — 絕非帳單級精度。缺失用量顯示為未知，而非 $0。金額一律以 ~ 估算展示。",
   "costRollup.refresh": "重新整理",
   "costRollup.clear": "清除本機樣本",
   "costRollup.clearConfirmTitle": "清除本機費用樣本？",
   "costRollup.clearConfirmBody":
-    "將刪除用於本彙總的本機樣本環。不影響聊天、journal 或服務商帳單。",
+    "將刪除用於本彙總的 {count} 條本機樣本。不影響聊天、journal 或服務商帳單。",
   "costRollup.clearConfirmAction": "清除樣本",
+  "costRollup.clearDone": "已清除 {count} 條本機費用樣本",
   "costRollup.emptyTitle": "尚無已知用量",
   "costRollup.emptyBody":
     "當 agent 回報 usage（或 journal 的 compact 含 tokensAfter）時會出現數字。此前保持「未知」。",
+  "costRollup.emptyWindowTitle": "該時間視窗內尚無已知用量",
+  "costRollup.emptyWindowBody":
+    "樣本可能在視窗之外，或僅有未知工作階段。可嘗試更長視窗，或等待 agent 回報 usage。",
+  "costRollup.emptyFilterTitle": "目前篩選無符合項目",
+  "costRollup.emptyFilterBody":
+    "專案或工作階段篩選排除了該視窗內的全部樣本。清除篩選以查看完整彙總。",
+  "costRollup.filterProjectAria": "依專案篩選",
+  "costRollup.filterSessionAria": "依工作階段篩選",
+  "costRollup.filterAllProjects": "全部專案",
+  "costRollup.filterAllSessions": "全部工作階段",
+  "costRollup.clearFilters": "清除篩選",
   "costRollup.knownTokens": "已知 token",
   "costRollup.estCost": "估算費用",
   "costRollup.sessionsKnown": "已知工作階段",
@@ -2940,13 +2952,15 @@ export const zhTW: Record<MessageKey, string> = {
   "costRollup.exportCopy": "複製摘要",
   "costRollup.exportDownload": "下載 .txt",
   "costRollup.exportCopied": "費用摘要已複製",
-  "costRollup.exportCopyFailed": "無法複製摘要",
+  "costRollup.exportCopyFailed": "無法複製摘要（剪貼簿被封鎖）",
   "costRollup.exportDownloaded": "費用摘要已下載",
+  "costRollup.exportDownloadFailed": "無法下載費用摘要",
+  "costRollup.exportFailed": "費用摘要匯出失敗",
   "costRollup.exportTitle": "費用彙總摘要",
   "costRollup.exportGroupProject": "分組：專案 × 日",
   "costRollup.exportGroupSession": "分組：工作階段 × 日",
   "costRollup.exportWindow": "視窗：近 {days} 天",
-  "costRollup.exportEmpty": "該視窗內尚無已知用量。",
+  "costRollup.exportEmpty": "目前篩選下沒有可匯出的已知用量。",
   "costRollup.invoiceNote": "非帳單級精度。",
 
   "smj.title": "串流 Messages JSON",

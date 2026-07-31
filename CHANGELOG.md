@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Cost usage hub pro** (Settings → Runtime → Tools → Cost rollup): project/session filter chips + day window, contextual empty states (no samples / empty window / no matches), clear-sample plan with GlassModal confirm (count honesty, no `window.confirm`), classified export soft-fail toasts (empty · clipboard · download · other). Pure `costRollup` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
+
 ### Fixed
 
 - **Long chat virtualizer (PERF-A11Y-PACK / perf)**: history browse no longer expands the continuous window to the tail just because idle force-mount lists the last user/assistant (that mounted hundreds of rows mid-scroll). Force expand is nearby-only while escaped; pin still expands for blank-pin defense. Adaptive viewport-scaled overscan, binary-search range find, rAF-coalesced scroll recompute, and cached cumulative offsets keep long transcripts snappy. Pure helpers + tests in `chatVirtualList`.

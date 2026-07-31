@@ -3058,20 +3058,32 @@ const en = {
   // Cost rollup (Settings → Runtime → Tools) — known tokens only, never invoice-grade
   "costRollup.title": "Cost rollup",
   "costRollup.settingsDesc":
-    "Known token usage by project or session and day (from live usage and session journals when available). Estimates only — not billing. Optional summary export.",
+    "Known token usage by project or session and day (from live usage and session journals when available). Filter by project/session, export a plain-text summary, or clear the local sample ring. Estimates only — not billing.",
   "costRollup.lead":
-    "Rolling {days}-day view of agent-reported token counts. Switch Project / Session grain below. Sessions without known usage stay Unknown.",
+    "Rolling {days}-day view of agent-reported token counts. Switch Project / Session grain and filter chips below. Sessions without known usage stay Unknown.",
   "costRollup.disclaimer":
     "Rough estimate from a static rates table — never invoice-grade. Missing usage is Unknown, not $0. Dollar amounts always show as ~ estimates.",
   "costRollup.refresh": "Refresh",
   "costRollup.clear": "Clear local samples",
   "costRollup.clearConfirmTitle": "Clear local cost samples?",
   "costRollup.clearConfirmBody":
-    "Removes the on-device sample ring used for this rollup. Does not affect chats, journals, or provider billing.",
+    "Removes {count} on-device sample(s) used for this rollup. Does not affect chats, journals, or provider billing.",
   "costRollup.clearConfirmAction": "Clear samples",
+  "costRollup.clearDone": "Cleared {count} local cost sample(s)",
   "costRollup.emptyTitle": "No known usage yet",
   "costRollup.emptyBody":
     "Token counts appear when the agent reports usage (or a journal compact includes tokensAfter). Until then, rows stay Unknown.",
+  "costRollup.emptyWindowTitle": "No known usage in this window",
+  "costRollup.emptyWindowBody":
+    "Samples exist outside this day window (or only Unknown sessions). Try a longer window, or wait for the agent to report usage.",
+  "costRollup.emptyFilterTitle": "No matches for this filter",
+  "costRollup.emptyFilterBody":
+    "Project or session filters exclude every sample in this window. Clear filters to see the full rollup.",
+  "costRollup.filterProjectAria": "Filter by project",
+  "costRollup.filterSessionAria": "Filter by session",
+  "costRollup.filterAllProjects": "All projects",
+  "costRollup.filterAllSessions": "All sessions",
+  "costRollup.clearFilters": "Clear filters",
   "costRollup.knownTokens": "Known tokens",
   "costRollup.estCost": "Est. cost",
   "costRollup.sessionsKnown": "Sessions known",
@@ -3095,13 +3107,15 @@ const en = {
   "costRollup.exportCopy": "Copy summary",
   "costRollup.exportDownload": "Download .txt",
   "costRollup.exportCopied": "Cost summary copied",
-  "costRollup.exportCopyFailed": "Could not copy summary",
+  "costRollup.exportCopyFailed": "Could not copy summary (clipboard blocked)",
   "costRollup.exportDownloaded": "Cost summary downloaded",
+  "costRollup.exportDownloadFailed": "Could not download cost summary",
+  "costRollup.exportFailed": "Cost summary export failed",
   "costRollup.exportTitle": "Cost rollup summary",
   "costRollup.exportGroupProject": "Group by: project × day",
   "costRollup.exportGroupSession": "Group by: session × day",
   "costRollup.exportWindow": "Window: last {days} day(s)",
-  "costRollup.exportEmpty": "No known usage in this window.",
+  "costRollup.exportEmpty": "No known usage to export for this filter.",
   "costRollup.invoiceNote": "Not invoice-grade.",
 
   // Streaming-messages-json diagnostics (Settings → Runtime → Tools)
@@ -8057,20 +8071,32 @@ const zh: Record<MessageKey, string> = {
 
   "costRollup.title": "费用汇总",
   "costRollup.settingsDesc":
-    "按项目或会话与日期汇总已知 token 用量（来自实时 usage 与会话 journal，若有）。仅为估算 — 非账单。可导出摘要。",
+    "按项目或会话与日期汇总已知 token 用量（来自实时 usage 与会话 journal，若有）。可按项目/会话筛选、导出纯文本摘要，或清除本机样本环。仅为估算 — 非账单。",
   "costRollup.lead":
-    "近 {days} 天 agent 上报 token。下方可切换按项目 / 按会话。无已知用量的会话记为「未知」。",
+    "近 {days} 天 agent 上报 token。下方可切换按项目 / 按会话，并用筛选芯片收窄范围。无已知用量的会话记为「未知」。",
   "costRollup.disclaimer":
     "基于静态费率表的粗估 — 绝非账单级精度。缺失用量显示为未知，而非 $0。金额一律以 ~ 估算展示。",
   "costRollup.refresh": "刷新",
   "costRollup.clear": "清除本地样本",
   "costRollup.clearConfirmTitle": "清除本地费用样本？",
   "costRollup.clearConfirmBody":
-    "将删除用于本汇总的本机样本环。不影响聊天、journal 或服务商账单。",
+    "将删除用于本汇总的 {count} 条本机样本。不影响聊天、journal 或服务商账单。",
   "costRollup.clearConfirmAction": "清除样本",
+  "costRollup.clearDone": "已清除 {count} 条本地费用样本",
   "costRollup.emptyTitle": "暂无已知用量",
   "costRollup.emptyBody":
     "当 agent 上报 usage（或 journal 的 compact 含 tokensAfter）时会出现数字。此前保持「未知」。",
+  "costRollup.emptyWindowTitle": "该时间窗口内暂无已知用量",
+  "costRollup.emptyWindowBody":
+    "样本可能在窗口之外，或仅有未知会话。可尝试更长窗口，或等待 agent 上报 usage。",
+  "costRollup.emptyFilterTitle": "当前筛选无匹配",
+  "costRollup.emptyFilterBody":
+    "项目或会话筛选排除了该窗口内的全部样本。清除筛选以查看完整汇总。",
+  "costRollup.filterProjectAria": "按项目筛选",
+  "costRollup.filterSessionAria": "按会话筛选",
+  "costRollup.filterAllProjects": "全部项目",
+  "costRollup.filterAllSessions": "全部会话",
+  "costRollup.clearFilters": "清除筛选",
   "costRollup.knownTokens": "已知 token",
   "costRollup.estCost": "估算费用",
   "costRollup.sessionsKnown": "已知会话",
@@ -8094,13 +8120,15 @@ const zh: Record<MessageKey, string> = {
   "costRollup.exportCopy": "复制摘要",
   "costRollup.exportDownload": "下载 .txt",
   "costRollup.exportCopied": "费用摘要已复制",
-  "costRollup.exportCopyFailed": "无法复制摘要",
+  "costRollup.exportCopyFailed": "无法复制摘要（剪贴板被拦截）",
   "costRollup.exportDownloaded": "费用摘要已下载",
+  "costRollup.exportDownloadFailed": "无法下载费用摘要",
+  "costRollup.exportFailed": "费用摘要导出失败",
   "costRollup.exportTitle": "费用汇总摘要",
   "costRollup.exportGroupProject": "分组：项目 × 日",
   "costRollup.exportGroupSession": "分组：会话 × 日",
   "costRollup.exportWindow": "窗口：近 {days} 天",
-  "costRollup.exportEmpty": "该窗口内暂无已知用量。",
+  "costRollup.exportEmpty": "当前筛选下没有可导出的已知用量。",
   "costRollup.invoiceNote": "非账单级精度。",
 
   "smj.title": "流式 Messages JSON",
