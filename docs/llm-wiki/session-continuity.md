@@ -146,15 +146,21 @@ Frontend also coalesces stream tokens (~48ms) before React `setState`.
 
 ### 4f. Main chat virtualization (scroll-safe)
 
-When the transcript has **≥36** messages, the main chat uses a **variable-height**
+When the transcript has **≥48** messages, the main chat uses a **variable-height**
 virtual window (`chatVirtualList` + `useChatMessageVirtualizer`):
 
 - Spacers preserve total `scrollHeight` so `useStickToBottom` pin / escape / re-pin
   and “Back to bottom” keep working.
-- **Pinned** (following stream): always mount the tail; overscan builds upward.
+- **Pinned** (following stream): always mount the tail; adaptive overscan builds
+  upward (viewport-scaled, clamped).
 - **Escaped** (user scrolled up): window by `scrollTop`; height remeasure of rows
   above the viewport adjusts `scrollTop` so content does not jump.
-- Force-mounted: find match, active streaming assistant, last user, last 4 rows.
+- Force-mounted nearby only while escaped (find match, streaming assistant, last
+  user/assistant within a small index gap). Distant tail force **must not** expand
+  the continuous window across the whole list — that defeated virtualization on
+  long history browse. While pinned, force may still expand for blank-pin defense.
+- Scroll recomputes are rAF-coalesced; cumulative offsets are cached until a height
+  commit so flings stay O(log n) for range find, not O(n) every event.
 
 Consequences, all of them load-bearing:
 
