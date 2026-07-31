@@ -1155,6 +1155,15 @@ pub async fn settings_set(
         &prev.allowed_tools,
         &settings.allowed_tools,
     );
+    // Normalize TodoGate max fires (1–20; 0 → default 3).
+    settings.todo_gate_max_fires_per_prompt =
+        crate::agent_todo_gate::normalize_todo_gate_max_fires(Some(
+            settings.todo_gate_max_fires_per_prompt,
+        ));
+    let todo_gate_flip = prev.todo_gate_enabled != settings.todo_gate_enabled
+        || crate::agent_todo_gate::normalize_todo_gate_max_fires(Some(
+            prev.todo_gate_max_fires_per_prompt,
+        )) != settings.todo_gate_max_fires_per_prompt;
     let plan_enabled_flip = prev.plan_enabled != settings.plan_enabled;
     let use_leader_changed = prev.use_leader != settings.use_leader;
     let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
@@ -1263,6 +1272,16 @@ pub async fn settings_set(
             settings.subagents_enabled,
         ) {
             tracing::warn!("settings_set sync subagents profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
+    if todo_gate_flip {
+        if let Err(e) = crate::agent_todo_gate::sync_todo_gate_to_agent_profile(
+            &settings.session_data_mode,
+            settings.todo_gate_enabled,
+            settings.todo_gate_max_fires_per_prompt,
+        ) {
+            tracing::warn!("settings_set sync todo_gate profile: {e}");
         }
         need_soft_respawn = true;
     }

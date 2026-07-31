@@ -1437,6 +1437,12 @@ const en = {
   "settings.noAskUser": "Disable ask-user questions",
   "settings.noAskUserDesc":
     "Spawn with top-level --no-ask-user (CLI ≥ 0.2.117) so the agent does not show ask_user_question questionnaires. Off = CLI default (agent may still ask). Soft-respawns after change. Per-chat override available via session API.",
+  "settings.todoGate": "Todo gate",
+  "settings.todoGateDesc":
+    "When the agent tries to end a turn with pending or in-progress todos, Grok Build can nudge before handing control back (CLI --todo-gate, 0.2.117+). Overrides remote todo_gate_enabled; default off. Independent mode also writes agent-home todo_gate_enabled. Soft-respawns after change.",
+  "settings.todoGateMaxFires": "Todo gate max fires",
+  "settings.todoGateMaxFiresDesc":
+    "Max TodoGate nudges per prompt (1–20, default 3). Written as todo_gate_max_fires_per_prompt in independent agent-home config.toml. Soft-respawns after change.",
   "settings.useLeader": "Share agent backend (leader)",
   "settings.useLeaderDesc": "Connect with --leader so multiple clients can share one backend process. Off uses --no-leader (default). Soft-respawns after change.",
   "settings.leader.title": "Agent leader / serve",
@@ -5176,6 +5182,12 @@ const zh: Record<MessageKey, string> = {
   "settings.noAskUser": "禁用向用户提问",
   "settings.noAskUserDesc":
     "启动时加上顶层 --no-ask-user（CLI ≥ 0.2.117），Agent 不再弹出 ask_user_question 问卷。关闭 = CLI 默认（仍可能提问）。更改后 soft-respawn。支持会话级覆盖（session API）。",
+  "settings.todoGate": "Todo 门控",
+  "settings.todoGateDesc":
+    "当 Agent 在待办仍为 pending / in_progress 时尝试结束回合，Grok Build 可先催促再交还控制（CLI --todo-gate，0.2.117+）。会覆盖远端 todo_gate_enabled；默认关闭。独立模式同时写入 agent-home 的 todo_gate_enabled。更改后 soft-respawn。",
+  "settings.todoGateMaxFires": "Todo 门控最大触发次数",
+  "settings.todoGateMaxFiresDesc":
+    "每个 prompt 最多触发 TodoGate 次数（1–20，默认 3）。独立模式写入 agent-home config.toml 的 todo_gate_max_fires_per_prompt。更改后 soft-respawn。",
   "settings.useLeader": "共享 Agent 后端（leader）",
   "settings.useLeaderDesc": "使用 --leader 让多个客户端共用一个后端进程；关闭则 --no-leader（默认）。更改后 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",

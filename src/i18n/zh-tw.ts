@@ -1372,6 +1372,12 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.noAskUser": "停用向使用者提問",
   "settings.noAskUserDesc":
     "啟動時加上頂層 --no-ask-user（CLI ≥ 0.2.117），Agent 不再彈出 ask_user_question 問卷。關閉 = CLI 預設（仍可能提問）。變更後 soft-respawn。支援工作階段級覆蓋（session API）。",
+  "settings.todoGate": "Todo 門控",
+  "settings.todoGateDesc":
+    "當 Agent 在待辦仍為 pending / in_progress 時嘗試結束回合，Grok Build 可先催促再交還控制（CLI --todo-gate，0.2.117+）。會覆蓋遠端 todo_gate_enabled；預設關閉。獨立模式同時寫入 agent-home 的 todo_gate_enabled。變更後 soft-respawn。",
+  "settings.todoGateMaxFires": "Todo 門控最大觸發次數",
+  "settings.todoGateMaxFiresDesc":
+    "每個 prompt 最多觸發 TodoGate 次數（1–20，預設 3）。獨立模式寫入 agent-home config.toml 的 todo_gate_max_fires_per_prompt。變更後 soft-respawn。",
   "settings.useLeader": "共用 Agent 後端（leader）",
   "settings.useLeaderDesc": "使用 --leader 讓多個用戶端共用一個後端行程；關閉則 --no-leader（預設）。變更後 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",

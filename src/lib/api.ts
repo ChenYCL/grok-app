@@ -1398,6 +1398,16 @@ export interface AppSettings {
    */
   agentsJson?: string;
   experimentalMemory?: boolean;
+  /**
+   * Enable CLI TodoGate (turn-end nudge when todos still pending / in_progress).
+   * Default false. Spawns with top-level `--todo-gate` (CLI 0.2.117+). Soft-respawns.
+   */
+  todoGateEnabled?: boolean;
+  /**
+   * Max TodoGate fires per prompt (1–20, default 3). Independent agent-home
+   * writes `todo_gate_max_fires_per_prompt`. Soft-respawns on change.
+   */
+  todoGateMaxFiresPerPrompt?: number;
   disableWebSearch?: boolean;
   /**
    * When true, spawn with top-level `--no-ask-user` (CLI ≥ 0.2.117) so the

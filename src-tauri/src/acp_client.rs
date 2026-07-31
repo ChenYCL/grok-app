@@ -858,6 +858,10 @@ impl AcpClient {
         let no_ask_user = resolve_no_ask_user(opts.no_ask_user, settings.no_ask_user);
         let disallowed_tools = settings.disallowed_tools.clone();
         let allowed_tools = settings.allowed_tools.clone();
+        let todo_gate_enabled = settings.todo_gate_enabled;
+        let todo_gate_max_fires = crate::agent_todo_gate::normalize_todo_gate_max_fires(Some(
+            settings.todo_gate_max_fires_per_prompt,
+        ));
         let spawn_policy = opts.permission_policy.as_deref().unwrap_or("ask");
         let spawn_product_mode = opts.product_mode.as_deref();
         // Headless-only in effect; still pass top-level when CLI ≥ 0.2.117 so
@@ -876,6 +880,11 @@ impl AcpClient {
             let _ = crate::agent_memory::sync_memory_to_agent_profile(
                 session_data_mode,
                 memory_enabled,
+            );
+            let _ = crate::agent_todo_gate::sync_todo_gate_to_agent_profile(
+                session_data_mode,
+                todo_gate_enabled,
+                todo_gate_max_fires,
             );
         }
 
@@ -933,6 +942,10 @@ impl AcpClient {
         for a in disallowed_tools_spawn_flags(&disallowed_tools) {
             cmd.arg(a);
         }
+        // Top-level `grok --todo-gate` (CLI 0.2.117+). Overrides remote
+        // todo_gate_enabled and the built-in default (false). Max fires is
+        // config-only (independent agent-home); no CLI flag.
+        crate::agent_todo_gate::apply_todo_gate_to_command(&mut cmd, todo_gate_enabled);
         for f in no_plan_spawn_flags(plan_enabled) {
             cmd.arg(f);
         }

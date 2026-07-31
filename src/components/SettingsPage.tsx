@@ -529,6 +529,12 @@ export interface SettingsPageProps {
   onAskUserTimeoutSec?: (v: number) => void;
   planEnabled?: boolean;
   onPlanEnabled?: (v: boolean) => void;
+  /** CLI TodoGate (turn-end nudge; `--todo-gate`, CLI 0.2.117+). */
+  todoGateEnabled?: boolean;
+  onTodoGateEnabled?: (v: boolean) => void;
+  /** Max TodoGate fires per prompt (1–20). */
+  todoGateMaxFiresPerPrompt?: number;
+  onTodoGateMaxFiresPerPrompt?: (v: number) => void;
   subagentsEnabled?: boolean;
   onSubagentsEnabled?: (v: boolean) => void;
   useLeader?: boolean;
@@ -1133,6 +1139,10 @@ export function SettingsPage({
   onSubagentsEnabled,
   planEnabled = true,
   onPlanEnabled,
+  todoGateEnabled = false,
+  onTodoGateEnabled,
+  todoGateMaxFiresPerPrompt = 3,
+  onTodoGateMaxFiresPerPrompt,
   disableWebSearch = false,
   onDisableWebSearch,
   noAskUser = false,
@@ -2908,6 +2918,66 @@ export function SettingsPage({
                     checked={!!planEnabled}
                     onChange={() => onPlanEnabled(!planEnabled)}
                     ariaLabel={t("settings.planEnabled")}
+                  />
+                </div>
+              ) : null}
+              {onTodoGateEnabled ? (
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-todoGate")}
+                  id="settings-anchor-todoGate"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.todoGate")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.todoGateDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!todoGateEnabled}
+                    onChange={() => onTodoGateEnabled(!todoGateEnabled)}
+                    ariaLabel={t("settings.todoGate")}
+                  />
+                </div>
+              ) : null}
+              {onTodoGateEnabled && onTodoGateMaxFiresPerPrompt ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-todoGate")
+                  }
+                  id="settings-anchor-todoGateMaxFires"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.todoGateMaxFires")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.todoGateMaxFiresDesc")}
+                    </div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    min={1}
+                    max={20}
+                    step={1}
+                    disabled={!todoGateEnabled}
+                    value={todoGateMaxFiresPerPrompt}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      if (!raw) {
+                        onTodoGateMaxFiresPerPrompt(3);
+                        return;
+                      }
+                      const n = Number(raw);
+                      if (!Number.isFinite(n)) return;
+                      onTodoGateMaxFiresPerPrompt(
+                        Math.min(20, Math.max(1, Math.round(n))),
+                      );
+                    }}
+                    aria-label={t("settings.todoGateMaxFires")}
                   />
                 </div>
               ) : null}

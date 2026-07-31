@@ -2168,6 +2168,9 @@ export default function App() {
   const sendRef = useRef<(() => Promise<void>) | null>(null);
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [planEnabled, setPlanEnabled] = useState(true);
+  const [todoGateEnabled, setTodoGateEnabled] = useState(false);
+  const [todoGateMaxFiresPerPrompt, setTodoGateMaxFiresPerPrompt] =
+    useState(3);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
   const [noAskUser, setNoAskUser] = useState(false);
   const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
@@ -3008,6 +3011,15 @@ export default function App() {
       );
       setSubagentsEnabled(settings.subagentsEnabled !== false);
       setPlanEnabled(settings.planEnabled !== false);
+      setTodoGateEnabled(!!settings.todoGateEnabled);
+      {
+        const raw = settings.todoGateMaxFiresPerPrompt;
+        setTodoGateMaxFiresPerPrompt(
+          typeof raw === "number" && raw > 0
+            ? Math.min(20, Math.max(1, Math.round(raw)))
+            : 3,
+        );
+      }
       setDisableWebSearch(!!settings.disableWebSearch);
       setNoAskUser(!!settings.noAskUser);
       setDisallowedTools(
@@ -14643,6 +14655,24 @@ export default function App() {
             setPlanEnabled(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, planEnabled: v }),
+            );
+          }}
+          todoGateEnabled={todoGateEnabled}
+          onTodoGateEnabled={(v) => {
+            setTodoGateEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, todoGateEnabled: v }),
+            );
+          }}
+          todoGateMaxFiresPerPrompt={todoGateMaxFiresPerPrompt}
+          onTodoGateMaxFiresPerPrompt={(v) => {
+            const n =
+              typeof v === "number" && v > 0
+                ? Math.min(20, Math.max(1, Math.round(v)))
+                : 3;
+            setTodoGateMaxFiresPerPrompt(n);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, todoGateMaxFiresPerPrompt: n }),
             );
           }}
           disableWebSearch={disableWebSearch}
