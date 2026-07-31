@@ -9,6 +9,11 @@ import Plyr from "plyr";
 import "plyr/dist/plyr.css";
 import * as api from "@/lib/api";
 import { Tip } from "@/components/ui/tooltip";
+import {
+  formatMediaLoadErrorMessage,
+  resolveMediaLoadError,
+  type MediaLoadErrorKind,
+} from "@/lib/mediaLoadPro";
 
 export interface FileMediaPlayerProps {
   /** loopback media HTTP / asset:// / http(s) / data: URL */
@@ -20,9 +25,15 @@ export interface FileMediaPlayerProps {
   absolutePath?: string;
   className?: string;
   labels?: {
+    /** Generic fallback when classified keys are unavailable. */
     loadError: string;
     openExternal: string;
     loading: string;
+    /** Optional translator for media.err.* keys (preferred). */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    t?: (key: any, vars?: Record<string, string>) => string;
+    /** Optional prebuilt kind → label map. */
+    loadErrorByKind?: Partial<Record<MediaLoadErrorKind, string>>;
   };
 }
 
@@ -190,7 +201,17 @@ export function FileMediaPlayer({
     }
   };
 
-  const loadError = labels?.loadError ?? "Failed to load media";
+  const loadError = (() => {
+    if (!error) return labels?.loadError ?? "Failed to load media";
+    const resolved = resolveMediaLoadError(error, "media");
+    if (labels?.loadErrorByKind?.[resolved.kind]) {
+      return labels.loadErrorByKind[resolved.kind]!;
+    }
+    if (labels?.t) {
+      return formatMediaLoadErrorMessage(resolved, labels.t);
+    }
+    return labels?.loadError ?? "Failed to load media";
+  })();
   const openExternalLabel = labels?.openExternal ?? "Open with system player";
 
   const body = (

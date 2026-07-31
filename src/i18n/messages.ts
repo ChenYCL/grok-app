@@ -747,6 +747,17 @@ const en = {
   "media.loadError": "Could not load this media in the app preview.",
   "media.openExternal": "Open with system player",
   "media.loading": "Loading media…",
+  "media.err.missingPath": "File not found — the path may be missing or moved.",
+  "media.err.untrusted":
+    "This path is outside the app allowlist and cannot be previewed.",
+  "media.err.hostOnly": "Local media preview requires the desktop app.",
+  "media.err.brokenBlob":
+    "Preview failed — the file may be corrupt or unreadable.",
+  "media.err.timeout": "Timed out while loading this media.",
+  "media.err.unsupportedType": "This media type has no in-app preview.",
+  "media.err.mediaServerUnavailable":
+    "Local media server is unavailable — try again in a moment.",
+  "media.err.other": "Could not load this media in the app preview.",
 
   "office.loading": "Rendering document…",
   "office.renderFailed": "Could not render this document in the app",
@@ -5821,6 +5832,14 @@ const zh: Record<MessageKey, string> = {
   "media.loadError": "应用内无法加载此媒体。",
   "media.openExternal": "用系统播放器打开",
   "media.loading": "正在加载媒体…",
+  "media.err.missingPath": "未找到文件 — 路径可能缺失或已移动。",
+  "media.err.untrusted": "该路径不在应用允许列表中，无法预览。",
+  "media.err.hostOnly": "本地媒体预览需要桌面应用。",
+  "media.err.brokenBlob": "预览失败 — 文件可能已损坏或无法读取。",
+  "media.err.timeout": "加载此媒体超时。",
+  "media.err.unsupportedType": "此媒体类型暂无应用内预览。",
+  "media.err.mediaServerUnavailable": "本地媒体服务不可用 — 请稍后重试。",
+  "media.err.other": "应用内无法加载此媒体。",
 
   "office.loading": "正在渲染文档…",
   "office.renderFailed": "无法在应用内渲染此文档",

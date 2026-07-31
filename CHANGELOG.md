@@ -18,6 +18,8 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Composer & chat / media
+- **Media load pro (MEDIA-LOAD-PRO)**: classified local media / preview failures (missing path · untrusted · host-only · broken blob · timeout · unsupported type · media server unavailable) with honest en/zh/zh-TW copy instead of raw host dumps or silent broken images; chat `ImageUi`, Resource preview, office fetch, and video/audio player soft-fail without crashing; pure `mediaLoadPro` helpers + tests; loopback media URLs stay local-only
 #### Runtime / workflows
 - **Sandbox profile pro** (Settings → General → Permissions): polish OS sandbox presets (`off` / `workspace` / `read-only` / `strict` / `devbox`) with pure `sandboxProfile` helpers (spawn args/env, project resolve, danger confirm keys), **honest soft-fail** when CLI is missing/too old for `--sandbox` (flag omitted) or when the platform has no kernel enforcement (Windows honesty; Linux-only child-network note on macOS), Settings banners + recommended-workspace tip; Host soft-gates spawn flags on known-old CLI; i18n en/zh/zh-TW; `settingsCatalog`; tests
 - **Grok Build workflows** (Settings → Runtime → Tools): opt-in `workflowsEnabled` AppSettings toggle writes top-level `workflows_enabled` into independent agent-home `config.toml` (shared mode never rewrites `~/.grok`); honest copy that workflows run via CLI / Rhai (`workflow` tool, `/workflow`, `/workflows`) — **no in-app runner/editor**; read-only soft-fail discovery of `~/.grok/workflows` + project `.grok/workflows` names; command palette **Open workflows docs** / jump to settings; pure helpers + tests; `settingsCatalog` + en/zh/zh-TW

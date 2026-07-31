@@ -15,6 +15,11 @@ import {
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { resolvePreviewSrc } from "@/lib/filePreviewSrc";
+import {
+  formatMediaLoadErrorMessage,
+  mediaLoadErrorLabelMap,
+  resolveMediaLoadError,
+} from "@/lib/mediaLoadPro";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
 import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
 import { MarkdownBody } from "@/components/MarkdownBody";
@@ -2445,7 +2450,13 @@ export function ResourceViewer({
       return null;
     }
     if (preview.error && !preview.text && !preview.base64 && !preview.stream) {
-      return <div className="rp-preview__msg">{preview.error}</div>;
+      // Soft-fail: classified media.err.* copy instead of raw host dumps.
+      const resolved = resolveMediaLoadError(preview.error, "preview");
+      return (
+        <div className="rp-preview__msg">
+          {formatMediaLoadErrorMessage(resolved, tr)}
+        </div>
+      );
     }
     const mediaSrc = activeTab?.mediaSrc ?? null;
     const dataUrl =
@@ -2657,10 +2668,19 @@ export function ResourceViewer({
               copyImage: tr("image.copy"),
               reveal: revealInOsLabel(tr),
               copyPath: tr("attach.copyPath"),
+              loadFailed: tr("media.err.other"),
+              loadFailedByKind: mediaLoadErrorLabelMap(tr),
             }}
           />
         ) : (
-          <div className="rp-preview__msg">{tr("resources.binary")}</div>
+          <div className="rp-preview__msg">
+            {preview.error
+              ? formatMediaLoadErrorMessage(
+                  resolveMediaLoadError(preview.error, "preview"),
+                  tr,
+                )
+              : tr("media.err.mediaServerUnavailable")}
+          </div>
         );
       case "pdf":
         // Handled above via OfficeDocumentPreview; keep iframe fallback
@@ -2686,6 +2706,7 @@ export function ResourceViewer({
               loadError: tr("media.loadError"),
               openExternal: tr("media.openExternal"),
               loading: tr("resources.loading"),
+              t: tr,
             }}
           />
         ) : (
@@ -2741,7 +2762,12 @@ export function ResourceViewer({
         }
         return (
           <div className="rp-preview__msg">
-            {preview.error || tr("resources.binary")}
+            {preview.error
+              ? formatMediaLoadErrorMessage(
+                  resolveMediaLoadError(preview.error, "preview"),
+                  tr,
+                )
+              : tr("resources.binary")}
             <div className="rp-preview__meta">
               {preview.name} · {formatSize(preview.size)}
             </div>
