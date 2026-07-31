@@ -1225,17 +1225,55 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.proxyUrlDesc":
     "手動模式下使用，如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。對話、登入、額度、語音與更新皆生效。",
   "settings.proxyUrlInvalid": "請輸入有效的 http:// 或 socks5:// 代理位址。",
+  "settings.proxyUrlError.empty":
+    "手動模式需要代理位址。在填寫有效位址前，應用會繼承處理程序代理環境變數（軟失敗——不會強制直連）。",
+  "settings.proxyUrlError.missingScheme":
+    "請加上通訊協定：http://、https://、socks5:// 或 socks5h://。",
+  "settings.proxyUrlError.unsupportedScheme":
+    "不支援的通訊協定。請使用 http、https、socks5 或 socks5h。",
+  "settings.proxyUrlError.missingHost":
+    "代理位址需要主機名稱（例如 http://127.0.0.1:7890）。",
+  "settings.proxyUrlError.invalid":
+    "無法解析為有效的代理位址。",
   "settings.proxyNoProxy": "直連名單",
   "settings.proxyNoProxyDesc":
     "以逗號分隔的直連主機（localhost 一律直連）。",
   "settings.proxyRestartHint":
     "對新啟動的 Agent 處理程序生效；執行中的對話需重新連線。",
+  "settings.proxy.apply.saved":
+    "已立即寫入應用設定（無需完整重新啟動應用）。",
+  "settings.proxy.apply.appHttp":
+    "應用內 HTTP 用戶端在每次請求路徑上重新讀取有效代理。",
+  "settings.proxy.apply.newAgents":
+    "新啟動的 Agent 處理程序在 spawn 時獲得代理環境變數。",
+  "settings.proxy.apply.reconnect":
+    "執行中的對話會保留舊環境，直到你重新連線。",
+  "settings.proxy.apply.probeEffective":
+    "連通性檢測使用目前已儲存的有效代理——不是通道，也不驗證登入。",
+  "settings.proxy.apply.manualInvalidInherit":
+    "手動位址無效或為空：Host 軟失敗為繼承處理程序代理環境（不會強制直連）。",
   "settings.netProbe": "連通性檢測",
   "settings.netProbeDesc":
     "經目前代理探測 Grok 端點（驗證 / 對話 / API）。任何 HTTP 狀態都視為可達。",
+  "settings.netProbeHonesty":
+    "僅短時 HTTP 路徑探測——成功不代表串流、登入或 Agent 回合一定可用。失敗是網路/代理提示，不是完整診斷。",
   "settings.netProbeRun": "測試連線",
   "settings.netProbeTesting": "檢測中…",
   "settings.netProbeFailed": "無法連上",
+  "settings.netProbe.summaryCounts": "{ok} 可達 · {fail} 失敗",
+  "settings.netProbe.outcome.allOk": "全部可達",
+  "settings.netProbe.outcome.partial": "部分可達",
+  "settings.netProbe.outcome.allFail": "全部無法連上",
+  "settings.netProbe.outcome.empty": "無探測目標",
+  "settings.netProbe.outcome.error": "探測失敗",
+  "settings.netProbe.outcome.unavailable": "僅桌面端",
+  "settings.netProbe.target.ok": "可達",
+  "settings.netProbe.target.timeout": "逾時",
+  "settings.netProbe.target.dns": "DNS",
+  "settings.netProbe.target.connect": "連線",
+  "settings.netProbe.target.proxy": "代理",
+  "settings.netProbe.target.tls": "TLS",
+  "settings.netProbe.target.other": "失敗",
   "settings.tab.pool": "程序池",
   "settings.tab.tools": "診斷",
   "settings.tab.privacy": "隱私",

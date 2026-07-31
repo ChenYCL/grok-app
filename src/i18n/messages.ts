@@ -1293,17 +1293,55 @@ const en = {
   "settings.proxyUrlDesc":
     "Used in Manual mode, e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:1080. Applies to chat, sign-in, quota, voice, and updates.",
   "settings.proxyUrlInvalid": "Enter a valid http:// or socks5:// proxy URL.",
+  "settings.proxyUrlError.empty":
+    "Manual mode needs a proxy URL. Until one is set, the app inherits process proxy env (soft-fail — not forced Direct).",
+  "settings.proxyUrlError.missingScheme":
+    "Add a scheme: http://, https://, socks5://, or socks5h://.",
+  "settings.proxyUrlError.unsupportedScheme":
+    "Unsupported scheme. Use http, https, socks5, or socks5h.",
+  "settings.proxyUrlError.missingHost":
+    "Proxy URL needs a host (e.g. http://127.0.0.1:7890).",
+  "settings.proxyUrlError.invalid":
+    "Could not parse this as a proxy URL.",
   "settings.proxyNoProxy": "Bypass list",
   "settings.proxyNoProxyDesc":
     "Comma-separated hosts that connect directly (localhost is always bypassed).",
   "settings.proxyRestartHint":
     "Applies to new agent processes; reconnect running sessions to pick it up.",
+  "settings.proxy.apply.saved":
+    "Saved immediately to app settings (no full app restart required).",
+  "settings.proxy.apply.appHttp":
+    "App HTTP clients re-read the effective proxy on each request path.",
+  "settings.proxy.apply.newAgents":
+    "New agent processes receive the proxy env on spawn.",
+  "settings.proxy.apply.reconnect":
+    "Running sessions keep their prior env until you reconnect them.",
+  "settings.proxy.apply.probeEffective":
+    "Connectivity check uses the currently saved effective proxy — not a tunnel and not auth.",
+  "settings.proxy.apply.manualInvalidInherit":
+    "Manual URL is invalid/empty: Host soft-fails to inherit process proxy env (does not force Direct).",
   "settings.netProbe": "Connectivity check",
   "settings.netProbeDesc":
     "Probe Grok endpoints (auth / chat / api) through the effective proxy. Any HTTP status counts as reachable.",
+  "settings.netProbeHonesty":
+    "Short HTTP path probe only — success does not guarantee streaming, login, or agent turns. Failure is a network/proxy hint, not a full diagnosis.",
   "settings.netProbeRun": "Test connection",
   "settings.netProbeTesting": "Testing…",
   "settings.netProbeFailed": "unreachable",
+  "settings.netProbe.summaryCounts": "{ok} ok · {fail} failed",
+  "settings.netProbe.outcome.allOk": "All reachable",
+  "settings.netProbe.outcome.partial": "Partial",
+  "settings.netProbe.outcome.allFail": "All unreachable",
+  "settings.netProbe.outcome.empty": "No targets",
+  "settings.netProbe.outcome.error": "Probe failed",
+  "settings.netProbe.outcome.unavailable": "Desktop only",
+  "settings.netProbe.target.ok": "Reachable",
+  "settings.netProbe.target.timeout": "Timeout",
+  "settings.netProbe.target.dns": "DNS",
+  "settings.netProbe.target.connect": "Connect",
+  "settings.netProbe.target.proxy": "Proxy",
+  "settings.netProbe.target.tls": "TLS",
+  "settings.netProbe.target.other": "Failed",
   "settings.tab.pool": "Process pool",
   "settings.tab.tools": "Diagnostics",
   "settings.tab.privacy": "Privacy",
@@ -6790,17 +6828,55 @@ const zh: Record<MessageKey, string> = {
   "settings.proxyUrlDesc":
     "手动模式下使用，如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。对话、登录、额度、语音与更新均生效。",
   "settings.proxyUrlInvalid": "请输入有效的 http:// 或 socks5:// 代理地址。",
+  "settings.proxyUrlError.empty":
+    "手动模式需要代理地址。在填写有效地址前，应用会继承进程代理环境变量（软失败——不会强制直连）。",
+  "settings.proxyUrlError.missingScheme":
+    "请加上协议：http://、https://、socks5:// 或 socks5h://。",
+  "settings.proxyUrlError.unsupportedScheme":
+    "不支持的协议。请使用 http、https、socks5 或 socks5h。",
+  "settings.proxyUrlError.missingHost":
+    "代理地址需要主机名（例如 http://127.0.0.1:7890）。",
+  "settings.proxyUrlError.invalid":
+    "无法解析为有效的代理地址。",
   "settings.proxyNoProxy": "直连名单",
   "settings.proxyNoProxyDesc":
     "逗号分隔的直连主机（localhost 始终直连）。",
   "settings.proxyRestartHint":
     "对新启动的 Agent 进程生效；正在运行的会话需重新连接。",
+  "settings.proxy.apply.saved":
+    "已立即写入应用设置（无需完整重启应用）。",
+  "settings.proxy.apply.appHttp":
+    "应用内 HTTP 客户端在每次请求路径上重新读取有效代理。",
+  "settings.proxy.apply.newAgents":
+    "新启动的 Agent 进程在 spawn 时获得代理环境变量。",
+  "settings.proxy.apply.reconnect":
+    "正在运行的会话会保留旧环境，直到你重新连接。",
+  "settings.proxy.apply.probeEffective":
+    "连通性检测使用当前已保存的有效代理——不是隧道，也不验证登录。",
+  "settings.proxy.apply.manualInvalidInherit":
+    "手动地址无效或为空：Host 软失败为继承进程代理环境（不会强制直连）。",
   "settings.netProbe": "连通性检测",
   "settings.netProbeDesc":
     "经当前代理探测 Grok 端点（鉴权 / 对话 / API）。任何 HTTP 状态都视为可达。",
+  "settings.netProbeHonesty":
+    "仅短时 HTTP 路径探测——成功不代表流式、登录或 Agent 回合一定可用。失败是网络/代理提示，不是完整诊断。",
   "settings.netProbeRun": "测试连接",
   "settings.netProbeTesting": "检测中…",
   "settings.netProbeFailed": "不可达",
+  "settings.netProbe.summaryCounts": "{ok} 可达 · {fail} 失败",
+  "settings.netProbe.outcome.allOk": "全部可达",
+  "settings.netProbe.outcome.partial": "部分可达",
+  "settings.netProbe.outcome.allFail": "全部不可达",
+  "settings.netProbe.outcome.empty": "无探测目标",
+  "settings.netProbe.outcome.error": "探测失败",
+  "settings.netProbe.outcome.unavailable": "仅桌面端",
+  "settings.netProbe.target.ok": "可达",
+  "settings.netProbe.target.timeout": "超时",
+  "settings.netProbe.target.dns": "DNS",
+  "settings.netProbe.target.connect": "连接",
+  "settings.netProbe.target.proxy": "代理",
+  "settings.netProbe.target.tls": "TLS",
+  "settings.netProbe.target.other": "失败",
   "settings.tab.pool": "进程池",
   "settings.tab.tools": "诊断",
   "settings.tab.privacy": "隐私",

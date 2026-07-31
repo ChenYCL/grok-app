@@ -5090,6 +5090,45 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   align-items: center;
 }
 
+.settings-netprobe__chip.is-warn .settings-acp-chip__dot,
+.settings-acp-chip.is-warn .settings-acp-chip__dot {
+  background: var(--warning, #c9902c);
+}
+
+.settings-netprobe__chip.is-warn .settings-acp-chip__label,
+.settings-acp-chip.is-warn .settings-acp-chip__label {
+  color: var(--warning, #c9902c);
+}
+
+.settings-netprobe__chip.is-muted .settings-acp-chip__dot,
+.settings-acp-chip.is-muted .settings-acp-chip__dot {
+  background: var(--text-tertiary);
+}
+
+.settings-netprobe__chip.is-muted .settings-acp-chip__label,
+.settings-acp-chip.is-muted .settings-acp-chip__label {
+  color: var(--text-secondary);
+}
+
+.settings-netprobe__target-chip {
+  grid-column: 1 / -1;
+  justify-self: start;
+  max-width: 100%;
+}
+
+.settings-proxy-apply {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-input.is-invalid {
+  border-color: var(--danger, #d33);
+}
+
 .settings-netprobe__list {
   list-style: none;
   margin: 0;
