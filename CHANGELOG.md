@@ -23,6 +23,7 @@ See `docs/llm-wiki/release.md`.
 - **Regenerate** with optional model pick · **assistant word count** (optional)
 - **File-changes chip** (session edits) · **git dirty chip** (workspace porcelain)
 - **Session change review**: per-file +/−, unified / side-by-side diff, open in Resources, j/k in Changes list; chip always opens Changes tab (works without git)
+- **Diff accept / reject / restore** (Changes panel): Accept keeps working tree (writes after snapshot when needed); Reject restores HEAD via path-scoped `git checkout` (or before snapshot / delete untracked with in-app confirm — never wipe untracked without confirm); Restore re-applies saved after content; per-hunk accept/reject when before+after exist; soft-fails outside git; pure `diffAccept` helpers + host `apply_file_patch` / `git_checkout_file` / `delete_project_file`
 - **Structured JSON replies**: when a session JSON Schema is active, finished assistant turns show a Structured panel — parse + light required-field validation, honest “not valid JSON” on failure, copy / export, and a Structured badge
 - **Context usage / cost estimates**: chip menu shows input/output/total when known; optional crude USD estimate from a static rates table (never invoice-grade); Settings → Appearance → **Show usage estimates** (on by default, with disclaimer)
 - **Compact dialog presets** (light / standard / aggressive): note templates for `/compact` (CLI has no intensity flag yet); optional keep-note + chips; before → after estimate when tokens known; last compact range when available

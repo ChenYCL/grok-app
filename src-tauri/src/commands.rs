@@ -5928,6 +5928,391 @@ pub async fn git_show_file(
     })
 }
 
+// ── Diff accept / reject / restore (Changes panel) ──────────────────────────
+
+/// Resolve a project-relative or absolute path under the project root only.
+/// Returns (canonical_project_root, relative_posix, absolute_path).
+/// Pure lexical check against project; does not require the file to exist.
+fn resolve_path_under_project(
+    project_path: &str,
+    path: &str,
+) -> Result<(std::path::PathBuf, String, std::path::PathBuf), String> {
+    let project = normalize_fs_path(project_path);
+    let target = normalize_fs_path(path);
+    if project.is_empty() || target.is_empty() {
+        return Err("empty path".into());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Err("project not a directory".into());
+    }
+    // Canonical project root when possible; always path-scoped below.
+    let root = proj.canonicalize().unwrap_or(proj);
+
+    let target_pb = std::path::PathBuf::from(&target);
+    let (rel, abs) = if target_pb.is_absolute() {
+        let abs_norm = target_pb.canonicalize().unwrap_or(target_pb.clone());
+        let rel = match abs_norm.strip_prefix(&root) {
+            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Err(_) => {
+                let p = root.to_string_lossy().replace('\\', "/");
+                let a = abs_norm.to_string_lossy().replace('\\', "/");
+                let p = p.trim_end_matches('/').to_string();
+                if a.starts_with(&(p.clone() + "/")) {
+                    a[p.len() + 1..].to_string()
+                } else {
+                    return Err("path outside project root".into());
+                }
+            }
+        };
+        if rel.is_empty() || rel == "." {
+            return Err("not a file path".into());
+        }
+        if rel.contains("..") {
+            return Err("path escapes project root".into());
+        }
+        (rel, abs_norm)
+    } else {
+        // Relative under project — reject `..` components
+        let rel = target
+            .trim_start_matches("./")
+            .trim_start_matches('/')
+            .replace('\\', "/");
+        if rel.is_empty() || rel == "." {
+            return Err("not a file path".into());
+        }
+        for comp in std::path::Path::new(&rel).components() {
+            match comp {
+                std::path::Component::Normal(_) | std::path::Component::CurDir => {}
+                _ => return Err("path escapes project root".into()),
+            }
+        }
+        let abs = root.join(&rel);
+        (rel, abs)
+    };
+
+    // Final guard: abs must stay under root lexically
+    let abs_s = abs.to_string_lossy().replace('\\', "/");
+    let root_s = root.to_string_lossy().replace('\\', "/");
+    let root_prefix = root_s.trim_end_matches('/').to_string() + "/";
+    if abs_s != root_s.trim_end_matches('/') && !abs_s.starts_with(&root_prefix) {
+        return Err("path outside project root".into());
+    }
+    Ok((root, rel, abs))
+}
+
+/// Result of writing full file content under the project (accept / restore / reject-before).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyFilePatchResult {
+    pub ok: bool,
+    pub absolute_path: Option<String>,
+    pub relative_path: Option<String>,
+    pub reason: Option<String>,
+}
+
+/// Write UTF-8 content to a path under the project only (create parents if needed).
+/// Used by Changes Accept / Restore and non-git reject (write before snapshot).
+#[tauri::command]
+pub async fn apply_file_patch(
+    project_path: String,
+    path: String,
+    content: String,
+) -> Result<ApplyFilePatchResult, String> {
+    let (root, rel, abs) = match resolve_path_under_project(&project_path, &path) {
+        Ok(v) => v,
+        Err(reason) => {
+            return Ok(ApplyFilePatchResult {
+                ok: false,
+                absolute_path: None,
+                relative_path: None,
+                reason: Some(reason),
+            });
+        }
+    };
+
+    // Cap size (same order as resource-pane text save)
+    const MAX_BYTES: usize = 2 * 1024 * 1024;
+    if content.len() > MAX_BYTES {
+        return Ok(ApplyFilePatchResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            reason: Some(format!("content too large (max {MAX_BYTES} bytes)")),
+        });
+    }
+
+    if let Some(parent) = abs.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return Ok(ApplyFilePatchResult {
+                ok: false,
+                absolute_path: Some(abs.to_string_lossy().to_string()),
+                relative_path: Some(rel),
+                reason: Some(format!("create parent: {e}")),
+            });
+        }
+    }
+
+    // Atomic-ish write via temp + rename in same directory
+    let parent = abs.parent().unwrap_or(root.as_path());
+    let tmp = parent.join(format!(
+        ".{}.grok-patch-{}",
+        abs.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("file"),
+        std::process::id()
+    ));
+    if let Err(e) = std::fs::write(&tmp, content.as_bytes()) {
+        return Ok(ApplyFilePatchResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            reason: Some(format!("write temp: {e}")),
+        });
+    }
+    if let Err(e) = std::fs::rename(&tmp, &abs) {
+        let _ = std::fs::remove_file(&tmp);
+        return Ok(ApplyFilePatchResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            reason: Some(format!("rename into place: {e}")),
+        });
+    }
+
+    // Grant for media/re-open
+    crate::path_scope::grant_path(&abs);
+
+    Ok(ApplyFilePatchResult {
+        ok: true,
+        absolute_path: Some(abs.to_string_lossy().to_string()),
+        relative_path: Some(rel),
+        reason: None,
+    })
+}
+
+/// Result of restoring a path to HEAD (or deleting untracked with confirm).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCheckoutFileResult {
+    pub ok: bool,
+    pub absolute_path: Option<String>,
+    pub relative_path: Option<String>,
+    /// When true, caller must re-invoke with confirm_untracked=true.
+    pub needs_untracked_confirm: bool,
+    pub reason: Option<String>,
+    /// Action taken: restored | deleted | none
+    pub action: Option<String>,
+}
+
+/// Restore path to HEAD via `git checkout -- path` (reject agent/workspace edits).
+/// Soft-fails when git is missing or project is not a repo.
+/// Never deletes untracked files unless `confirm_untracked` is true.
+#[tauri::command]
+pub async fn git_checkout_file(
+    project_path: String,
+    path: String,
+    confirm_untracked: bool,
+) -> Result<GitCheckoutFileResult, String> {
+    let (root, rel, abs) = match resolve_path_under_project(&project_path, &path) {
+        Ok(v) => v,
+        Err(reason) => {
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: None,
+                relative_path: None,
+                needs_untracked_confirm: false,
+                reason: Some(reason),
+                action: Some("none".into()),
+            });
+        }
+    };
+    let project = root.to_string_lossy().to_string();
+
+    if let Err(reason) = git_probe_work_tree(&project) {
+        return Ok(GitCheckoutFileResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            needs_untracked_confirm: false,
+            reason: Some(reason),
+            action: Some("none".into()),
+        });
+    }
+
+    // Is path tracked?
+    let tracked = crate::process_util::command("git")
+        .args(["-C", &project, "ls-files", "--error-unmatch", "--", &rel])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if !tracked {
+        // Untracked: only wipe with explicit confirm
+        if !confirm_untracked {
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: Some(abs.to_string_lossy().to_string()),
+                relative_path: Some(rel),
+                needs_untracked_confirm: true,
+                reason: Some("untracked file requires confirm".into()),
+                action: Some("none".into()),
+            });
+        }
+        if abs.is_file() {
+            if let Err(e) = std::fs::remove_file(&abs) {
+                return Ok(GitCheckoutFileResult {
+                    ok: false,
+                    absolute_path: Some(abs.to_string_lossy().to_string()),
+                    relative_path: Some(rel),
+                    needs_untracked_confirm: false,
+                    reason: Some(format!("delete untracked: {e}")),
+                    action: Some("none".into()),
+                });
+            }
+        } else if abs.is_dir() {
+            // Refuse recursive dir wipe for safety
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: Some(abs.to_string_lossy().to_string()),
+                relative_path: Some(rel),
+                needs_untracked_confirm: false,
+                reason: Some("refusing to delete untracked directory".into()),
+                action: Some("none".into()),
+            });
+        }
+        // Already gone counts as success
+        return Ok(GitCheckoutFileResult {
+            ok: true,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            needs_untracked_confirm: false,
+            reason: None,
+            action: Some("deleted".into()),
+        });
+    }
+
+    // Tracked: restore HEAD into index + worktree for this path only
+    let out = crate::process_util::command("git")
+        .args(["-C", &project, "checkout", "HEAD", "--", &rel])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        // Fallback: git restore (newer git)
+        let out2 = crate::process_util::command("git")
+            .args([
+                "-C",
+                &project,
+                "restore",
+                "--source=HEAD",
+                "--staged",
+                "--worktree",
+                "--",
+                &rel,
+            ])
+            .output();
+        if let Ok(o2) = out2 {
+            if o2.status.success() {
+                return Ok(GitCheckoutFileResult {
+                    ok: true,
+                    absolute_path: Some(abs.to_string_lossy().to_string()),
+                    relative_path: Some(rel),
+                    needs_untracked_confirm: false,
+                    reason: None,
+                    action: Some("restored".into()),
+                });
+            }
+        }
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Ok(GitCheckoutFileResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            needs_untracked_confirm: false,
+            reason: Some(if err.is_empty() {
+                "git checkout failed".into()
+            } else {
+                err.chars().take(200).collect()
+            }),
+            action: Some("none".into()),
+        });
+    }
+
+    Ok(GitCheckoutFileResult {
+        ok: true,
+        absolute_path: Some(abs.to_string_lossy().to_string()),
+        relative_path: Some(rel),
+        needs_untracked_confirm: false,
+        reason: None,
+        action: Some("restored".into()),
+    })
+}
+
+/// Delete a path under the project only (non-git untracked reject after confirm).
+#[tauri::command]
+pub async fn delete_project_file(
+    project_path: String,
+    path: String,
+    confirm: bool,
+) -> Result<GitCheckoutFileResult, String> {
+    if !confirm {
+        return Ok(GitCheckoutFileResult {
+            ok: false,
+            absolute_path: None,
+            relative_path: None,
+            needs_untracked_confirm: true,
+            reason: Some("delete requires confirm".into()),
+            action: Some("none".into()),
+        });
+    }
+    let (_root, rel, abs) = match resolve_path_under_project(&project_path, &path) {
+        Ok(v) => v,
+        Err(reason) => {
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: None,
+                relative_path: None,
+                needs_untracked_confirm: false,
+                reason: Some(reason),
+                action: Some("none".into()),
+            });
+        }
+    };
+    if abs.is_dir() {
+        return Ok(GitCheckoutFileResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            needs_untracked_confirm: false,
+            reason: Some("refusing to delete directory".into()),
+            action: Some("none".into()),
+        });
+    }
+    if abs.is_file() {
+        if let Err(e) = std::fs::remove_file(&abs) {
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: Some(abs.to_string_lossy().to_string()),
+                relative_path: Some(rel),
+                needs_untracked_confirm: false,
+                reason: Some(format!("delete: {e}")),
+                action: Some("none".into()),
+            });
+        }
+    }
+    Ok(GitCheckoutFileResult {
+        ok: true,
+        absolute_path: Some(abs.to_string_lossy().to_string()),
+        relative_path: Some(rel),
+        needs_untracked_confirm: false,
+        reason: None,
+        action: Some("deleted".into()),
+    })
+}
+
 #[cfg(test)]
 mod git_status_parse_tests {
     use super::*;
@@ -5983,6 +6368,38 @@ mod git_status_parse_tests {
         assert_eq!(git_status_kind(' ', 'M'), "modified");
         assert_eq!(git_status_kind('A', ' '), "added");
         assert_eq!(git_status_kind('D', ' '), "deleted");
+    }
+
+    #[test]
+    fn resolve_path_under_project_relative_ok() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-diff-accept-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::create_dir_all(&tmp);
+        let r = resolve_path_under_project(
+            &tmp.to_string_lossy(),
+            "src/hello.ts",
+        );
+        assert!(r.is_ok(), "{r:?}");
+        let (_root, rel, abs) = r.unwrap();
+        assert_eq!(rel, "src/hello.ts");
+        assert!(abs.to_string_lossy().ends_with("src/hello.ts"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn resolve_path_under_project_rejects_escape() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-diff-escape-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::create_dir_all(&tmp);
+        let r = resolve_path_under_project(&tmp.to_string_lossy(), "../outside.txt");
+        assert!(r.is_err());
+        let r2 = resolve_path_under_project(&tmp.to_string_lossy(), "/etc/passwd");
+        assert!(r2.is_err());
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
 
