@@ -1656,6 +1656,37 @@ export const zhTW: Record<MessageKey, string> = {
     "已依新設定重載 Agent — 下次傳送將重新連線。",
   "agent.processLimitToast":
     "Agent 行程已達上限（目前槽位均被正在執行的任務佔用）。請停止某個執行中的工作階段，或到 設定 → 執行環境 → 行程池 提高上限。",
+  "processBudget.title": "行程預算",
+  "processBudget.lead":
+    "目前熱 Agent 行程佔用（焦點 live、中途 background、閒置 parked）。上限即「最大並發 Agent 數」；觸發 PROCESS_LIMIT 前會先回收閒置 parked。",
+  "processBudget.loading": "載入中…",
+  "processBudget.unavailable": "無法讀取佔用",
+  "processBudget.refresh": "重新整理",
+  "processBudget.counts": "{total} / {max}",
+  "processBudget.countsAria":
+    "熱 Agent {total} / {max}（live {live}，background {background}，parked {parked}）",
+  "processBudget.meterAria": "行程預算已用 {percent}%",
+  "processBudget.bucket.live": "Live",
+  "processBudget.bucket.background": "Background",
+  "processBudget.bucket.parked": "Parked",
+  "processBudget.bucket.free": "空閒",
+  "processBudget.plan.unavailable":
+    "無法從 Host 讀取行程池狀態。產生策略未改變 — 可點重新整理，或在有 Agent 執行後開啟可靠性中心。",
+  "processBudget.plan.empty":
+    "目前沒有熱 Agent 行程。新連線可自由產生，最多 {max} 個。",
+  "processBudget.plan.headroom":
+    "還剩 {free} 個空閒槽位（共 {max}）。僅在需要槽位時才會自動回收閒置 parked。",
+  "processBudget.plan.atCapWithParked":
+    "已達上限（{total}/{max}），但仍有 {parked} 個閒置 parked 可在下次連線時回收 — 這還不是 PROCESS_LIMIT。",
+  "processBudget.plan.atCapBusy":
+    "全部 {max} 個槽位均為忙碌回合（live + background）。新連線會觸發 PROCESS_LIMIT，直到某輪結束或你提高上限。",
+  "processBudget.plan.overCap":
+    "熱行程數（{total}）超過設定上限（{max}）。新連線會優先回收閒置 parked；若持續出現請提高上限。",
+  "processBudget.idlePolicy":
+    "閒置回收：就緒 Agent 連續 {idleMinutes} 分鐘無活動會被軟結束（歷史保留；下次傳送重連）。",
+  "processBudget.limit.title": "最近一次行程上限",
+  "processBudget.limit.explain":
+    "已觸發 PROCESS_LIMIT（上限 {max}）— 閒置 parked 已回收完畢，剩餘槽位均為忙碌回合。請停止執行中的工作階段，或提高「最大並發 Agent 數」。{when}",
   "agent.streamStallBanner":
     "約 {seconds} 秒無串流片段或工具活動。可繼續等待或結束本輪。",
   "agent.streamStallCancel": "結束本輪",

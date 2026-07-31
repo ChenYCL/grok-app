@@ -1755,6 +1755,38 @@ const en = {
     "Agent reloaded with new settings — next message reconnects.",
   "agent.processLimitToast":
     "Agent process limit reached (all slots are busy turns). Stop a running session or raise the limit in Settings → Runtime → Process pool.",
+  // Process budget occupancy (Settings pool + Reliability)
+  "processBudget.title": "Process budget",
+  "processBudget.lead":
+    "Live occupancy of warm agent processes (focused live, mid-turn background, idle parked). Cap is Max concurrent agents; idle parked are reclaimed before PROCESS_LIMIT.",
+  "processBudget.loading": "Loading…",
+  "processBudget.unavailable": "Occupancy unavailable",
+  "processBudget.refresh": "Refresh",
+  "processBudget.counts": "{total} / {max}",
+  "processBudget.countsAria":
+    "{total} of {max} warm agents (live {live}, background {background}, parked {parked})",
+  "processBudget.meterAria": "Process budget {percent} percent full",
+  "processBudget.bucket.live": "Live",
+  "processBudget.bucket.background": "Background",
+  "processBudget.bucket.parked": "Parked",
+  "processBudget.bucket.free": "Free",
+  "processBudget.plan.unavailable":
+    "Could not read the process pool from the host. Spawn policy is unchanged — try Refresh, or open Reliability after agents are running.",
+  "processBudget.plan.empty":
+    "No warm agent processes right now. New connects spawn freely up to {max}.",
+  "processBudget.plan.headroom":
+    "{free} free slot(s) of {max}. Idle parked will be reclaimed automatically only when you need a slot.",
+  "processBudget.plan.atCapWithParked":
+    "At capacity ({total}/{max}), but {parked} idle parked can be reclaimed on the next connect — this is not PROCESS_LIMIT yet.",
+  "processBudget.plan.atCapBusy":
+    "All {max} slots are busy turns (live + background). A new connect would hit PROCESS_LIMIT until a turn finishes or you raise the cap.",
+  "processBudget.plan.overCap":
+    "Warm processes ({total}) exceed the configured cap ({max}). New connects reclaim idle parked first; raise the limit if this persists.",
+  "processBudget.idlePolicy":
+    "Idle recycle: ready agents without activity for {idleMinutes} minutes are soft-killed (history kept; next message reconnects).",
+  "processBudget.limit.title": "Last process limit",
+  "processBudget.limit.explain":
+    "PROCESS_LIMIT fired (max {max}) — idle parked were already reclaimed; every remaining slot was a busy turn. Stop a running session or raise Max concurrent agents. {when}",
   "agent.streamStallBanner":
     "No stream or tool progress for about {seconds}s. Keep waiting or end this turn.",
   "agent.streamStallCancel": "End turn",
@@ -6783,6 +6815,37 @@ const zh: Record<MessageKey, string> = {
     "已按新设置重载 Agent — 下次发送将重新连接。",
   "agent.processLimitToast":
     "Agent 进程已达上限（当前槽位均被正在执行的任务占用）。请停止某个运行中的会话，或到 设置 → 运行时 → 进程池 提高上限。",
+  "processBudget.title": "进程预算",
+  "processBudget.lead":
+    "当前热 Agent 进程占用（焦点 live、中途 background、闲置 parked）。上限即「最大并发 Agent 数」；触发 PROCESS_LIMIT 前会先回收闲置 parked。",
+  "processBudget.loading": "加载中…",
+  "processBudget.unavailable": "无法读取占用",
+  "processBudget.refresh": "刷新",
+  "processBudget.counts": "{total} / {max}",
+  "processBudget.countsAria":
+    "热 Agent {total} / {max}（live {live}，background {background}，parked {parked}）",
+  "processBudget.meterAria": "进程预算已用 {percent}%",
+  "processBudget.bucket.live": "Live",
+  "processBudget.bucket.background": "Background",
+  "processBudget.bucket.parked": "Parked",
+  "processBudget.bucket.free": "空闲",
+  "processBudget.plan.unavailable":
+    "无法从 Host 读取进程池状态。生成策略未改变 — 可点刷新，或在有 Agent 运行后打开可靠性中心。",
+  "processBudget.plan.empty":
+    "当前没有热 Agent 进程。新连接可自由生成，最多 {max} 个。",
+  "processBudget.plan.headroom":
+    "还剩 {free} 个空闲槽位（共 {max}）。仅在需要槽位时才会自动回收闲置 parked。",
+  "processBudget.plan.atCapWithParked":
+    "已达上限（{total}/{max}），但仍有 {parked} 个闲置 parked 可在下次连接时回收 — 这还不是 PROCESS_LIMIT。",
+  "processBudget.plan.atCapBusy":
+    "全部 {max} 个槽位均为忙碌回合（live + background）。新连接会触发 PROCESS_LIMIT，直到某轮结束或你提高上限。",
+  "processBudget.plan.overCap":
+    "热进程数（{total}）超过配置上限（{max}）。新连接会优先回收闲置 parked；若持续出现请提高上限。",
+  "processBudget.idlePolicy":
+    "闲置回收：就绪 Agent 连续 {idleMinutes} 分钟无活动会被软结束（历史保留；下次发送重连）。",
+  "processBudget.limit.title": "最近一次进程上限",
+  "processBudget.limit.explain":
+    "已触发 PROCESS_LIMIT（上限 {max}）— 闲置 parked 已回收完毕，剩余槽位均为忙碌回合。请停止运行中的会话，或提高「最大并发 Agent 数」。{when}",
   "agent.streamStallBanner":
     "约 {seconds} 秒无流式片段或工具活动。可继续等待或结束本轮。",
   "agent.streamStallCancel": "结束本轮",

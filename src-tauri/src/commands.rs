@@ -10822,6 +10822,17 @@ pub async fn streaming_messages_json_probe(
     .map_err(|e| format!("streaming_messages_json_probe: {e}"))
 }
 
+// ─── Process budget occupancy (live / background / parked) ──────────────────
+
+/// Snapshot of warm agent process counts vs `maxConcurrentAgents`.
+/// Soft-fail: returns an empty `available: false` snapshot when the manager path errors.
+#[tauri::command]
+pub async fn process_budget_snapshot(
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<crate::process_limits::ProcessBudgetSnapshot, String> {
+    Ok(mgr.process_budget_snapshot())
+}
+
 // ─── Tool / permission audit ledger ─────────────────────────────────────────
 
 /// Recent cross-session tool/permission audit rows (newest first). Soft-fail → [].

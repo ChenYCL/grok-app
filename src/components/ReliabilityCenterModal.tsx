@@ -15,6 +15,7 @@ import {
   IconClose,
   IconDoctor,
 } from "@/components/icons";
+import { ProcessBudgetPanel } from "@/components/ProcessBudgetPanel";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
 import {
@@ -24,6 +25,7 @@ import {
   type AuditLedgerEntry,
   type AuditLedgerEvent,
 } from "@/lib/auditLedger";
+import type { ProcessLimitEvent } from "@/lib/processBudget";
 import {
   buildStallTimelineSnapshot,
   clearStallHistory,
@@ -58,6 +60,8 @@ export type ReliabilityCenterModalProps = {
     at?: number | string;
     summary?: string;
   }>;
+  /** Last process_limit toast context for process-budget honesty. */
+  lastProcessLimit?: ProcessLimitEvent | null;
 };
 
 type StallKindFilter = "all" | ReliabilityStallKind;
@@ -287,6 +291,7 @@ export function ReliabilityCenterModal({
   view,
   onOpenDoctor,
   onSelectSession,
+  lastProcessLimit = null,
 }: ReliabilityCenterModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
   const [busy, setBusy] = useState<"zip" | "audit-export" | "audit-clear" | null>(
@@ -650,6 +655,14 @@ export function ReliabilityCenterModal({
               <p className="reliab-empty__body">{t("reliability.empty.body")}</p>
             </div>
           ) : null}
+
+          <ProcessBudgetPanel
+            locale={locale}
+            active={open}
+            variant="card"
+            lastProcessLimit={lastProcessLimit}
+            id="reliab-process-budget"
+          />
 
           <section className="reliab-card" aria-labelledby="reliab-busy-title">
             <header className="reliab-card__head">

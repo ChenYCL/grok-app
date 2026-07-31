@@ -228,6 +228,7 @@ import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
 import { MemoryEmbedPanel } from "@/components/MemoryEmbedPanel";
 import { CodebaseIndexingPanel } from "@/components/CodebaseIndexingPanel";
 import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
+import { ProcessBudgetPanel } from "@/components/ProcessBudgetPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
 import { LeaderServePanel } from "@/components/LeaderServePanel";
@@ -468,6 +469,11 @@ export interface SettingsPageProps {
   /** Max warm/live agent processes (I02). */
   maxConcurrentAgents?: number;
   onMaxConcurrentAgents?: (v: number) => void;
+  /**
+   * Last `session://process_limit` event (ids/message only) for process-budget
+   * honesty callout near the pool settings. Optional.
+   */
+  lastProcessLimit?: import("@/lib/processBudget").ProcessLimitEvent | null;
   /** Idle recycle minutes (I03). */
   agentIdleMinutes?: number;
   onAgentIdleMinutes?: (v: number) => void;
@@ -1193,6 +1199,7 @@ export function SettingsPage({
   onProxyNoProxy,
   maxConcurrentAgents = 8,
   onMaxConcurrentAgents,
+  lastProcessLimit = null,
   agentIdleMinutes = 30,
   onAgentIdleMinutes,
   streamStallSeconds = 180,
@@ -6385,6 +6392,21 @@ export function SettingsPage({
                         Math.min(32, Math.max(1, Math.round(n))),
                       );
                     }}
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-processBudget")
+                  }
+                  id="settings-anchor-processBudget"
+                >
+                  <ProcessBudgetPanel
+                    locale={resolveLocale(locale)}
+                    active={activeTab === "pool"}
+                    variant="settings"
+                    lastProcessLimit={lastProcessLimit}
+                    id="settings-process-budget"
                   />
                 </div>
                 <div
