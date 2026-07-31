@@ -5155,6 +5155,15 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.comingSoon": "即將支援",
   "settings.remoteIm.comingSoonBody": "此渠道已列入規劃，綁定尚未開放。",
   "settings.remoteIm.comingSoonHint": "在渠道正式上線前無法提交憑證。",
+  "settings.remoteIm.retired": "已下線",
+  "settings.remoteIm.retiredTitle": "此渠道已不再支援",
+  "settings.remoteIm.retiredBody":
+    "WPS 協作與 WPS 數字員工已下線。不可新建綁定，也不再提供設定引導。",
+  "settings.remoteIm.retiredHint":
+    "已儲存的憑證會保留在本機，直到你主動刪除。預設側欄與新建綁定列表不再顯示此渠道。",
+  "settings.remoteIm.retired.hasCredentials": "已儲存憑證",
+  "settings.remoteIm.retiredNoInstance":
+    "此已下線渠道沒有本機實例。預設渠道列表中已隱藏。",
   "settings.remoteIm.unknownChannel": "未知渠道",
   "settings.remoteIm.bind": "綁定憑證",
   "settings.remoteIm.bind.scan": "掃碼建立",

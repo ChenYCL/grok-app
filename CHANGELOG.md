@@ -30,6 +30,10 @@ See `docs/llm-wiki/release.md`.
 - **Wallpaper gallery**: `is_gallery_media_url` now accepts all download-allowlisted hosts (`abs.twimg.com`, `filesystem.site`) — legit Imagine/CDN images were silently filtered out before display
 - **Wallpaper URL normalize**: legacy twimg `:thumb/:small/:medium/:large` suffixes are normalized to `:orig` again (the replacement branch was unreachable dead code after `Url::parse` succeeded)
 
+### Changed
+
+- **Remote IM: retire WPS channels** — `wps-xiezuo` (WPS Collaboration) and `wps-agentspace` (WPS Agentspace) are soft-retired: hidden from the default channel sidebar / new-bind picker (`REQUIRED_CHANNEL_IDS` + `filterActiveChannels`), schema `retired`/`unsupported` flags, soft-retired banner for existing saved instances (delete credentials only; no setup guide pack), pure `isRetiredChannel` / `filterActiveChannels` helpers + tests; en/zh/zh-TW. Host catalog keeps ids for legacy dispatch only.
+
 ### Added
 
 #### MCP

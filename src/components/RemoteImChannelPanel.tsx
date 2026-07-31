@@ -21,6 +21,7 @@ import {
   credentialsRefFor,
   defaultAcl,
   getChannelSchema,
+  isRetiredChannel,
   isSecretControl,
   parseIdSecretPair,
   primaryBindFields,
@@ -177,7 +178,7 @@ export function RemoteImChannelPanel({
       keepSecretsVisible?: boolean;
     }): Promise<boolean> => {
       const sch = getChannelSchema(channelId);
-      if (!sch?.implemented) return false;
+      if (!sch || isRetiredChannel(sch) || !sch.implemented) return false;
 
       setFormError(null);
       const nextValues = { ...values, ...override?.values };
@@ -395,6 +396,85 @@ export function RemoteImChannelPanel({
     return (
       <div className="rim-panel__empty">
         {t("settings.remoteIm.unknownChannel")}
+      </div>
+    );
+  }
+
+  // Soft-retired (WPS xiezuo / agentspace): honest banner, no setup pack, allow cleanup
+  if (isRetiredChannel(schema) || schema.retired || schema.unsupported) {
+    const hasLegacy =
+      instance.hasCredentials ||
+      instances.some((i) => i.channel === channelId);
+    return (
+      <div
+        className="rim-retired"
+        data-channel={channelId}
+        data-retired="1"
+      >
+        <header className="rim-panel__header">
+          <div>
+            <h2 className="rim-panel__title">{t(schema.nameKey)}</h2>
+            <p className="rim-panel__lead">{t(schema.connectionKey)}</p>
+          </div>
+          <RimBadge>{t("settings.remoteIm.retired")}</RimBadge>
+        </header>
+        <div
+          className="rim-callout rim-callout--warn"
+          role="status"
+          data-rim-retired-banner="1"
+        >
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.retiredTitle")}
+          </div>
+          <p className="rim-callout__body" style={{ margin: "0.35rem 0 0" }}>
+            {t("settings.remoteIm.retiredBody")}
+          </p>
+          <p className="settings-row__hint" style={{ margin: "0.35rem 0 0" }}>
+            {t("settings.remoteIm.retiredHint")}
+          </p>
+        </div>
+        {hasLegacy ? (
+          <div className="settings-card">
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__label">
+                {t("settings.remoteIm.instance")}
+              </div>
+              <div className="settings-row__desc">
+                {name || instance.name || instance.id}
+                {instance.hasCredentials
+                  ? ` · ${t("settings.remoteIm.retired.hasCredentials")}`
+                  : ""}
+              </div>
+            </div>
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__label">
+                {t("settings.remoteIm.danger")}
+              </div>
+              <div className="settings-row__desc">
+                {t("settings.remoteIm.danger.desc")}
+              </div>
+              <button
+                type="button"
+                className="btn btn--danger btn--sm"
+                disabled={!!busy}
+                onClick={() => onRequestDelete(instance.id)}
+              >
+                {t("settings.remoteIm.danger.delete")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="settings-card rim-disabled-form" aria-disabled>
+            <p className="settings-page__lead" style={{ margin: 0 }}>
+              {t("settings.remoteIm.retiredNoInstance")}
+            </p>
+            <div className="settings-row">
+              <button type="button" className="btn btn--primary" disabled>
+                {t("settings.remoteIm.saveConnect")}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

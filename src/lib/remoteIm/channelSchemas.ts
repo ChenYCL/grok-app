@@ -717,8 +717,18 @@ const LINE_FIELDS: ChannelSchema["fields"] = [
 ];
 
 /**
+ * Soft-retired channel ids (product decision: WPS xiezuo + agentspace).
+ * Kept in CHANNEL_SCHEMAS for legacy instance resolve; hidden by default.
+ */
+export const RETIRED_CHANNEL_IDS: readonly RemoteChannelId[] = [
+  "wps-xiezuo",
+  "wps-agentspace",
+] as const;
+
+/**
  * Full sidebar catalog order (spec §2.2).
  * `implemented` gates credential submit; false → comingSoon panel.
+ * `retired` / `unsupported` hide from default picker; soft banner for legacy.
  */
 export const CHANNEL_SCHEMAS: ChannelSchema[] = [
   {
@@ -780,9 +790,11 @@ export const CHANNEL_SCHEMAS: ChannelSchema[] = [
   {
     id: "wps-xiezuo",
     group: "domestic",
-    implemented: true,
+    implemented: false,
+    retired: true,
+    unsupported: true,
     scanSupport: false,
-    pasteSupport: true,
+    pasteSupport: false,
     connectionKey: "settings.remoteIm.conn.websocket",
     nameKey: "settings.remoteIm.channel.wpsXiezuo",
     fields: WPS_XIEZUO_FIELDS,
@@ -871,23 +883,27 @@ export const CHANNEL_SCHEMAS: ChannelSchema[] = [
   {
     id: "wps-agentspace",
     group: "other",
-    implemented: true,
+    implemented: false,
+    retired: true,
+    unsupported: true,
     scanSupport: false,
-    pasteSupport: true,
+    pasteSupport: false,
     connectionKey: "settings.remoteIm.conn.websocket",
     nameKey: "settings.remoteIm.channel.wpsAgentspace",
     fields: WPS_AGENTSPACE_FIELDS,
   },
 ];
 
-/** Required channel ids for Phase 0 sidebar completeness checks */
+/**
+ * Required channel ids for default sidebar completeness checks.
+ * Soft-retired WPS channels are intentionally excluded.
+ */
 export const REQUIRED_CHANNEL_IDS: RemoteChannelId[] = [
   "feishu",
   "lark",
   "dingtalk",
   "wecom",
   "weixin",
-  "wps-xiezuo",
   "weibo",
   "qq",
   "qqbot",
@@ -896,13 +912,57 @@ export const REQUIRED_CHANNEL_IDS: RemoteChannelId[] = [
   "discord",
   "matrix",
   "line",
-  "wps-agentspace",
 ];
 
 export function getChannelSchema(
   id: RemoteChannelId | string,
 ): ChannelSchema | undefined {
   return CHANNEL_SCHEMAS.find((c) => c.id === id);
+}
+
+/**
+ * Whether a channel is soft-retired / unsupported (hidden from default picker).
+ * Accepts id string or schema object.
+ */
+export function isRetiredChannel(
+  channel: RemoteChannelId | string | ChannelSchema | null | undefined,
+): boolean {
+  if (channel == null) return false;
+  if (typeof channel === "object") {
+    return !!(channel.retired || channel.unsupported);
+  }
+  if ((RETIRED_CHANNEL_IDS as readonly string[]).includes(channel)) {
+    return true;
+  }
+  const schema = getChannelSchema(channel);
+  return !!(schema?.retired || schema?.unsupported);
+}
+
+export type FilterActiveChannelsOpts = {
+  /**
+   * When true, keep retired schemas that still have a saved instance
+   * (so users can open the soft-retired banner + delete credentials).
+   */
+  includeRetiredWithInstances?: boolean;
+  /** Instance list used when includeRetiredWithInstances is set */
+  instances?: Array<{ channel: string }>;
+};
+
+/**
+ * Default sidebar / new-bind picker: active (non-retired) channels only.
+ * Optionally re-includes retired channels that still have saved instances.
+ */
+export function filterActiveChannels(
+  channels: readonly ChannelSchema[] = CHANNEL_SCHEMAS,
+  opts?: FilterActiveChannelsOpts,
+): ChannelSchema[] {
+  const includeLegacy = !!opts?.includeRetiredWithInstances;
+  const instances = opts?.instances ?? [];
+  return channels.filter((schema) => {
+    if (!isRetiredChannel(schema)) return true;
+    if (!includeLegacy) return false;
+    return instances.some((i) => i.channel === schema.id);
+  });
 }
 
 export function channelsByGroup(
@@ -992,6 +1052,9 @@ export function validateBindFields(
     savedValues?: Record<string, unknown>;
   },
 ): { ok: boolean; missing: string[] } {
+  if (isRetiredChannel(schema)) {
+    return { ok: false, missing: ["_retired"] };
+  }
   if (!schema.implemented) {
     return { ok: false, missing: ["_not_implemented"] };
   }

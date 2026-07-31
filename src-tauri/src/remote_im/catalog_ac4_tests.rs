@@ -73,14 +73,13 @@ mod tests {
 
     #[test]
     fn catalog_matches_required_sidebar_ids() {
-        // Align with frontend REQUIRED_CHANNEL_IDS core set
+        // Align with frontend REQUIRED_CHANNEL_IDS (active picker; WPS retired)
         let required = [
             "feishu",
             "lark",
             "dingtalk",
             "wecom",
             "weixin",
-            "wps-xiezuo",
             "weibo",
             "qq",
             "qqbot",
@@ -89,7 +88,6 @@ mod tests {
             "discord",
             "matrix",
             "line",
-            "wps-agentspace",
         ];
         for id in required {
             assert!(
@@ -98,5 +96,8 @@ mod tests {
             );
             let _ = channels::protocol_for(id);
         }
+        // Soft-retired WPS ids remain in Host catalog for legacy instance dispatch
+        assert!(CATALOG_CHANNELS.contains(&"wps-xiezuo"));
+        assert!(CATALOG_CHANNELS.contains(&"wps-agentspace"));
     }
 }

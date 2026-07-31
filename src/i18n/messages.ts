@@ -5369,6 +5369,15 @@ const en = {
   "settings.remoteIm.comingSoon": "Coming soon",
   "settings.remoteIm.comingSoonBody": "This channel is listed for planning. Binding is not enabled yet.",
   "settings.remoteIm.comingSoonHint": "Credential submit is disabled until the channel ships.",
+  "settings.remoteIm.retired": "Retired",
+  "settings.remoteIm.retiredTitle": "This channel is no longer supported",
+  "settings.remoteIm.retiredBody":
+    "WPS Collaboration and WPS Agentspace have been retired. New binds and setup guides are not available.",
+  "settings.remoteIm.retiredHint":
+    "Existing saved credentials stay on disk until you delete them. The Bridge will not treat this channel as an active picker option.",
+  "settings.remoteIm.retired.hasCredentials": "credentials saved",
+  "settings.remoteIm.retiredNoInstance":
+    "No saved instance for this retired channel. It is hidden from the default channel list.",
   "settings.remoteIm.unknownChannel": "Unknown channel",
   "settings.remoteIm.bind": "Credentials",
   "settings.remoteIm.bind.scan": "Scan to create",
@@ -10952,6 +10961,15 @@ const zh: Record<MessageKey, string> = {
   "settings.remoteIm.comingSoon": "即将支持",
   "settings.remoteIm.comingSoonBody": "该渠道已列入规划，绑定尚未开放。",
   "settings.remoteIm.comingSoonHint": "在渠道正式上线前无法提交凭证。",
+  "settings.remoteIm.retired": "已下线",
+  "settings.remoteIm.retiredTitle": "该渠道已不再支持",
+  "settings.remoteIm.retiredBody":
+    "WPS 协作与 WPS 数字员工已下线。不可新建绑定，也不再提供配置引导。",
+  "settings.remoteIm.retiredHint":
+    "已保存的凭证会保留在本地，直到你主动删除。默认侧栏与新建绑定列表不再展示该渠道。",
+  "settings.remoteIm.retired.hasCredentials": "已保存凭证",
+  "settings.remoteIm.retiredNoInstance":
+    "此已下线渠道没有本地实例。默认渠道列表中已隐藏。",
   "settings.remoteIm.unknownChannel": "未知渠道",
   "settings.remoteIm.bind": "绑定凭证",
   "settings.remoteIm.bind.scan": "扫码创建",
