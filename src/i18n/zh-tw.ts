@@ -985,6 +985,56 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.netProbeFailed": "無法連上",
   "settings.tab.pool": "程序池",
   "settings.tab.tools": "診斷",
+  "settings.tab.privacy": "隱私",
+  "settings.privacy": "隱私中心",
+  "settings.privacyDesc":
+    "如實展示目前 GROK_HOME config.toml 中與隱私相關的 Grok Build 鍵（0.2.117+）。缺失鍵保持「未設定」——本應用不會虛構為「關閉」。僅在獨立 agent-home 模式下可寫。",
+  "settings.privacy.path": "設定：{path}",
+  "settings.privacy.loading": "正在載入隱私設定…",
+  "settings.privacy.error": "無法載入或更新隱私設定",
+  "settings.privacy.saved": "隱私設定已儲存（agent 已 soft-respawn）",
+  "settings.privacy.sharedWarning":
+    "共用模式顯示 ~/.grok/config.toml（唯讀探測）。切換到獨立工作階段資料模式後，才能將白名單隱私鍵寫入 App agent-home。",
+  "settings.privacy.mode.independent": "獨立（agent-home）",
+  "settings.privacy.mode.shared": "共用（~/.grok）",
+  "settings.privacy.missing": "檔案尚不存在",
+  "settings.privacy.writable": "可編輯",
+  "settings.privacy.readOnly": "唯讀",
+  "settings.privacy.presence.unset": "未設定",
+  "settings.privacy.presence.on": "開",
+  "settings.privacy.presence.off": "關",
+  "settings.privacy.telemetry": "產品遙測",
+  "settings.privacy.telemetryDesc":
+    "[features] telemetry — 產品分析總開關（GROK_TELEMETRY_ENABLED）。與編碼資料分享無關。",
+  "settings.privacy.traceUpload": "工作階段 trace 上傳",
+  "settings.privacy.traceUploadDesc":
+    "[telemetry] trace_upload — 上傳工作階段 trace（GROK_TELEMETRY_TRACE_UPLOAD）。未設定時 CLI 跟隨 telemetry 開關。",
+  "settings.privacy.mixpanel": "Mixpanel 分析",
+  "settings.privacy.mixpanelDesc":
+    "[telemetry] mixpanel_enabled — Mixpanel 產品分析（GROK_TELEMETRY_MIXPANEL_ENABLED）。",
+  "settings.privacy.disableCodebaseUpload": "停用程式碼庫上傳",
+  "settings.privacy.disableCodebaseUploadDesc":
+    "[harness] disable_codebase_upload — 開啟後拒絕 agent harness 上傳程式碼庫/索引。",
+  "settings.privacy.disableWorkspaceTeleport": "停用工作區 teleport",
+  "settings.privacy.disableWorkspaceTeleportDesc":
+    "[harness] disable_workspace_teleport — 相關 harness 標誌，阻止工作區 teleport 上傳路徑。",
+  "settings.privacy.codingData": "編碼資料、保留與訓練",
+  "settings.privacy.codingDataDesc":
+    "不是 config.toml 鍵。請在 Grok Build CLI 中透過 /privacy 開啟的設定列選擇加入或退出。團隊帳戶可能顯示 ZDR 或 Admin Managed。本應用不會改寫該選擇。",
+  "settings.privacy.codingDataHint":
+    "在 Grok Build TUI 工作階段中執行 {cmd}。不會改動 telemetry 或 trace_upload。",
+  "settings.privacy.codingDataCopy": "複製 {cmd}",
+  "settings.privacy.codingDataCopied": "已複製",
+  "settings.privacy.preview": "隱私相關分區（已去敏）",
+  "settings.privacy.previewEmpty":
+    "此設定中尚未找到 [features] / [telemetry] / [harness] 隱私鍵。",
+  "settings.privacy.redactNote":
+    "這些分區中的金鑰會去敏。儲存時僅寫入白名單鍵。",
+  "settings.privacy.refresh": "重新整理",
+  "settings.privacy.reset": "重設",
+  "settings.privacy.save": "儲存隱私鍵",
+  "settings.privacy.saving": "儲存中…",
+  "settings.privacy.needTauri": "隱私中心需要桌面應用程式。",
   "settings.tab.remoteIm": "IM 通訊",
   "settings.tab.phoneMirror": "手機鏡像",
   "settings.searchResults": "相符的設定",

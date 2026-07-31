@@ -203,6 +203,7 @@ import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
 import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
 import { AgentConfigEditPanel } from "@/components/AgentConfigEditPanel";
+import { PrivacyCenterPanel } from "@/components/PrivacyCenterPanel";
 import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { GlassModal } from "@/components/GlassModal";
@@ -6173,6 +6174,22 @@ export function SettingsPage({
                   />
                 </div>
               </>
+            )}
+            {activeTab === "privacy" && (
+              <div
+                className={
+                  "settings-card" + rowHighlight("settings-anchor-privacy")
+                }
+                id="settings-anchor-privacy-card"
+              >
+                <PrivacyCenterPanel
+                  locale={resolveLocale(locale)}
+                  onError={(msg) => showSettingsToast(msg, 4000)}
+                  onSaved={() =>
+                    showSettingsToast(t("settings.privacy.saved"), 2200)
+                  }
+                />
+              </div>
             )}
           </>
         )}

@@ -8751,6 +8751,45 @@ pub async fn agent_config_edit_set(
     Ok(result)
 }
 
+/// Read allowlisted privacy keys from active GROK_HOME config.toml (redacted).
+/// Soft-fails missing keys as null; never invents defaults.
+#[tauri::command]
+pub async fn privacy_config_get(
+) -> Result<crate::agent_privacy::PrivacyConfigSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(crate::agent_privacy::load_privacy_config)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write allowlisted privacy keys into agent-home config.toml only (independent mode).
+/// Soft-respawns so the next turn reloads the agent profile.
+#[tauri::command]
+pub async fn privacy_config_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    telemetry: Option<bool>,
+    trace_upload: Option<bool>,
+    mixpanel_enabled: Option<bool>,
+    disable_codebase_upload: Option<bool>,
+    disable_workspace_teleport: Option<bool>,
+) -> Result<crate::agent_privacy::PrivacyConfigSnapshot, String> {
+    let patch = crate::agent_privacy::PrivacyConfigPatch {
+        telemetry,
+        trace_upload,
+        mixpanel_enabled,
+        disable_codebase_upload,
+        disable_workspace_teleport,
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_privacy::save_privacy_config(&patch)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.soft_respawn_with_reason(&app, "privacy_config").await;
+    Ok(result)
+}
+
 // marketplace
 // ── Plugin marketplace (`grok plugin marketplace …` + available list) ───────
 //
