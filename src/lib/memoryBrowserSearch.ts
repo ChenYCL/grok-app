@@ -3,7 +3,16 @@
  *
  * Host `memory_search` scans file bodies under GROK_HOME/memory (capped);
  * the UI merges list rows with search hits and shows redacted snippets.
+ *
+ * App browser search is always keyword — never invents embeddings.
+ * CLI hybrid needs embedding.model (see memoryEmbedConfig).
  */
+
+import {
+  hasActiveMemoryBrowserFilters,
+  normalizeMemoryBrowserKind,
+  type MemoryBrowserKindFilter,
+} from "./memoryBrowserFilter";
 
 export const MEMORY_SEARCH_DEFAULT_LIMIT = 50;
 export const MEMORY_SEARCH_MAX_LIMIT = 50;
@@ -165,4 +174,230 @@ export function mergeMemoryBrowserRows(
 /** Human-friendly truncated flag line for the toolbar. */
 export function memorySearchTruncatedHint(truncated: boolean, hitCount: number): boolean {
   return truncated && hitCount > 0;
+}
+
+/**
+ * Apply kind chip to merged (or list) rows.
+ * `"all"` leaves the list unchanged. Unknown host kinds bucket as `"other"`.
+ */
+export function applyMemoryBrowserKindFilter<T extends { kind: string }>(
+  rows: T[],
+  kind: MemoryBrowserKindFilter = "all",
+): T[] {
+  if (kind === "all") return rows;
+  return rows.filter((r) => normalizeMemoryBrowserKind(r.kind) === kind);
+}
+
+/**
+ * Merge list + host content hits, then apply kind chip.
+ * Kind filter was previously applied only to the client name filter —
+ * content-search integration must re-apply it to display rows.
+ */
+export function buildMemoryBrowserDisplayRows(
+  entries: MemoryListEntryLike[],
+  hits: MemorySearchHitLike[] | undefined | null,
+  query: string,
+  kind: MemoryBrowserKindFilter = "all",
+): MemoryBrowserRow[] {
+  return applyMemoryBrowserKindFilter(
+    mergeMemoryBrowserRows(entries, hits, query),
+    kind,
+  );
+}
+
+/** Compact match badge for a display row under an active query. */
+export type MemoryBrowserMatchBadge = "content" | "name";
+
+/**
+ * Badge when free-text is active:
+ * - content → host body match
+ * - name → name/path/preview match without content hit
+ * - null → no query / no match flags
+ */
+export function memoryBrowserMatchBadge(
+  row: Pick<MemoryBrowserRow, "contentMatch">,
+  query: string,
+): MemoryBrowserMatchBadge | null {
+  if (!shouldRunMemoryContentSearch(query)) return null;
+  if (row.contentMatch) return "content";
+  return "name";
+}
+
+export function countMemoryBrowserContentHits(
+  rows: Array<{ contentMatch?: boolean }>,
+): number {
+  let n = 0;
+  for (const r of rows) {
+    if (r.contentMatch) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Toolbar match summary under an active query (or kind filter).
+ * Returns null when nothing useful to show (empty query + all kinds, or empty list).
+ */
+export function memoryBrowserMatchSummary(
+  rows: MemoryBrowserRow[],
+  query: string,
+  kind: MemoryBrowserKindFilter = "all",
+): { total: number; contentHits: number; queryActive: boolean; kindActive: boolean } | null {
+  const queryActive = shouldRunMemoryContentSearch(query);
+  const kindActive = kind !== "all";
+  if (!queryActive && !kindActive) return null;
+  if (rows.length === 0) return null;
+  return {
+    total: rows.length,
+    contentHits: countMemoryBrowserContentHits(rows),
+    queryActive,
+    kindActive,
+  };
+}
+
+/**
+ * Empty-state kinds for Settings → Memory browser.
+ * `null` from the resolver means there are rows — no empty UI.
+ */
+export type MemoryBrowserEmptyKind =
+  | "off"
+  | "loading"
+  | "searching"
+  | "empty_catalog"
+  | "no_matches"
+  | "filtered";
+
+export type MemoryBrowserEmptyTitleKey =
+  | "settings.memoryBrowser.off"
+  | "settings.memoryBrowser.loading"
+  | "settings.memoryBrowser.searching"
+  | "settings.memoryBrowser.empty"
+  | "settings.memoryBrowser.searchEmpty"
+  | "settings.memoryBrowser.filterEmpty";
+
+export type MemoryBrowserEmptyHintKey =
+  | "settings.memoryBrowser.emptyHint"
+  | "settings.memoryBrowser.searchingHint"
+  | "settings.memoryBrowser.searchEmptyHint"
+  | "settings.memoryBrowser.searchEmptyHintKeyword"
+  | "settings.memoryBrowser.filterEmptyHint"
+  | "settings.memoryBrowser.filterEmptyHintKind";
+
+export type MemoryBrowserEmptyPresentation = {
+  kind: MemoryBrowserEmptyKind;
+  titleKey: MemoryBrowserEmptyTitleKey;
+  hintKey?: MemoryBrowserEmptyHintKey;
+  /** Offer "Clear filters" when query and/or kind chip is non-default. */
+  showClearFilters: boolean;
+  /**
+   * Soft-link to Memory embedding settings when empty search + embed unset.
+   * Honesty only — never claims App search uses vectors.
+   */
+  showEmbedLink: boolean;
+};
+
+export type MemoryBrowserEmptyInput = {
+  experimentalMemory: boolean;
+  loading: boolean;
+  searching: boolean;
+  /** Host list size (before filters). */
+  entryCount: number;
+  /** Display row count after merge + kind filter. */
+  rowCount: number;
+  query: string;
+  kind: MemoryBrowserKindFilter;
+  /**
+   * Whether embedding.model is set (CLI hybrid possible).
+   * null = unknown / not probed — treat as neutral keyword hint.
+   */
+  embedConfigured?: boolean | null;
+};
+
+/**
+ * Resolve empty-state presentation for the memory browser list.
+ * Returns `null` when there are display rows (no empty UI).
+ *
+ * Honest keyword-only App search — hints never claim cloud embeddings.
+ */
+export function resolveMemoryBrowserEmptyState(
+  input: MemoryBrowserEmptyInput,
+): MemoryBrowserEmptyPresentation | null {
+  if (!input.experimentalMemory) {
+    return {
+      kind: "off",
+      titleKey: "settings.memoryBrowser.off",
+      showClearFilters: false,
+      showEmbedLink: false,
+    };
+  }
+
+  if (input.loading && input.entryCount === 0) {
+    return {
+      kind: "loading",
+      titleKey: "settings.memoryBrowser.loading",
+      showClearFilters: false,
+      showEmbedLink: false,
+    };
+  }
+
+  if (input.entryCount === 0) {
+    return {
+      kind: "empty_catalog",
+      titleKey: "settings.memoryBrowser.empty",
+      hintKey: "settings.memoryBrowser.emptyHint",
+      showClearFilters: false,
+      showEmbedLink: false,
+    };
+  }
+
+  if (input.rowCount > 0) return null;
+
+  const q = (input.query ?? "").trim();
+  const kind = input.kind ?? "all";
+  const filtersActive = hasActiveMemoryBrowserFilters({ query: q, kind });
+
+  // Content search in flight with no interim name matches yet.
+  if (q && input.searching && shouldRunMemoryContentSearch(q)) {
+    return {
+      kind: "searching",
+      titleKey: "settings.memoryBrowser.searching",
+      hintKey: "settings.memoryBrowser.searchingHint",
+      showClearFilters: false,
+      showEmbedLink: false,
+    };
+  }
+
+  // Kind chip (alone or with query) → filtered empty.
+  if (kind !== "all") {
+    return {
+      kind: "filtered",
+      titleKey: "settings.memoryBrowser.filterEmpty",
+      hintKey: q
+        ? "settings.memoryBrowser.filterEmptyHint"
+        : "settings.memoryBrowser.filterEmptyHintKind",
+      showClearFilters: true,
+      showEmbedLink: false,
+    };
+  }
+
+  if (q) {
+    // Keyword-only honesty; soft-link embed settings when model unset.
+    const embedUnset = input.embedConfigured === false;
+    return {
+      kind: "no_matches",
+      titleKey: "settings.memoryBrowser.searchEmpty",
+      hintKey: embedUnset
+        ? "settings.memoryBrowser.searchEmptyHintKeyword"
+        : "settings.memoryBrowser.searchEmptyHint",
+      showClearFilters: filtersActive,
+      showEmbedLink: embedUnset,
+    };
+  }
+
+  // Defensive: entries exist, no query, kind all, zero rows (should not happen).
+  return {
+    kind: "empty_catalog",
+    titleKey: "settings.memoryBrowser.empty",
+    showClearFilters: false,
+    showEmbedLink: false,
+  };
 }

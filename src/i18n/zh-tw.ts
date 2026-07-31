@@ -1342,17 +1342,31 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.memoryBrowser.off": "記憶已關閉。請先開啟上方的「跨工作階段記憶」後再瀏覽檔案。",
   "settings.memoryBrowser.loading": "正在載入記憶檔案…",
   "settings.memoryBrowser.empty": "目前專案找不到記憶檔案。",
+  "settings.memoryBrowser.emptyHint":
+    "代理寫入 MEMORY.md、工作階段摘要或索引到 {GROK_HOME}/memory 後會出現在此列表。",
   "settings.memoryBrowser.filterEmpty": "沒有符合篩選條件的記憶檔案",
   "settings.memoryBrowser.filterEmptyHint": "清空搜尋或換一個類型以查看更多檔案。",
+  "settings.memoryBrowser.filterEmptyHintKind":
+    "此類型下沒有檔案。請選擇「全部」或其他類型。",
   "settings.memoryBrowser.clearFilters": "清除篩選",
   "settings.memoryBrowser.error": "無法載入記憶檔案",
   "settings.memoryBrowser.kindFilterLabel": "依記憶類型篩選",
   "settings.memoryBrowser.searchPlaceholder": "依名稱或檔案正文搜尋…",
   "settings.memoryBrowser.searching": "正在搜尋記憶正文…",
+  "settings.memoryBrowser.searchingHint":
+    "正在記憶目錄中掃描檔案正文（僅關鍵字 — 無 embedding）。",
   "settings.memoryBrowser.searchEmpty": "沒有符合此搜尋的記憶檔案。",
+  "settings.memoryBrowser.searchEmptyHint":
+    "應用內搜尋僅依名稱、路徑與檔案正文做關鍵字比對 — 不是語意 embedding。",
+  "settings.memoryBrowser.searchEmptyHintKeyword":
+    "沒有關鍵字相符。應用內瀏覽器不會偽造 embedding；僅在需要 CLI 混合 memory_search 時再設定 embedding 模型。",
   "settings.memoryBrowser.searchTruncated":
     "僅顯示前若干筆相符結果（搜尋上限）。請縮小關鍵字以更精確。",
   "settings.memoryBrowser.contentHit": "正文",
+  "settings.memoryBrowser.nameHit": "名稱",
+  "settings.memoryBrowser.matchSummary": "{count} 個檔案",
+  "settings.memoryBrowser.matchSummaryContent":
+    "{count} 個檔案 · {content} 條正文命中",
   "settings.memoryBrowser.open": "開啟",
   "settings.memoryBrowser.reveal": "顯示",
   "settings.memoryBrowser.refresh": "重新整理",

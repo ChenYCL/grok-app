@@ -20135,6 +20135,25 @@ div.composer__input:empty::before {
   gap: 10px;
 }
 
+.settings-memory-browser__embed-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+  width: 100%;
+}
+
+.settings-memory-browser__embed-hint {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+
+.settings-memory-browser__match-summary {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .settings-memory-browser__chips {
   display: flex;
   flex-wrap: wrap;
