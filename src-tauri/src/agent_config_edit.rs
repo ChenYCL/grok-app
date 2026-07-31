@@ -202,27 +202,10 @@ pub fn require_agent_home_config_path(path: &Path) -> Result<PathBuf, String> {
     Ok(expected)
 }
 
-/// Parse a TOML bool literal (`true` / `false`).
-pub fn parse_toml_bool(raw: &str) -> Option<bool> {
-    match raw.trim().trim_matches('"').trim_matches('\'').to_ascii_lowercase().as_str()
-    {
-        "true" => Some(true),
-        "false" => Some(false),
-        _ => None,
-    }
-}
-
-/// Parse a TOML string / bare value (strip surrounding quotes).
-pub fn parse_toml_scalar(raw: &str) -> String {
-    let s = raw.trim();
-    if (s.starts_with('"') && s.ends_with('"') && s.len() >= 2)
-        || (s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2)
-    {
-        return s[1..s.len() - 1].to_string();
-    }
-    // Drop inline comment after unquoted value.
-    s.split('#').next().unwrap_or(s).trim().to_string()
-}
+// Pure TOML helpers — shared write layer.
+pub use crate::agent_home_config::{
+    parse_toml_bool, parse_toml_scalar, set_table_key, set_top_level_assignment,
+};
 
 /// Extract allowlisted keys from full config text.
 ///
@@ -335,101 +318,6 @@ fn bool_lit(v: bool) -> &'static str {
     } else {
         "false"
     }
-}
-
-/// Upsert a bare top-level `key = value` assignment (not inside a `[table]`).
-pub fn set_top_level_assignment(text: &str, key: &str, value: &str) -> String {
-    let line_val = format!("{key} = {value}");
-    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
-    let mut in_table = false;
-    let mut first_table_idx: Option<usize> = None;
-
-    for i in 0..lines.len() {
-        let trimmed = lines[i].trim().to_string();
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            if first_table_idx.is_none() {
-                first_table_idx = Some(i);
-            }
-            in_table = true;
-            continue;
-        }
-        if in_table {
-            continue;
-        }
-        let key_part = trimmed.split('=').next().map(str::trim).unwrap_or("");
-        if key_part == key {
-            lines[i] = line_val;
-            return finish_join(text, &lines);
-        }
-    }
-
-    if let Some(idx) = first_table_idx {
-        lines.insert(idx, line_val);
-        return finish_join(text, &lines);
-    }
-
-    let base = text.trim_end();
-    if base.is_empty() {
-        format!("{line_val}\n")
-    } else {
-        format!("{base}\n{line_val}\n")
-    }
-}
-
-/// Upsert `key = value` under `[table]` without touching other sections/keys.
-pub fn set_table_key(text: &str, table: &str, key: &str, value: &str, quoted: bool) -> String {
-    let header = format!("[{table}]");
-    let line_val = if quoted {
-        format!("{key} = \"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
-    } else {
-        format!("{key} = {value}")
-    };
-    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
-    let mut in_table = false;
-    let mut table_start: Option<usize> = None;
-    for i in 0..lines.len() {
-        let trimmed = lines[i].trim().to_string();
-        if trimmed.starts_with('[') {
-            if trimmed == header {
-                in_table = true;
-                table_start = Some(i);
-            } else if in_table {
-                lines.insert(i, line_val);
-                return finish_join(text, &lines);
-            } else {
-                in_table = false;
-            }
-            continue;
-        }
-        if in_table {
-            let key_part = trimmed.split('=').next().map(str::trim).unwrap_or("");
-            if key_part == key {
-                lines[i] = line_val;
-                return finish_join(text, &lines);
-            }
-        }
-    }
-    if let Some(start) = table_start {
-        lines.insert(start + 1, line_val);
-        return finish_join(text, &lines);
-    }
-    let block = format!("\n{header}\n{line_val}\n");
-    let base = text.trim_end();
-    if base.is_empty() {
-        format!("{header}\n{line_val}\n")
-    } else {
-        format!("{base}{block}")
-    }
-}
-
-fn finish_join(original: &str, lines: &[String]) -> String {
-    let mut joined = lines.join("\n");
-    if original.ends_with('\n') || original.is_empty() {
-        if !joined.ends_with('\n') {
-            joined.push('\n');
-        }
-    }
-    joined
 }
 
 /// Apply an allowlisted patch onto TOML text (pure).

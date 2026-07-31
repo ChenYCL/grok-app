@@ -4,6 +4,7 @@ mod account;
 mod account_profiles;
 mod acp_client;
 mod agent_config_view;
+mod agent_home_config;
 mod agent_config_edit;
 mod agent_privacy;
 mod agent_codebase_indexing;
