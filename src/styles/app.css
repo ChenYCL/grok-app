@@ -23013,3 +23013,117 @@ html[data-theme="light"] .rim-sidebar {
 .cost-rollup__unknown {
   color: var(--warning, #c9a227);
 }
+
+/* Streaming-messages-json diagnostics (Settings → Runtime → Tools) */
+.smj-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 2px 4px;
+}
+.smj-panel__lead {
+  margin: 0;
+}
+.smj-panel__flag {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+.smj-panel__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.smj-panel__toolbar--secondary {
+  margin-top: 2px;
+}
+.smj-panel__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.9;
+  cursor: pointer;
+  user-select: none;
+}
+.smj-panel__error {
+  color: var(--danger, #e35d6a);
+  font-size: 13px;
+}
+.smj-panel__source {
+  word-break: break-all;
+}
+.smj-panel__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.smj-panel__empty {
+  font-size: 13px;
+  opacity: 0.75;
+  padding: 6px 0;
+}
+.smj-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+.smj-panel__item {
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.25));
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.smj-panel__item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+.smj-panel__role {
+  font-weight: 600;
+  text-transform: lowercase;
+}
+.smj-panel__item-sum {
+  font-size: 12px;
+  opacity: 0.85;
+  word-break: break-word;
+}
+.smj-panel__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.smj-panel__code {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-muted, rgba(127, 127, 127, 0.12));
+}
+.smj-panel__body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 140px;
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.smj-panel__body--muted {
+  opacity: 0.75;
+}
+.smj-panel__result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

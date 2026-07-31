@@ -3347,6 +3347,35 @@ export async function voiceInvokeTool(
 }
 
 
+/** Headless `--output-format streaming-messages-json` probe (CLI 0.2.117+). */
+export type StreamingMessagesJsonProbeResult = {
+  ok: boolean;
+  reason: string;
+  cliPath?: string | null;
+  cliVersion?: string | null;
+  versionSupported?: boolean | null;
+  minVersion: string;
+  outputPath?: string | null;
+  rawNdjson?: string | null;
+  lineCount: number;
+  durationMs: number;
+  includePartial: boolean;
+  truncated: boolean;
+};
+
+/**
+ * Spawn a short headless probe with `--output-format streaming-messages-json`.
+ * Soft-fails when CLI is missing or older than 0.2.117 (no crash).
+ */
+export async function streamingMessagesJsonProbe(opts?: {
+  includePartial?: boolean;
+}): Promise<StreamingMessagesJsonProbeResult> {
+  return invoke<StreamingMessagesJsonProbeResult>(
+    "streaming_messages_json_probe",
+    { includePartial: opts?.includePartial ?? false },
+  );
+}
+
 export type VoiceStatusDto = {
   available: boolean;
   reason?: string | null;

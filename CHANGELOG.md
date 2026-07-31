@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Runtime / connection
+- **Streaming messages JSON** (Settings → Runtime → Tools): parse/preview headless `grok --output-format streaming-messages-json` NDJSON (Anthropic Messages wire format; **CLI 0.2.117+**) — pure `streamingMessagesJson` helpers + tests; offline NDJSON import; optional short headless probe (soft-fail older CLI); reconstruct assistant/user frames, `tool_use` / `tool_result`, usage, `stop_reason`; redacted export/copy (no secrets in logs)
 - **SDK Connect wizard** (Settings → Runtime → Connection): start local `agent serve`, show masked secret + ws URL, TCP health probe, copy curl / websocat / `grok --remote` examples for external clients, and optional paste remote serve URL + probe. Secrets never logged; full token only via one-time clipboard after start.
 
 #### Composer & chat

@@ -42,6 +42,7 @@ import {
 } from "@/lib/cliSessionsFilter";
 import { ARCHIVE_AGE_DAY_OPTIONS } from "@/lib/sessionArchiveAge";
 import { CostRollupPanel } from "@/components/CostRollupPanel";
+import { StreamingMessagesJsonPanel } from "@/components/StreamingMessagesJsonPanel";
 import type {
   CostRollupProjectMeta,
   CostRollupSessionMeta,
@@ -5739,6 +5740,29 @@ export function SettingsPage({
                     sessions={costRollupSessions}
                     projects={costRollupProjects}
                     embedded
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-smj")
+                  }
+                  id="settings-anchor-smj"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("smj.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("smj.settingsDesc")}
+                      </div>
+                    </div>
+                  </div>
+                  <StreamingMessagesJsonPanel
+                    locale={resolveLocale(locale)}
+                    cliVersion={cliInfo.version}
+                    onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2000)}
                   />
                 </div>
                 <div
