@@ -535,6 +535,13 @@ import {
   sanitizeSystemPromptOverride,
 } from "@/lib/sessionSystemPrompt";
 import {
+  clampSessionTextInput,
+  presentSessionPromptSoftFail,
+  sessionPromptSaveOutcome,
+  shouldConfirmSessionTextDiscard,
+  validateSessionTextField,
+} from "@/lib/rulesPromptPro";
+import {
   collectUserPromptHistory,
   filterPromptHistory,
   shouldHandlePromptHistoryKey,
@@ -1189,6 +1196,12 @@ export default function App() {
     title: string;
   } | null>(null);
   const [sessionRulesDraft, setSessionRulesDraft] = useState("");
+  const [sessionRulesBaseline, setSessionRulesBaseline] = useState("");
+  const [sessionRulesBusy, setSessionRulesBusy] = useState(false);
+  const [sessionRulesError, setSessionRulesError] = useState<string | null>(
+    null,
+  );
+  const [sessionRulesDiscardOpen, setSessionRulesDiscardOpen] = useState(false);
   /** Per-session max agent turns editor (`--max-turns`). */
   const [sessionMaxTurnsTarget, setSessionMaxTurnsTarget] = useState<{
     id: string;
@@ -1202,6 +1215,13 @@ export default function App() {
     title: string;
   } | null>(null);
   const [sessionSysPromptDraft, setSessionSysPromptDraft] = useState("");
+  const [sessionSysPromptBaseline, setSessionSysPromptBaseline] = useState("");
+  const [sessionSysPromptBusy, setSessionSysPromptBusy] = useState(false);
+  const [sessionSysPromptError, setSessionSysPromptError] = useState<
+    string | null
+  >(null);
+  const [sessionSysPromptDiscardOpen, setSessionSysPromptDiscardOpen] =
+    useState(false);
   const [notifySound, setNotifySound] = useState(() =>
     loadNotifySoundPref(localStorage),
   );
@@ -6795,27 +6815,52 @@ export default function App() {
   /** Open GlassModal to edit per-session extra rules (`grok --rules`). */
   const openSessionRules = (s: SessionRow) => {
     setCtxMenu(null);
-    setSessionRulesDraft(
-      typeof s.extraRules === "string" ? s.extraRules : "",
-    );
+    const initial =
+      typeof s.extraRules === "string" ? s.extraRules : "";
+    setSessionRulesDraft(initial);
+    setSessionRulesBaseline(initial);
+    setSessionRulesError(null);
+    setSessionRulesBusy(false);
+    setSessionRulesDiscardOpen(false);
     setSessionRulesTarget({
       id: s.id,
       title: s.title || tr("session.untitled"),
     });
   };
 
-  const closeSessionRulesModal = () => {
+  const forceCloseSessionRulesModal = () => {
     setSessionRulesTarget(null);
     setSessionRulesDraft("");
+    setSessionRulesBaseline("");
+    setSessionRulesError(null);
+    setSessionRulesBusy(false);
+    setSessionRulesDiscardOpen(false);
+  };
+
+  const closeSessionRulesModal = () => {
+    if (sessionRulesBusy) return;
+    const v = validateSessionTextField({
+      field: "extra_rules",
+      draft: sessionRulesDraft,
+      baseline: sessionRulesBaseline,
+    });
+    if (shouldConfirmSessionTextDiscard(v)) {
+      setSessionRulesDiscardOpen(true);
+      return;
+    }
+    forceCloseSessionRulesModal();
   };
 
   const saveSessionRulesModal = async () => {
     const target = sessionRulesTarget;
-    if (!target) return;
+    if (!target || sessionRulesBusy) return;
     const next = sanitizeExtraRules(sessionRulesDraft);
+    setSessionRulesBusy(true);
+    setSessionRulesError(null);
     try {
       if (!api.isTauri()) {
-        setLocalError(tr("error.needTauri"));
+        setSessionRulesError(tr("session.promptError.needTauri"));
+        setSessionRulesBusy(false);
         return;
       }
       const saved = await api.sessionSetExtraRules(target.id, next || null);
@@ -6828,20 +6873,30 @@ export default function App() {
           row.id === target.id ? { ...row, extraRules: stored } : row,
         ),
       );
-      closeSessionRulesModal();
-      setToast(stored ? tr("session.rulesSaved") : tr("session.rulesCleared"));
+      const outcome = sessionPromptSaveOutcome("extra_rules", stored);
+      forceCloseSessionRulesModal();
+      setToast(tr(outcome.toastKey));
       window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
-      setLocalError(String(e));
+      const soft = presentSessionPromptSoftFail(e);
+      setSessionRulesError(
+        soft.detail.trim()
+          ? `${tr(soft.messageKey)}: ${soft.detail}`
+          : tr(soft.messageKey),
+      );
+      setSessionRulesBusy(false);
     }
   };
 
   const clearSessionRulesModal = async () => {
     const target = sessionRulesTarget;
-    if (!target) return;
+    if (!target || sessionRulesBusy) return;
+    setSessionRulesBusy(true);
+    setSessionRulesError(null);
     try {
       if (!api.isTauri()) {
-        setLocalError(tr("error.needTauri"));
+        setSessionRulesError(tr("session.promptError.needTauri"));
+        setSessionRulesBusy(false);
         return;
       }
       await api.sessionSetExtraRules(target.id, null);
@@ -6850,12 +6905,17 @@ export default function App() {
           row.id === target.id ? { ...row, extraRules: null } : row,
         ),
       );
-      setSessionRulesDraft("");
-      closeSessionRulesModal();
+      forceCloseSessionRulesModal();
       setToast(tr("session.rulesCleared"));
       window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
-      setLocalError(String(e));
+      const soft = presentSessionPromptSoftFail(e);
+      setSessionRulesError(
+        soft.detail.trim()
+          ? `${tr(soft.messageKey)}: ${soft.detail}`
+          : tr(soft.messageKey),
+      );
+      setSessionRulesBusy(false);
     }
   };
 
@@ -6931,27 +6991,54 @@ export default function App() {
   /** Open GlassModal to edit per-session system prompt override. */
   const openSessionSysPrompt = (s: SessionRow) => {
     setCtxMenu(null);
-    setSessionSysPromptDraft(
-      typeof s.systemPromptOverride === "string" ? s.systemPromptOverride : "",
-    );
+    const initial =
+      typeof s.systemPromptOverride === "string"
+        ? s.systemPromptOverride
+        : "";
+    setSessionSysPromptDraft(initial);
+    setSessionSysPromptBaseline(initial);
+    setSessionSysPromptError(null);
+    setSessionSysPromptBusy(false);
+    setSessionSysPromptDiscardOpen(false);
     setSessionSysPromptTarget({
       id: s.id,
       title: s.title || tr("session.untitled"),
     });
   };
 
-  const closeSessionSysPromptModal = () => {
+  const forceCloseSessionSysPromptModal = () => {
     setSessionSysPromptTarget(null);
     setSessionSysPromptDraft("");
+    setSessionSysPromptBaseline("");
+    setSessionSysPromptError(null);
+    setSessionSysPromptBusy(false);
+    setSessionSysPromptDiscardOpen(false);
+  };
+
+  const closeSessionSysPromptModal = () => {
+    if (sessionSysPromptBusy) return;
+    const v = validateSessionTextField({
+      field: "system_prompt",
+      draft: sessionSysPromptDraft,
+      baseline: sessionSysPromptBaseline,
+    });
+    if (shouldConfirmSessionTextDiscard(v)) {
+      setSessionSysPromptDiscardOpen(true);
+      return;
+    }
+    forceCloseSessionSysPromptModal();
   };
 
   const saveSessionSysPromptModal = async () => {
     const target = sessionSysPromptTarget;
-    if (!target) return;
+    if (!target || sessionSysPromptBusy) return;
     const next = sanitizeSystemPromptOverride(sessionSysPromptDraft);
+    setSessionSysPromptBusy(true);
+    setSessionSysPromptError(null);
     try {
       if (!api.isTauri()) {
-        setLocalError(tr("error.needTauri"));
+        setSessionSysPromptError(tr("session.promptError.needTauri"));
+        setSessionSysPromptBusy(false);
         return;
       }
       const saved = await api.sessionSetSystemPromptOverride(
@@ -6970,24 +7057,30 @@ export default function App() {
             : row,
         ),
       );
-      closeSessionSysPromptModal();
-      setToast(
-        stored
-          ? tr("session.sysPromptSaved")
-          : tr("session.sysPromptCleared"),
-      );
+      const outcome = sessionPromptSaveOutcome("system_prompt", stored);
+      forceCloseSessionSysPromptModal();
+      setToast(tr(outcome.toastKey));
       window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
-      setLocalError(String(e));
+      const soft = presentSessionPromptSoftFail(e);
+      setSessionSysPromptError(
+        soft.detail.trim()
+          ? `${tr(soft.messageKey)}: ${soft.detail}`
+          : tr(soft.messageKey),
+      );
+      setSessionSysPromptBusy(false);
     }
   };
 
   const clearSessionSysPromptModal = async () => {
     const target = sessionSysPromptTarget;
-    if (!target) return;
+    if (!target || sessionSysPromptBusy) return;
+    setSessionSysPromptBusy(true);
+    setSessionSysPromptError(null);
     try {
       if (!api.isTauri()) {
-        setLocalError(tr("error.needTauri"));
+        setSessionSysPromptError(tr("session.promptError.needTauri"));
+        setSessionSysPromptBusy(false);
         return;
       }
       await api.sessionSetSystemPromptOverride(target.id, null);
@@ -6998,12 +7091,17 @@ export default function App() {
             : row,
         ),
       );
-      setSessionSysPromptDraft("");
-      closeSessionSysPromptModal();
+      forceCloseSessionSysPromptModal();
       setToast(tr("session.sysPromptCleared"));
       window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
-      setLocalError(String(e));
+      const soft = presentSessionPromptSoftFail(e);
+      setSessionSysPromptError(
+        soft.detail.trim()
+          ? `${tr(soft.messageKey)}: ${soft.detail}`
+          : tr(soft.messageKey),
+      );
+      setSessionSysPromptBusy(false);
     }
   };
 
@@ -19502,6 +19600,8 @@ export default function App() {
         closeLabel={tr("common.close")}
         wrapBody
         className="session-rules-modal"
+        closeOnOverlay={!sessionRulesBusy}
+        showClose={!sessionRulesBusy}
         footer={
           <div className="session-rules-modal__actions">
             {sessionRulesTarget &&
@@ -19514,6 +19614,7 @@ export default function App() {
               <button
                 type="button"
                 className="btn btn--ghost"
+                disabled={sessionRulesBusy}
                 onClick={() => {
                   void clearSessionRulesModal();
                 }}
@@ -19524,6 +19625,7 @@ export default function App() {
             <button
               type="button"
               className="btn btn--ghost"
+              disabled={sessionRulesBusy}
               onClick={closeSessionRulesModal}
             >
               {tr("common.cancel")}
@@ -19531,11 +19633,12 @@ export default function App() {
             <button
               type="button"
               className="btn btn--primary"
+              disabled={sessionRulesBusy}
               onClick={() => {
                 void saveSessionRulesModal();
               }}
             >
-              {tr("common.save")}
+              {sessionRulesBusy ? tr("resources.saving") : tr("common.save")}
             </button>
           </div>
         }
@@ -19553,25 +19656,110 @@ export default function App() {
             {sessionRulesTarget.title}
           </p>
         ) : null}
-        <textarea
-          className="session-rules-modal__textarea"
-          value={sessionRulesDraft}
-          onChange={(e) =>
-            setSessionRulesDraft(
-              e.target.value.slice(0, SESSION_EXTRA_RULES_MAX_CHARS),
-            )
-          }
-          placeholder={tr("session.rulesPlaceholder")}
-          maxLength={SESSION_EXTRA_RULES_MAX_CHARS}
-          spellCheck={false}
-          aria-label={tr("session.rulesTitle")}
-        />
-        <p className="session-rules-modal__count" aria-live="polite">
-          {tr("session.rulesChars", {
-            n: String(sessionRulesDraft.length),
-            max: String(SESSION_EXTRA_RULES_MAX_CHARS),
-          })}
-        </p>
+        {(() => {
+          const v = validateSessionTextField({
+            field: "extra_rules",
+            draft: sessionRulesDraft,
+            baseline: sessionRulesBaseline,
+            hadStored: sessions.some(
+              (row) =>
+                sessionRulesTarget &&
+                row.id === sessionRulesTarget.id &&
+                !!sanitizeExtraRules(row.extraRules),
+            ),
+          });
+          return (
+            <>
+              {v.statusKey ? (
+                <p
+                  className={
+                    "session-prompt-status" +
+                    (v.severity === "warn"
+                      ? " session-prompt-status--warn"
+                      : v.severity === "info"
+                        ? " session-prompt-status--info"
+                        : "")
+                  }
+                  role="status"
+                >
+                  {tr(v.statusKey)}
+                </p>
+              ) : null}
+              {sessionRulesError ? (
+                <p className="session-prompt-error" role="alert">
+                  {sessionRulesError}
+                </p>
+              ) : null}
+              <textarea
+                className={
+                  "session-rules-modal__textarea" +
+                  (v.severity === "warn"
+                    ? " session-prompt-textarea--warn"
+                    : "")
+                }
+                value={sessionRulesDraft}
+                onChange={(e) => {
+                  const next = clampSessionTextInput(
+                    e.target.value,
+                    SESSION_EXTRA_RULES_MAX_CHARS,
+                  );
+                  setSessionRulesDraft(next.value);
+                  setSessionRulesError(null);
+                }}
+                placeholder={tr("session.rulesPlaceholder")}
+                maxLength={SESSION_EXTRA_RULES_MAX_CHARS}
+                spellCheck={false}
+                disabled={sessionRulesBusy}
+                aria-label={tr("session.rulesTitle")}
+              />
+              <p
+                className={
+                  "session-rules-modal__count" +
+                  (v.severity === "warn"
+                    ? " session-prompt-count--warn"
+                    : "")
+                }
+                aria-live="polite"
+              >
+                {tr("session.rulesChars", {
+                  n: String(v.budget.rawLen),
+                  max: String(v.budget.max),
+                })}
+              </p>
+            </>
+          );
+        })()}
+      </GlassModal>
+
+      <GlassModal
+        open={sessionRulesDiscardOpen}
+        onClose={() => setSessionRulesDiscardOpen(false)}
+        title={tr("resources.discardTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setSessionRulesDiscardOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={() => {
+                setSessionRulesDiscardOpen(false);
+                forceCloseSessionRulesModal();
+              }}
+            >
+              {tr("resources.discardConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-modal-copy">{tr("session.promptDiscardBody")}</p>
       </GlassModal>
 
       <GlassModal
@@ -19671,6 +19859,8 @@ export default function App() {
         closeLabel={tr("common.close")}
         wrapBody
         className="session-sys-prompt-modal"
+        closeOnOverlay={!sessionSysPromptBusy}
+        showClose={!sessionSysPromptBusy}
         footer={
           <div className="session-sys-prompt-modal__actions">
             {sessionSysPromptTarget &&
@@ -19683,6 +19873,7 @@ export default function App() {
               <button
                 type="button"
                 className="btn btn--ghost"
+                disabled={sessionSysPromptBusy}
                 onClick={() => {
                   void clearSessionSysPromptModal();
                 }}
@@ -19693,6 +19884,7 @@ export default function App() {
             <button
               type="button"
               className="btn btn--ghost"
+              disabled={sessionSysPromptBusy}
               onClick={closeSessionSysPromptModal}
             >
               {tr("common.cancel")}
@@ -19700,11 +19892,12 @@ export default function App() {
             <button
               type="button"
               className="btn btn--primary"
+              disabled={sessionSysPromptBusy}
               onClick={() => {
                 void saveSessionSysPromptModal();
               }}
             >
-              {tr("common.save")}
+              {sessionSysPromptBusy ? tr("resources.saving") : tr("common.save")}
             </button>
           </div>
         }
@@ -19722,25 +19915,110 @@ export default function App() {
             {sessionSysPromptTarget.title}
           </p>
         ) : null}
-        <textarea
-          className="session-sys-prompt-modal__textarea"
-          value={sessionSysPromptDraft}
-          onChange={(e) =>
-            setSessionSysPromptDraft(
-              e.target.value.slice(0, SESSION_SYSTEM_PROMPT_MAX_CHARS),
-            )
-          }
-          placeholder={tr("session.sysPromptPlaceholder")}
-          maxLength={SESSION_SYSTEM_PROMPT_MAX_CHARS}
-          spellCheck={false}
-          aria-label={tr("session.sysPromptTitle")}
-        />
-        <p className="session-sys-prompt-modal__count" aria-live="polite">
-          {tr("session.sysPromptChars", {
-            n: String(sessionSysPromptDraft.length),
-            max: String(SESSION_SYSTEM_PROMPT_MAX_CHARS),
-          })}
-        </p>
+        {(() => {
+          const v = validateSessionTextField({
+            field: "system_prompt",
+            draft: sessionSysPromptDraft,
+            baseline: sessionSysPromptBaseline,
+            hadStored: sessions.some(
+              (row) =>
+                sessionSysPromptTarget &&
+                row.id === sessionSysPromptTarget.id &&
+                !!sanitizeSystemPromptOverride(row.systemPromptOverride),
+            ),
+          });
+          return (
+            <>
+              {v.statusKey ? (
+                <p
+                  className={
+                    "session-prompt-status" +
+                    (v.severity === "warn"
+                      ? " session-prompt-status--warn"
+                      : v.severity === "info"
+                        ? " session-prompt-status--info"
+                        : "")
+                  }
+                  role="status"
+                >
+                  {tr(v.statusKey)}
+                </p>
+              ) : null}
+              {sessionSysPromptError ? (
+                <p className="session-prompt-error" role="alert">
+                  {sessionSysPromptError}
+                </p>
+              ) : null}
+              <textarea
+                className={
+                  "session-sys-prompt-modal__textarea" +
+                  (v.severity === "warn"
+                    ? " session-prompt-textarea--warn"
+                    : "")
+                }
+                value={sessionSysPromptDraft}
+                onChange={(e) => {
+                  const next = clampSessionTextInput(
+                    e.target.value,
+                    SESSION_SYSTEM_PROMPT_MAX_CHARS,
+                  );
+                  setSessionSysPromptDraft(next.value);
+                  setSessionSysPromptError(null);
+                }}
+                placeholder={tr("session.sysPromptPlaceholder")}
+                maxLength={SESSION_SYSTEM_PROMPT_MAX_CHARS}
+                spellCheck={false}
+                disabled={sessionSysPromptBusy}
+                aria-label={tr("session.sysPromptTitle")}
+              />
+              <p
+                className={
+                  "session-sys-prompt-modal__count" +
+                  (v.severity === "warn"
+                    ? " session-prompt-count--warn"
+                    : "")
+                }
+                aria-live="polite"
+              >
+                {tr("session.sysPromptChars", {
+                  n: String(v.budget.rawLen),
+                  max: String(v.budget.max),
+                })}
+              </p>
+            </>
+          );
+        })()}
+      </GlassModal>
+
+      <GlassModal
+        open={sessionSysPromptDiscardOpen}
+        onClose={() => setSessionSysPromptDiscardOpen(false)}
+        title={tr("resources.discardTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setSessionSysPromptDiscardOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={() => {
+                setSessionSysPromptDiscardOpen(false);
+                forceCloseSessionSysPromptModal();
+              }}
+            >
+              {tr("resources.discardConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-modal-copy">{tr("session.promptDiscardBody")}</p>
       </GlassModal>
 
       <GlassModal

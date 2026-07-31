@@ -10,20 +10,36 @@
 export const SESSION_EXTRA_RULES_MAX_CHARS = 32 * 1024;
 
 /**
- * Trim and clamp session extra rules text.
+ * Trim, strip NUL bytes, and clamp session extra rules text.
  * Empty / whitespace-only → `""` (caller treats as clear).
+ * NULs are stripped so the value cannot break argv / TOML / log lines
+ * (same policy as system-prompt override).
  */
 export function sanitizeExtraRules(
   raw: string | null | undefined,
   maxLen: number = SESSION_EXTRA_RULES_MAX_CHARS,
 ): string {
   if (typeof raw !== "string") return "";
-  const t = raw.trim();
+  // Strip NULs so the value cannot break argv / TOML / log lines.
+  const cleaned = raw.replace(/\0/g, "");
+  const t = cleaned.trim();
   if (!t) return "";
   const cap = maxLen > 0 ? maxLen : 0;
   if (cap <= 0) return "";
   if (t.length <= cap) return t;
   return t.slice(0, cap);
+}
+
+/**
+ * Safe log label — never emit the full rules body (may contain secrets / PII).
+ * Returns `null` when empty, otherwise `{ chars: N }`.
+ */
+export function extraRulesLogMeta(
+  raw: string | null | undefined,
+): { chars: number } | null {
+  const s = sanitizeExtraRules(raw);
+  if (!s) return null;
+  return { chars: s.length };
 }
 
 /**

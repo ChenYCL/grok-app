@@ -13,6 +13,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Sessions & project rules
+- **Rules / system prompt pro** (RULES-PROMPT-PRO): project rules editor kind chips + summary counts, empty-draft soft warn, classified soft-fail for list/open/save/ensure; per-session system prompt override + extra rules GlassModals gain char-budget validation (near/at cap, NUL strip), in-modal soft-fail, discard-dirty confirm (no `window.confirm`), busy save state; extra rules now strip NULs like system prompt; pure `rulesPromptPro` helpers + tests; en/zh/zh-TW
+
 #### Agent / memory
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 
