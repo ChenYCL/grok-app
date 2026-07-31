@@ -2198,6 +2198,27 @@ pub async fn network_probe() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "allOk": all_ok, "targets": results }))
 }
 
+/// Headless probe: `grok -p … --output-format streaming-json` (CLI ≥ 0.2.117).
+/// Soft-gated — older CLIs get a structured "too old" result, not a hard crash.
+/// Returns redacted stdout NDJSON for the Diagnostics ACP-NDJSON panel.
+#[tauri::command]
+pub async fn probe_streaming_acp_ndjson(
+    prompt: Option<String>,
+    manual_path: Option<String>,
+    cwd: Option<String>,
+) -> Result<crate::streaming_acp_ndjson::StreamingAcpNdjsonProbeResult, String> {
+    // Blocking child wait — offload from the async runtime.
+    tokio::task::spawn_blocking(move || {
+        crate::streaming_acp_ndjson::run_streaming_acp_ndjson_probe(
+            prompt.as_deref(),
+            manual_path.as_deref(),
+            cwd.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| format!("probe task failed: {e}"))
+}
+
 /// Heuristic: stderr shapes an old CLI emits when it rejects a flag the app
 /// depends on (clap's `unexpected argument` / `unrecognized option` family).
 /// Used to translate raw CLI noise into a "CLI too old" diagnosis (NEW-03).

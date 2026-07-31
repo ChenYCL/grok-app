@@ -23313,4 +23313,72 @@ html[data-theme="light"] .rim-sidebar {
   display: flex;
   flex-direction: column;
   gap: 4px;
+/* Streaming ACP NDJSON diagnostics (Settings → Runtime → Tools) */
+.stream-acp-ndjson {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0 0.15rem 0.35rem;
+}
+.stream-acp-ndjson__lead {
+  margin: 0;
+}
+.stream-acp-ndjson__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.stream-acp-ndjson__label {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+.stream-acp-ndjson__textarea {
+  width: 100%;
+  min-height: 8rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+.stream-acp-ndjson__meta {
+  margin: 0;
+}
+.stream-acp-ndjson__error {
+  margin: 0;
+  color: var(--danger, #e85d5d);
+}
+.stream-acp-ndjson__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.stream-acp-ndjson__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+.stream-acp-ndjson__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.stream-acp-ndjson__table th,
+.stream-acp-ndjson__table td {
+  text-align: left;
+  padding: 0.28rem 0.4rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border, #444) 55%, transparent);
+}
+.stream-acp-ndjson__table th {
+  font-weight: 600;
+  opacity: 0.8;
+}
+.stream-acp-ndjson__table code {
+  font-size: 0.78rem;
+}
+.stream-acp-ndjson__preview,
+.stream-acp-ndjson__empty,
+.stream-acp-ndjson__footnote {
+  margin: 0;
 }
