@@ -21,6 +21,8 @@ import {
   auditLedgerEventKey,
   filterAuditLedger,
   parseAuditLedgerList,
+  serializeAuditLedgerJsonl,
+  toAuditLedgerExportFilter,
   type AuditLedgerEntry,
   type AuditLedgerEvent,
 } from "@/lib/auditLedger";
@@ -232,6 +234,28 @@ function auditDotClass(event: AuditLedgerEvent): string {
   return "";
 }
 
+async function copyAuditText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function downloadAuditText(filename: string, body: string) {
+  const blob = new Blob([body], { type: "application/x-ndjson;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function AuditRow({
   entry,
   t,
@@ -289,9 +313,9 @@ export function ReliabilityCenterModal({
   onSelectSession,
 }: ReliabilityCenterModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
-  const [busy, setBusy] = useState<"zip" | "audit-export" | "audit-clear" | null>(
-    null,
-  );
+  const [busy, setBusy] = useState<
+    "zip" | "audit-export" | "audit-clear" | "audit-copy" | null
+  >(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -305,6 +329,9 @@ export function ReliabilityCenterModal({
   const [auditEntries, setAuditEntries] = useState<AuditLedgerEntry[]>([]);
   const [auditQuery, setAuditQuery] = useState("");
   const [auditEvent, setAuditEvent] = useState<AuditEventFilter>("all");
+  const [auditSession, setAuditSession] = useState("");
+  const [auditFrom, setAuditFrom] = useState("");
+  const [auditTo, setAuditTo] = useState("");
   const [confirmClearAudit, setConfirmClearAudit] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
 
@@ -332,6 +359,9 @@ export function ReliabilityCenterModal({
     setStallHistory(loadStallHistory());
     setAuditQuery("");
     setAuditEvent("all");
+    setAuditSession("");
+    setAuditFrom("");
+    setAuditTo("");
     setConfirmClearAudit(false);
     void loadAudit();
   }, [open, loadAudit]);
@@ -384,8 +414,11 @@ export function ReliabilityCenterModal({
       filterAuditLedger(auditEntries, {
         query: auditQuery,
         event: auditEvent,
+        sessionId: auditSession,
+        fromTs: auditFrom || null,
+        toTs: auditTo || null,
       }),
-    [auditEntries, auditQuery, auditEvent],
+    [auditEntries, auditQuery, auditEvent, auditSession, auditFrom, auditTo],
   );
 
   const onSupportZip = useCallback(async () => {
@@ -427,12 +460,23 @@ export function ReliabilityCenterModal({
     }
   }, [t]);
 
+  const auditExportFilter = useMemo(
+    () =>
+      toAuditLedgerExportFilter({
+        event: auditEvent,
+        sessionId: auditSession,
+        fromTs: auditFrom || null,
+        toTs: auditTo || null,
+      }),
+    [auditEvent, auditSession, auditFrom, auditTo],
+  );
+
   const onExportAudit = useCallback(async () => {
     setBusy("audit-export");
     setStatusMsg(null);
     setErrorMsg(null);
     try {
-      const res = await api.auditLedgerExport();
+      const res = await api.auditLedgerExport(auditExportFilter);
       setStatusMsg(
         t("reliability.audit.exportDone", {
           path: res.path ?? "",
@@ -443,7 +487,42 @@ export function ReliabilityCenterModal({
     } finally {
       setBusy(null);
     }
-  }, [t]);
+  }, [t, auditExportFilter]);
+
+  const onCopyAudit = useCallback(async () => {
+    setBusy("audit-copy");
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      const body = serializeAuditLedgerJsonl(filteredAudit);
+      if (!body.trim()) {
+        setErrorMsg(t("reliability.audit.exportEmpty"));
+        return;
+      }
+      const ok = await copyAuditText(body);
+      setStatusMsg(
+        ok ? t("reliability.audit.copyDone") : t("reliability.audit.copyFail"),
+      );
+      if (!ok) setErrorMsg(t("reliability.audit.copyFail"));
+    } catch (e) {
+      setErrorMsg(`${t("reliability.audit.copyFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [t, filteredAudit]);
+
+  const onDownloadAudit = useCallback(() => {
+    setStatusMsg(null);
+    setErrorMsg(null);
+    const body = serializeAuditLedgerJsonl(filteredAudit);
+    if (!body.trim()) {
+      setErrorMsg(t("reliability.audit.exportEmpty"));
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    downloadAuditText(`grok-app-audit-ledger-${stamp}.jsonl`, body);
+    setStatusMsg(t("reliability.audit.downloadDone"));
+  }, [t, filteredAudit]);
 
   const openDoctor = () => {
     onClose();
@@ -846,9 +925,30 @@ export function ReliabilityCenterModal({
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
-                disabled={!!busy || auditEntries.length === 0}
+                disabled={!!busy || filteredAudit.length === 0}
+                onClick={() => void onCopyAudit()}
+                data-testid="reliab-audit-copy"
+                title={t("reliability.audit.copy")}
+              >
+                {busy === "audit-copy" ? "…" : t("reliability.audit.copy")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!busy || filteredAudit.length === 0}
+                onClick={onDownloadAudit}
+                data-testid="reliab-audit-download"
+                title={t("reliability.audit.download")}
+              >
+                {t("reliability.audit.download")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!busy || filteredAudit.length === 0}
                 onClick={() => void onExportAudit()}
                 data-testid="reliab-audit-export"
+                title={t("reliability.audit.export")}
               >
                 {busy === "audit-export" ? "…" : t("reliability.audit.export")}
               </button>
@@ -884,6 +984,48 @@ export function ReliabilityCenterModal({
                   {c.label}
                 </button>
               ))}
+            </div>
+
+            <div
+              className="reliab-timeline__toolbar"
+              style={{ marginTop: 8, flexWrap: "wrap", gap: 8 }}
+            >
+              <label className="reliab-timeline__search" style={{ minWidth: 120 }}>
+                <span className="sr-only">
+                  {t("reliability.audit.sessionPlaceholder")}
+                </span>
+                <input
+                  type="search"
+                  className="reliab-timeline__search-input"
+                  value={auditSession}
+                  onChange={(e) => setAuditSession(e.target.value)}
+                  placeholder={t("reliability.audit.sessionPlaceholder")}
+                  autoComplete="off"
+                  data-testid="reliab-audit-session"
+                />
+              </label>
+              <label className="reliab-audit__date">
+                <span className="sr-only">{t("reliability.audit.fromDate")}</span>
+                <input
+                  type="date"
+                  className="reliab-timeline__search-input"
+                  value={auditFrom}
+                  onChange={(e) => setAuditFrom(e.target.value)}
+                  aria-label={t("reliability.audit.fromDate")}
+                  data-testid="reliab-audit-from"
+                />
+              </label>
+              <label className="reliab-audit__date">
+                <span className="sr-only">{t("reliability.audit.toDate")}</span>
+                <input
+                  type="date"
+                  className="reliab-timeline__search-input"
+                  value={auditTo}
+                  onChange={(e) => setAuditTo(e.target.value)}
+                  aria-label={t("reliability.audit.toDate")}
+                  data-testid="reliab-audit-to"
+                />
+              </label>
             </div>
 
             {auditEntries.length === 0 ? (

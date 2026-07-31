@@ -2389,6 +2389,8 @@ export default function App() {
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(8);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(180);
+  /** Tool audit ledger retention days: 7 | 30 | 90 | 0 = unlimited. */
+  const [auditLedgerRetentionDays, setAuditLedgerRetentionDays] = useState(0);
   /** Headless partial stream events (CLI 0.2.117+). */
   const [includePartialMessages, setIncludePartialMessages] = useState(false);
   /** 0 = omit `--max-turns` (CLI default). */
@@ -3239,6 +3241,14 @@ export default function App() {
           ? Math.min(900, Math.round(settings.streamStallSeconds))
           : 120,
       );
+      {
+        const raw = settings.auditLedgerRetentionDays;
+        const n =
+          typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : 0;
+        setAuditLedgerRetentionDays(
+          n === 7 || n === 30 || n === 90 ? n : 0,
+        );
+      }
       setIncludePartialMessages(!!settings.includePartialMessages);
       {
         const raw = settings.maxAgentTurns;
@@ -15811,6 +15821,16 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, streamStallSeconds: v }),
             );
+          }}
+          auditLedgerRetentionDays={auditLedgerRetentionDays}
+          onAuditLedgerRetentionDays={(v) => {
+            const n = v === 7 || v === 30 || v === 90 ? v : 0;
+            setAuditLedgerRetentionDays(n);
+            void api
+              .settingsGet()
+              .then((s) =>
+                api.settingsSet({ ...s, auditLedgerRetentionDays: n }),
+              );
           }}
           includePartialMessages={includePartialMessages}
           onIncludePartialMessages={(v) => {

@@ -1675,6 +1675,11 @@ export interface AppSettings {
   allowUnverifiedCliInstall?: boolean;
   /** Last App-managed CLI install checksum result (`true` = verified). */
   lastCliChecksumVerified?: boolean | null;
+  /**
+   * Tool audit ledger retention days: `7` | `30` | `90` | `0` (unlimited).
+   * Applied on write/rotate and explicit prune. Default 0.
+   */
+  auditLedgerRetentionDays?: number;
 }
 
 export interface ReasoningEffort {
@@ -2032,9 +2037,26 @@ export async function auditLedgerClear() {
   return invoke<{ ok: boolean }>("audit_ledger_clear");
 }
 
-/** Export redacted JSONL via native save dialog. */
-export async function auditLedgerExport() {
-  return invoke<SupportBundleResult>("audit_ledger_export");
+/** Prune ledger by retention days (`null` → current AppSettings). Soft-fail. */
+export async function auditLedgerPrune(retentionDays?: number | null) {
+  return invoke<{ ok: boolean; dropped: number }>("audit_ledger_prune", {
+    retentionDays: retentionDays ?? null,
+  });
+}
+
+/** Export filter for host redacted JSONL (camelCase). */
+export type AuditLedgerExportFilterArg = {
+  event?: string | null;
+  sessionId?: string | null;
+  fromTs?: string | null;
+  toTs?: string | null;
+};
+
+/** Export redacted JSONL via native save dialog (optional event/session/range). */
+export async function auditLedgerExport(filter?: AuditLedgerExportFilterArg | null) {
+  return invoke<SupportBundleResult>("audit_ledger_export", {
+    filter: filter ?? null,
+  });
 }
 
 /**
