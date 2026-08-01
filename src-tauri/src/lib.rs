@@ -193,7 +193,6 @@ use mirror::MirrorHost;
 use session_manager::SessionManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-
 pub fn run() {
     let _ = paths::ensure_app_dirs();
 
