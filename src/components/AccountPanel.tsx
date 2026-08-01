@@ -17,8 +17,14 @@ import {
   formatRelativeTime,
   localDateKeyFromIso,
   tierLabel,
-  usagePercent,
 } from "@/lib/accountUi";
+import {
+  formatQuotaRemainLabel,
+  isQuotaUsageKnown,
+  resolveQuotaEmptyState,
+  resolveQuotaErrorChip,
+  resolveQuotaPercents,
+} from "@/lib/accountQuotaHonesty";
 import {
   Heatmap,
   dateInHeatRange,
@@ -26,6 +32,14 @@ import {
   type HeatGranularity,
   type HeatRange,
 } from "@/components/Heatmap";
+import {
+  heatmapErrorView,
+  heatmapHasSamples,
+  heatmapSummaryChips,
+  listHeatmapGranularityChips,
+  resolveHeatmapErrorChip,
+  summarizeHeatmapRange,
+} from "@/lib/heatmapUsagePro";
 import { GlassModal } from "@/components/GlassModal";
 import { Tip } from "@/components/ui/tooltip";
 import { IconPlus, IconTrash, IconUser } from "@/components/icons";
@@ -70,6 +84,12 @@ export interface AccountPanelLabels {
   fetchedAt: string;
   products: string;
   heatmapNoData: string;
+  /** Body under no-data empty (local sessions only — not SuperGrok quota). */
+  heatmapNoDataHint: string;
+  heatmapLoading: string;
+  heatmapLoadingHint: string;
+  heatmapRangeEmpty: string;
+  heatmapRangeEmptyHint: string;
   heatmapAria: string;
   heatmapRequests: string;
   heatmapTokens: string;
@@ -83,6 +103,10 @@ export interface AccountPanelLabels {
   heatmapWeek: string;
   /** Total tokens across heatmap (or selected range). Includes `{count}`. */
   heatmapTotalTokens: string;
+  /** Active days chip. Includes `{count}`. */
+  heatmapActiveDays: string;
+  /** Sessions count chip. Includes `{count}`. */
+  heatmapSessionsCount: string;
   weeklyTitle: string;
   loginHelpTitle: string;
   loginHelpBody: string;
@@ -102,6 +126,23 @@ export interface AccountPanelLabels {
   importChatHint: string;
   importChatBtn: string;
   close: string;
+  /** SuperGrok quota honesty — loading / unknown / error chips */
+  quotaLoading: string;
+  quotaLoadingHint: string;
+  quotaChipLoading: string;
+  quotaChipUnknown: string;
+  quotaChipErrNetwork: string;
+  quotaChipErrAuth: string;
+  quotaChipErrHostOnly: string;
+  quotaChipErrOther: string;
+  quotaErrNetwork: string;
+  quotaErrNetworkHint: string;
+  quotaErrAuth: string;
+  quotaErrAuthHint: string;
+  quotaErrHostOnly: string;
+  quotaErrHostOnlyHint: string;
+  quotaErrOther: string;
+  quotaErrOtherHint: string;
 }
 
 export interface AccountPanelProps {
@@ -113,6 +154,16 @@ export interface AccountPanelProps {
   labels: AccountPanelLabels;
   compact?: boolean;
   loginHint?: string | null;
+  /**
+   * Soft-fail error from account_status / host (heatmap only surfaces this —
+   * never invents activity cells or SuperGrok quota from it).
+   */
+  heatmapError?: unknown;
+  /**
+   * Soft-fail error from account_status / billing probe.
+   * Never invents remaining % — surfaces unknown/error chips instead.
+   */
+  probeError?: unknown;
   savedAccounts?: SavedAccount[];
   activeAccountId?: string | null;
   onLoginOauth: () => void;
@@ -149,6 +200,8 @@ export function AccountPanel({
   labels,
   compact = false,
   loginHint = null,
+  heatmapError = null,
+  probeError = null,
   savedAccounts = [],
   activeAccountId = null,
   onLoginOauth,
@@ -182,24 +235,69 @@ export function AccountPanel({
   const initials = profile ? accountInitials(profile) : "G";
   const channel = status?.channel ?? "none";
   const billing = status?.billing;
-  const usedPct = billing ? usagePercent(billing) : null;
+  const usageKnown = isQuotaUsageKnown(billing);
+  const { usedPercent: usedPct, remainingPercent: remaining } =
+    resolveQuotaPercents(billing);
   /** Same absolute clock as sidebar UserMenu (`MM-DD HH:mm`). */
   const resetTime = formatQuotaResetTime(billing?.resetsAt);
 
+  const heatDays = status?.heatmap ?? [];
+  const heatHasSamples = useMemo(
+    () => heatmapHasSamples(heatDays),
+    [heatDays],
+  );
+
+  /** Honest counts for full heatmap or selected day/week range. */
+  const heatSummary = useMemo(
+    () => summarizeHeatmapRange(heatDays, selectedHeatRange),
+    [heatDays, selectedHeatRange],
+  );
+  const heatChips = useMemo(
+    () => heatmapSummaryChips(heatSummary),
+    [heatSummary],
+  );
+  const heatErrChip = useMemo(
+    () => resolveHeatmapErrorChip(heatmapError),
+    [heatmapError],
+  );
+  const heatErrView = useMemo(
+    () => (heatmapError != null && heatmapError !== ""
+      ? heatmapErrorView(heatmapError)
+      : null),
+    [heatmapError],
+  );
+  const heatmapErrTitle = heatErrView
+    ? t(heatErrView.titleKey)
+    : t("account.heatmap.err.other");
+  const heatmapErrHint = heatErrView
+    ? t(heatErrView.hintKey)
+    : t("account.heatmap.err.otherHint");
+  const granularityChips = useMemo(
+    () => listHeatmapGranularityChips(heatGranularity),
+    [heatGranularity],
+  );
+  /**
+   * SuperGrok quota empty / soft-fail surface.
+   * Never invent remaining % when Host is silent or probe fails.
+   */
+  const quotaEmpty = resolveQuotaEmptyState({
+    loading,
+    membership: signedIn,
+    usageKnown,
+    error: probeError,
+  });
+  const quotaErrChip =
+    usageKnown && probeError != null
+      ? resolveQuotaErrorChip(probeError)
+      : null;
+  const remainLabel = formatQuotaRemainLabel(remaining);
+
   const rangeSessionCount = selectedHeatRange
-    ? sumHeatInRange(status?.heatmap ?? [], selectedHeatRange).requests
+    ? sumHeatInRange(heatDays, selectedHeatRange).requests
     : null;
 
-  /** Full heatmap total, or tokens in the selected day/week range. */
-  const heatTokenTotal = useMemo(() => {
-    const days = status?.heatmap ?? [];
-    if (selectedHeatRange) {
-      return sumHeatInRange(days, selectedHeatRange).tokens;
-    }
-    let tokens = 0;
-    for (const d of days) tokens += d.tokens;
-    return tokens;
-  }, [status?.heatmap, selectedHeatRange]);
+  /** Tokens in selected range or full heatmap — only when real activity exists. */
+  const heatTokenTotal = heatChips?.totalTokens ?? 0;
 
   const filteredCallLogs = useMemo(() => {
     const logs = status?.callLogs ?? [];
@@ -246,17 +344,72 @@ export function AccountPanel({
     setSelectedHeatRange(null);
   };
 
-  const remaining =
-    billing?.remainingPercent != null
-      ? billing.remainingPercent
-      : usedPct != null
-        ? Math.max(0, 100 - usedPct)
-        : null;
   const products = (billing?.products ?? []).filter(
     (p) => p.usedPercent > 0 || p.productId === 1 || p.productId === 2,
   );
   const plan = billing ? tierLabel(billing, channel) : "—";
-  const hasQuota = signedIn && !!billing?.available && remaining != null;
+  /** Known remaining only — never invent when Host silent. */
+  const hasQuota = signedIn && usageKnown && remainLabel != null;
+
+  const quotaChipText = (() => {
+    if (!quotaEmpty) return null;
+    switch (quotaEmpty.chipKey) {
+      case "account.quota.chip.loading":
+        return labels.quotaChipLoading;
+      case "account.quota.chip.err.network":
+        return labels.quotaChipErrNetwork;
+      case "account.quota.chip.err.auth":
+        return labels.quotaChipErrAuth;
+      case "account.quota.chip.err.host_only":
+        return labels.quotaChipErrHostOnly;
+      case "account.quota.chip.err.other":
+        return labels.quotaChipErrOther;
+      case "account.quota.chip.unknown":
+      default:
+        return labels.quotaChipUnknown;
+    }
+  })();
+
+  const quotaEmptyTitle = (() => {
+    if (!quotaEmpty) return null;
+    if (quotaEmpty.kind === "loading") return labels.quotaLoading;
+    if (quotaEmpty.kind === "error" && quotaEmpty.error) {
+      switch (quotaEmpty.error.kind) {
+        case "network":
+          return labels.quotaErrNetwork;
+        case "auth":
+          return labels.quotaErrAuth;
+        case "host_only":
+          return labels.quotaErrHostOnly;
+        default:
+          return labels.quotaErrOther;
+      }
+    }
+    if (quotaEmpty.kind === "unknown") return labels.quotaUnknown;
+    return labels.quotaUnknown;
+  })();
+
+  const quotaEmptyBody = (() => {
+    if (!quotaEmpty) return null;
+    if (quotaEmpty.kind === "loading") return labels.quotaLoadingHint;
+    if (quotaEmpty.kind === "error" && quotaEmpty.error) {
+      switch (quotaEmpty.error.kind) {
+        case "network":
+          return labels.quotaErrNetworkHint;
+        case "auth":
+          return labels.quotaErrAuthHint;
+        case "host_only":
+          return labels.quotaErrHostOnlyHint;
+        default:
+          return labels.quotaErrOtherHint;
+      }
+    }
+    if (quotaEmpty.kind === "unknown") {
+      // Prefer host message when present; else honest billing-unavailable copy.
+      return billing?.message?.trim() || labels.billingUnavailable;
+    }
+    return null;
+  })();
 
   const canManageAccounts =
     !!onSwitchAccount ||
@@ -512,25 +665,56 @@ export function AccountPanel({
                 <div className="account-hero__plan-head">
                   <span className="account-hero__plan-name">{plan}</span>
                   <span className="account-hero__plan-remain">
-                    {remaining!.toFixed(0)}% {labels.quotaRemaining}
+                    {remainLabel} {labels.quotaRemaining}
                   </span>
                 </div>
+                {quotaErrChip ? (
+                  <span
+                    className="account-quota-err-chip"
+                    title={
+                      quotaErrChip.kind === "network"
+                        ? labels.quotaErrNetworkHint
+                        : quotaErrChip.kind === "auth"
+                          ? labels.quotaErrAuthHint
+                          : quotaErrChip.kind === "host_only"
+                            ? labels.quotaErrHostOnlyHint
+                            : labels.quotaErrOtherHint
+                    }
+                  >
+                    {quotaErrChip.kind === "network"
+                      ? labels.quotaErrNetwork
+                      : quotaErrChip.kind === "auth"
+                        ? labels.quotaErrAuth
+                        : quotaErrChip.kind === "host_only"
+                          ? labels.quotaErrHostOnly
+                          : labels.quotaErrOther}
+                  </span>
+                ) : null}
                 <div className="account-quota-bar" aria-hidden>
                   <div
                     className={
                       "account-quota-bar__fill" +
-                      ((usedPct ?? 0) >= 90
+                      (usedPct != null && usedPct >= 90
                         ? " is-danger"
-                        : (usedPct ?? 0) >= 70
+                        : usedPct != null && usedPct >= 70
                           ? " is-warn"
                           : "")
                     }
-                    style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
+                    style={{
+                      // Only paint fill when used is known — never invent 0%.
+                      width:
+                        usedPct != null
+                          ? `${Math.min(100, usedPct)}%`
+                          : "0%",
+                      opacity: usedPct != null ? 1 : 0.35,
+                    }}
                   />
                 </div>
                 <div className="account-hero__plan-meta">
                   <span>
-                    {labels.quotaUsed} {(usedPct ?? 0).toFixed(0)}%
+                    {usedPct != null
+                      ? `${labels.quotaUsed} ${usedPct.toFixed(0)}%`
+                      : labels.quotaChipUnknown}
                     {resetTime
                       ? ` · ${labels.resetsAt} ${resetTime}`
                       : ""}
@@ -550,11 +734,39 @@ export function AccountPanel({
                 </div>
               </>
             ) : (
-              <div className="account-hero__plan-empty">
+              <div
+                className={
+                  "account-hero__plan-empty" +
+                  (quotaEmpty?.softFail ? " is-soft-fail" : "")
+                }
+                data-testid="account-quota-empty"
+                data-quota-kind={quotaEmpty?.kind ?? "unknown"}
+              >
                 <span className="account-hero__plan-name">{plan}</span>
-                <span className="account-hero__plan-meta-text">
-                  {billing?.message || labels.quotaUnknown}
-                </span>
+                {quotaChipText ? (
+                  <span
+                    className={
+                      "account-quota-chip" +
+                      (quotaEmpty?.softFail
+                        ? " account-quota-chip--warn"
+                        : " account-quota-chip--muted")
+                    }
+                  >
+                    {quotaChipText}
+                  </span>
+                ) : null}
+                <div className="account-hero__plan-empty-copy">
+                  {quotaEmptyTitle ? (
+                    <span className="account-hero__plan-empty-title">
+                      {quotaEmptyTitle}
+                    </span>
+                  ) : null}
+                  {quotaEmptyBody ? (
+                    <span className="account-hero__plan-meta-text">
+                      {quotaEmptyBody}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             )}
           </div>
@@ -616,68 +828,120 @@ export function AccountPanel({
             <div className="account-section__title account-section__title--row">
               <span>{labels.heatmap}</span>
               <div className="account-heatmap-title-meta">
-                <span
-                  className="account-heatmap-total"
-                  title={
-                    Number.isFinite(heatTokenTotal)
-                      ? String(Math.round(heatTokenTotal))
-                      : undefined
-                  }
-                >
-                  {labels.heatmapTotalTokens.replace(
-                    "{count}",
-                    // Always Chinese units (千 / 万·萬 / 亿·億), not English k/M.
-                    formatChineseCount(
-                      heatTokenTotal,
-                      locale === "zh-TW" ? "zh-TW" : "zh",
-                    ),
-                  )}
-                </span>
+                {heatErrChip ? (
+                  <span
+                    className="account-heatmap-err-chip"
+                    title={heatmapErrHint}
+                    data-kind={heatErrChip.kind}
+                  >
+                    {heatmapErrTitle}
+                  </span>
+                ) : null}
+                {heatChips ? (
+                  <div className="account-heatmap-summary" aria-live="polite">
+                    <span
+                      className="account-heatmap-total account-heatmap-chip"
+                      title={String(heatChips.activeDays)}
+                    >
+                      {labels.heatmapActiveDays.replace(
+                        "{count}",
+                        formatChineseCount(
+                          heatChips.activeDays,
+                          locale === "zh-TW" ? "zh-TW" : "zh",
+                        ),
+                      )}
+                    </span>
+                    <span
+                      className="account-heatmap-total account-heatmap-chip"
+                      title={
+                        Number.isFinite(heatTokenTotal)
+                          ? String(Math.round(heatTokenTotal))
+                          : undefined
+                      }
+                    >
+                      {labels.heatmapTotalTokens.replace(
+                        "{count}",
+                        // Always Chinese units (千 / 万·萬 / 亿·億), not English k/M.
+                        formatChineseCount(
+                          heatTokenTotal,
+                          locale === "zh-TW" ? "zh-TW" : "zh",
+                        ),
+                      )}
+                    </span>
+                    <span
+                      className="account-heatmap-total account-heatmap-chip"
+                      title={String(heatChips.totalRequests)}
+                    >
+                      {labels.heatmapSessionsCount.replace(
+                        "{count}",
+                        formatChineseCount(
+                          heatChips.totalRequests,
+                          locale === "zh-TW" ? "zh-TW" : "zh",
+                        ),
+                      )}
+                    </span>
+                  </div>
+                ) : heatHasSamples || loading ? null : (
+                  <span
+                    className="account-heatmap-total account-heatmap-chip account-heatmap-chip--muted"
+                    title={labels.heatmapNoDataHint}
+                  >
+                    {labels.heatmapNoData}
+                  </span>
+                )}
                 <div
                   className="account-heat-toggle"
                   role="group"
                   aria-label={labels.heatmap}
                 >
-                  <button
-                    type="button"
-                    className={
-                      "account-heat-toggle__btn" +
-                      (heatGranularity === "day" ? " is-active" : "")
-                    }
-                    aria-pressed={heatGranularity === "day"}
-                    onClick={() => setGranularity("day")}
-                  >
-                    {labels.heatmapDay}
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      "account-heat-toggle__btn" +
-                      (heatGranularity === "week" ? " is-active" : "")
-                    }
-                    aria-pressed={heatGranularity === "week"}
-                    onClick={() => setGranularity("week")}
-                  >
-                    {labels.heatmapWeek}
-                  </button>
+                  {granularityChips.map((chip) => (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      className={
+                        "account-heat-toggle__btn" +
+                        (chip.active ? " is-active" : "")
+                      }
+                      aria-pressed={chip.active}
+                      onClick={() => setGranularity(chip.id)}
+                    >
+                      {chip.id === "day"
+                        ? labels.heatmapDay
+                        : labels.heatmapWeek}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
+            <p className="account-section__hint account-heatmap-hint">
+              {labels.heatmapHint}
+            </p>
             <div className="account-section__body account-section__body--heat">
               <Heatmap
-                days={status?.heatmap ?? []}
+                days={heatDays}
                 metric="tokens"
                 granularity={heatGranularity}
                 locale={locale}
                 selectedRange={selectedHeatRange}
                 onSelectRange={onHeatSelect}
+                loading={loading}
+                error={heatmapError}
+                onClearRange={() => setSelectedHeatRange(null)}
                 labels={{
                   less: labels.less,
                   more: labels.more,
                   noData: labels.heatmapNoData,
+                  noDataHint: labels.heatmapNoDataHint,
+                  loading: labels.heatmapLoading,
+                  loadingHint: labels.heatmapLoadingHint,
+                  rangeEmpty: labels.heatmapRangeEmpty,
+                  rangeEmptyHint: labels.heatmapRangeEmptyHint,
+                  clearRange: labels.callLogsClearDay,
                   aria: labels.heatmapAria,
                   requests: labels.heatmapRequests,
                   tokens: labels.heatmapTokens,
+                  errorTitle: heatmapErrTitle,
+                  errorHint: heatmapErrHint,
                 }}
               />
             </div>

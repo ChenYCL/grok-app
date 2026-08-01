@@ -7336,6 +7336,165 @@ const en = {
   "settings.cliSessionsImportPlan":
     "Import {importable} of {selected} (skip {skipped} already linked)",
   "settings.section.agent": "Agent",
+  "settings.includePartialMessages.active":
+    "On — headless Remote IM upgrades to streaming-messages-json and passes `--include-partial-messages` (CLI {minCli}+) for incremental `stream_event` text/thinking deltas. In-app chat uses ACP and is unchanged by this toggle.",
+  "settings.includePartialMessages.softOmit":
+    "On, but this CLI is older than {minCli} (or version unknown) — `--include-partial-messages` is soft-omitted so spawn does not fail. Whole messages only until you upgrade Grok Build CLI.",
+  "settings.includePartialMessages.idleOff":
+    "Off — whole messages only (CLI default). No `--include-partial-messages`.",
+  "settings.includePartialMessages.hostOnly":
+    "Setting is saved, but this path is not headless streaming-messages-json (for example in-app ACP chat). Partial stream events apply only on headless Remote IM / diagnostics paths.",
+  "settings.includePartialMessages.err.cliTooOld":
+    "CLI too old for partial stream events (need {minCli}+). Flag was soft-omitted.",
+  "settings.includePartialMessages.err.unknownFlag":
+    "CLI rejected `--include-partial-messages` (unknown flag). Upgrade Grok Build or leave the toggle off.",
+  "settings.includePartialMessages.err.unsupportedFormat":
+    "`--include-partial-messages` only pairs with streaming-messages-json. Wrong output format — flag ignored.",
+  "settings.includePartialMessages.err.hostOnly":
+    "Partial stream apply needs the desktop app host (or a headless path). Not available here.",
+  "settings.includePartialMessages.err.other":
+    "Could not apply partial stream setting.",
+  "mirror.cap.line": "{n} / {max} phones",
+  "mirror.cap.ok": "Slots open",
+  "mirror.cap.nearFull": "Near full",
+  "mirror.cap.full": "Full (503)",
+  "mirror.cap.writeOnWarn": "Write on",
+  "mirror.cap.fullBanner":
+    "Client limit reached — extra phones soft-fail with HTTP 503 until a slot frees or you raise the max.",
+  "mirror.cap.fullHint":
+    "Disconnect a phone, raise Max phone clients (up to 16), or regenerate the link after rotating sessions.",
+  "mirror.cap.nearFullHint":
+    "Only a few slots left. Extra connections will soft-fail with HTTP 503 when the cap is hit.",
+  "mirror.cap.writeOnWarnHint":
+    "Write is enabled (default is read-only). Switch back to read-only when the phone no longer needs to send.",
+  "mirror.cap.okHint":
+    "Room for more phones under the current max. Extra connections soft-fail with 503 when full.",
+  "mirror.cap.emptyStopped": "Host stopped — no phone clients",
+  "mirror.cap.emptyStoppedHint":
+    "Start the host to accept phone connections. The client count stays zero while stopped (never invented).",
+  "mirror.cap.emptyZero": "No phones connected",
+  "mirror.cap.emptyZeroHint":
+    "Host is up with zero WebSocket clients. Scan the QR or open the link on a phone to connect.",
+  "account.heatmap.noDataHint":
+    "No local session signals under ~/.grok/sessions for this range. This is not SuperGrok quota — chat still works.",
+  "account.heatmap.loading": "Loading activity…",
+  "account.heatmap.loadingHint": "Reading local session signals.",
+  "account.heatmap.rangeEmpty": "No activity in this range",
+  "account.heatmap.rangeEmptyHint":
+    "The selected day or week has no local sessions. Clear the selection to see the full heatmap.",
+  "account.heatmap.activeDays": "Active days {count}",
+  "account.heatmap.sessionsCount": "Sessions {count}",
+  "account.heatmap.err.host_only": "Desktop only",
+  "account.heatmap.err.host_onlyHint":
+    "Activity heatmap needs the desktop app Host. Browser preview never invents local usage.",
+  "account.heatmap.err.network": "Could not refresh usage",
+  "account.heatmap.err.networkHint":
+    "Network soft-fail — local heatmap may still load after reconnect. Never invents quota.",
+  "account.heatmap.err.empty": "No usage path",
+  "account.heatmap.err.emptyHint":
+    "Host found no local session signals. Soft-fail — not the same as SuperGrok quota empty.",
+  "account.heatmap.err.other": "Usage load soft-fail",
+  "account.heatmap.err.otherHint":
+    "Could not load local activity. Refresh to retry; we never invent heatmap cells or quota.",
+  "settings.wallpaperSource.empty.idleHint":
+    "No wallpapers are loaded yet. Search X or generate with Imagine — results come from the Host only (never invented CDN tiles).",
+  "settings.wallpaperSource.empty.loading": "Loading gallery…",
+  "settings.wallpaperSource.empty.loadingHint":
+    "Waiting for real search or Imagine results. Nothing is fabricated while loading.",
+  "settings.wallpaperSource.empty.noResults": "No wallpapers found",
+  "settings.wallpaperSource.empty.noResultsHint":
+    "Try different keywords or another prompt. Empty means the Host returned zero media — not a placeholder gallery.",
+  "settings.wallpaperSource.empty.filterEmpty": "No matches in this gallery",
+  "settings.wallpaperSource.empty.filterEmptyHint":
+    "Kind chips or the filter hid every result. Clear filters to see the real Host items again.",
+  "settings.wallpaperSource.clearFilters": "Clear filters",
+  "settings.wallpaperSource.filterPlaceholder": "Filter gallery…",
+  "settings.wallpaperSource.kindLabel": "Media kind",
+  "settings.wallpaperSource.kind.all": "All",
+  "settings.wallpaperSource.kind.image": "Images",
+  "settings.wallpaperSource.kind.video": "Videos",
+  "settings.wallpaperSource.errKind.network": "Network",
+  "settings.wallpaperSource.errKind.host": "Host / CLI",
+  "settings.wallpaperSource.errKind.untrusted": "Blocked URL",
+  "settings.wallpaperSource.errKind.empty": "Empty",
+  "settings.wallpaperSource.errKind.other": "Error",
+  "settings.wallpaperSource.errKind.hint.network":
+    "Check the connection and retry search or download.",
+  "settings.wallpaperSource.errKind.hint.host":
+    "Install or path the Grok CLI, or open the desktop app.",
+  "settings.wallpaperSource.errKind.hint.untrusted":
+    "That host is outside the wallpaper allowlist (twimg / filesystem.site).",
+  "settings.wallpaperSource.errKind.hint.empty":
+    "No media returned — try another query or prompt.",
+  "settings.wallpaperSource.errKind.hint.other":
+    "See the detail above; sign in or retry if needed.",
+  "reliability.timeline.emptyHint":
+    "Soft and hard stream stalls are recorded here automatically. Nothing is invented when no stalls have been seen.",
+  "reliability.timeline.emptyFilterHint":
+    "Clear the kind chip or search to show all saved stall history again.",
+  "reliability.timeline.clearFilters": "Clear filters",
+  "reliability.timeline.openSession": "Open session",
+  "processBudget.loadingHint":
+    "Reading warm-agent occupancy from the host — not claiming the pool is empty yet.",
+  "processBudget.unavailableHint":
+    "Spawn policy is unchanged. Use Refresh, or open Reliability after agents are running.",
+  "processBudget.emptyPoolHint":
+    "Honest empty pool — not a host soft-fail. Cap remains {max}; idle recycle still applies when agents go idle.",
+  "processBudget.error.hostOnly": "Process budget needs the desktop host",
+  "processBudget.error.hostOnlyHint":
+    "Occupancy is only available in the Grok App desktop shell — not in a plain browser tab.",
+  "processBudget.error.unavailable": "Process pool unavailable",
+  "processBudget.error.unavailableHint":
+    "The host manager is not ready yet. Try Refresh after agents have started.",
+  "processBudget.error.timeout": "Process budget timed out",
+  "processBudget.error.timeoutHint":
+    "Snapshot took too long. Try Refresh; spawn policy is unchanged.",
+  "processBudget.error.permission": "Process budget permission denied",
+  "processBudget.error.permissionHint":
+    "The host refused the occupancy snapshot. Check app permissions or restart the desktop app.",
+  "processBudget.error.other": "Could not load process budget",
+  "processBudget.error.otherHint":
+    "Try Refresh. Occupancy is unknown — we never invent busy slots.",
+  "processBudget.limit.noneTitle": "No recent process limit",
+  "processBudget.limit.noneBody":
+    "No PROCESS_LIMIT in the last 24 hours. Idle parked are reclaimed before a hard limit; only all-busy turns block a new connect.",
+  "account.quota.loading": "Loading SuperGrok quota…",
+  "account.quota.loadingHint": "Fetching membership usage from the host.",
+  "account.quota.signedOut": "Sign in to see SuperGrok quota",
+  "account.quota.signedOutHint":
+    "Remaining percentage comes from official Grok Build billing — never invented offline.",
+  "account.quota.chip.loading": "Loading…",
+  "account.quota.chip.unknown": "Unknown",
+  "account.quota.chip.signedOut": "—",
+  "account.quota.chip.err.network": "Network",
+  "account.quota.chip.err.auth": "Sign-in",
+  "account.quota.chip.err.host_only": "Desktop",
+  "account.quota.chip.err.other": "Soft-fail",
+  "account.quota.err.network": "Could not load quota",
+  "account.quota.err.networkHint":
+    "Network soft-fail — chat still works. Check connection or proxy (Settings → Network), then refresh. Remaining % is not invented while offline.",
+  "account.quota.err.auth": "Sign-in required for quota",
+  "account.quota.err.authHint":
+    "Auth soft-fail — token may be expired. Sign in again to refresh SuperGrok remaining. No percentage is shown until the host responds.",
+  "account.quota.err.host_only": "Desktop only",
+  "account.quota.err.host_onlyHint":
+    "SuperGrok quota needs the desktop app host. Browser preview never invents remaining %.",
+  "account.quota.err.other": "Quota load soft-fail",
+  "account.quota.err.otherHint":
+    "Could not refresh SuperGrok quota. Chat is unaffected; remaining % stays unknown until a successful probe.",
+  "settings.netProbeRetry": "Retry probe",
+  "settings.netProbe.empty.hostOnly": "Desktop app required",
+  "settings.netProbe.empty.hostOnlyHint":
+    "Connectivity check runs through the desktop Host proxy path. Open the desktop app to probe — this browser/dev shell cannot invent reachability.",
+  "settings.netProbe.empty.idle": "No probe yet",
+  "settings.netProbe.empty.idleHint":
+    "Run a short HTTP path check through the currently saved effective proxy. Success is not a streaming or login guarantee.",
+  "settings.netProbe.empty.noTargets": "No probe targets returned",
+  "settings.netProbe.empty.noTargetsHint":
+    "Host returned an empty target list. Retry after saving proxy settings — never treats empty as all reachable.",
+  "settings.netProbe.empty.error": "Probe could not run",
+  "settings.netProbe.empty.errorHint":
+    "Host invoke failed. Retry, or check that the desktop app is up to date. This is not a full network diagnosis.",
 } as const;
 
 const zh: Record<MessageKey, string> = {
@@ -14428,6 +14587,165 @@ const zh: Record<MessageKey, string> = {
   "settings.cliSessionsImportPlan":
     "将导入 {importable} / {selected}（跳过已关联 {skipped}）",
   "settings.section.agent": "代理",
+  "settings.includePartialMessages.active":
+    "已开启 — 无头远程 IM 会升级为 streaming-messages-json 并传入 `--include-partial-messages`（CLI {minCli}+），输出增量 `stream_event` 文本/思考 delta。应用内聊天走 ACP，不受此开关影响。",
+  "settings.includePartialMessages.softOmit":
+    "已开启，但当前 CLI 低于 {minCli}（或版本未知）— 为避免启动失败已 soft-omit `--include-partial-messages`。升级 Grok Build CLI 前仍为完整消息。",
+  "settings.includePartialMessages.idleOff":
+    "已关闭 — 仅完整消息（CLI 默认）。不传 `--include-partial-messages`。",
+  "settings.includePartialMessages.hostOnly":
+    "设置已保存，但当前路径不是无头 streaming-messages-json（例如应用内 ACP 聊天）。部分流式事件仅作用于无头远程 IM / 诊断路径。",
+  "settings.includePartialMessages.err.cliTooOld":
+    "CLI 过旧，不支持部分流式事件（需要 {minCli}+）。已 soft-omit 该 flag。",
+  "settings.includePartialMessages.err.unknownFlag":
+    "CLI 拒绝了 `--include-partial-messages`（未知 flag）。请升级 Grok Build，或关闭此开关。",
+  "settings.includePartialMessages.err.unsupportedFormat":
+    "`--include-partial-messages` 仅与 streaming-messages-json 配对。输出格式不匹配 — flag 被忽略。",
+  "settings.includePartialMessages.err.hostOnly":
+    "部分流式生效需要桌面应用宿主（或无头路径）。此处不可用。",
+  "settings.includePartialMessages.err.other":
+    "无法应用部分流式设置。",
+  "mirror.cap.line": "{n} / {max} 台手机",
+  "mirror.cap.ok": "仍有空位",
+  "mirror.cap.nearFull": "接近满载",
+  "mirror.cap.full": "已满（503）",
+  "mirror.cap.writeOnWarn": "写入已开",
+  "mirror.cap.fullBanner":
+    "已达连接上限 — 额外手机会软失败（HTTP 503），直到有空位或你提高上限。",
+  "mirror.cap.fullHint":
+    "断开某台手机、提高「最大手机连接数」（最高 16），或在轮换会话后重新生成链接。",
+  "mirror.cap.nearFullHint":
+    "只剩少量空位。达到上限后，额外连接会以 HTTP 503 软失败。",
+  "mirror.cap.writeOnWarnHint":
+    "当前已允许写入（默认只读）。手机不再需要发送时请切回只读。",
+  "mirror.cap.okHint":
+    "在当前上限下仍可接入更多手机。满载后额外连接会以 503 软失败。",
+  "mirror.cap.emptyStopped": "主机已停止 — 无手机连接",
+  "mirror.cap.emptyStoppedHint":
+    "启动主机后才会接受手机连接。停止时连接数保持为 0（不会虚构客户端）。",
+  "mirror.cap.emptyZero": "暂无手机连接",
+  "mirror.cap.emptyZeroHint":
+    "主机已运行，当前 WebSocket 客户端为 0。用手机扫描二维码或打开链接即可连接。",
+  "account.heatmap.noDataHint":
+    "在 ~/.grok/sessions 下未找到该时段的本机会话信号。这不是 SuperGrok 额度——对话仍可正常使用。",
+  "account.heatmap.loading": "正在加载活动…",
+  "account.heatmap.loadingHint": "正在读取本机会话信号。",
+  "account.heatmap.rangeEmpty": "该时段无活动",
+  "account.heatmap.rangeEmptyHint":
+    "所选日或周没有本机会话。清除选择可查看完整热力图。",
+  "account.heatmap.activeDays": "活跃天 {count}",
+  "account.heatmap.sessionsCount": "会话 {count}",
+  "account.heatmap.err.host_only": "仅桌面端",
+  "account.heatmap.err.host_onlyHint":
+    "活动热力图需要桌面 Host。浏览器预览不会编造本机用量。",
+  "account.heatmap.err.network": "无法刷新用量",
+  "account.heatmap.err.networkHint":
+    "网络 soft-fail——重连后本机热力图仍可能加载。不会编造额度。",
+  "account.heatmap.err.empty": "无用量路径",
+  "account.heatmap.err.emptyHint":
+    "Host 未找到本机会话信号。soft-fail——不等于 SuperGrok 额度为 0。",
+  "account.heatmap.err.other": "用量加载 soft-fail",
+  "account.heatmap.err.otherHint":
+    "无法加载本机活动。可刷新重试；我们不会编造热力格或额度。",
+  "settings.wallpaperSource.empty.idleHint":
+    "尚未加载任何壁纸。请搜索 X 或用 Imagine 生成 — 结果仅来自 Host，不会伪造 CDN 占位图。",
+  "settings.wallpaperSource.empty.loading": "正在加载画廊…",
+  "settings.wallpaperSource.empty.loadingHint":
+    "等待真实搜索或 Imagine 结果；加载过程中不会伪造条目。",
+  "settings.wallpaperSource.empty.noResults": "没有找到壁纸",
+  "settings.wallpaperSource.empty.noResultsHint":
+    "请换个关键词或提示词。空结果表示 Host 返回了零条媒体，不是占位画廊。",
+  "settings.wallpaperSource.empty.filterEmpty": "当前筛选无匹配",
+  "settings.wallpaperSource.empty.filterEmptyHint":
+    "类型芯片或筛选隐藏了全部结果。清除筛选可重新看到 Host 返回的真实条目。",
+  "settings.wallpaperSource.clearFilters": "清除筛选",
+  "settings.wallpaperSource.filterPlaceholder": "筛选画廊…",
+  "settings.wallpaperSource.kindLabel": "媒体类型",
+  "settings.wallpaperSource.kind.all": "全部",
+  "settings.wallpaperSource.kind.image": "图片",
+  "settings.wallpaperSource.kind.video": "视频",
+  "settings.wallpaperSource.errKind.network": "网络",
+  "settings.wallpaperSource.errKind.host": "Host / CLI",
+  "settings.wallpaperSource.errKind.untrusted": "已拦截网址",
+  "settings.wallpaperSource.errKind.empty": "空结果",
+  "settings.wallpaperSource.errKind.other": "错误",
+  "settings.wallpaperSource.errKind.hint.network":
+    "请检查网络后重试搜索或下载。",
+  "settings.wallpaperSource.errKind.hint.host":
+    "请安装或配置 Grok CLI，或使用桌面端应用。",
+  "settings.wallpaperSource.errKind.hint.untrusted":
+    "该主机不在壁纸下载允许列表（twimg / filesystem.site）。",
+  "settings.wallpaperSource.errKind.hint.empty":
+    "未返回媒体 — 请换个查询或提示词。",
+  "settings.wallpaperSource.errKind.hint.other":
+    "见上方详情；必要时请登录或重试。",
+  "reliability.timeline.emptyHint":
+    "软/硬流式卡顿会自动记入此处。尚未观察到卡顿时不会编造记录。",
+  "reliability.timeline.emptyFilterHint":
+    "清除类型筛选或搜索条件即可再次显示全部已保存卡顿历史。",
+  "reliability.timeline.clearFilters": "清除筛选",
+  "reliability.timeline.openSession": "打开会话",
+  "processBudget.loadingHint":
+    "正在从 Host 读取热 Agent 占用 — 不会把尚未加载的状态当作空池。",
+  "processBudget.unavailableHint":
+    "生成策略未改变。可点刷新，或在有 Agent 运行后打开可靠性中心。",
+  "processBudget.emptyPoolHint":
+    "这是诚实的空池（不是 Host 读取失败）。上限仍为 {max}；Agent 闲置后仍会按策略回收。",
+  "processBudget.error.hostOnly": "进程预算需在桌面 Host 中查看",
+  "processBudget.error.hostOnlyHint":
+    "占用数据仅在 Grok App 桌面壳中可用，普通浏览器标签页无法读取。",
+  "processBudget.error.unavailable": "进程池不可用",
+  "processBudget.error.unavailableHint":
+    "Host 管理器尚未就绪。可在 Agent 启动后再点刷新。",
+  "processBudget.error.timeout": "进程预算读取超时",
+  "processBudget.error.timeoutHint":
+    "快照耗时过长。可点刷新；生成策略未改变。",
+  "processBudget.error.permission": "进程预算权限被拒绝",
+  "processBudget.error.permissionHint":
+    "Host 拒绝了占用快照。请检查应用权限或重启桌面应用。",
+  "processBudget.error.other": "无法加载进程预算",
+  "processBudget.error.otherHint":
+    "可点刷新。占用未知 — 我们不会编造忙碌槽位。",
+  "processBudget.limit.noneTitle": "近期无进程上限事件",
+  "processBudget.limit.noneBody":
+    "过去 24 小时内未触发 PROCESS_LIMIT。闲置 parked 会在硬上限前被回收；只有槽位全是忙碌回合时才会阻止新连接。",
+  "account.quota.loading": "正在加载 SuperGrok 额度…",
+  "account.quota.loadingHint": "正在从 Host 拉取会员用量。",
+  "account.quota.signedOut": "登录后可查看 SuperGrok 额度",
+  "account.quota.signedOutHint":
+    "剩余百分比来自官方 Grok Build 计费接口——离线时不会编造数字。",
+  "account.quota.chip.loading": "加载中…",
+  "account.quota.chip.unknown": "未知",
+  "account.quota.chip.signedOut": "—",
+  "account.quota.chip.err.network": "网络",
+  "account.quota.chip.err.auth": "登录",
+  "account.quota.chip.err.host_only": "桌面端",
+  "account.quota.chip.err.other": "软失败",
+  "account.quota.err.network": "无法加载额度",
+  "account.quota.err.networkHint":
+    "网络 soft-fail——对话仍可用。请检查网络或代理（设置 → 网络）后刷新。离线时不会编造剩余百分比。",
+  "account.quota.err.auth": "需重新登录才能查看额度",
+  "account.quota.err.authHint":
+    "鉴权 soft-fail——凭证可能已过期。请重新登录以刷新 SuperGrok 剩余额度；Host 未响应前不显示百分比。",
+  "account.quota.err.host_only": "仅桌面端可用",
+  "account.quota.err.host_onlyHint":
+    "SuperGrok 额度需桌面 Host。浏览器预览不会编造剩余百分比。",
+  "account.quota.err.other": "额度加载 soft-fail",
+  "account.quota.err.otherHint":
+    "无法刷新 SuperGrok 额度（不影响对话）。成功探测前剩余百分比保持未知。",
+  "settings.netProbeRetry": "重试探测",
+  "settings.netProbe.empty.hostOnly": "需要桌面应用",
+  "settings.netProbe.empty.hostOnlyHint":
+    "连通性检测走桌面 Host 的代理路径。请在桌面应用中探测——浏览器/开发壳不会虚构可达结果。",
+  "settings.netProbe.empty.idle": "尚未探测",
+  "settings.netProbe.empty.idleHint":
+    "对当前已保存的有效代理做一次短时 HTTP 路径检测。成功不代表流式或登录一定可用。",
+  "settings.netProbe.empty.noTargets": "未返回探测目标",
+  "settings.netProbe.empty.noTargetsHint":
+    "Host 返回了空目标列表。保存代理设置后可重试——空列表不会被当成全部可达。",
+  "settings.netProbe.empty.error": "探测未能执行",
+  "settings.netProbe.empty.errorHint":
+    "Host 调用失败。可重试，或检查桌面应用是否为最新版本。这不是完整的网络诊断。",
 };
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {

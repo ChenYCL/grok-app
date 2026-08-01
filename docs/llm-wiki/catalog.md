@@ -101,6 +101,7 @@ Spawn：`--reasoning-effort <spawnId>`。切换通道时按阶梯对齐（极高
 | `includePartialMessages: true` | `--output-format streaming-messages-json` + `--include-partial-messages` | 仅 CLI ≥ 0.2.117；更旧 soft-fail（保持 streaming-json、省略 flag） |
 
 - 纯 helper：`src/lib/partialStream.ts`；Host：`acp_client::include_partial_messages_spawn_flags*` / `resolve_headless_stream_for_partial`。
+- **Apply-path honesty**：`src/lib/partialStreamHonesty.ts` — `resolvePartialStreamApplyEffect` → `active` | `soft_omit` | `idle_off` | `host_only`；Settings 开关下按 CLI 版本显示 soft-omit / active 提示（应用内 ACP 聊天不发明 token 流）。
 - **Soft-fail**：CLI &lt; 0.2.117 或版本不可解析时省略 flag，不切换 format。
 - 生效路径：Remote IM headless（`grok -p`）；壁纸等仍用 `json` 时不会发 flag（纯 helper 按 format 门控）。
 - 设置：Settings → Runtime → Pool。
