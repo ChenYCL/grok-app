@@ -2806,6 +2806,8 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "processBudget.lead",
       "processBudget.plan.headroom",
       "processBudget.plan.atCapBusy",
+      "processBudget.plan.empty",
+      "processBudget.limit.noneBody",
     ],
     keywords: [
       "process budget",
@@ -2817,6 +2819,8 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "PROCESS_LIMIT",
       "reclaim",
       "slot",
+      "empty pool",
+      "empty honesty",
       "并发",
       "並發",
       "进程池",
@@ -2826,6 +2830,7 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "回收",
       "闲置",
       "閒置",
+      "空池",
     ],
   },
   {
