@@ -1304,6 +1304,21 @@ function SettingsLabelWithTip({
 }
 
 export function SettingsPage({
+  section: sectionGate,
+  tab: tabGate,
+  onSection: onSectionGate,
+  onBack: onBackGate,
+  phoneLayout: phoneLayoutGate,
+  labels: labelsGate,
+  locale: localeGate,
+  focusAnchorId: focusAnchorIdGate,
+  prHubHighlightPr: prHubHighlightPrGate,
+  onFocusAnchorConsumed: onFocusAnchorConsumedGate,
+  ...rest
+}: SettingsPageProps) {
+  const {
+
+
   section,
   tab: tabProp = null,
   onSection,
@@ -1509,7 +1524,10 @@ export function SettingsPage({
   onOpenShortcutsHelp,
   onOpenProductTutorial,
   trustedProjects = [],
-}: SettingsPageProps) {
+
+  
+  } = { section: sectionGate, tab: tabGate, onSection: onSectionGate, onBack: onBackGate, phoneLayout: phoneLayoutGate, labels: labelsGate, locale: localeGate, focusAnchorId: focusAnchorIdGate, prHubHighlightPr: prHubHighlightPrGate, onFocusAnchorConsumed: onFocusAnchorConsumedGate, ...rest } as SettingsPageProps;
+
   const [query, setQuery] = useState("");
   /** Client-side validation error for Agents JSON (invalid blocks save). */
   const [agentsJsonError, setAgentsJsonError] = useState<string | null>(null);

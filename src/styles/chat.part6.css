@@ -1,0 +1,817 @@
+/* domain CSS chunk (move-only split; selectors unchanged) */
+
+  color: var(--text-secondary);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.field label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.field input,
+.field select,
+.field textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  color: var(--text-primary);
+}
+
+/* Connection status strip — no project controls (those live in sidebar) */
+.conn-bar {
+  margin: 0 var(--space-5);
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.conn-bar strong {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ===== Custom Select (no native chrome) ===== */
+.c-select {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.c-select__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-height);
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  max-width: 100%;
+  transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+
+.c-select__trigger:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.c-select.is-open .c-select__trigger {
+  border-color: var(--border-focus);
+}
+
+.c-select__trigger:disabled {
+  opacity: 0.45;
+}
+
+.c-select--chip .c-select__trigger {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+.c-select--chip .c-select__trigger:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.c-select__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c-select__chev {
+  font-size: 9px;
+  opacity: 0.6;
+  flex-shrink: 0;
+  transition: transform var(--motion-fast);
+}
+
+.c-select.is-open .c-select__chev {
+  transform: rotate(180deg);
+}
+
+.c-select__menu {
+  /* Must exceed .overlay (12000); inline floatingStyle also sets 13000 */
+  z-index: 13000;
+  overflow-y: auto;
+  margin: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--menu-gap);
+}
+
+/* Portaled to body — position via fixed style from useFloatingMenu */
+.c-select__menu--portal {
+  position: fixed;
+  box-sizing: border-box;
+  z-index: 13000;
+}
+
+/* In settings forms — full width trigger */
+.field .c-select {
+  width: 100%;
+}
+
+.field .c-select__trigger {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.c-select__option {
+  white-space: nowrap;
+}
+
+.c-select__option.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.empty-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  padding: 48px;
+  text-align: center;
+}
+
+.empty-center h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Aside — resource viewer; fully hideable + drag-resizable */
+.aside {
+  width: var(--aside-width, 360px);
+  min-width: 0;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-aside);
+  transition: opacity 160ms ease, border-color 160ms ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.aside.is-resizing {
+  transition: none;
+}
+
+.aside--collapsed,
+.aside--hidden {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  border: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.aside-resizer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.aside-resizer::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.aside-resizer:hover::after,
+.aside.is-resizing .aside-resizer::after {
+  background: var(--border-focus, #6b8cff);
+}
+
+.aside__inner {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+}
+
+/* When left sidebar fully closed, reserve mac traffic-light inset on main */
+.platform-mac .main--sidebar-hidden .main__top {
+  padding-left: var(--titlebar-safe-left, 96px);
+}
+
+.main__pane-toggle.is-on {
+  color: var(--text-primary);
+  background: var(--bg-active);
+}
+
+/* ===== Composer model / access menus (Codex-style sheet) ===== */
+.cmm {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Flat control (no capsule border) — hover wash only, Codex-style */
+.cmm__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  /* Custom provider model ids are long; allow more room before ellipsis. */
+  max-width: min(320px, 42vw);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+/* Model menu: room for long request model ids (e.g. deepseek-v4-flash). */
+.cmm--model .cmm__trigger {
+  max-width: min(360px, 48vw);
+}
+
+.cmm__trigger:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cmm.is-open .cmm__trigger {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cmm--danger .cmm__trigger {
+  color: var(--danger, #e07040);
+  border: none;
+  background: transparent;
+}
+
+.cmm--danger .cmm__trigger:hover,
+.cmm--danger.is-open .cmm__trigger {
+  background: color-mix(in srgb, var(--danger, #e07040) 10%, transparent);
+  color: var(--danger, #e07040);
+}
+
+.cmm--danger .cmm__icon {
+  color: var(--danger, #e07040);
+}
+
+.cmm__icon,
+.cmm__bolt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  flex-shrink: 0;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.cmm__trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dual labels: full for wide, short for medium, none for icon-only */
+.cmm__trigger-text--short {
+  display: none;
+}
+
+/* Soft chevron — less “button” chrome */
+.cmm__chev {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+/* Medium: short label */
+@container composer (max-width: 520px) {
+  .cmm__trigger-text--full {
+    display: none;
+  }
+  .cmm__trigger-text--short {
+    display: inline;
+  }
+  .cmm__trigger {
+    max-width: 120px;
+    padding: 0 8px 0 7px;
+  }
+  .chip .chip__label {
+    display: none;
+  }
+  .chip {
+    max-width: 36px;
+    padding: 0 8px;
+    justify-content: center;
+  }
+}
+
+/* Narrow: icon only */
+@container composer (max-width: 380px) {
+  .cmm__trigger-text--full,
+  .cmm__trigger-text--short {
+    display: none;
+  }
+  .cmm__chev {
+    display: none;
+  }
+  .cmm__trigger {
+    width: 28px;
+    max-width: 28px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+}
+
+.cmm__header {
+  padding: 8px 12px 6px;
+}
+
+.cmm__header-title {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.35;
+}
+
+.cmm__section {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  text-transform: none;
+}
+
+.cmm__section--gap {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cmm__pop {
+  z-index: 10000;
+  width: max-content;
+  min-width: 200px;
+  max-width: var(--menu-max-width);
+  padding: var(--menu-pad);
+  border-radius: var(--menu-radius);
+  max-height: min(480px, calc(100vh - 24px));
+  overflow-y: auto;
+  box-sizing: border-box;
+  color: var(--text-primary);
+}
+
+/* Wider model panel so long model ids are not clipped by 55% row-val caps. */
+.cmm--model .cmm__pop,
+.cmm--model .cmm__pop--portal {
+  min-width: min(320px, calc(100vw - 16px));
+  max-width: min(420px, calc(100vw - 16px));
+}
+
+/* Portaled to body — escapes all overflow parents */
+.cmm__pop--portal {
+  position: fixed;
+}
+
+.cmm__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.cmm__row:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cmm__row-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-primary);
+  font-weight: 500;
+  min-width: 0;
+  /* Default menus may still ellipsis; model menu overrides below. */
+  max-width: min(280px, 70%);
+}
+
+.cmm__row-val-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Model root row: show full request model id (panel min-width grows with content). */
+.cmm--model .cmm__row-val {
+  max-width: none;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  overflow: visible;
+}
+
+.cmm--model .cmm__row-val-text {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* Nested option titles: wrap long ids instead of clipping mid-token. */
+.cmm--model .cmm__opt-title {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.cmm--model .cmm__opt-desc {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cmm__row--sub {
+  padding-left: 20px;
+  font-size: 12px;
+}
+
+.cmm__nested {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cmm__search {
+  padding: 4px 6px 6px;
+}
+
+.cmm__search-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.cmm__search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.cmm__search-input:focus {
+  outline: none;
+  border-color: var(--border-focus, var(--accent, #6b8cff));
+}
+
+/* Hide native search clear on WebKit so layout stays tight in the menu. */
+.cmm__search-input::-webkit-search-decoration,
+.cmm__search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.cmm__back {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  border-radius: 8px;
+}
+
+.cmm__back:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cmm__opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.cmm__opt:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cmm__opt.is-active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.cmm__opt.is-danger,
+.cmm__opt.is-danger .cmm__opt-title {
+  color: var(--danger, #e07040);
+}
+
+.cmm__opt.is-danger .cmm__opt-icon {
+  color: var(--danger, #e07040);
+}
+
+.cmm__opt-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--text-tertiary);
+}
+
+.cmm__opt-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cmm__opt-title {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.cmm__opt-desc {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.cmm__opt-check {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.cmm__opt.is-active .cmm__opt-check {
+  color: var(--text-primary);
+}
+
+/* ===== Resource viewer (right pane) ===== */
+.rv {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Match .main__top / .sidebar-chrome — one shared titlebar height + divider Y */
+.rv__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: var(--titlebar-height, 40px);
+  min-height: var(--titlebar-height, 40px);
+  max-height: var(--titlebar-height, 40px);
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.rv__head-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.rv__head-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.rv__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+}
+
+.rv__search {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.rv__search input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.rv__error {
+  margin: 8px 10px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--danger-muted);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.rv__tree,
+.rv__tree--full {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rv__preview,
+.rv__preview--full {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.rv__preview-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.rv__tree-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Nested code / media previews — native bar already globally hidden */
+.rv-preview__code,
+.rv-preview__csv,
+.rv-preview__office,
+.rv-preview__md,
+.rv-preview__svg {
+  overflow: auto;
+}
+
+.rv--preview-mode .rv__preview {
+  border: none;
+}
+
+.rv__section-label {
+  padding: 10px 12px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.rv__empty {
+  padding: 16px 12px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.rv-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  padding-right: 10px;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.rv-tree__row:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.rv-tree__row.is-active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.rv-tree__chev {
+  width: 14px;
+  display: inline-flex;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.rv-tree__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.rv-tree__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.rv-tree__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-tree__meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.rv-preview__code,
+.rv-preview__csv,
+.rv-preview__office {
+  margin: 0;
+  padding: 12px 14px 20px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: auto;
+}
+
+.rv-preview__md {
+  padding: 12px 14px 20px;
+  overflow: auto;
+  font-size: 14px;
+  line-height: 1.65;
+}

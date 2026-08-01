@@ -1,0 +1,815 @@
+/* domain CSS chunk (move-only split; selectors unchanged) */
+
+.doctor-advanced__cli-update-head {
+  margin-bottom: 8px;
+}
+
+.settings-row__action {
+  height: 32px;
+  flex-shrink: 0;
+}
+
+/* Permission allow / deny / ask rules editor (Settings → Permissions)
+ * Flat block inside parent .settings-card — never a nested card. */
+.perm-rules {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  /* Separator from policy/sandbox rows above (row border already draws line) */
+}
+
+.perm-rules__head.settings-row {
+  /* Keep head aligned with sibling settings-rows; no extra box or double line */
+  border-bottom: none;
+  padding-bottom: 10px;
+}
+
+.perm-rules__path {
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+.perm-rules__empty {
+  margin: 0;
+  padding: 4px 16px 16px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.perm-rules__list {
+  list-style: none;
+  margin: 0;
+  /* Match settings-row horizontal padding so content doesn't hug the card edge */
+  padding: 0 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perm-rules__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+}
+
+.perm-rules__badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.perm-rules__badge--deny {
+  color: #e05a5a;
+  border-color: color-mix(in srgb, #e05a5a 35%, transparent);
+  background: color-mix(in srgb, #e05a5a 12%, transparent);
+}
+
+.perm-rules__badge--ask {
+  color: #d4a017;
+  border-color: color-mix(in srgb, #d4a017 35%, transparent);
+  background: color-mix(in srgb, #d4a017 12%, transparent);
+}
+
+.perm-rules__badge--allow {
+  color: #6bcf8e;
+  border-color: color-mix(in srgb, #6bcf8e 35%, transparent);
+  background: color-mix(in srgb, #6bcf8e 12%, transparent);
+}
+
+.perm-rules__rule {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perm-rules__remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+}
+
+.perm-rules__remove:hover:not(:disabled) {
+  color: #e05a5a;
+}
+
+.perm-rules__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.perm-rules__add .c-select {
+  flex: 0 0 auto;
+  min-width: 110px;
+}
+
+.perm-rules__input {
+  flex: 1 1 160px;
+  min-width: 140px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.perm-rules__input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent, #6b8cff) 55%, transparent);
+}
+
+.perm-rules__add .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.perm-rules__confirm {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+/* Local try-call simulator (pure client; never writes config). */
+.perm-rules__sim {
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perm-rules__sim-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.perm-rules__sim-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.perm-rules__sim-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.perm-rules__sim-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.perm-rules__sim-row .perm-rules__input {
+  flex: 1 1 180px;
+}
+
+.perm-rules__badge--none {
+  color: var(--text-tertiary);
+  border-color: var(--border-subtle);
+  background: var(--bg-hover);
+}
+
+.perm-rules__sim-match {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  word-break: break-all;
+}
+
+.settings-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+/* Settings → Agent · inline --agents JSON (multi-line). */
+textarea.settings-input.settings-agents-json__textarea {
+  height: auto;
+  min-height: 120px;
+  padding: 10px 12px;
+  resize: vertical;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Settings → General → App · quiet hours start/end (nested under toggle row) */
+/* TRAY-NOTIFY-PRO — busy badge status + desktop notify honesty */
+.settings-tray-notify__row-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.settings-tray-notify__status {
+  width: 100%;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.settings-tray-notify__status.is-info {
+  color: var(--text-secondary);
+}
+
+.settings-tray-notify__status.is-warn {
+  color: var(--danger, #d33);
+}
+
+.settings-tray-notify__honesty {
+  align-items: stretch;
+}
+
+.settings-tray-notify__honesty-head {
+  width: 100%;
+}
+
+.settings-tray-notify__honesty-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  width: 100%;
+}
+
+.settings-tray-notify__perm-chip {
+  max-width: 100%;
+}
+
+.settings-quiet-hours {
+  /* settings-row already provides padding/border; keep times full width */
+  align-items: stretch;
+}
+
+.settings-quiet-hours__times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  width: 100%;
+}
+
+.settings-quiet-hours__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+  flex: 1 1 140px;
+}
+
+.settings-quiet-hours__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.settings-quiet-hours__input {
+  max-width: 180px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Settings → Agent: disallowed built-in tools chips */
+.settings-tool-deny__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.settings-tool-deny__chip {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+
+.settings-tool-deny__chip:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--text-secondary) 35%, var(--border-subtle));
+}
+
+.settings-tool-deny__chip.is-on {
+  background: color-mix(in srgb, var(--accent, #6b8afd) 16%, var(--bg-elevated));
+  color: var(--text-primary);
+  font-weight: 600;
+  border-color: color-mix(in srgb, var(--accent, #6b8afd) 40%, var(--border-subtle));
+}
+
+.settings-tool-deny__chip.is-caution.is-on {
+  background: color-mix(in srgb, var(--danger, #e55) 14%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--danger, #e55) 40%, var(--border-subtle));
+}
+
+.settings-tool-deny__chip.is-covered {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.settings-tool-deny__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-tool-deny__input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.settings-tool-deny__clear {
+  flex-shrink: 0;
+}
+
+.settings-seg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.settings-seg__btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.settings-seg__btn.is-on {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-pop);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Appearance: skin (left) + wallpaper (right) */
+.settings-appearance-duo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.settings-appearance-duo > .settings-card {
+  margin-top: 0;
+  min-width: 0;
+  height: 100%;
+}
+
+/* Stacked cards after the theme row still need top gap */
+.settings-page__main > .settings-card + .settings-appearance-duo {
+  margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .settings-appearance-duo {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Color skin packs (Appearance) — Dream Skin–style swatch grid */
+.settings-skin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.settings-skin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) ease,
+    background var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.settings-skin-card:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.settings-skin-card.is-on {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.settings-skin-card__swatch {
+  display: block;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.settings-skin-card__name {
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 1.2;
+  padding: 0 2px 2px;
+}
+
+/* Custom wallpaper upload (Appearance) */
+.settings-wallpaper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.settings-wallpaper__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Wallpaper source modal (X + Imagine) ── */
+.modal.wallpaper-source-modal {
+  width: min(860px, calc(100vw - 28px));
+  max-height: min(92vh, 860px);
+  /* Prefer a tall shell so multi-result galleries can use the viewport */
+  min-height: min(72vh, 640px);
+}
+
+.wallpaper-source-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  /* Body fills modal; gallery scroll lives inside (not on multi-column) */
+  flex: 1 1 auto;
+  /* Override base .modal-body { overflow: auto } — scroll only the gallery */
+  overflow: hidden;
+}
+
+.wallpaper-source-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+}
+
+.wallpaper-source-tabs__btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-radius: calc(var(--radius-md) - 2px);
+  cursor: pointer;
+}
+
+.wallpaper-source-tabs__btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-active) 70%, transparent);
+}
+
+.wallpaper-source-tabs__btn--active {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 12%, transparent);
+}
+
+.wallpaper-source-tabs__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Shared control metrics for X search + Imagine form rows */
+.wallpaper-source-form {
+  --ws-control-h: var(--control-height, 32px);
+  --ws-control-gap: 8px;
+  --ws-control-radius: var(--radius-md);
+  --ws-control-font: var(--text-sm, 13px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-control-gap);
+}
+
+.wallpaper-source-form__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.wallpaper-source-form__row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--ws-control-gap);
+  align-items: center;
+  min-height: var(--ws-control-h);
+}
+
+.wallpaper-source-form__input,
+.wallpaper-source-form__textarea {
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--ws-control-font);
+  line-height: 1.25;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--ws-control-radius);
+  margin: 0;
+}
+
+.wallpaper-source-form__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--ws-control-h);
+  padding: 0 12px;
+}
+
+/* Kill UA search field chrome so height stays exact */
+.wallpaper-source-form__input[type="search"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.wallpaper-source-form__input[type="search"]::-webkit-search-decoration,
+.wallpaper-source-form__input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.wallpaper-source-form__textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: calc(var(--ws-control-h) * 3);
+  padding: 8px 12px;
+  line-height: 1.4;
+}
+
+/* App Select — same height / radius / border as input + button */
+.wallpaper-source-form__select {
+  flex: 0 0 auto;
+  min-width: 96px;
+  height: var(--ws-control-h);
+}
+
+.wallpaper-source-form__select .c-select__trigger {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--ws-control-h);
+  min-height: var(--ws-control-h);
+  max-height: var(--ws-control-h);
+  padding: 0 10px;
+  font-size: var(--ws-control-font);
+  line-height: 1;
+  border-radius: var(--ws-control-radius);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Search / Generate CTA — match control height (ignore btn--sm) */
+.wallpaper-source-form__row > .btn {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  height: var(--ws-control-h);
+  min-height: var(--ws-control-h);
+  max-height: var(--ws-control-h);
+  padding: 0 14px;
+  font-size: var(--ws-control-font);
+  border-radius: var(--ws-control-radius);
+  line-height: 1;
+}
+
+.wallpaper-source-modal .modal-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.wallpaper-source-footer-hint {
+  flex: 1 1 140px;
+  min-width: 0;
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+
+.wallpaper-source-status {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.wallpaper-source-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger, #e55) 12%, var(--bg-elevated));
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
+.wallpaper-source-error p {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+/*
+ * X search gallery scroll + masonry
+ *
+ * CSS multi-column MUST NOT be the overflow scroller. With max-height +
+ * overflow-y on the same element, WebKit/Blink pack overflow into extra
+ * columns to the *right* (not taller content). overflow-x:hidden then
+ * clips those columns — only the first “page” of thumbs is visible and
+ * the rest of a long X search is unreachable (wasted results).
+ *
+ * Scroll lives on the outer shell; multi-column lives on the inner track
+ * with unconstrained height so all cards participate in 3 columns and
+ * the shell scrolls vertically.
+ */
+.wallpaper-masonry-scroll {
+  flex: 1 1 auto;
+  min-height: 180px;
+  /* Prefer remaining modal body height over a short fixed cap */
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px;
+  border: none;
+  outline: none;
+  background: transparent;
+}
+
+.wallpaper-masonry-scroll:focus,
+.wallpaper-masonry-scroll:focus-visible {
+  outline: none;
+}
+
+/* True 3-col masonry — height follows image, no fixed crop box */
+.wallpaper-masonry {
+  column-count: 3;
+  column-gap: 10px;
+  column-fill: balance;
+  column-rule: none;
+  width: 100%;
+  /* Never constrain height here — see .wallpaper-masonry-scroll */
+  max-height: none;
+  overflow: visible;
+}
+
+/* Imagine: one full-width column */
+.wallpaper-masonry--full {
+  column-count: 1;
+  column-gap: 0;
+}
+
+.wallpaper-masonry__empty {
+  column-span: all;
+  margin: 24px 8px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.wallpaper-masonry__card {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  overflow: hidden;
+  cursor: zoom-in;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  vertical-align: top;
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+.wallpaper-masonry--full .wallpaper-masonry__card {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.wallpaper-masonry__card:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+}
+
+.wallpaper-masonry__card--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.wallpaper-masonry__card--loading {
+  cursor: wait;
+  opacity: 0.85;
+}
+
+.wallpaper-masonry__card:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Natural image height — no aspect-ratio crop */
+.wallpaper-masonry__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--bg-hover) 80%, #000);
+  border: none;
+  object-fit: contain;
+}
+
+.wallpaper-masonry__meta {
+  display: block;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: none;
+}
+

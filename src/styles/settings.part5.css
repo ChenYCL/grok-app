@@ -1,0 +1,817 @@
+/* domain CSS chunk (move-only split; selectors unchanged) */
+
+    rgba(50, 170, 110, 0.1) 0%,
+    rgba(50, 170, 110, 0.16) 100%
+  );
+  box-shadow: inset 0 0 0 2px rgba(55, 175, 115, 0.42);
+}
+
+.drop-overlay--project .drop-overlay__icon {
+  color: rgb(40, 150, 95);
+  background: rgba(50, 170, 110, 0.14);
+}
+
+[data-theme="light"] .drop-overlay--attach {
+  background: linear-gradient(
+    180deg,
+    rgba(70, 130, 255, 0.06) 0%,
+    rgba(70, 130, 255, 0.11) 100%
+  );
+}
+[data-theme="light"] .drop-overlay--project {
+  background: linear-gradient(
+    180deg,
+    rgba(50, 170, 110, 0.07) 0%,
+    rgba(50, 170, 110, 0.12) 100%
+  );
+}
+
+/* Zone chrome while dragging — dim non-target gently, no layout jump */
+.main,
+.sidebar {
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+.main.is-drop-target,
+.sidebar.is-drop-target {
+  position: relative;
+}
+
+.main.is-drop-idle,
+.sidebar.is-drop-idle {
+  opacity: 0.55;
+  filter: saturate(0.85);
+}
+
+.app-toast {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%) translateZ(0);
+  z-index: 60;
+  max-width: min(420px, 90%);
+  padding: 8px 14px;
+  border-radius: var(--menu-radius, 12px);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  isolation: isolate;
+  font-size: 12px;
+  color: var(--text-primary);
+  pointer-events: none;
+  animation: drop-overlay-in 160ms ease-out;
+}
+
+/* ===== Main — solid content surface (not glass) ===== */
+.main {
+  flex: 1;
+  /* Floor so open aside / narrow windows cannot crush the conversation. */
+  min-width: 400px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main);
+  position: relative;
+  border-radius: 0;
+  z-index: 2;
+}
+
+/* Center title bar — same height as sidebar-chrome + rv__head so dividers align */
+.main__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--titlebar-height, 40px);
+  min-height: var(--titlebar-height, 40px);
+  max-height: var(--titlebar-height, 40px);
+  padding: 0 12px 0 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--space-2);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.platform-win .main__top,
+.platform-other .main__top,
+.has-custom-chrome .main__top,
+.platform-win .settings-page__chrome,
+.platform-other .settings-page__chrome,
+.has-custom-chrome .settings-page__chrome,
+.platform-win .settings-page__titlebar,
+.platform-other .settings-page__titlebar,
+.has-custom-chrome .settings-page__titlebar,
+.platform-win .auto-page__head,
+.has-custom-chrome .auto-page__head,
+/* Resource pane chrome (tabs + actions) — both legacy .rp__chrome empty state
+   and live .rp-chrome toolbar. Must clear fixed .window-controls (3 × 46px). */
+.platform-win .rp__chrome,
+.platform-other .rp__chrome,
+.has-custom-chrome .rp__chrome,
+.platform-win .rp-chrome,
+.platform-other .rp-chrome,
+.has-custom-chrome .rp-chrome {
+  padding-right: var(--window-controls-inset, 138px); /* 46px × 3 window controls */
+}
+
+/* Settings content already clears chrome via .settings-page__content padding-top */
+
+/* Ensure buttons/inputs inside settings stay interactive under drag CSS */
+.settings-page__nav-inner button,
+.settings-page__nav-inner input,
+.settings-page__main button,
+.settings-page__main input,
+.settings-page__main select,
+.settings-page__main textarea {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.main__title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+}
+
+.main__title-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.main__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.main__title-menu {
+  opacity: 0.7;
+}
+
+.main__title-row:hover .main__title-menu,
+.main__title-menu:focus-visible {
+  opacity: 1;
+}
+
+.main__sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  margin: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Codex-like reconnect chip — muted, not a red/orange alarm */
+.main__sub--retry {
+  max-width: min(420px, 42vw);
+  color: var(--text-secondary);
+  opacity: 0.92;
+}
+
+/* ===== Codex-style open-location split control =====
+   Height / radius / icon metrics match .chrome-btn (28×28) so it sits
+   evenly next to pane toggles in main__top-actions and rp-chrome__actions. */
+.open-loc {
+  --open-loc-h: 28px;
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  height: var(--open-loc-h);
+  box-sizing: border-box;
+  border-radius: var(--radius-sm, 6px); /* same as .chrome-btn */
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-hover));
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 500;
+  flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: none; /* avoid extra visual bulk vs flat chrome-btn */
+}
+
+.open-loc:hover,
+.open-loc.is-open {
+  border-color: var(--border-strong, var(--border-subtle));
+  background: var(--bg-active, var(--bg-hover));
+}
+
+.open-loc.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.open-loc__main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px; /* match chrome / chip internal gaps */
+  padding: 0 8px 0 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.open-loc__main:hover {
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.open-loc__app-ico {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.open-loc__app-ico img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  display: block;
+  border-radius: 4px;
+}
+
+.open-loc__label {
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.open-loc__caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 100%;
+  padding: 0 6px 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.open-loc__caret:hover {
+  color: var(--text-primary);
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.open-loc--compact {
+  width: auto;
+}
+
+.open-loc--compact .open-loc__main {
+  padding: 0 6px;
+  gap: 0;
+}
+
+.open-loc--compact .open-loc__caret {
+  width: 20px;
+  padding: 0 4px 0 0;
+}
+
+.open-loc-menu {
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  gap: var(--menu-gap);
+}
+
+.main__top-actions {
+  display: flex;
+  /* Match resource chrome actions (tree + close) and chrome-btn rhythm */
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.main__top-actions .open-loc,
+.main__top-actions .chrome-btn {
+  margin: 0;
+}
+
+/* Chat stage: full-height scroll + floating composer over it */
+.main__stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Lobe chat fills the stage (replaces .chat-surface) */
+.main__stage > .lobe-chat,
+.main__stage > .chat-surface {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Clear floating composer for Lobe list bottom */
+.main__stage .lobe-chat__inner {
+  padding-bottom: calc(var(--composer-float-pad, 168px) + 16px);
+}
+
+/* Welcome: composer is centered, not bottom-docked — no extra chat pad */
+.main__stage:has(.composer-wrap--welcome) .lobe-chat__inner {
+  padding-bottom: 16px;
+}
+
+/* Legacy list hooks (non-chat surfaces) */
+.messages {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.messages.overlay-scroll .overlay-scroll__viewport,
+.messages__viewport {
+  padding: var(--space-5) var(--space-4) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overscroll-behavior: contain;
+}
+
+.messages__col {
+  width: 100%;
+  max-width: 42rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: min-content;
+  padding-bottom: calc(var(--composer-float-pad, 168px) + 12px);
+  box-sizing: border-box;
+}
+
+.fold {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: transparent;
+  overflow: hidden;
+  width: 100%;
+}
+
+.fold__summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fold__summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold__body {
+  padding: 0 12px 12px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  max-height: 220px;
+  overflow: auto;
+}
+
+.message {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* User: right-aligned, size-to-content (up to column width) */
+.message--user {
+  align-self: flex-end;
+  width: fit-content;
+  max-width: min(100%, 520px);
+}
+
+/* Agent: left full-width of column */
+.message--assistant {
+  align-self: stretch;
+  width: 100%;
+}
+
+/* User bubble — theme tokens (no hardcoded light white) */
+.message__bubble--user {
+  display: inline-block;
+  max-width: 100%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--bg-user-bubble);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message__assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message__toolbar {
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.message__assistant:hover .message__toolbar,
+.message__assistant:focus-within .message__toolbar {
+  opacity: 1;
+}
+
+.message__tool {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.message__tool--icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.message__tool:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Phosphor SVGs inherit currentColor via wrapper */
+.g-icon svg {
+  display: block;
+}
+
+/* Markdown */
+.md-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+/* Streaming caret intentionally disabled — smooth buffer handles reveal. */
+.md-body--streaming::after {
+  content: none;
+}
+
+.md-body p {
+  margin: 0 0 0.75em;
+}
+
+.md-body p:last-child {
+  margin-bottom: 0;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3 {
+  margin: 1em 0 0.4em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.md-body h1 {
+  font-size: 1.25em;
+}
+.md-body h2 {
+  font-size: 1.12em;
+}
+.md-body h3 {
+  font-size: 1.05em;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 0.4em 0 0.75em;
+  padding-left: 1.4em;
+}
+
+.md-body li {
+  margin: 0.2em 0;
+}
+
+.md-body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-body blockquote {
+  margin: 0.6em 0;
+  padding: 0.2em 0 0.2em 12px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.md-body__pre {
+  margin: 0.6em 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-code);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.md-body__pre code {
+  color: inherit;
+  background: transparent;
+}
+
+.md-body__code-inline {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-code);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+/*
+ * Tables: fill wrap by default; overflow scrolls horizontally.
+ * width 100% + min-width max-content = stretch when narrow, grow when wide.
+ */
+.md-body__table-wrap,
+.md-body .chat-md__table-wrap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.md-body table,
+.sd-body table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 13px;
+  width: 100%;
+  min-width: max-content;
+  max-width: none;
+  table-layout: auto;
+}
+
+.md-body th,
+.md-body td,
+.sd-body th,
+.sd-body td {
+  border: 1px solid var(--border-subtle);
+  padding: 6px 12px;
+  text-align: left;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.md-body th,
+.sd-body th {
+  background: var(--bg-hover);
+}
+
+.sd-body {
+  overflow-x: auto;
+}
+
+/* Effort panel */
+.effort-panel {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.effort-panel__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+}
+
+.effort-panel__chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.effort-panel.is-open .effort-panel__chip {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.effort-panel__chip-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.effort-panel__chip-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  display: block;
+}
+
+.effort-panel__chip-dots i.is-on {
+  background: var(--accent);
+}
+
+.effort-panel__chev {
+  font-size: 9px;
+  opacity: 0.55;
+}
+
+.effort-panel__pop {
+  z-index: 10000;
+  width: max-content;
+  min-width: 200px;
+  max-width: var(--menu-max-width);
+  padding: 12px 14px 10px;
+  border-radius: var(--menu-radius);
+  /* Material from unified glass surface */
+  box-sizing: border-box;
+  overflow-y: auto;
+  color: var(--text-primary);
+}
+
+.effort-panel__pop--portal {
+  position: fixed;
+}
+
+.effort-panel__labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 4px;
+}
+
+.effort-panel__label {
+  flex: 1;
+  padding: 4px 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: center;
+  border-radius: 6px;
+}
+
+.effort-panel__label.is-active {
+  color: var(--text-primary);
+  font-weight: 600;
+  background: var(--bg-active);
+}
+
+.effort-panel__track {
+  position: relative;
+  height: 28px;
+  margin: 0 6px 8px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.effort-panel__rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+}
+
+.effort-panel__fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-muted), var(--accent));
+  transition: width 120ms ease;
+  pointer-events: none;
+}
+
+.effort-panel__tick {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border-strong);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.effort-panel__tick.is-on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.effort-panel__thumb {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+  pointer-events: none;
+  transition: left 100ms ease;
+}
+
+.effort-panel__burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.effort-panel__burst i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: effort-particle 0.55s ease-out forwards;
+  --a: calc(var(--i) * 45deg);
+  transform: rotate(var(--a)) translateY(0);
+}
+
+@keyframes effort-particle {
+  0% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-18px) scale(0.4);
+  }
+}
+
+.effort-panel__hint {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-align: center;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+

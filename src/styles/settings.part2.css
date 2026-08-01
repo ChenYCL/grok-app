@@ -1,0 +1,818 @@
+/* domain CSS chunk (move-only split; selectors unchanged) */
+
+
+.settings-shortcuts-scope--chat {
+  background: color-mix(in srgb, var(--text-tertiary) 12%, transparent);
+}
+
+.settings-shortcuts-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  margin: 0 16px 8px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+}
+
+.settings-shortcuts-filter input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.settings-shortcuts-filter input[type="search"]::-webkit-search-decoration,
+.settings-shortcuts-filter input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.settings-shortcuts-empty {
+  margin: 0;
+  padding: 20px 16px 24px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.settings-shortcuts-recording-hint,
+.settings-shortcuts-error {
+  margin: 0 16px 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.settings-shortcuts-recording-hint {
+  background: color-mix(in srgb, var(--accent, #6b8afd) 12%, transparent);
+  color: var(--text-secondary);
+}
+
+.settings-shortcuts-error {
+  background: color-mix(in srgb, var(--danger, #e55) 14%, transparent);
+  color: var(--text-primary);
+}
+
+/* Chord conflict visualization (Settings → Keyboard) */
+.settings-shortcuts-conflicts {
+  margin: 0 16px 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--danger, #e55) 35%, var(--border-subtle));
+  background: color-mix(in srgb, var(--danger, #e55) 10%, transparent);
+}
+
+.settings-shortcuts-conflicts__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.settings-shortcuts-conflicts__badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  vertical-align: middle;
+  color: color-mix(in srgb, var(--danger, #e55) 90%, var(--text-primary));
+  background: color-mix(in srgb, var(--danger, #e55) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger, #e55) 28%, transparent);
+}
+
+.settings-shortcuts-conflicts__meta {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.settings-shortcuts-conflicts__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-shortcuts-conflicts__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.settings-shortcuts-conflicts__list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-shortcuts-conflicts__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.settings-shortcuts-conflicts__actions {
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.settings-shortcuts-row--conflict td {
+  background: color-mix(in srgb, var(--danger, #e55) 7%, transparent);
+}
+
+.settings-shortcuts-kbd.is-conflict {
+  border-color: color-mix(in srgb, var(--danger, #e55) 45%, var(--border-subtle));
+  color: var(--text-primary);
+}
+
+.settings-shortcuts-group {
+  padding: 8px 16px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-shortcuts-group:last-of-type {
+  border-bottom: none;
+}
+
+.settings-shortcuts-group__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 8px 0 10px;
+}
+
+.settings-shortcuts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.settings-shortcuts-table th,
+.settings-shortcuts-table td {
+  text-align: left;
+  padding: 8px 10px 8px 0;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.settings-shortcuts-table th {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.settings-shortcuts-table th.is-platform-active {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.settings-shortcuts-table tr:last-child td {
+  border-bottom: none;
+}
+
+.settings-shortcuts-col-actions {
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 0;
+}
+
+.settings-shortcuts-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.settings-shortcuts-row--recording td {
+  background: color-mix(in srgb, var(--accent, #6b8afd) 8%, transparent);
+}
+
+.settings-shortcuts-custom-dot {
+  margin-left: 4px;
+  color: var(--accent, #6b8afd);
+  font-weight: 700;
+}
+
+.settings-shortcuts-kbd {
+  display: inline-block;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-input));
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.settings-shortcuts-kbd.is-recording {
+  border-color: var(--accent, #6b8afd);
+  color: var(--text-primary);
+  animation: settings-shortcuts-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes settings-shortcuts-pulse {
+  50% {
+    opacity: 0.65;
+  }
+}
+
+.settings-shortcuts-fixed {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.settings-shortcuts-note {
+  margin: 0;
+  padding: 12px 16px 16px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+/*
+ * Full-width explanatory note inside a .settings-card, between rows.
+ * Must carry its own padding + bottom border — a bare <p> had no styles and
+ * visually fused with the next settings-row (session mode help + keychain).
+ */
+.settings-card__note,
+.settings-page__hint {
+  margin: 0;
+  padding: 0 16px 14px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Read as a continuation of the preceding row (session data mode). */
+.settings-row + .settings-card__note,
+.settings-row + .settings-page__hint {
+  margin-top: -2px;
+  padding-top: 0;
+}
+
+.settings-card > .settings-card__note:last-child,
+.settings-card > .settings-page__hint:last-child {
+  border-bottom: none;
+  padding-bottom: 14px;
+}
+
+.settings-row__text {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-row__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-row__label-text {
+  min-width: 0;
+}
+
+/* “?” after module name — explanation lives in Tip, not a desc block */
+.settings-label-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: help;
+  line-height: 0;
+  opacity: 0.75;
+  transition:
+    color var(--motion-fast) ease,
+    opacity var(--motion-fast) ease,
+    background var(--motion-fast) ease;
+}
+
+.settings-label-help:hover,
+.settings-label-help:focus-visible {
+  opacity: 1;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  outline: none;
+}
+
+.settings-row__desc {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.settings-row__hint.is-danger {
+  color: var(--danger, #d33);
+}
+
+/* Full-width custom Select inside stacked settings rows */
+.settings-row--stack > .settings-select,
+.settings-row--stack > .c-select.settings-select {
+  width: 100%;
+  max-width: 420px;
+}
+
+.settings-row--stack > .settings-select .c-select__trigger,
+.settings-select .c-select__trigger {
+  width: 100%;
+}
+
+/* Settings → Runtime → Network: connectivity probe results */
+.settings-netprobe {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.settings-netprobe__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-netprobe__chip.is-warn .settings-acp-chip__dot,
+.settings-acp-chip.is-warn .settings-acp-chip__dot {
+  background: var(--warning, #c9902c);
+}
+
+.settings-netprobe__chip.is-warn .settings-acp-chip__label,
+.settings-acp-chip.is-warn .settings-acp-chip__label {
+  color: var(--warning, #c9902c);
+}
+
+.settings-netprobe__chip.is-muted .settings-acp-chip__dot,
+.settings-acp-chip.is-muted .settings-acp-chip__dot {
+  background: var(--text-tertiary);
+}
+
+.settings-netprobe__chip.is-muted .settings-acp-chip__label,
+.settings-acp-chip.is-muted .settings-acp-chip__label {
+  color: var(--text-secondary);
+}
+
+.settings-netprobe__target-chip {
+  grid-column: 1 / -1;
+  justify-self: start;
+  max-width: 100%;
+}
+
+.settings-proxy-apply {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-input.is-invalid {
+  border-color: var(--danger, #d33);
+}
+
+.settings-netprobe__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.settings-netprobe__item {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 8px 10px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-input));
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.settings-netprobe__mark {
+  font-weight: 600;
+  width: 1em;
+  text-align: center;
+}
+
+.settings-netprobe__item.is-ok .settings-netprobe__mark {
+  color: var(--success, #3d9a5f);
+}
+
+.settings-netprobe__item.is-fail .settings-netprobe__mark {
+  color: var(--danger, #d33);
+}
+
+.settings-netprobe__key {
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: lowercase;
+}
+
+.settings-netprobe__url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.settings-netprobe__meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.settings-netprobe__item.is-fail .settings-netprobe__meta {
+  color: var(--danger, #d33);
+}
+
+@media (max-width: 560px) {
+  .settings-netprobe__item {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "mark key"
+      "url url"
+      "meta meta";
+  }
+
+  .settings-netprobe__mark {
+    grid-area: mark;
+  }
+
+  .settings-netprobe__key {
+    grid-area: key;
+  }
+
+  .settings-netprobe__url {
+    grid-area: url;
+    white-space: normal;
+    word-break: break-all;
+  }
+
+  .settings-netprobe__meta {
+    grid-area: meta;
+    white-space: normal;
+  }
+}
+
+.settings-acp-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-acp-field .settings-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-acp-field .settings-input.is-invalid {
+  border-color: var(--danger, #d33);
+}
+
+.settings-acp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-input));
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.settings-acp-chip__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-tertiary);
+}
+
+.settings-acp-chip.is-ok .settings-acp-chip__dot {
+  background: var(--success, #3d9a5f);
+}
+
+.settings-acp-chip.is-fail .settings-acp-chip__dot {
+  background: var(--danger, #d33);
+}
+
+.settings-acp-chip__label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-acp-chip.is-ok .settings-acp-chip__label {
+  color: var(--success, #3d9a5f);
+}
+
+.settings-acp-chip.is-fail .settings-acp-chip__label {
+  color: var(--danger, #d33);
+}
+
+.settings-acp-chip__meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.settings-acp-cmd {
+  display: block;
+  margin-top: 4px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.12));
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* SDK Connect wizard (Runtime → Connection) */
+.sdk-connect-step {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border, rgba(128, 128, 128, 0.18));
+}
+
+.sdk-connect-step__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sdk-connect-step__n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent, #6b8afd) 22%, transparent);
+  flex-shrink: 0;
+}
+
+.sdk-connect-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.sdk-connect-mono--wrap {
+  word-break: break-all;
+}
+
+.sdk-connect-example {
+  margin-top: 8px;
+}
+
+.sdk-connect-example__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.settings-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.settings-models-list__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-input));
+  font-size: 13px;
+}
+
+.settings-models-list__name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-models-list__id {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.settings-models-list__badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #6b8afd) 18%, transparent);
+  color: var(--text-secondary);
+}
+
+.settings-row__hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+/* CLI update check (Settings → Runtime / About + Doctor) */
+.settings-cli-update {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.settings-cli-update__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-cli-update__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.settings-cli-update__meta-item {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.settings-cli-update__channel {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-secondary));
+  color: var(--text-secondary);
+}
+
+.settings-cli-update__channel.is-stable {
+  color: var(--text-primary);
+}
+
+.settings-cli-update__channel.is-alpha {
+  color: var(--warning, #c90);
+  border-color: color-mix(in srgb, var(--warning, #c90) 35%, var(--border-subtle));
+}
+
+.settings-cli-update__channel.is-unknown {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.settings-cli-update__channel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-cli-update__channel-hint,
+.settings-cli-update__pin-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+
+.settings-cli-update__pin {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-cli-update__pin-label {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.settings-cli-update__pin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-cli-update__pin-input {
+  flex: 1 1 10rem;
+  min-width: 0;
+  max-width: 16rem;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.settings-cli-update__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.settings-cli-update__status.is-available {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.settings-cli-update__status-text {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.settings-cli-update__err {
+  font-size: 12.5px;
+  color: var(--danger, #d33);
+  line-height: 1.45;
+}
+
+.settings-cli-update--compact .settings-row__label {
+  display: none;
+}
+
+.settings-cli-update--compact .settings-row__desc {
+  display: none;
+}
+
+.doctor-advanced__cli-update {
+  padding: 10px 0 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+

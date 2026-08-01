@@ -1,0 +1,815 @@
+/* domain CSS chunk (move-only split; selectors unchanged) */
+
+  }
+}
+
+/* Ensure flex children above the gallery don’t shrink the scroll region away */
+.wallpaper-source-modal__body > .wallpaper-source-tabs,
+.wallpaper-source-modal__body > .wallpaper-source-form,
+.wallpaper-source-modal__body > .wallpaper-source-status,
+.wallpaper-source-modal__body > .wallpaper-source-error {
+  flex: 0 0 auto;
+}
+
+.wallpaper-source-modal__body > .wallpaper-masonry-scroll {
+  flex: 1 1 auto;
+  min-height: 0; /* critical: allow flex child to scroll */
+}
+
+.settings-wallpaper__preview-wrap {
+  position: relative;
+  width: 100%;
+}
+
+/* Window-shaped preview (~desktop frame). Empty state click → file picker. */
+.settings-wallpaper__preview {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 160px;
+  padding: 0;
+  margin: 0;
+  border-radius: var(--radius-md);
+  border: 1px dashed color-mix(in srgb, var(--border-strong) 70%, transparent);
+  background:
+    linear-gradient(135deg, var(--bg-hover), var(--bg-elevated));
+  overflow: hidden;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    background var(--motion-fast) ease;
+}
+
+button.settings-wallpaper__preview:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-active) 80%, var(--bg-elevated));
+}
+
+.settings-wallpaper__preview:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.settings-wallpaper__preview--set {
+  border-style: solid;
+  border-color: var(--border-subtle);
+  cursor: default;
+}
+
+.settings-wallpaper__preview--busy {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+.settings-wallpaper__media {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg-elevated) 70%, #000 30%);
+}
+
+.settings-wallpaper__media-el {
+  display: block;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+.settings-wallpaper__preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 16px 14px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.settings-wallpaper__busy {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+/* Hover actions: replace + focus crop (shown only when media is set). */
+.settings-wallpaper__hover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 12px 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 42%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) ease;
+}
+
+.settings-wallpaper__preview--set:hover .settings-wallpaper__hover,
+.settings-wallpaper__preview--set:focus-within .settings-wallpaper__hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Touch / no-hover: keep actions reachable without hover. */
+@media (hover: none) {
+  .settings-wallpaper__preview--set .settings-wallpaper__hover {
+    opacity: 1;
+    pointer-events: auto;
+    background: color-mix(in srgb, var(--bg-elevated) 28%, transparent);
+  }
+}
+
+.settings-wallpaper__hover .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 10px color-mix(in srgb, #000 28%, transparent);
+}
+
+.settings-wallpaper__clear {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 1px 4px color-mix(in srgb, #000 25%, transparent);
+}
+
+/* ── Wallpaper focus editor modal ── */
+.modal.wallpaper-focus-modal {
+  width: min(920px, calc(100vw - 32px));
+  max-height: min(90vh, 860px);
+}
+
+.wallpaper-focus-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.wallpaper-focus-modal__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.wallpaper-focus-modal__footer-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.wallpaper-focus-stage {
+  position: relative;
+  width: 100%;
+  height: min(52vh, 440px);
+  min-height: 220px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, #000 55%, var(--bg-elevated));
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.wallpaper-focus-stage__media {
+  display: block;
+  max-width: none;
+  /* Video: keep decode cheap — no filters / blend modes on the element. */
+  pointer-events: none;
+}
+
+.wallpaper-focus-frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  /* Dim outside the crop with a huge box-shadow (no extra video layer). */
+  box-shadow: 0 0 0 9999px color-mix(in srgb, #000 52%, transparent);
+  border: 2px solid color-mix(in srgb, var(--accent) 85%, #fff);
+  border-radius: 3px;
+  cursor: grab;
+  touch-action: none;
+  will-change: transform, width, height;
+}
+
+.wallpaper-focus-frame:active {
+  cursor: grabbing;
+}
+
+.wallpaper-focus-frame__edge {
+  position: absolute;
+  inset: 6px;
+  border: 1px dashed color-mix(in srgb, #fff 55%, transparent);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/* Video clip dual-handle timeline */
+.wallpaper-clip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wallpaper-clip__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wallpaper-clip__label {
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-secondary);
+}
+
+.wallpaper-clip__times {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.wallpaper-clip__dur {
+  color: var(--text-secondary);
+}
+
+.wallpaper-clip__track {
+  position: relative;
+  height: 28px;
+  touch-action: none;
+  user-select: none;
+  cursor: default;
+}
+
+.wallpaper-clip__rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-strong) 55%, var(--bg-hover));
+}
+
+.wallpaper-clip__range {
+  position: absolute;
+  top: 50%;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: grab;
+  touch-action: none;
+}
+
+.wallpaper-clip__range:active {
+  cursor: grabbing;
+}
+
+.wallpaper-clip__handle {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 22px;
+  margin-top: -11px;
+  margin-left: -7px;
+  padding: 0;
+  border: 2px solid var(--bg-elevated);
+  border-radius: 4px;
+  background: var(--accent);
+  box-shadow: 0 1px 4px color-mix(in srgb, #000 30%, transparent);
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.wallpaper-clip__handle:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.wallpaper-clip__handle--start {
+  border-radius: 4px 2px 2px 4px;
+}
+
+.wallpaper-clip__handle--end {
+  border-radius: 2px 4px 4px 2px;
+}
+
+.wallpaper-focus-zoom {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.wallpaper-focus-zoom__label {
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-secondary);
+}
+
+.wallpaper-focus-zoom__value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  min-width: 2.8em;
+  text-align: right;
+}
+
+.wallpaper-focus-zoom__range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-strong) 55%, var(--bg-hover));
+  outline: none;
+  cursor: pointer;
+}
+
+.wallpaper-focus-zoom__range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+}
+
+.wallpaper-focus-zoom__range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+}
+
+.wallpaper-focus-zoom__range:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+/* Footer actions share one row with reset on the left */
+.wallpaper-focus-modal .modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-wallpaper__error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+  line-height: 1.35;
+}
+
+/* Wallpaper scrim strength — affects only the shell ::after overlay. */
+.settings-wallpaper__scrim {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.settings-wallpaper__scrim-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-wallpaper__scrim-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-secondary);
+}
+
+.settings-wallpaper__scrim-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.settings-wallpaper__scrim-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-strong) 55%, var(--bg-hover));
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-wallpaper__scrim-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+}
+
+.settings-wallpaper__scrim-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+}
+
+.settings-wallpaper__scrim-range:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+.settings-wallpaper__scrim-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
+/* Discover / import / open Grok Build CLI sessions */
+.settings-cli-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.settings-cli-sessions__note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid
+    color-mix(in srgb, var(--accent, #6b8afd) 28%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent, #6b8afd) 8%, transparent);
+}
+
+.settings-cli-sessions__path {
+  font-size: 11.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-cli-sessions__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-cli-sessions__filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+}
+
+.settings-cli-sessions__filter input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.settings-cli-sessions__filter input[type="search"]::-webkit-search-decoration,
+.settings-cli-sessions__filter input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.settings-cli-sessions__search-note {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.35;
+}
+
+.settings-cli-sessions__prompt {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+.settings-cli-sessions__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.settings-cli-sessions__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-input));
+  min-width: 0;
+}
+
+.settings-cli-sessions__item--linked {
+  border-color: color-mix(in srgb, var(--accent, #6b8afd) 36%, var(--border-subtle));
+  background: color-mix(
+    in srgb,
+    var(--accent, #6b8afd) 6%,
+    var(--bg-elevated, var(--bg-input))
+  );
+}
+
+.settings-cli-sessions__meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-cli-sessions__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-cli-sessions__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.settings-cli-sessions__sub {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-cli-sessions__id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.settings-cli-sessions__id {
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.settings-cli-sessions__copy {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.settings-cli-sessions__copy:hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+}
+
+.settings-cli-sessions__row-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-cli-sessions__badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #6b8afd) 18%, transparent);
+  color: var(--text-secondary);
+  font-weight: 560;
+}
+
+.settings-cli-sessions__empty {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  padding: 6px 2px;
+}
+
+.settings-cli-sessions__err {
+  font-size: 12.5px;
+  color: var(--danger, #d33);
+  padding: 4px 2px;
+}
+
+.settings-cli-sessions__ok {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  padding: 4px 2px;
+}
+
+/* Settings → About: GitHub release check */
+.settings-about-update {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.settings-about-update__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-about-update__status {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.settings-about-update__status.is-available {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.settings-about-update__err {
+  font-size: 12.5px;
+  color: var(--danger, #d33);
+  line-height: 1.45;
+}
+
+.settings-about-update__assets {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+/* ===== Drag-drop zone overlays (OS file drop) =====
+   Full-bleed wash + inset ring (no dashed frame with margins).
+   Hint card floats center; icons from Tabler only. */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  border-radius: inherit;
+  animation: drop-overlay-in 180ms ease-out;
+}
+
+@keyframes drop-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.drop-overlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 300px;
+  padding: 20px 24px;
+  border-radius: var(--modal-radius, 16px);
+  text-align: center;
+  /* Material from unified .drop-overlay__card glass surface */
+  animation: drop-card-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes drop-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.drop-overlay__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.drop-overlay__card strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.drop-overlay__card span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* Main / chat: soft blue wash, full bleed, inset ring via box-shadow */
+.drop-overlay--attach {
+  background: linear-gradient(
+    180deg,
+    rgba(70, 130, 255, 0.09) 0%,
+    rgba(70, 130, 255, 0.14) 100%
+  );
+  box-shadow: inset 0 0 0 2px rgba(80, 140, 255, 0.42);
+}
+
+.drop-overlay--attach .drop-overlay__icon {
+  color: rgb(70, 130, 255);
+  background: rgba(70, 130, 255, 0.12);
+}
+
+/* Sidebar: soft green wash, full bleed */

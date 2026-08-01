@@ -1,0 +1,855 @@
+/* domain CSS chunk (move-only split; selectors unchanged) */
+
+}
+
+.cpm__worktrees {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cpm__worktrees-head {
+  padding: 4px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.cpm__worktrees-list.is-loading {
+  opacity: 0.72;
+}
+
+.cpm__worktrees-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.cpm__worktrees-empty {
+  margin: 0;
+  padding: 6px 10px 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* Match project row height; title + badges on one horizontal line */
+.cpm__worktree-li {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cpm__worktree-li .cpm__worktree {
+  flex: 1;
+  min-width: 0;
+}
+
+.cpm__pop .cpm__worktree {
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.cpm__worktree:disabled {
+  opacity: 0.85;
+  cursor: default;
+}
+
+.cpm__worktree-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.cpm__worktree-name {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-primary);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.cpm__worktree-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.cpm__worktree-new {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.cpm__worktree-gc {
+  margin-top: 4px;
+  width: 100%;
+}
+
+/* New worktree dialog fields */
+.wt-create {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+
+.wt-create__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.wt-create__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wt-create__label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.wt-create__layout {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.wt-create__layout .wt-create__label {
+  padding: 0;
+  margin: 0 0 2px;
+}
+
+.wt-create__radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.wt-create__radio input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wt-create__preview {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  word-break: break-all;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.wt-create__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--danger, #e35d6a);
+}
+
+.cpm__worktree-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--menu-radius-item, 8px);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.cpm__worktree-remove:hover {
+  color: var(--danger, #e5484d);
+  background: var(--menu-item-hover, rgba(127, 127, 127, 0.12));
+}
+
+.cpm__worktree-remove:focus-visible {
+  outline: 2px solid var(--accent, #5b8def);
+  outline-offset: -2px;
+}
+
+/* Remove worktree confirm dialog */
+.wt-remove {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wt-remove__msg {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.wt-remove__path {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.wt-remove__force {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wt-remove__force input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wt-remove__error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger, #e5484d);
+}
+
+/* Clean stale worktrees (gc / prune) dialog */
+.wt-gc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+
+.wt-gc__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.wt-gc__force {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wt-gc__force input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wt-gc__preview-head {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.wt-gc__preview-status,
+.wt-gc__prunable {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.wt-gc__output {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.wt-gc__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--danger, #e35d6a);
+}
+
+/* Worktree ship flow (push + open PR) */
+.wt-ship {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+
+.wt-ship__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.wt-ship__branch {
+  margin: 0;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-tertiary);
+  word-break: break-all;
+}
+
+.wt-ship__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wt-ship__label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.wt-ship__body {
+  resize: vertical;
+  min-height: 96px;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+.wt-ship__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wt-ship__check input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wt-ship__status {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.wt-ship__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--danger, #e35d6a);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Ship success: PR URL + open hub / browser */
+.wt-ship--success {
+  gap: 14px;
+}
+
+.wt-ship__success-url {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-hover);
+  font-size: 12.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  line-height: 1.4;
+  word-break: break-all;
+  color: var(--text-primary);
+}
+
+.wt-ship__success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rp-changes-section__ship {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11.5px;
+  line-height: 1.2;
+  padding: 2px 6px;
+  max-width: 100%;
+}
+
+.rp-changes-section__ship span {
+  white-space: nowrap;
+}
+
+.account-link:hover {
+  color: var(--accent-hover, var(--accent));
+  text-decoration: underline;
+}
+
+.account-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.account-badge--ok {
+  background: var(--success-muted);
+  color: var(--success);
+  border-color: transparent;
+}
+
+.account-badge--warn {
+  background: var(--warning-muted);
+  color: var(--warning);
+  border-color: transparent;
+}
+
+.account-badge--muted {
+  color: var(--text-tertiary);
+}
+
+.account-quota-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.account-quota-bar--sm {
+  height: 4px;
+}
+
+.account-quota-bar__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--motion-normal, 200ms) ease;
+}
+
+.account-quota-bar__fill.is-warn {
+  background: var(--warning);
+}
+
+.account-quota-bar__fill.is-danger {
+  background: var(--danger);
+}
+
+.account-products {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.account-product-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.account-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account-section__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.account-section__body {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg, 10px);
+  background: var(--bg-elevated);
+  padding: 12px 14px;
+}
+
+.account-section__body--heat {
+  /* Allow full-year heatmap (~53 weeks) to paint without clipping month labels */
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 14px 16px 12px;
+  /* Prefer natural heatmap width; scroll only if viewport is still tight */
+  min-width: 0;
+}
+
+/* Fixed height + internal scroll for call logs */
+.account-logs-scroll {
+  height: 260px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 0;
+  /* body padding is on the card; table fills the scrollport */
+}
+
+.account-heatmap__empty {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* GitHub-style heatmap (grok-go port) */
+:root,
+[data-theme="light"] {
+  --heatmap-0: #ebedf0;
+  --heatmap-1: #9be9a8;
+  --heatmap-2: #40c463;
+  --heatmap-3: #30a14e;
+  --heatmap-4: #216e39;
+}
+
+[data-theme="dark"] {
+  --heatmap-0: rgba(255, 255, 255, 0.08);
+  --heatmap-1: #0e4429;
+  --heatmap-2: #006d32;
+  --heatmap-3: #26a641;
+  --heatmap-4: #39d353;
+}
+
+.gh-heatmap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  user-select: none;
+}
+
+.gh-heatmap__inner {
+  /* Keep full graph width so month labels on the right are not clipped */
+  margin: 0 auto;
+  min-width: max-content;
+  box-sizing: border-box;
+}
+
+.gh-heatmap__months {
+  position: relative;
+}
+
+.gh-heatmap__month {
+  position: absolute;
+  top: 1px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+
+.gh-heatmap__body {
+  display: flex;
+  align-items: flex-start;
+}
+
+.gh-heatmap__dow {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+
+.gh-heatmap__dow-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 4px;
+}
+
+.gh-heatmap__grid {
+  display: grid;
+}
+
+.gh-heatmap__cell {
+  border-radius: 2px;
+  /* Soft edge like GitHub cells — not a hard black frame */
+  border: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
+  padding: 0;
+  outline: none;
+  cursor: pointer;
+  background: var(--heatmap-0);
+  box-sizing: border-box;
+  transition:
+    box-shadow 0.1s ease,
+    border-color 0.1s ease;
+}
+
+.gh-heatmap__cell.is-empty {
+  pointer-events: none;
+  opacity: 0;
+  border-color: transparent;
+  cursor: default;
+}
+
+/*
+ * Selected / focus: thin outer ring (clearer than inset), kept restrained:
+ * 1px canvas gap + ~1.5px soft green — fits the 3px gutters without a heavy halo.
+ */
+.gh-heatmap__cell.is-selected {
+  z-index: 2;
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px var(--bg-elevated, var(--surface-1, var(--bg, #fff))),
+    0 0 0 2.5px color-mix(in srgb, var(--heatmap-3, #30a14e) 72%, transparent);
+}
+
+.gh-heatmap__cell:not(.is-empty):hover:not(.is-selected) {
+  z-index: 1;
+  border-color: color-mix(in srgb, var(--text-primary) 20%, transparent);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--text-primary) 16%, transparent);
+}
+
+.gh-heatmap__cell:not(.is-empty):focus-visible {
+  z-index: 2;
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px var(--bg-elevated, var(--surface-1, var(--bg, #fff))),
+    0 0 0 2.5px color-mix(in srgb, var(--heatmap-3, #30a14e) 72%, transparent);
+}
+
+.account-section__title--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-heatmap-title-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.account-heatmap-total {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.account-heat-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.12));
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.2));
+  gap: 2px;
+}
+
+.account-heat-toggle__btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+}
+
+.account-heat-toggle__btn:hover {
+  color: var(--text-primary);
+}
+
+.account-heat-toggle__btn.is-active {
+  background: var(--bg-elevated, var(--surface-1, #fff));
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.gh-heatmap__cell--week {
+  border-radius: 3px;
+}
+
+.gh-heatmap__legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+/* Portaled to document.body (fixed) — not clipped by heatmap overflow parents */
+.gh-heatmap__tip {
+  position: fixed;
+  z-index: 10060;
+  width: 168px;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--glass-surface-solid, var(--bg-elevated, #fff));
+  color: var(--text-primary);
+  border: 1px solid var(--glass-border, var(--border-subtle));
+  box-shadow: var(
+    --glass-shadow,
+    var(--shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.18))
+  );
+  backdrop-filter: blur(var(--glass-blur, 24px))
+    saturate(var(--glass-saturate, 1.4));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 24px))
+    saturate(var(--glass-saturate, 1.4));
+  font-size: 12px;
+  pointer-events: none;
+  /* Instant feel — no enter delay; light fade only */
+  animation: gh-heatmap-tip-in 0.06s ease-out;
+}
+
+.gh-heatmap__tip--hover {
+  width: 168px;
+}
+
+@keyframes gh-heatmap-tip-in {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.gh-heatmap__tip--above {
+  transform: translateY(-100%);
+}
+
+.gh-heatmap__tip--below {
+  transform: none;
+}
+
+.gh-heatmap__tip-date {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.gh-heatmap__tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.gh-heatmap__tip-row span:last-child {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.account-logs__row.is-day-hit {
+  background: color-mix(in srgb, var(--accent, #30a14e) 8%, transparent);
+}
+
+.account-logs__empty {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 16px 14px;
+}
+
+.account-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 560px;
+}
+
+.account-logs__head,
+.account-logs__row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1.4fr) minmax(80px, 1fr) 56px 72px 72px 88px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+.account-logs__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 500;
+  background: var(--bg-elevated);
+}
+
+.account-logs__row {
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.account-logs__row:last-child {
+  border-bottom: none;
+}
