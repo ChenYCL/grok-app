@@ -2971,7 +2971,7 @@ const en = {
   "settings.aboutApp": "About Grok App",
   "settings.checkUpdate": "Check for updates",
   "settings.checkUpdateDesc":
-    "Signed release builds can download and install updates in-app. Local or unsigned builds open the GitHub release page instead.",
+    "Signed release builds can download and install updates in-app. Local or unsigned builds open the GitHub release page instead. Agents, voice, Remote IM, and mirror keep running until install succeeds.",
   "settings.checkUpdateChecking": "Checking…",
   "settings.checkUpdateLatest": "You are on the latest version ({version}).",
   "settings.checkUpdateAvailable":
@@ -2979,6 +2979,7 @@ const en = {
   "settings.checkUpdateOpen": "Open release page",
   "settings.checkUpdateDownload": "Download installer",
   "settings.checkUpdateFailed": "Could not check: {error}",
+  "settings.autoUpdateIdle": "Check when you want — no update status yet.",
   "settings.autoUpdateChecking": "Checking for updates…",
   "settings.autoUpdateUpToDate": "You are on the latest version.",
   "settings.autoUpdateAvailable": "Version {version} is available.",
@@ -2989,10 +2990,38 @@ const en = {
   "settings.autoUpdateManualRequired":
     "Version {version} is available. This install type cannot auto-update — download from the release page.",
   "settings.autoUpdateError": "Update failed: {error}",
+  "settings.autoUpdateBody.checking":
+    "Contacting the signed updater endpoint or GitHub Releases…",
+  "settings.autoUpdateBody.downloading":
+    "Downloading a signed package. Agents keep running until install succeeds.",
+  "settings.autoUpdateBody.installing":
+    "Staging the update. Agents, voice, Remote IM, and mirror stop only after a successful install prepare.",
+  "settings.autoUpdateBody.ready":
+    "Install and restart when ready. A failed install will not stop agents.",
+  "settings.autoUpdateBody.manual":
+    "Open the release page or download the installer for this platform. In-app silent install is not available on this build.",
+  "settings.autoUpdateBody.agentsNote":
+    "Agents, voice, Remote IM, and mirror keep running; they stop only after a successful install prepare.",
+  "settings.autoUpdateError.network":
+    "Could not reach the update server. Check your network or proxy, then try again.",
+  "settings.autoUpdateError.signature":
+    "The update package failed signature verification. Use a signed release build or download from GitHub Releases.",
+  "settings.autoUpdateError.pluginMissing":
+    "In-app updater is not available in this build (unsigned or local). Use Check for updates to open GitHub Releases.",
+  "settings.autoUpdateError.notReady":
+    "The update is not ready to install yet. Wait for download to finish, then try Install and restart.",
+  "settings.autoUpdateError.hostOnly":
+    "App updates are only available in the desktop app, not in a browser preview.",
+  "settings.autoUpdateError.other":
+    "Update failed. You can still open the GitHub release page and install manually.",
   "settings.autoUpdateChannelSilent":
     "Update channel: in-app (signed release)",
   "settings.autoUpdateChannelManual":
     "Update channel: GitHub download (unsigned / local build)",
+  "settings.autoUpdateChannelUnsupported":
+    "Update channel: manual install (this package type cannot auto-update)",
+  "settings.autoUpdateChannelHostOnly":
+    "Update channel: desktop app only (not available here)",
   "settings.close": "Close",
   "settings.sharedConfirm":
     "Switch to shared ~/.grok? Data will not merge silently. Confirm?",
@@ -8984,7 +9013,7 @@ const zh: Record<MessageKey, string> = {
   "settings.aboutApp": "关于 Grok App",
   "settings.checkUpdate": "检查更新",
   "settings.checkUpdateDesc":
-    "已签名的正式版可在应用内下载并安装更新。本地或未签名构建会改为打开 GitHub 发布页。",
+    "已签名的正式版可在应用内下载并安装更新。本地或未签名构建会改为打开 GitHub 发布页。智能体、语音、远程 IM 与镜像在安装成功前会继续运行。",
   "settings.checkUpdateChecking": "检查中…",
   "settings.checkUpdateLatest": "已是最新版本（{version}）。",
   "settings.checkUpdateAvailable":
@@ -8992,6 +9021,7 @@ const zh: Record<MessageKey, string> = {
   "settings.checkUpdateOpen": "打开发布页",
   "settings.checkUpdateDownload": "下载安装包",
   "settings.checkUpdateFailed": "检查失败：{error}",
+  "settings.autoUpdateIdle": "需要时再检查 — 尚无更新状态。",
   "settings.autoUpdateChecking": "正在检查更新…",
   "settings.autoUpdateUpToDate": "已是最新版本。",
   "settings.autoUpdateAvailable": "有新版本 {version}。",
@@ -9002,9 +9032,37 @@ const zh: Record<MessageKey, string> = {
   "settings.autoUpdateManualRequired":
     "有新版本 {version}。当前安装方式不支持应用内更新 — 请到发布页下载。",
   "settings.autoUpdateError": "更新失败：{error}",
+  "settings.autoUpdateBody.checking":
+    "正在连接已签名更新端点或 GitHub Releases…",
+  "settings.autoUpdateBody.downloading":
+    "正在下载已签名安装包。安装成功前智能体继续运行。",
+  "settings.autoUpdateBody.installing":
+    "正在暂存更新。智能体、语音、远程 IM 与镜像仅在安装准备成功后才会停止。",
+  "settings.autoUpdateBody.ready":
+    "准备好后可安装并重启。安装失败不会停止智能体。",
+  "settings.autoUpdateBody.manual":
+    "请打开发布页或下载本平台安装包。此构建不支持应用内静默安装。",
+  "settings.autoUpdateBody.agentsNote":
+    "智能体、语音、远程 IM 与镜像继续运行；仅在安装准备成功后才会停止。",
+  "settings.autoUpdateError.network":
+    "无法连接更新服务器。请检查网络或代理后重试。",
+  "settings.autoUpdateError.signature":
+    "更新包签名校验失败。请使用已签名正式版，或从 GitHub Releases 下载。",
+  "settings.autoUpdateError.pluginMissing":
+    "此构建未启用应用内更新（未签名或本地版）。请点「检查更新」打开 GitHub Releases。",
+  "settings.autoUpdateError.notReady":
+    "更新尚未就绪。请等待下载完成后再点「安装并重启」。",
+  "settings.autoUpdateError.hostOnly":
+    "应用更新仅在桌面端可用，浏览器预览中不可用。",
+  "settings.autoUpdateError.other":
+    "更新失败。你仍可打开发布页并手动安装。",
   "settings.autoUpdateChannelSilent": "更新通道：应用内（已签名正式版）",
   "settings.autoUpdateChannelManual":
     "更新通道：GitHub 下载（未签名 / 本地构建）",
+  "settings.autoUpdateChannelUnsupported":
+    "更新通道：手动安装（此安装包类型不支持自动更新）",
+  "settings.autoUpdateChannelHostOnly":
+    "更新通道：仅桌面端（此处不可用）",
   "settings.close": "关闭",
   "settings.sharedConfirm":
     "切换到共享 ~/.grok？数据不会静默合并，请确认。",

@@ -31,6 +31,7 @@ Unsigned / local builds keep the previous GitHub “open release page” path.
 | Platform support | `is_auto_update_supported` — Linux requires AppImage (`APPIMAGE` env) |
 | Pre-relaunch teardown | `prepare_for_app_update` — **only after** successful `install()`, never before |
 | Frontend state machine | `src/hooks/useUpdater.ts` + `UpdaterProvider` (single path: plugin or GitHub) |
+| Path honesty (copy / channel) | `src/lib/appUpdateHonesty.ts` — signed auto vs GitHub manual vs unsupported vs host-only; soft-fail error classes; agents stop only after install prepare |
 | UI | Settings → About (`AboutUpdateRow`) |
 | Capabilities | `updater:allow-*`, `process:allow-restart` |
 

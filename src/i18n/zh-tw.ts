@@ -2839,7 +2839,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.aboutApp": "關於 Grok App",
   "settings.checkUpdate": "檢查更新",
   "settings.checkUpdateDesc":
-    "已簽名的正式版可在應用程式內下載並安裝更新。本機或未簽名建置會改為開啟 GitHub 發佈頁。",
+    "已簽名的正式版可在應用程式內下載並安裝更新。本機或未簽名建置會改為開啟 GitHub 發佈頁。智慧體、語音、遠端 IM 與鏡像在安裝成功前會繼續執行。",
   "settings.checkUpdateChecking": "檢查中…",
   "settings.checkUpdateLatest": "已是最新版本（{version}）。",
   "settings.checkUpdateAvailable":
@@ -2847,6 +2847,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.checkUpdateOpen": "開啟發佈頁",
   "settings.checkUpdateDownload": "下載安裝包",
   "settings.checkUpdateFailed": "檢查失敗：{error}",
+  "settings.autoUpdateIdle": "需要時再檢查 — 尚無更新狀態。",
   "settings.autoUpdateChecking": "正在檢查更新…",
   "settings.autoUpdateUpToDate": "已是最新版本。",
   "settings.autoUpdateAvailable": "有新版本 {version}。",
@@ -2857,9 +2858,37 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.autoUpdateManualRequired":
     "有新版本 {version}。目前安裝方式不支援應用程式內更新 — 請到發佈頁下載。",
   "settings.autoUpdateError": "更新失敗：{error}",
+  "settings.autoUpdateBody.checking":
+    "正在連線已簽名更新端點或 GitHub Releases…",
+  "settings.autoUpdateBody.downloading":
+    "正在下載已簽名安裝包。安裝成功前智慧體繼續執行。",
+  "settings.autoUpdateBody.installing":
+    "正在暫存更新。智慧體、語音、遠端 IM 與鏡像僅在安裝準備成功後才會停止。",
+  "settings.autoUpdateBody.ready":
+    "準備好後可安裝並重新啟動。安裝失敗不會停止智慧體。",
+  "settings.autoUpdateBody.manual":
+    "請開啟發佈頁或下載本平台安裝包。此建置不支援應用程式內靜默安裝。",
+  "settings.autoUpdateBody.agentsNote":
+    "智慧體、語音、遠端 IM 與鏡像繼續執行；僅在安裝準備成功後才會停止。",
+  "settings.autoUpdateError.network":
+    "無法連線更新伺服器。請檢查網路或代理後重試。",
+  "settings.autoUpdateError.signature":
+    "更新包簽名校驗失敗。請使用已簽名正式版，或從 GitHub Releases 下載。",
+  "settings.autoUpdateError.pluginMissing":
+    "此建置未啟用應用程式內更新（未簽名或本機版）。請點「檢查更新」開啟 GitHub Releases。",
+  "settings.autoUpdateError.notReady":
+    "更新尚未就緒。請等待下載完成後再點「安裝並重新啟動」。",
+  "settings.autoUpdateError.hostOnly":
+    "應用更新僅在桌面端可用，瀏覽器預覽中不可用。",
+  "settings.autoUpdateError.other":
+    "更新失敗。你仍可開啟發佈頁並手動安裝。",
   "settings.autoUpdateChannelSilent": "更新通道：應用內（已簽名正式版）",
   "settings.autoUpdateChannelManual":
     "更新通道：GitHub 下載（未簽名 / 本地建置）",
+  "settings.autoUpdateChannelUnsupported":
+    "更新通道：手動安裝（此安裝包類型不支援自動更新）",
+  "settings.autoUpdateChannelHostOnly":
+    "更新通道：僅桌面端（此處不可用）",
   "settings.close": "關閉",
   "settings.sharedConfirm":
     "切換到共用 ~/.grok？資料不會靜默合併，請確認。",

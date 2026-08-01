@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **App auto-update path honesty** (Settings → About): pure `appUpdateHonesty` maps signed in-app updater vs GitHub manual download vs unsupported package types vs host-only; progress states (checking / downloading / installing) with honest notes that agents, voice, Remote IM, and mirror stop only after successful install prepare; classified soft-fail errors (network · signature · plugin missing · not ready · host-only); manual path keeps Open release page + Download installer when asset URL known; no invented versions. en/zh/zh-TW + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
