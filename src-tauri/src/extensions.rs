@@ -776,10 +776,50 @@ fn fetch_mcp_from_inspect(project_cwd: Option<&str>) -> Vec<McpServerDef> {
 }
 
 /// Build ACP mcpServers for the current prefs + discovered defs.
+///
+/// **Official Grok main route:** never injects `official-aux` (native tools).
+///
+/// **Custom main + inject on:** injects `official-aux` **first**. By default
+/// other user MCPs are **omitted** so slow/failing servers (Playwright, …) do
+/// not keep official-aux in a 30s "connecting" window. Set
+/// `official_aux_with_user_mcp` to also load extension MCPs after official-aux.
 pub fn build_session_mcp_servers(project_cwd: Option<&str>) -> Value {
-    let prefs = load_prefs();
-    let defs = list_mcp_server_defs(project_cwd);
-    build_acp_mcp_servers(&defs, &prefs)
+    let inject = crate::official_aux::should_inject_mcp_for_main();
+    let load_user = !inject || crate::official_aux::should_load_user_mcp_with_official_aux();
+
+    let mut arr: Vec<Value> = if load_user {
+        let prefs = load_prefs();
+        let defs = list_mcp_server_defs(project_cwd);
+        match build_acp_mcp_servers(&defs, &prefs) {
+            Value::Array(a) => a,
+            other => {
+                tracing::warn!("mcpServers not an array: {other:?}");
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    // Strip user-configured official-aux duplicates before App inject.
+    arr.retain(|v| {
+        v.get("name")
+            .and_then(|n| n.as_str())
+            .map(|n| n != "official-aux")
+            .unwrap_or(true)
+    });
+
+    if inject {
+        if let Some(entry) = crate::official_aux::mcp_server_acp_entry() {
+            tracing::info!(
+                target: "official_aux",
+                with_user_mcp = load_user,
+                "injecting official-aux MCP first (custom main only)"
+            );
+            arr.insert(0, entry);
+        }
+    }
+    Value::Array(arr)
 }
 
 // ── Config.toml MCP upsert / remove ──────────────────────────────────────────

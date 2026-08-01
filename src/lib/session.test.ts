@@ -1186,6 +1186,163 @@ describe("context compact markers", () => {
 });
 
 describe("tool activity", () => {
+  it("compactMessageSegments merges host-vision family (no double 识别图片内容)", () => {
+    const segs = compactMessageSegments([
+      {
+        kind: "tool",
+        toolCallId: "host-vision-aaa",
+        title: "识别图片内容",
+        toolKind: "vision",
+        status: "in_progress",
+        detail: "partial…",
+        streaming: true,
+      },
+      {
+        kind: "tool",
+        toolCallId: "host-vision-bbb",
+        title: "识别图片内容",
+        toolKind: "vision",
+        status: "completed",
+        detail: "full description of the UI",
+        streaming: false,
+      },
+      { kind: "thought", text: "思考" },
+    ]);
+    const tools = segs.filter((s) => s.kind === "tool");
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      title: "识别图片内容",
+      status: "completed",
+      detail: "full description of the UI",
+    });
+  });
+
+  it("compactMessageSegments merges host-x family (no double 搜索 X 信息)", () => {
+    const segs = compactMessageSegments([
+      {
+        kind: "tool",
+        toolCallId: "host-x-aaa",
+        title: "搜索 X 信息",
+        toolKind: "search",
+        status: "in_progress",
+        detail: "…",
+        streaming: true,
+      },
+      {
+        kind: "tool",
+        toolCallId: "host-x-bbb",
+        title: "搜索 X 信息",
+        toolKind: "search",
+        status: "completed",
+        detail: "## X 用户搜索\n| Handle | @cgnot996 |",
+        streaming: false,
+      },
+      { kind: "thought", text: "ok" },
+    ]);
+    const tools = segs.filter((s) => s.kind === "tool");
+    expect(tools).toHaveLength(1);
+    expect(tools[0]?.detail).toContain("@cgnot996");
+  });
+
+  it("parseToolStepContent keeps multiline Host X body", () => {
+    const body = [
+      "tool_step|completed|search|搜索 X 信息",
+      "The user wants me to search…",
+      "",
+      "## X 用户搜索：`cgnot996`",
+      "",
+      "| Handle | @cgnot996 |",
+      "| Profile | https://x.com/cgnot996 |",
+    ].join("\n");
+    const p = parseToolStepContent(body);
+    expect(p?.title).toBe("搜索 X 信息");
+    expect(p?.kind).toBe("search");
+    expect(p?.detail).toContain("@cgnot996");
+    expect(p?.detail).toContain("https://x.com/cgnot996");
+    expect(p?.detail?.split("\n").length).toBeGreaterThan(2);
+  });
+
+  it("weave session b54735c8 shape: one host-x tool + full detail", () => {
+    const toolBody = [
+      "tool_step|completed|search|搜索 X 信息",
+      "preamble junk",
+      "## X 用户搜索：`cgnot996`",
+      "| **Handle** | `@cgnot996` |",
+    ].join("\n");
+    const parsed = parseToolStepContent(toolBody)!;
+    const rows: ChatMessage[] = [
+      { id: "u1", role: "user", content: "搜索@cgnot996这个账号" },
+      {
+        id: "tool-host-x-56464134-1102-46dc-9d80-53e0d6363d86",
+        role: "tool",
+        content: parsed.title,
+        marker: "tool_step",
+        toolCallId: "host-x-56464134-1102-46dc-9d80-53e0d6363d86",
+        toolKind: parsed.kind,
+        toolStatus: parsed.status,
+        toolDetail: parsed.detail,
+        streaming: false,
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "结果如下",
+        thought: "already have host results",
+        thoughtPhases: ["already have host results"],
+        segments: buildSegmentsFromLegacy(
+          "结果如下",
+          "already have host results",
+          ["already have host results"],
+        ),
+      },
+    ];
+    const woven = weaveToolsIntoAssistantSegments(rows);
+    const asst = woven.find((m) => m.role === "assistant")!;
+    const tools = (asst.segments || []).filter((s) => s.kind === "tool");
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({ title: "搜索 X 信息" });
+    expect((tools[0] as { detail?: string }).detail).toContain("@cgnot996");
+    const filtered = filterTranscriptMessages(woven);
+    expect(filtered.some((m) => m.role === "tool")).toBe(false);
+  });
+
+  it("applyToolEvent host-x only inlines into assistant (no dual standalone row)", () => {
+    let m: ChatMessage[] = [
+      { id: "u1", role: "user", content: "搜索它在 x 上的信息" },
+      {
+        id: "a-pending-1",
+        role: "assistant",
+        content: "",
+        streaming: true,
+        segments: [],
+      },
+    ];
+    m = applyToolEvent(m, {
+      toolCallId: "host-x-aaa",
+      title: "搜索 X 信息",
+      kind: "search",
+      status: "in_progress",
+      detail: "…",
+    });
+    // No standalone tool_step row — only assistant segment.
+    expect(m.filter((x) => x.role === "tool")).toHaveLength(0);
+    const asst = m.find((x) => x.role === "assistant")!;
+    expect(asst.segments?.filter((s) => s.kind === "tool")).toHaveLength(1);
+
+    m = applyToolEvent(m, {
+      toolCallId: "host-x-bbb",
+      title: "搜索 X 信息",
+      kind: "search",
+      status: "completed",
+      detail: "## DeepSeek\n@foo",
+    });
+    expect(m.filter((x) => x.role === "tool")).toHaveLength(0);
+    const asst2 = m.find((x) => x.role === "assistant")!;
+    const tools = (asst2.segments || []).filter((s) => s.kind === "tool");
+    expect(tools).toHaveLength(1);
+    expect((tools[0] as { detail?: string }).detail).toContain("DeepSeek");
+  });
+
   it("applyToolEvent upserts by toolCallId", () => {
     let m = applyToolEvent([], {
       toolCallId: "t1",

@@ -7,7 +7,7 @@ import type { ProviderEffortEntry, ProviderModelEntry } from "@/lib/api";
 import { GROK_BUILD_EFFORTS } from "@/lib/grokCatalog";
 
 /** Known brand marks with dedicated logos (see ProviderBrandIcon). */
-export type ProviderBrandId = "deepseek" | "amux";
+export type ProviderBrandId = "deepseek" | "amux" | "opencode-go";
 
 export type ProviderPreset = {
   id: string;
@@ -99,6 +99,26 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     blurbKey: "prov.preset.yunApi.blurb",
     apiKeyUrl: "https://api.yunyi.ai/register/?aff_code=W0iw",
     // No logo yet
+  },
+  /**
+   * OpenCode Zen Go gateway. DeepSeek-class models on this host must use
+   * `chat_completions` — their Responses stream emits non-standard events
+   * (`ping`, deltas without `sequence_number`) that crash Grok Build CLI.
+   */
+  {
+    id: "opencode-go",
+    name: "OpenCode Go",
+    suggestedId: "opencode-go",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    apiBackend: "chat_completions",
+    models: [
+      { id: "deepseek-v4-flash", name: "DeepSeek-V4-Flash" },
+      { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" },
+    ],
+    efforts: DEEPSEEK_EFFORTS.map((e) => ({ ...e })),
+    blurbKey: "prov.preset.opencodeGo.blurb",
+    apiKeyUrl: "https://opencode.ai/",
+    brandId: "opencode-go",
   },
 ];
 

@@ -1209,6 +1209,14 @@ pub async fn settings_set(
         prev.session_data_mode != settings.session_data_mode;
     let memory_flip = prev.experimental_memory != settings.experimental_memory;
     let web_search_flip = prev.disable_web_search != settings.disable_web_search;
+    let official_aux_inject_flip =
+        prev.official_aux_inject != settings.official_aux_inject
+            || prev.official_aux_with_user_mcp != settings.official_aux_with_user_mcp;
+    // Keep native-Imagine PreToolUse hook in sync with inject / route (independent home only).
+    if official_aux_inject_flip || session_data_mode_changed {
+        let mode = settings.session_data_mode.clone();
+        let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
+    }
     let no_ask_user_flip = prev.no_ask_user != settings.no_ask_user;
     let disallowed_tools_flip = !crate::acp_client::disallowed_tools_equal(
         &prev.disallowed_tools,
@@ -1398,6 +1406,7 @@ pub async fn settings_set(
         need_soft_respawn = true;
     }
     if web_search_flip
+        || official_aux_inject_flip
         || no_ask_user_flip
         || disallowed_tools_flip
         || allowed_tools_flip
@@ -7076,6 +7085,8 @@ pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, S
         let _ = crate::providers::ensure_models_retry_cap();
         // Fix bases saved without /v1 (causes silent multi-minute inference retries).
         let _ = crate::providers::repair_custom_base_urls();
+        // OpenCode Zen Go SSE trailers → loopback sanitize proxy base_url rewrite.
+        let _ = crate::relay_stream_proxy::repair_sanitize_proxy_bases();
         crate::providers::list_custom_providers()
     })
     .await
@@ -7225,6 +7236,8 @@ pub async fn providers_remove(
     .map_err(|e| e.to_string())??;
     // Removing a provider (esp. the active one) must not leave warm agents on
     // a deleted route id.
+    let mode = store::load_settings().session_data_mode.clone();
+    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
     mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }
@@ -7267,6 +7280,8 @@ pub async fn providers_set_default(
     .await
     .map_err(|e| e.to_string())??;
 
+    let mode = store::load_settings().session_data_mode.clone();
+    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
     mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }
@@ -7287,6 +7302,178 @@ pub async fn providers_list_models(
     provider_id: Option<String>,
 ) -> Result<crate::providers::RemoteModelsResult, String> {
     crate::providers::list_remote_models(base_url, api_key, provider_id).await
+}
+
+// ── Model auxiliary routing (`[models]` side-task slots) ─────────────────────
+
+#[tauri::command]
+pub async fn models_aux_get() -> Result<crate::models_aux::ModelsAuxState, String> {
+    tauri::async_runtime::spawn_blocking(crate::models_aux::get_state)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn models_aux_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    image_description: Option<String>,
+    web_search: Option<String>,
+    session_summary: Option<String>,
+    prompt_suggestion: Option<String>,
+) -> Result<crate::models_aux::ModelsAuxState, String> {
+    let input = crate::models_aux::ModelsAuxSetInput {
+        image_description,
+        web_search,
+        session_summary,
+        prompt_suggestion,
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || crate::models_aux::set_slots(input))
+        .await
+        .map_err(|e| e.to_string())??;
+    mgr.recycle_all_agents(&app, "models_aux").await;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn models_aux_apply_save_grok(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<crate::models_aux::ModelsAuxState, String> {
+    let result = tauri::async_runtime::spawn_blocking(crate::models_aux::apply_save_grok)
+        .await
+        .map_err(|e| e.to_string())??;
+    mgr.recycle_all_agents(&app, "models_aux").await;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn models_aux_reset_defaults(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<crate::models_aux::ModelsAuxState, String> {
+    let result = tauri::async_runtime::spawn_blocking(crate::models_aux::reset_defaults)
+        .await
+        .map_err(|e| e.to_string())??;
+    mgr.recycle_all_agents(&app, "models_aux").await;
+    Ok(result)
+}
+
+/// Independent side-channel: `grok -p -m <aux>` under agent-home (not live session model).
+#[tauri::command]
+pub async fn models_aux_headless(
+    model_id: String,
+    prompt: String,
+    max_turns: Option<u32>,
+) -> Result<String, String> {
+    let turns = max_turns.unwrap_or(8);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::models_aux::run_aux_headless(
+            &model_id,
+            &prompt,
+            turns,
+            std::time::Duration::from_secs(180),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Host web search via aux model headless (ignores live ACP main model).
+#[tauri::command]
+pub async fn models_aux_web_search(query: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::models_aux::headless_web_search(&query))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+// ── Official aux side-channel (isolated GROK_HOME + grok -p) ─────────────────
+
+#[tauri::command]
+pub async fn official_aux_status() -> Result<crate::official_aux::OfficialAuxStatus, String> {
+    Ok(crate::official_aux::status())
+}
+
+#[tauri::command]
+pub async fn official_aux_ensure_home() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::official_aux::ensure_official_aux_home().map(|p| p.display().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn official_aux_dispatch(
+    tool: String,
+    args: serde_json::Value,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::official_aux::dispatch_tool(&tool, &args))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn official_aux_web_search(query: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::official_aux::web_search(&query))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn official_aux_x_keyword_search(
+    query: String,
+    limit: Option<u32>,
+    min_faves: Option<u32>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::official_aux::x_keyword_search(&query, limit, min_faves)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn official_aux_x_semantic_search(
+    query: String,
+    limit: Option<u32>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::official_aux::x_semantic_search(&query, limit)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn official_aux_x_user_search(
+    query: String,
+    count: Option<u32>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::official_aux::x_user_search(&query, count))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn official_aux_x_thread_fetch(post_id_or_url: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::official_aux::x_thread_fetch(&post_id_or_url)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn official_aux_vision_describe(
+    paths: Vec<String>,
+    question: Option<String>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::official_aux::vision_describe(&paths, question.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // ── Editors ─────────────────────────────────────────────────────────────────

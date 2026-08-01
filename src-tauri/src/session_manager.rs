@@ -15,8 +15,9 @@
 //! Streaming performance (I04 / I06):
 //! - Mid-stream journal upserts are throttled (≥500ms or paragraph / force).
 //! - Pure stream silence: silent heal (orphan tools / ready-eligible end) first,
-//!   then at most one soft `session://stream_stall` per turn; hard silence
-//!   force-ends the turn while keeping the journal.
+//!   then **maybe-done auto-end** (body present + no open tools → cancel hung
+//!   prompt + Ready), then at most one soft `session://stream_stall` per turn;
+//!   hard silence force-ends the turn while keeping the journal.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -52,8 +53,8 @@ use crate::session_fsm::{SessionFsm, SessionState};
 use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
 use crate::stream_stall::{
     hard_stall_seconds, is_hard_stalled, is_stream_stalled, journal_tool_is_terminal,
-    normalize_stream_stall_seconds, should_emit_soft_stall, should_prune_open_tool_id,
-    stall_tier_from_evidence, stream_stall_message, StallTier,
+    normalize_stream_stall_seconds, should_auto_end_maybe_done, should_emit_soft_stall,
+    should_prune_open_tool_id, stall_tier_from_evidence, stream_stall_message, StallTier,
 };
 use crate::turn_complete::{
     is_terminal_tool_status, note_tool_open_status, release_tool_from_open,
@@ -61,13 +62,17 @@ use crate::turn_complete::{
 };
 
 /// Outcome of one stall-watchdog pass on a single live/background session.
+#[derive(Debug)]
 enum StallTickAction {
     Healed {
         session_id: String,
     },
+    /// Force-ended streaming turn; always cancel/abort the hung ACP prompt.
     HardEnded {
         session_id: String,
         stall_seconds: u32,
+        /// Why we ended (logging / UI code).
+        reason: &'static str,
     },
     SoftStall {
         session_id: String,
@@ -402,10 +407,158 @@ fn normalize_tool_kind_for_journal(kind: &str, title: &str) -> String {
     if k == "search" || t.starts_with("web search") || t.contains("web_search") {
         return "web_search".into();
     }
+    if k == "search_tool" || t == "search_tool" || t.starts_with("search tools") {
+        return "search_tool".into();
+    }
+    if k == "use_tool" || t == "use_tool" || t.contains("__") {
+        return "use_tool".into();
+    }
     if !kind.trim().is_empty() {
         return kind.trim().to_string();
     }
     String::new()
+}
+
+/// Recover tool kind/title when the completed `tool_call_update` is sparse
+/// (status-only payloads leave title empty → journal became `tool_step|completed||tool`).
+fn enrich_tool_identity_from_raw(
+    raw: &serde_json::Value,
+    title: &str,
+    kind: &str,
+) -> (String, String) {
+    let mut title_out = title.trim().to_string();
+    let mut kind_out = kind.trim().to_string();
+
+    let pick_str = |ptrs: &[&str]| -> Option<String> {
+        for p in ptrs {
+            if let Some(s) = raw.pointer(p).and_then(|v| v.as_str()).map(str::trim) {
+                if !s.is_empty() {
+                    return Some(s.to_string());
+                }
+            }
+        }
+        None
+    };
+
+    if title_out.is_empty() || title_out.eq_ignore_ascii_case("tool") {
+        let mcp_tool = pick_str(&["/rawOutput/tool_name", "/rawInput/tool_name"]);
+        let mcp_server = pick_str(&["/rawOutput/server_name", "/rawOutput/server"]);
+        let meta_name = pick_str(&["/_meta/x.ai/tool/name", "/_meta/x.ai/tool/label"]);
+        let variant = pick_str(&["/rawInput/variant"]);
+        let update_title = pick_str(&["/title"]);
+
+        if let (Some(tool), Some(server)) = (mcp_tool.as_ref(), mcp_server.as_ref()) {
+            title_out = if tool.contains("__") {
+                tool.clone()
+            } else {
+                format!("{server}__{tool}")
+            };
+        } else if let Some(tn) = mcp_tool {
+            title_out = tn;
+        } else if let Some(t) = update_title.filter(|t| !t.eq_ignore_ascii_case("tool")) {
+            title_out = t;
+        } else if let Some(n) = meta_name {
+            title_out = match n.as_str() {
+                "search_tool" | "SearchTool" => "search_tool".into(),
+                "use_tool" | "UseTool" => "use_tool".into(),
+                other => other.to_string(),
+            };
+        } else if let Some(v) = variant {
+            title_out = match v.as_str() {
+                "SearchTool" => "search_tool".into(),
+                "UseTool" => "use_tool".into(),
+                other => other.to_string(),
+            };
+        } else if let Some(q) = pick_str(&["/rawInput/query"]) {
+            title_out = format!("Search tools: \"{q}\"");
+        }
+    }
+
+    if kind_out.is_empty() || kind_out.eq_ignore_ascii_case("other") {
+        kind_out = normalize_tool_kind_for_journal(&kind_out, &title_out);
+        if kind_out.is_empty() {
+            if let Some(n) = pick_str(&["/_meta/x.ai/tool/name", "/rawInput/variant"]) {
+                kind_out = match n.as_str() {
+                    "SearchTool" | "search_tool" => "search_tool".into(),
+                    "UseTool" | "use_tool" => "use_tool".into(),
+                    other => other.to_ascii_lowercase(),
+                };
+            }
+        }
+        if kind_out.is_empty() && !title_out.is_empty() {
+            kind_out = normalize_tool_kind_for_journal("", &title_out);
+        }
+        if kind_out.is_empty() {
+            kind_out = "tool".into();
+        }
+    }
+
+    if title_out.is_empty() {
+        title_out = if kind_out != "tool" {
+            kind_out.replace('_', " ")
+        } else {
+            "tool".into()
+        };
+    }
+
+    (kind_out, title_out)
+}
+
+/// Persist a Host side-channel tool (vision) into the session journal so
+/// reload weaves it into the same activity rail as native ACP tools.
+fn journal_host_tool_step(
+    app_sid: &str,
+    tool_call_id: &str,
+    status: &str,
+    kind: &str,
+    title: &str,
+    detail: &str,
+) {
+    if app_sid.is_empty() || tool_call_id.is_empty() {
+        return;
+    }
+    let st = if status.is_empty() {
+        "completed"
+    } else {
+        status
+    };
+    let kind_store = if kind.is_empty() { "tool" } else { kind };
+    let label = if title.trim().is_empty() {
+        kind_store
+    } else {
+        title.trim()
+    };
+    let mut content = format!("tool_step|{st}|{kind_store}|{label}");
+    let d = detail.trim();
+    if !d.is_empty() {
+        content.push('\n');
+        // Cap journal size; UI already holds live stream via session://tool.
+        content.push_str(&d.chars().take(6_000).collect::<String>());
+    }
+    let mid = format!("tool-{tool_call_id}");
+    let mut msgs = store::load_messages(app_sid);
+    if let Some(slot) = msgs.iter_mut().find(|m| m.id == mid) {
+        if tool_journal_richer(&slot.content, &content) {
+            slot.content = content;
+            slot.marker = Some("tool_step".into());
+            slot.is_error = matches!(st, "failed" | "error");
+            let _ = store::save_messages(app_sid, &msgs);
+        }
+    } else {
+        let _ = store::append_message(
+            app_sid,
+            ChatMessageStored {
+                id: mid,
+                role: "tool".into(),
+                content,
+                thought: None,
+                created_at: chrono::Utc::now(),
+                is_error: matches!(st, "failed" | "error"),
+                attachments: None,
+                marker: Some("tool_step".into()),
+            },
+        );
+    }
 }
 
 /// Prefer human-readable journal labels (never bare “tool” when we have better).
@@ -576,8 +729,47 @@ fn is_uuid_str(s: &str) -> bool {
     true
 }
 
+/// First absolute media filesystem path found in free text (MCP / markdown).
+/// Prefer backtick-wrapped paths, then bare absolute paths ending in media ext.
+fn first_media_path_in_text(text: &str) -> Option<String> {
+    // ` /abs/path/to/file.jpg `
+    for part in text.split('`') {
+        let p = part.trim();
+        if p.starts_with('/') && is_media_fs_path(p) {
+            return Some(p.to_string());
+        }
+        // Windows-ish absolute (rare in macOS logs but harmless)
+        if p.len() > 3
+            && p.as_bytes().get(1) == Some(&b':')
+            && is_media_fs_path(p)
+        {
+            return Some(p.to_string());
+        }
+    }
+    // Bare absolute path token (stop at whitespace / quote / paren / markdown)
+    let mut start = None;
+    for (i, ch) in text.char_indices() {
+        if ch == '/' && start.is_none() {
+            start = Some(i);
+            continue;
+        }
+        if let Some(s) = start {
+            let end = matches!(ch, ' ' | '\n' | '\r' | '\t' | '"' | '\'' | ')' | ']' | '`' | '（' | '）');
+            if end || i + ch.len_utf8() >= text.len() {
+                let end_i = if end { i } else { text.len() };
+                let candidate = text[s..end_i].trim_end_matches(['.', ',', ';', '。', '，']);
+                if is_media_fs_path(candidate) {
+                    return Some(candidate.to_string());
+                }
+                start = None;
+            }
+        }
+    }
+    None
+}
+
 /// Pull absolute media path from ACP tool_call / tool_call_update payload
-/// (image_gen, image_edit, image_to_video, reference_to_video, …).
+/// (image_gen, image_edit, image_to_video, reference_to_video, MCP official-aux, …).
 fn extract_generated_media_path(raw: &serde_json::Value) -> Option<String> {
     // ImageGen / ImageEdit / video tools rawOutput
     if let Some(path) = raw
@@ -595,7 +787,21 @@ fn extract_generated_media_path(raw: &serde_json::Value) -> Option<String> {
     {
         return Some(path.to_string());
     }
-    // content[].content.text is often a JSON string with {"path":"..."}
+    // MCP use_tool result: rawOutput.output.OkayOutput | output (string)
+    for key in [
+        "/rawOutput/output/OkayOutput",
+        "/rawOutput/output",
+        "/rawOutput/output/text",
+        "/toolCall/rawOutput/output/OkayOutput",
+        "/toolCall/rawOutput/output",
+    ] {
+        if let Some(t) = raw.pointer(key).and_then(|v| v.as_str()) {
+            if let Some(p) = first_media_path_in_text(t) {
+                return Some(p);
+            }
+        }
+    }
+    // content[].content.text is often a JSON string with {"path":"..."} or markdown path
     if let Some(arr) = raw.get("content").and_then(|v| v.as_array()) {
         for item in arr {
             let text = item
@@ -605,10 +811,13 @@ fn extract_generated_media_path(raw: &serde_json::Value) -> Option<String> {
             if let Some(t) = text {
                 if let Ok(j) = serde_json::from_str::<serde_json::Value>(t) {
                     if let Some(path) = j.get("path").and_then(|v| v.as_str()) {
-                        if !path.is_empty() {
+                        if !path.is_empty() && is_media_fs_path(path) {
                             return Some(path.to_string());
                         }
                     }
+                }
+                if let Some(p) = first_media_path_in_text(t) {
+                    return Some(p);
                 }
             }
         }
@@ -1574,17 +1783,51 @@ impl SessionManager {
             });
         }
 
-        // 2) Hard silence → force end, keep journal.
+        // This-turn body only (do not use prior-turn journal — that false-triggers
+        // maybe_done auto-end on a new turn that has not produced text yet).
+        let saw_model_this_turn =
+            s.saw_model_output || !s.stream_buf.trim().is_empty();
+        if saw_model_this_turn {
+            s.saw_model_output = true;
+        }
+        let saw_tools = s.tools_this_turn > 0 || !s.open_tool_ids.is_empty();
+        // Soft-banner tier may look at prior journal so we never say pre-token
+        // after a full earlier answer in the same chat.
+        let saw_model_for_tier = saw_model_this_turn
+            || Self::journal_has_assistant_body(&s.app_session_id);
+        // Terminal candidate: **this turn** already has body and tools are idle.
+        let terminal_candidate = should_auto_end_maybe_done(
+            saw_model_this_turn,
+            s.open_tool_ids.len(),
+            s.deferred_prompt_complete.is_some(),
+        );
+
+        // 2) Maybe-done auto-end at soft silence.
+        // Repro: tools finished + partial assistant text, model stream dies mid-loop;
+        // `prompt_in_flight` stays true so ready-eligible heal never fires, and the
+        // UI spins until the 10min hard window. Cancel the hung prompt and Ready.
+        if terminal_candidate {
+            let sid = s.app_session_id.clone();
+            Self::force_end_streaming_turn(s, "maybe_done_stall_heal");
+            return Some(StallTickAction::HardEnded {
+                session_id: sid,
+                stall_seconds: stall_secs,
+                reason: "maybe_done_stall_heal",
+            });
+        }
+
+        // 3) Hard silence → force end, keep journal.
         if is_hard_stalled(s.last_stream_progress, stall_secs, now) {
             let sid = s.app_session_id.clone();
             Self::force_end_streaming_turn(s, "hard_stall_timeout");
             return Some(StallTickAction::HardEnded {
                 session_id: sid,
                 stall_seconds: hard_stall_seconds(stall_secs),
+                reason: "hard_stall_timeout",
             });
         }
 
-        // 3) Soft banner (capped once per turn) — still less interruptive.
+        // 4) Soft banner (capped once per turn) — still less interruptive.
         if !should_emit_soft_stall(
             s.last_stream_progress,
             s.last_stall_emit,
@@ -1596,22 +1839,13 @@ impl SessionManager {
         }
         s.last_stall_emit = Some(now);
         s.stall_soft_emits = s.stall_soft_emits.saturating_add(1);
-        let saw_model = s.saw_model_output
-            || !s.stream_buf.trim().is_empty()
-            || Self::journal_has_assistant_body(&s.app_session_id);
-        if saw_model {
-            s.saw_model_output = true;
-        }
-        let saw_tools = s.tools_this_turn > 0 || !s.open_tool_ids.is_empty();
-        // Terminal candidate: body present and no open tools — prefer maybe_done copy.
-        let terminal_candidate =
-            saw_model && s.open_tool_ids.is_empty() && s.deferred_prompt_complete.is_none();
-        let tier = stall_tier_from_evidence(saw_model, saw_tools, terminal_candidate);
+        // Soft UI never auto-ends; terminal_candidate is false here.
+        let tier = stall_tier_from_evidence(saw_model_for_tier, saw_tools, false);
         Some(StallTickAction::SoftStall {
             session_id: s.app_session_id.clone(),
             stall_seconds: stall_secs,
             tier,
-            saw_model_output: saw_model,
+            saw_model_output: saw_model_for_tier,
             saw_tool_activity: saw_tools,
         })
     }
@@ -1646,13 +1880,25 @@ impl SessionManager {
             StallTickAction::HardEnded {
                 session_id,
                 stall_seconds,
+                reason,
             } => {
                 tracing::warn!(
                     target: "session",
                     session = %session_id,
                     stall_seconds,
-                    "hard stream stall — force-ended turn, journal kept"
+                    reason,
+                    "stream stall — force-ended turn, journal kept (cancel hung prompt)"
                 );
+                // Unblock the agent: force_end only cleared Host FSM; without cancel
+                // the CLI stays blocked on model inference and refuses the next send.
+                let acp = self.with_session_mut(&session_id, |s| s.acp.clone());
+                if let Some(acp) = acp.flatten() {
+                    let msg = format!("stream stall recovery ({reason})");
+                    acp.abort_pending_prompts(&msg);
+                    tauri::async_runtime::spawn(async move {
+                        let _ = acp.cancel().await;
+                    });
+                }
                 Self::emit_runtime(
                     app,
                     &SessionSnapshot {
@@ -1673,6 +1919,7 @@ impl SessionManager {
                         "sessionId": session_id,
                         "stallSeconds": stall_seconds,
                         "code": "STREAM_STALL_HARD_END",
+                        "reason": reason,
                     }),
                 );
                 Self::emit_state(app, &self.snapshot());
@@ -3048,11 +3295,12 @@ impl SessionManager {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
             plugin_dirs: meta.plugin_dirs.clone(),
-            extra_rules: meta
-                .extra_rules
-                .as_ref()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
+            extra_rules: crate::official_aux::merge_extra_rules(
+                meta.extra_rules
+                    .as_ref()
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty()),
+            ),
             max_agent_turns: meta.max_agent_turns,
             system_prompt_override: meta
                 .system_prompt_override
@@ -3061,6 +3309,8 @@ impl SessionManager {
                 .and_then(|s| crate::store::sanitize_system_prompt_override(Some(s))),
             no_ask_user: meta.no_ask_user,
             fork_session: fork_agent,
+            grok_home_override: None,
+            empty_mcp_servers: false,
         };
 
         let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
@@ -3818,20 +4068,31 @@ impl SessionManager {
                 };
                 Self::emit_empty_run_if_any(app, empty_run);
 
-                // Live tool activity for UI — prefer human call text over bare "tool".
-                let kind_j = normalize_tool_kind_for_journal(&kind, &title);
+                // Live tool activity for UI — recover identity when completed
+                // updates omit title/kind (sparse status-only payloads).
+                let (kind_enriched, title_enriched) =
+                    enrich_tool_identity_from_raw(&raw, &title, &kind);
+                let kind_j = normalize_tool_kind_for_journal(&kind_enriched, &title_enriched);
+                let kind_j = if kind_j.is_empty() {
+                    kind_enriched.clone()
+                } else {
+                    kind_j
+                };
                 let live_title =
-                    tool_journal_label(&title, &kind_j, &detail, &path_out);
-                let live_title = if !title.is_empty() && title.to_ascii_lowercase() != "tool" {
-                    title.clone()
+                    tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
+                let live_title = if !live_title.is_empty() && live_title.to_ascii_lowercase() != "tool"
+                {
+                    live_title
+                } else if !title_enriched.is_empty() {
+                    title_enriched.clone()
                 } else if let Some(ref d) = detail {
                     d.clone()
                 } else if let Some(ref p) = path_out {
                     p.clone()
-                } else if !kind.is_empty() && kind.to_ascii_lowercase() != "tool" {
-                    kind.replace('_', " ")
+                } else if !kind_j.is_empty() && kind_j.to_ascii_lowercase() != "tool" {
+                    kind_j.replace('_', " ")
                 } else {
-                    String::new()
+                    "tool".into()
                 };
                 // Cross-session tool audit (soft-fail; redacted summary).
                 if !app_sid.is_empty() {
@@ -3883,9 +4144,18 @@ impl SessionManager {
                     && !app_sid.is_empty()
                     && !tool_call_id.is_empty()
                 {
-                    let label = tool_journal_label(&title, &kind_j, &detail, &path_out);
+                    let label = tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
+                    let label = if label.is_empty() || label.eq_ignore_ascii_case("tool") {
+                        live_title.clone()
+                    } else {
+                        label
+                    };
                     let kind_store = if kind_j.is_empty() {
-                        kind.clone()
+                        if kind_enriched.is_empty() {
+                            "tool".into()
+                        } else {
+                            kind_enriched
+                        }
                     } else {
                         kind_j
                     };
@@ -4651,9 +4921,26 @@ impl SessionManager {
             } => {
                 let (detail, path_hint) = extract_tool_ui_fields(&raw);
                 let path_out = path_hint.filter(|p| !p.is_empty());
-                let kind_j = normalize_tool_kind_for_journal(&kind, &title);
+                let (kind_enriched, title_enriched) =
+                    enrich_tool_identity_from_raw(&raw, &title, &kind);
+                let kind_j = normalize_tool_kind_for_journal(&kind_enriched, &title_enriched);
+                let kind_j = if kind_j.is_empty() {
+                    kind_enriched.clone()
+                } else {
+                    kind_j
+                };
                 let live_title =
-                    tool_journal_label(&title, &kind_j, &detail, &path_out);
+                    tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
+                let live_title = if live_title.is_empty() || live_title.eq_ignore_ascii_case("tool")
+                {
+                    if !title_enriched.is_empty() {
+                        title_enriched.clone()
+                    } else {
+                        live_title
+                    }
+                } else {
+                    live_title
+                };
                 let (app_sid, project_path, live_title, st, finished, open_changed, already_terminal) = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
@@ -4689,7 +4976,11 @@ impl SessionManager {
                         ) && !tool_call_id.is_empty()
                         {
                             let kind_store = if kind_j.is_empty() {
-                                kind.clone()
+                                if kind_enriched.is_empty() {
+                                    "tool".into()
+                                } else {
+                                    kind_enriched.clone()
+                                }
                             } else {
                                 kind_j.clone()
                             };
@@ -5266,6 +5557,9 @@ impl SessionManager {
         // User file/image cards — separate from display text so history can re-render
         // AttachmentCard without requiring @path lines in the bubble body.
         let journal_attachments = attachments.filter(|items| !items.is_empty());
+        // Note: image @path stripping + Host vision runs on the *final*
+        // agent_prompt after history bootstrap (see below). Do not rewrite
+        // here only — bootstrap can reintroduce @image paths from the journal.
 
         // Serialize against connect for the whole focus + turn-open window, so
         // the slot cannot move between the target check and `begin_stream`.
@@ -5390,6 +5684,123 @@ impl SessionManager {
                 ));
             }
         };
+        // Host side-channels before main model (vision first, then X). Emit tool
+        // chips immediately so the UI shows waiting state instead of freezing.
+        // Copy is non-technical (no `grok -p` / command lines in chip detail).
+        let locale = store::load_settings().locale;
+        let zh = locale.starts_with("zh");
+
+        // Push streaming state before long host side-channels so the pill stays
+        // "进行中" (not "就绪") while recognizing.
+        self.emit_for_session(&app, &app_sid);
+
+        // ── Host vision (custom text-only main + @image only) ──────────────
+        // Official Grok route: never Host-describe (native multimodal).
+        // X/web: tools-first via official-aux MCP — no Host keyword pre-search.
+        let host_vision = crate::models_aux::host_vision_will_run(&agent_prompt);
+        let host_tool_id = if host_vision {
+            let id = format!("host-vision-{}", Uuid::new_v4());
+            let (title, detail_run) = if zh {
+                ("识别图片内容", "正在识别，请耐心等待…")
+            } else {
+                ("Recognizing image", "Working… please wait")
+            };
+            let _ = app.emit(
+                "session://tool",
+                serde_json::json!({
+                    "sessionId": app_sid,
+                    "toolCallId": id,
+                    "title": title,
+                    "kind": "vision",
+                    "status": "in_progress",
+                    "path": null,
+                    "detail": detail_run,
+                }),
+            );
+            self.with_session_mut(&app_sid, |s| {
+                SessionManager::touch_stream_progress_locked(s);
+            });
+            Some((id, title.to_string()))
+        } else {
+            None
+        };
+        // Stream progress from official ACP into the *same* host-vision tool row
+        // (native tool_step upsert by toolCallId — no second chip).
+        let vision_progress: Option<crate::official_aux::OfficialProgressCb> =
+            host_tool_id.as_ref().map(|(id, title)| {
+                let app_p = app.clone();
+                let sid_p = app_sid.clone();
+                let tool_id = id.clone();
+                let title_p = title.clone();
+                let mgr = Arc::clone(self);
+                std::sync::Arc::new(move |p: crate::official_aux::OfficialAcpProgress| {
+                    let detail = if p.detail.trim().is_empty() {
+                        if zh {
+                            "正在识别…".to_string()
+                        } else {
+                            "Working…".to_string()
+                        }
+                    } else {
+                        p.detail
+                    };
+                    // Always keep Host title; stream lives in detail only.
+                    let _ = app_p.emit(
+                        "session://tool",
+                        serde_json::json!({
+                            "sessionId": sid_p,
+                            "toolCallId": tool_id,
+                            "title": title_p,
+                            "kind": "vision",
+                            "status": "in_progress",
+                            "path": null,
+                            "detail": detail,
+                        }),
+                    );
+                    mgr.with_session_mut(&sid_p, |s| {
+                        SessionManager::touch_stream_progress_locked(s);
+                    });
+                }) as crate::official_aux::OfficialProgressCb
+            });
+
+        let prep = crate::models_aux::prepare_agent_prompt_for_main_detailed(
+            &agent_prompt,
+            vision_progress,
+        )
+        .await;
+        let agent_prompt = prep.prompt;
+        if let Some((id, title)) = host_tool_id {
+            let status = if prep.ok { "completed" } else { "failed" };
+            // Keep full description in detail for expand / journal (not "识别完成").
+            let detail = if !prep.description.trim().is_empty() {
+                prep.description.clone()
+            } else if prep.ok {
+                if zh {
+                    "识别完成".to_string()
+                } else {
+                    "Done".to_string()
+                }
+            } else if zh {
+                "识别失败".to_string()
+            } else {
+                "Failed".to_string()
+            };
+            let _ = app.emit(
+                "session://tool",
+                serde_json::json!({
+                    "sessionId": app_sid,
+                    "toolCallId": id,
+                    "title": title,
+                    "kind": "vision",
+                    "status": status,
+                    "path": null,
+                    "detail": detail,
+                }),
+            );
+            journal_host_tool_step(&app_sid, &id, status, "vision", &title, &detail);
+            self.with_session_mut(&app_sid, |s| {
+                SessionManager::touch_stream_progress_locked(s);
+            });
+        }
         // Emit runtime for background targets; state for live focus.
         self.emit_for_session(&app, &app_sid);
 
@@ -5482,18 +5893,31 @@ impl SessionManager {
                 // background while the prompt ran, and the live slot now holds
                 // someone else's turn — recording the error there would blame
                 // the wrong chat.
+                let mut record_error = false;
                 mgr.with_session_mut(&turn_sid, |s| {
                     // The RPC failed, so no authoritative PromptComplete will
                     // arrive. Release the turn or the chat stays un-parkable
                     // and refuses further sends.
                     s.prompt_in_flight = false;
+                    // Stall heal / user stop already force-ended (Ready) with
+                    // journal kept — do not clobber with fail_with when
+                    // cancel/abort unblocks this waiter.
+                    if !matches!(
+                        s.fsm.state(),
+                        SessionState::Streaming | SessionState::AwaitingPermission
+                    ) {
+                        return;
+                    }
                     // Skip if host already recorded a retry-exhausted error this turn.
                     if !s.provider_retry_aborted {
                         SessionManager::record_turn_error(s, &app2, &e);
                         let _ = s.fsm.fail_with(e);
+                        record_error = true;
                     }
                 });
-                mgr.emit_for_session(&app2, &turn_sid);
+                if record_error {
+                    mgr.emit_for_session(&app2, &turn_sid);
+                }
             }
         });
 
@@ -6925,6 +7349,242 @@ mod session_routing_tests {
             Ok(_) => panic!("ready session must reject interjection"),
             Err(err) => assert_eq!(err, "interjection requires a streaming turn"),
         }
+    }
+}
+
+#[cfg(test)]
+mod media_path_extract_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_backtick_path_from_mcp_okay_output() {
+        let raw = json!({
+            "status": "completed",
+            "rawOutput": {
+                "type": "MCP",
+                "tool_name": "image_edit",
+                "server_name": "official-aux",
+                "output": {
+                    "OkayOutput": "已完成 image_edit。\n\n**输出文件路径：**\n\n`/tmp/demo/images/1.jpg`\n\n（会话内相对路径：images/1.jpg）"
+                }
+            }
+        });
+        assert_eq!(
+            extract_generated_media_path(&raw).as_deref(),
+            Some("/tmp/demo/images/1.jpg")
+        );
+    }
+
+    #[test]
+    fn extracts_path_from_content_text_markdown() {
+        let raw = json!({
+            "content": [{
+                "type": "content",
+                "content": {
+                    "type": "text",
+                    "text": "saved to /Users/me/out/pixel.png for you"
+                }
+            }]
+        });
+        assert_eq!(
+            extract_generated_media_path(&raw).as_deref(),
+            Some("/Users/me/out/pixel.png")
+        );
+    }
+}
+
+#[cfg(test)]
+mod stall_heal_and_tool_identity_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn streaming_session(now: Instant, mut patch: impl FnMut(&mut LiveSession)) -> LiveSession {
+        let mut fsm = SessionFsm::new();
+        let _ = fsm.start_connect();
+        let _ = fsm.handshake_ok();
+        let _ = fsm.begin_stream();
+        let mut s = LiveSession {
+            app_session_id: "stall-session".into(),
+            process_id: "process-stall".into(),
+            meta: SessionMeta {
+                id: "stall-session".into(),
+                project_id: None,
+                title: "Stall".into(),
+                agent_session_id: Some("agent-1".into()),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                model_id: None,
+                archived: false,
+                pinned: false,
+                effort: None,
+                mode: None,
+                permission_policy: None,
+                json_schema: None,
+                scheduled: false,
+                worktree_path: None,
+                worktree_branch: None,
+                is_worktree_session: false,
+                plugin_dirs: Vec::new(),
+                extra_rules: None,
+                max_agent_turns: None,
+                system_prompt_override: None,
+                fork_agent_session: false,
+                no_ask_user: None,
+            },
+            fsm,
+            backend: "grok_agent_stdio".into(),
+            acp: None,
+            mock_stream: None,
+            streaming_message_id: Some("msg-1".into()),
+            active_turn_id: Some("turn-1".into()),
+            stream_message_id_locked: false,
+            stream_buf: String::new(),
+            stream_thought: String::new(),
+            stream_last_was_assistant: false,
+            stream_attachments: Vec::new(),
+            model_id: None,
+            effort: None,
+            product_mode: None,
+            project_path: Some("/tmp".into()),
+            allow_cache: SessionAllowCache::default(),
+            policy: PermissionPolicy::default(),
+            provider_retry_attempt: 0,
+            provider_retry_aborted: false,
+            needs_history_bootstrap: false,
+            pending_plan_rpc_id: None,
+            pending_ask_user_rpc_id: None,
+            last_activity: now,
+            last_stream_progress: now,
+            last_stall_emit: None,
+            stall_soft_emits: 0,
+            journal_throttle: JournalWriteThrottle::with_default_interval(),
+            open_tool_ids: HashSet::new(),
+            open_tool_seen_at: HashMap::new(),
+            terminal_tool_ids: HashSet::new(),
+            deferred_prompt_complete: None,
+            tools_this_turn: 0,
+            saw_model_output: false,
+            prompt_in_flight: true,
+            pending_stream_emit: None,
+            stream_emit_flush_gen: 0,
+            last_tool_heartbeat_emit: None,
+        };
+        patch(&mut s);
+        s
+    }
+
+    #[test]
+    fn maybe_done_soft_silence_force_ends_even_when_prompt_in_flight() {
+        // Repro: X search tools finished + partial assistant text; model hung
+        // on final loop with prompt_in_flight=true. Soft silence must Ready.
+        let t0 = Instant::now();
+        let mut s = streaming_session(t0, |s| {
+            s.saw_model_output = true;
+            s.stream_buf = "搜到了不少最新动态…".into();
+            s.tools_this_turn = 4;
+            s.prompt_in_flight = true;
+            s.last_stream_progress = t0;
+        });
+        let now = t0 + Duration::from_secs(180);
+        let action = SessionManager::tick_stream_stall_on_session(&mut s, 180, now);
+        match action {
+            Some(StallTickAction::HardEnded {
+                reason: "maybe_done_stall_heal",
+                stall_seconds: 180,
+                ..
+            }) => {}
+            other => panic!("expected maybe_done hard end, got {other:?}"),
+        }
+        assert_eq!(s.fsm.state(), SessionState::Ready);
+        assert!(!s.prompt_in_flight);
+        assert!(s.streaming_message_id.is_none());
+    }
+
+    #[test]
+    fn no_auto_end_without_this_turn_body() {
+        // Prior tools only — wait for soft banner / hard window, don't assume done.
+        let t0 = Instant::now();
+        let mut s = streaming_session(t0, |s| {
+            s.tools_this_turn = 2;
+            s.prompt_in_flight = true;
+            s.last_stream_progress = t0;
+        });
+        let now = t0 + Duration::from_secs(180);
+        let action = SessionManager::tick_stream_stall_on_session(&mut s, 180, now);
+        match action {
+            Some(StallTickAction::SoftStall { .. }) => {}
+            other => panic!("expected soft stall without body, got {other:?}"),
+        }
+        assert_eq!(s.fsm.state(), SessionState::Streaming);
+        assert!(s.prompt_in_flight);
+    }
+
+    #[test]
+    fn orphan_open_tools_pruned_then_maybe_done_auto_end() {
+        // Leaked open tool ids age out (TOOL_ORPHAN_SECONDS); then maybe-done
+        // heal can fire. Matches hung model after tools that never closed cleanly.
+        let t0 = Instant::now();
+        let mut s = streaming_session(t0, |s| {
+            s.saw_model_output = true;
+            s.open_tool_ids.insert("call_1".into());
+            s.open_tool_seen_at.insert("call_1".into(), t0);
+            s.tools_this_turn = 1;
+            s.prompt_in_flight = true;
+            s.last_stream_progress = t0;
+        });
+        let now = t0 + Duration::from_secs(180);
+        let action = SessionManager::tick_stream_stall_on_session(&mut s, 180, now);
+        match action {
+            Some(StallTickAction::HardEnded {
+                reason: "maybe_done_stall_heal",
+                ..
+            }) => {}
+            other => panic!("expected maybe_done after orphan prune, got {other:?}"),
+        }
+        assert!(s.open_tool_ids.is_empty());
+        assert_eq!(s.fsm.state(), SessionState::Ready);
+    }
+
+    #[test]
+    fn enrich_recovers_mcp_tool_name_from_sparse_completed() {
+        let raw = json!({
+            "status": "completed",
+            "rawOutput": {
+                "type": "MCP",
+                "tool_name": "x_keyword_search",
+                "server_name": "official-aux",
+            },
+            "rawInput": {
+                "variant": "UseTool",
+                "tool_name": "official-aux__x_keyword_search",
+            },
+            "_meta": {
+                "x.ai/tool": { "name": "use_tool", "kind": "use_tool" }
+            }
+        });
+        let (kind, title) = enrich_tool_identity_from_raw(&raw, "", "");
+        assert!(
+            title.contains("x_keyword_search") || title.contains("official-aux"),
+            "title={title}"
+        );
+        assert_ne!(kind, "");
+        assert_ne!(title.to_ascii_lowercase(), "tool");
+    }
+
+    #[test]
+    fn enrich_recovers_search_tool_from_variant() {
+        let raw = json!({
+            "status": "completed",
+            "rawInput": { "variant": "SearchTool", "query": "twitter x search posts" },
+            "_meta": { "x.ai/tool": { "name": "search_tool" } }
+        });
+        let (kind, title) = enrich_tool_identity_from_raw(&raw, "", "other");
+        assert_eq!(kind, "search_tool");
+        assert!(
+            title.contains("search") || title.contains("twitter"),
+            "title={title}"
+        );
     }
 }
 

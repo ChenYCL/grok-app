@@ -1666,6 +1666,15 @@ export interface AppSettings {
   twoPassCompactionEnabled?: boolean;
   disableWebSearch?: boolean;
   /**
+   * Inject MCP official-aux (isolated grok -p + official auth): web_search,
+   * all x_* tools, vision_describe. Default true. Requires CLI login or
+   * official API key; UI disables when unavailable. Soft-respawns.
+   */
+  /** Inject official-aux MCP on **custom** main route only (never official Grok). */
+  officialAuxInject?: boolean;
+  /** With inject on: also load user extension MCPs (default false — keeps official-aux fast). */
+  officialAuxWithUserMcp?: boolean;
+  /**
    * When true, spawn with top-level `--no-ask-user` (CLI ≥ 0.2.117) so the
    * agent does not emit ask-user questionnaires. Default false. Soft-respawns.
    * Per-session override: `SessionMeta.noAskUser`.
@@ -2874,6 +2883,155 @@ export async function providersActivate(
   return invoke<ProvidersListResult>("providers_activate", {
     source,
     providerId: providerId ?? null,
+  });
+}
+
+// ── Model auxiliary routing (`[models]` side-task slots) ─────────────────────
+
+export interface ModelsAuxSlots {
+  imageDescription: string;
+  webSearch: string;
+  sessionSummary: string;
+  promptSuggestion: string;
+}
+
+export interface ModelsAuxOption {
+  id: string;
+  label: string;
+  source: string;
+  hint?: string;
+}
+
+export interface ModelsAuxState {
+  slots: ModelsAuxSlots;
+  options: ModelsAuxOption[];
+  sessionDataMode: string;
+  writable: boolean;
+  configPath: string;
+  mainDefault: string;
+  activeSource: string;
+  saveGrokTarget?: string | null;
+  saveGrokLabel?: string | null;
+  saveGrokReason: string;
+  /**
+   * Stable health code for i18n (empty = ok):
+   * `official_aux_incomplete` | `text_only_no_vision`
+   */
+  healthCode?: string;
+  visionReady?: boolean;
+  mainTextOnly?: boolean;
+  hasOfficialApiKey?: boolean;
+}
+
+export interface ModelsAuxSetInput {
+  imageDescription?: string | null;
+  webSearch?: string | null;
+  sessionSummary?: string | null;
+  promptSuggestion?: string | null;
+}
+
+export async function modelsAuxGet() {
+  return invoke<ModelsAuxState>("models_aux_get");
+}
+
+export async function modelsAuxSet(body: ModelsAuxSetInput) {
+  return invoke<ModelsAuxState>("models_aux_set", {
+    imageDescription: body.imageDescription ?? null,
+    webSearch: body.webSearch ?? null,
+    sessionSummary: body.sessionSummary ?? null,
+    promptSuggestion: body.promptSuggestion ?? null,
+  });
+}
+
+export async function modelsAuxApplySaveGrok() {
+  return invoke<ModelsAuxState>("models_aux_apply_save_grok");
+}
+
+export async function modelsAuxResetDefaults() {
+  return invoke<ModelsAuxState>("models_aux_reset_defaults");
+}
+
+/** Independent `grok -p -m <modelId>` under agent-home (not the live session model). */
+export async function modelsAuxHeadless(body: {
+  modelId: string;
+  prompt: string;
+  maxTurns?: number;
+}) {
+  return invoke<string>("models_aux_headless", {
+    modelId: body.modelId,
+    prompt: body.prompt,
+    maxTurns: body.maxTurns ?? null,
+  });
+}
+
+/** Host web search via configured web_search aux model (headless). */
+export async function modelsAuxWebSearch(query: string) {
+  return invoke<string>("models_aux_web_search", { query });
+}
+
+// ── Official aux (isolated GROK_HOME + grok -p) ─────────────────────────────
+
+export interface OfficialAuxStatus {
+  available: boolean;
+  home: string;
+  model: string;
+  hasCliAuth: boolean;
+  hasApiKey: boolean;
+  reason: string;
+}
+
+export async function officialAuxStatus() {
+  return invoke<OfficialAuxStatus>("official_aux_status");
+}
+
+export async function officialAuxEnsureHome() {
+  return invoke<string>("official_aux_ensure_home");
+}
+
+export async function officialAuxDispatch(tool: string, args: Record<string, unknown>) {
+  return invoke<string>("official_aux_dispatch", { tool, args });
+}
+
+export async function officialAuxWebSearch(query: string) {
+  return invoke<string>("official_aux_web_search", { query });
+}
+
+export async function officialAuxXKeywordSearch(body: {
+  query: string;
+  limit?: number;
+  minFaves?: number;
+}) {
+  return invoke<string>("official_aux_x_keyword_search", {
+    query: body.query,
+    limit: body.limit ?? null,
+    minFaves: body.minFaves ?? null,
+  });
+}
+
+export async function officialAuxXSemanticSearch(query: string, limit?: number) {
+  return invoke<string>("official_aux_x_semantic_search", {
+    query,
+    limit: limit ?? null,
+  });
+}
+
+export async function officialAuxXUserSearch(query: string, count?: number) {
+  return invoke<string>("official_aux_x_user_search", {
+    query,
+    count: count ?? null,
+  });
+}
+
+export async function officialAuxXThreadFetch(postIdOrUrl: string) {
+  return invoke<string>("official_aux_x_thread_fetch", {
+    postIdOrUrl,
+  });
+}
+
+export async function officialAuxVisionDescribe(paths: string[], question?: string) {
+  return invoke<string>("official_aux_vision_describe", {
+    paths,
+    question: question ?? null,
   });
 }
 

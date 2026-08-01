@@ -49,6 +49,7 @@ export type SettingsTabId =
   // account
   | "official"
   | "providers"
+  | "extras"
   // extensions
   | "plugins"
   | "skills"
@@ -149,6 +150,7 @@ export const SETTINGS_NAV: readonly SettingsNavDef[] = [
     tabs: [
       { id: "official", labelKey: "settings.tabOfficial" },
       { id: "providers", labelKey: "settings.tabProviders" },
+      { id: "extras", labelKey: "settings.tabExtras" },
     ],
   },
   {
@@ -2152,6 +2154,53 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "语音",
       "語音",
       "听写",
+    ],
+  },
+  {
+    id: "account.extras",
+    section: "account",
+    tab: "extras",
+    anchorId: "settings-anchor-account-extras",
+    labelKey: "settings.tabExtras",
+    descKeys: ["settings.tabExtrasHint"],
+    keywords: [
+      "extras",
+      "拓展",
+      "official tools",
+      "inject",
+      "official-aux",
+      "官方工具",
+    ],
+  },
+  {
+    id: "account.officialAuxInject",
+    section: "account",
+    tab: "extras",
+    anchorId: "settings-anchor-official-aux-inject",
+    labelKey: "prov.officialAuxInject",
+    descKeys: [
+      "prov.officialAuxInjectDesc",
+      "prov.officialAuxInjectDisabled",
+      "prov.officialAuxWithUserMcp",
+      "prov.officialAuxWithUserMcpDesc",
+    ],
+    keywords: [
+      "official aux",
+      "inject tools",
+      "x_keyword_search",
+      "web_search",
+      "vision",
+      "official-aux",
+      "官方工具",
+      "注入",
+      "x搜索",
+      "imagine",
+      "image_gen",
+      "画图",
+      "custom only",
+      "第三方",
+      "MCP",
+      "拓展",
     ],
   },
   // ── archived ──

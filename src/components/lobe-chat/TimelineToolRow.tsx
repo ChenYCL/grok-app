@@ -67,7 +67,10 @@ function toolExpandBody(seg: MessageToolSegment, failed: boolean): {
     : "";
   const failHintShort =
     failHint.length > 72 ? `${failHint.slice(0, 71)}…` : failHint;
-  const detailTail = toolDetailTail(seg.detail, 8);
+  // Host vision/X stream bodies can be long — show more lines when expanded
+  // (same rail as native tools, not a 2-line scroller).
+  const hostSide = /^(host-vision|host-x)/i.test(seg.toolCallId || "");
+  const detailTail = toolDetailTail(seg.detail, hostSide ? 24 : 8);
   const hasBody =
     !!failHintShort ||
     (!!detailTail && detailTail !== failHint && detailTail !== failHintShort);
@@ -101,7 +104,14 @@ export function TimelineToolRow({
   const running = toolSegmentIsRunning(tool);
 
   let summary: string;
-  if (isBrowseToolKind(tool.toolKind, tool.title)) {
+  const hostVision =
+    (tool.toolCallId || "").toLowerCase().startsWith("host-vision") ||
+    (tool.toolKind || "").toLowerCase() === "vision";
+  const hostX = (tool.toolCallId || "").toLowerCase().startsWith("host-x");
+  if (hostVision || hostX) {
+    // Prefer Host title ("识别图片内容" / "搜索 X 信息"); never "执行了1次搜索".
+    summary = (tool.title || "").trim() || toolSummary(tool);
+  } else if (isBrowseToolKind(tool.toolKind, tool.title)) {
     summary = tr("chat.browsed", { url: extractBrowseUrl(tool) });
   } else if (isSearchToolKind(tool.toolKind, tool.title)) {
     summary = tr("chat.ranSearch");
@@ -109,6 +119,8 @@ export function TimelineToolRow({
     summary = toolSummary(tool);
   }
 
+  // Host tools use the same expand body as native tools (full detail / stream
+  // dump), not a special 2-line scroller under a second title.
   const { failHint, failHintShort, detailTail, hasBody } = toolExpandBody(
     tool,
     failed,
@@ -286,9 +298,19 @@ export function TimelineContextGroup({
     }
   }, [running, autoCollapse]);
 
-  const allSearch = tools.every((t) =>
-    isSearchToolKind(t.toolKind, t.title),
-  );
+  // Host vision/X are normal tool steps inside the phase — do not collapse
+  // the group header into a second "识别图片内容" label.
+  const allSearch = tools.every((t) => {
+    const id = (t.toolCallId || "").toLowerCase();
+    if (
+      id.startsWith("host-vision") ||
+      id.startsWith("host-x") ||
+      (t.toolKind || "").toLowerCase() === "vision"
+    ) {
+      return false;
+    }
+    return isSearchToolKind(t.toolKind, t.title, t.toolCallId);
+  });
   const groupLabel = allSearch
     ? tools.length === 1
       ? tr("chat.ranSearch")

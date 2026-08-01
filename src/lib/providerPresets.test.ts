@@ -41,6 +41,15 @@ describe("providerPresets", () => {
     expect(amux!.apiKeyUrl).toContain("api.amux.ai/register");
   });
 
+  it("ships OpenCode Go with chat_completions for DeepSeek-class models", () => {
+    const go = findProviderPreset("opencode-go");
+    expect(go).toBeDefined();
+    expect(go!.baseUrl).toBe("https://opencode.ai/zen/go/v1");
+    expect(go!.apiBackend).toBe("chat_completions");
+    expect(go!.models.map((m) => m.id)).toContain("deepseek-v4-flash");
+    expect(go!.brandId).toBe("opencode-go");
+  });
+
   it("ships Yun API with grok-4.5 and yunyi register link", () => {
     const yun = findProviderPreset("yun-api");
     expect(yun).toBeDefined();
@@ -66,13 +75,19 @@ describe("providerPresets", () => {
     );
   });
 
-  it("resolves brand logos for DeepSeek/Amux only", () => {
+  it("resolves brand logos for DeepSeek/Amux/OpenCode Go", () => {
     expect(resolveProviderBrandId({ providerId: "deepseek" })).toBe(
       "deepseek",
     );
     expect(resolveProviderBrandId({ baseUrl: "https://api.amux.ai/v1" })).toBe(
       "amux",
     );
+    expect(
+      resolveProviderBrandId({ providerId: "opencode-go" }),
+    ).toBe("opencode-go");
+    expect(
+      resolveProviderBrandId({ baseUrl: "https://opencode.ai/zen/go/v1" }),
+    ).toBe("opencode-go");
     expect(resolveProviderBrandId({ providerId: "yun-api" })).toBe(null);
   });
 

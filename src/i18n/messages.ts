@@ -3014,10 +3014,72 @@ const en = {
     "Independent keeps chats in the app data dir. Shared uses the CLI home so App and terminal see the same sessions. CLI session import works in both modes; independent mode scans agent-home (not always ~/.grok).",
   "settings.tabOfficial": "Official account",
   "settings.tabProviders": "Custom providers",
+  "settings.tabExtras": "Extras",
   "settings.tabOfficialHint":
     "Sign in with Grok Build for SuperGrok quota, heatmap, and official models.",
   "settings.tabProvidersHint":
     "Add OpenAI-compatible relays (CPA, sub2api, self-hosted). Keys stay on this device.",
+  "settings.tabExtrasHint":
+    "When the main route is a custom provider: inject official tools (MCP official-aux) and optionally load your other MCPs.",
+
+  "modelAux.title": "Auxiliary model routing",
+  "modelAux.desc":
+    "Main model handles the chat loop. Side tasks can use a stronger multimodal model (like Hermes auxiliary slots). Writes only [models] task keys — never changes your main route.",
+  "modelAux.loading": "Loading model layers…",
+  "modelAux.refresh": "Reload",
+  "modelAux.saved": "Auxiliary model saved. Agents will reconnect on next turn.",
+  "modelAux.sharedReadOnly":
+    "Shared session mode: the App does not rewrite ~/.grok. Switch to independent mode or edit config.toml in the CLI.",
+  "modelAux.mainDefault": "Main [models].default",
+  "modelAux.activeSource": "Active route",
+  "modelAux.option.auto": "Auto (CLI default)",
+  "modelAux.slot.imageDescription": "Image description",
+  "modelAux.slot.imageDescriptionDesc":
+    "When the main model cannot see images, Grok Build describes attachments with this model.",
+  "modelAux.slot.webSearch": "Web search",
+  "modelAux.slot.webSearchDesc":
+    "Model used by the web_search tool (backend search works best on Grok-class models).",
+  "modelAux.slot.sessionSummary": "Session summary",
+  "modelAux.slot.sessionSummaryDesc":
+    "Side-job model for session summaries / compact-related text.",
+  "modelAux.slot.promptSuggestion": "Prompt suggestion",
+  "modelAux.slot.promptSuggestionDesc":
+    "Model used for composer prompt suggestions when the CLI enables them.",
+  "modelAux.saveGrok": "Save Grok",
+  "modelAux.saveGrokHint": "Point all four slots at {model}. Main model unchanged.",
+  "modelAux.saveGrokNoTarget":
+    "No multimodal target yet. Add an official API key (Account → Custom providers → Official) or a Grok-capable relay (Amux / Yun), then try again.",
+  "modelAux.saveGrokConfirmTitle": "Apply Save Grok preset?",
+  "modelAux.saveGrokConfirmBody":
+    "Set image description, web search, session summary, and prompt suggestion to {model}. Your main model / active route stays as-is.",
+  "modelAux.saveGrokDone": "All auxiliary slots → {model}",
+  "modelAux.resetDefaults": "Restore official defaults",
+  "modelAux.resetConfirmTitle": "Restore CLI defaults?",
+  "modelAux.resetConfirmBody":
+    "Remove custom overrides for the four auxiliary slots. Grok Build built-in defaults apply again. Main model and custom providers are not changed. To switch the main route back to official, use Custom providers → Official → Use.",
+  "modelAux.resetDone": "Auxiliary slots restored to CLI defaults.",
+  "modelAux.footnote":
+    "Tip: after switching back to the official subscription, use “Restore official defaults” here so side tasks stop using a custom relay.",
+  "modelAux.pathLabel": "Config",
+  "modelAux.needOfficialKey":
+    "To use Official · grok-4.5 as an aux model while the main route is a custom relay, paste an official API key under Custom providers → Official (auth.json is cleared on custom routes).",
+  "modelAux.health.officialIncomplete":
+    "Aux slots point at grok-4.5, but there is no complete official model section or API key. Images will not be sent as pixels (avoids DeepSeek image_url 400). Fix: paste an official API key under Custom providers → Official, or clear slots with “Restore official defaults”, or add Amux/Yun and re-run Save Grok.",
+  "modelAux.health.textOnlyNoVision":
+    "Main model is text-only and vision aux is not ready. Attached images are sent as path notes only until you configure a vision model here.",
+  "modelAux.nextStepsTitle": "How to enable vision on a text main model",
+  "modelAux.nextStep1":
+    "Option A — Official: Account → Custom providers → Official → paste xAI API key, then set Image description to Official · grok-4.5 (or Save Grok).",
+  "modelAux.nextStep2":
+    "Option B — Relay: add Amux / Yun with grok-4.5, then set all aux slots to that provider (or Save Grok).",
+  "modelAux.nextStep3":
+    "If slots are stuck on broken grok-4.5, click “Restore official defaults” first, then reconfigure.",
+  "modelAux.goProviders": "Open Custom providers",
+  "modelAux.officialAuxTitle": "Official side-channel",
+  "modelAux.officialAuxReady":
+    "Official Grok side-channel ready ({reason}). Session MCP “official-aux” exposes web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe via isolated grok -p (does not use DeepSeek auth).",
+  "modelAux.officialAuxMissing":
+    "Official side-channel offline. Sign in with Grok Build (CLI auth) or paste an official API key under Custom providers → Official — then reconnect the session.",
   "settings.openTarget": "Open files with",
   "settings.openTargetDesc":
     "Default app when opening a path from the resource pane",
@@ -3067,6 +3129,8 @@ const en = {
     "Amux relay — Grok 4.5, reasoning low/medium/high",
   "prov.preset.yunApi.blurb":
     "Yun API (yunyi) — Grok 4.5, reasoning low/medium/high",
+  "prov.preset.opencodeGo.blurb":
+    "OpenCode Zen Go — DeepSeek V4 via chat_completions (not Responses)",
   "prov.getApiKey": "Get API Key",
   "prov.efforts": "Reasoning levels",
   "prov.effortsHint":
@@ -3106,6 +3170,19 @@ const en = {
   "prov.err.unknownProvider": "Provider not found.",
   "prov.officialName": "Official Grok",
   "prov.officialDesc": "Grok Build official login / API key",
+  "prov.officialAuxInject": "Inject official tools",
+  "prov.officialAuxInjectDesc":
+    "Custom main only (DeepSeek, relays, …). Injects MCP official-aux: web_search, all x_*, vision_describe, image_gen / image_edit, image_to_video / reference_to_video (Imagine) via isolated official credentials. Default loads only official-aux so flaky extension MCPs do not block tools.",
+  "prov.officialAuxInjectDisabled":
+    "Unavailable — sign in with Grok Build or paste an official API key first.",
+  "prov.officialAuxInjectOfficialRoute":
+    "Disabled on official Grok subscription — native Imagine / X / vision stay default. Switch to a custom provider to inject official-aux (avoids duplicate tools).",
+  "prov.officialAuxInjectOn": "On",
+  "prov.officialAuxInjectOff": "Off",
+  "prov.officialAuxWithUserMcp": "Also load extension MCPs",
+  "prov.officialAuxWithUserMcpDesc":
+    "When inject is on, also start your other MCP servers (Playwright, etc.). Off by default so official-aux is available immediately.",
+
   "prov.officialApiKey": "Official xAI API key",
   "prov.officialKeyPh": "xai-…",
   "prov.officialKeySave": "Save key",
@@ -4926,6 +5003,10 @@ const en = {
   "chat.searchedWebFor": "Searched web for {query}",
   "chat.searchResults": "{n} results",
   "chat.toolGeneric": "Tool",
+  "chat.hostVisionWait": "Recognizing image, please wait…",
+  "chat.hostSearchWait": "Searching, please wait…",
+  "chat.hostVisionTitle": "Recognizing image",
+  "chat.hostSearchTitle": "Searching on X",
   "chat.turnFailed": "This turn failed",
   /** Bare thinking chrome fallback when duration unknown — short, not “complete”. */
   "chat.thoughtDone": "Thought",
@@ -9038,10 +9119,71 @@ const zh: Record<MessageKey, string> = {
     "独立模式会话存在应用目录；共享模式使用 CLI 主目录，与终端共用会话。两种模式均可导入 CLI 会话；独立模式扫描的是 agent-home（不一定是 ~/.grok）。",
   "settings.tabOfficial": "官方账户",
   "settings.tabProviders": "自定义提供商",
+  "settings.tabExtras": "拓展",
   "settings.tabOfficialHint":
     "使用 Grok Build 官方登录，查看 SuperGrok 额度、热力图与官方模型。",
   "settings.tabProvidersHint":
     "添加 OpenAI 兼容中转（CPA、sub2api、自建等）。密钥仅保存在本机。",
+  "settings.tabExtrasHint":
+    "自定义主模型下的官方工具注入（MCP official-aux），以及是否同时加载其它扩展 MCP。",
+
+  "modelAux.title": "辅助模型路由",
+  "modelAux.desc":
+    "主模型负责对话与工具决策；侧任务可指到更强的多模态模型（类似 Hermes 的 auxiliary 槽）。只写入 [models] 任务键，绝不改主路由。",
+  "modelAux.loading": "正在加载模型分层…",
+  "modelAux.refresh": "刷新",
+  "modelAux.saved": "辅助模型已保存。下一回合将重连 Agent。",
+  "modelAux.sharedReadOnly":
+    "当前为共享会话模式：应用不会改写 ~/.grok。请切换到独立模式，或在 CLI 中编辑 config.toml。",
+  "modelAux.mainDefault": "主模型 [models].default",
+  "modelAux.activeSource": "当前路由",
+  "modelAux.option.auto": "自动（CLI 默认）",
+  "modelAux.slot.imageDescription": "图片识别",
+  "modelAux.slot.imageDescriptionDesc":
+    "主模型不支持视觉时，由该模型描述附件图片。",
+  "modelAux.slot.webSearch": "网页搜索",
+  "modelAux.slot.webSearchDesc":
+    "web_search 工具使用的模型（Grok 系对 backend search 支持更好）。",
+  "modelAux.slot.sessionSummary": "会话摘要",
+  "modelAux.slot.sessionSummaryDesc": "会话摘要 / 压缩相关侧任务使用的模型。",
+  "modelAux.slot.promptSuggestion": "提示建议",
+  "modelAux.slot.promptSuggestionDesc":
+    "CLI 启用提示建议时使用的模型。",
+  "modelAux.saveGrok": "省 Grok",
+  "modelAux.saveGrokHint": "四个辅助槽全部指向 {model}。主模型不变。",
+  "modelAux.saveGrokNoTarget":
+    "尚无可用的多模态目标。请先配置官方 API Key（账户 → 自定义提供商 → 官方）或 Grok 能力中转（Amux / 云驿），再试。",
+  "modelAux.saveGrokConfirmTitle": "应用「省 Grok」预设？",
+  "modelAux.saveGrokConfirmBody":
+    "将把图片识别、网页搜索、会话摘要、提示建议全部设为 {model}。主模型与当前路由保持不变。",
+  "modelAux.saveGrokDone": "辅助槽已全部指向 {model}",
+  "modelAux.resetDefaults": "还原官方默认",
+  "modelAux.resetConfirmTitle": "还原 CLI 默认？",
+  "modelAux.resetConfirmBody":
+    "将清除四个辅助槽的自定义覆盖，恢复 Grok Build 内置默认。主模型与自定义提供商不会改动。若要主路由也回官方，请到「自定义提供商」对官方点 Use。",
+  "modelAux.resetDone": "辅助槽已恢复为 CLI 默认。",
+  "modelAux.footnote":
+    "提示：切回官方订阅后，可在此点「还原官方默认」，让侧任务不再走自定义中转。",
+  "modelAux.pathLabel": "配置文件",
+  "modelAux.needOfficialKey":
+    "主路由为自定义中转时，若要用 Official · grok-4.5 做辅助识图/搜索，请在「自定义提供商 → 官方」填写官方 API Key（自定义路由下不会挂 auth.json）。",
+  "modelAux.health.officialIncomplete":
+    "辅助槽指向了 grok-4.5，但官方模型配置不完整或缺少 API Key。图片不会按像素注入（避免 DeepSeek image_url 400）。处理：在「自定义提供商 → 官方」填写 xAI API Key；或点「还原官方默认」清空坏配置；或添加 Amux/云驿 后点「省 Grok」。",
+  "modelAux.health.textOnlyNoVision":
+    "主模型为纯文本，且识图辅助尚未就绪。附件图片目前只会作为路径说明发送，配置好多模态辅助槽后即可识图。",
+  "modelAux.nextStepsTitle": "纯文本主模型如何启用识图",
+  "modelAux.nextStep1":
+    "方案 A — 官方：账户 → 自定义提供商 → 官方 → 粘贴 xAI API Key，再把「图片识别」设为 Official · grok-4.5（或点「省 Grok」）。",
+  "modelAux.nextStep2":
+    "方案 B — 中转：添加 Amux / 云驿（模型含 grok-4.5），把辅助槽指到该通道（或点「省 Grok」）。",
+  "modelAux.nextStep3":
+    "若辅助槽卡在无效的 grok-4.5，请先点「还原官方默认」清空，再重新配置。",
+  "modelAux.goProviders": "打开自定义提供商",
+  "modelAux.officialAuxTitle": "官方侧信道",
+  "modelAux.officialAuxReady":
+    "官方 Grok 侧信道就绪（{reason}）。会话 MCP「official-aux」提供 web_search 与 x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe，经隔离 grok -p 调用（不走 DeepSeek 鉴权）。",
+  "modelAux.officialAuxMissing":
+    "官方侧信道未就绪。请先 Grok 官方登录（CLI auth）或在「自定义提供商 → 官方」填写 API Key，然后重新连接会话。",
   "settings.openTarget": "打开文件方式",
   "settings.openTargetDesc": "资源面板中打开路径时的默认应用",
   "settings.openFinder": "访达 / 资源管理器",
@@ -9089,6 +9231,8 @@ const zh: Record<MessageKey, string> = {
     "Amux 中转 — Grok 4.5，推理 low/medium/high",
   "prov.preset.yunApi.blurb":
     "Yun API（云驿）— Grok 4.5，推理 low/medium/high",
+  "prov.preset.opencodeGo.blurb":
+    "OpenCode Zen Go — DeepSeek V4 须用 Chat Completions（勿用 Responses）",
   "prov.getApiKey": "获取 API Key",
   "prov.efforts": "思考深度",
   "prov.effortsHint":
@@ -9128,6 +9272,19 @@ const zh: Record<MessageKey, string> = {
   "prov.err.unknownProvider": "未找到该提供商。",
   "prov.officialName": "官方 Grok",
   "prov.officialDesc": "Grok Build 官方登录 / API Key",
+  "prov.officialAuxInject": "注入官方工具能力",
+  "prov.officialAuxInjectDesc":
+    "仅自定义主模型（DeepSeek、中转等）生效：注入 MCP official-aux（web_search、全部 x_*、vision_describe、image_gen / image_edit、image_to_video / reference_to_video Imagine），使用隔离官方凭证。默认只加载 official-aux，避免其它 MCP 拖慢工具就绪。",
+  "prov.officialAuxInjectDisabled":
+    "不可用 — 请先 Grok 官方登录或填写官方 API Key。",
+  "prov.officialAuxInjectOfficialRoute":
+    "当前为官方 Grok 订阅：保持原生 Imagine / X / 识图，不注入 official-aux（避免双轨污染）。切换到自定义提供商后可开启。",
+  "prov.officialAuxInjectOn": "已开启",
+  "prov.officialAuxInjectOff": "已关闭",
+  "prov.officialAuxWithUserMcp": "同时加载扩展 MCP",
+  "prov.officialAuxWithUserMcpDesc":
+    "注入开启时一并启动你配置的其它 MCP（Playwright 等）。默认关闭，保证 official-aux 立刻可用。",
+
   "prov.officialApiKey": "官方 xAI API Key",
   "prov.officialKeyPh": "xai-…",
   "prov.officialKeySave": "保存密钥",
@@ -10876,6 +11033,10 @@ const zh: Record<MessageKey, string> = {
   "chat.searchedWebFor": "搜索了 {query}",
   "chat.searchResults": "{n} 条结果",
   "chat.toolGeneric": "工具",
+  "chat.hostVisionWait": "正在识别，请耐心等待…",
+  "chat.hostSearchWait": "正在搜索，请耐心等待…",
+  "chat.hostVisionTitle": "识别图片内容",
+  "chat.hostSearchTitle": "搜索 X 信息",
   "chat.turnFailed": "本轮执行失败",
   "chat.thoughtDone": "思考",
   "chat.thoughtFor": "思考了 {n} 秒",

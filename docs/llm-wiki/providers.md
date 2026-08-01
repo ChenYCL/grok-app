@@ -48,12 +48,29 @@ Add flow opens a **preset gallery** (`providerPresets.ts`):
 | **DeepSeek** | `deepseek-v4-flash`, `deepseek-v4-pro` | `low` / `high` / `xhigh` / `max` (docs mapping table; default `high`) |
 | **Amux** | `grok-4.5` (display **Grok 4.5**) | Grok `low`/`medium`/`high` |
 | **Yun API** | `grok-4.5` (display **Grok 4.5**) | Grok `low`/`medium`/`high` |
+| **OpenCode Go** | `deepseek-v4-flash`, `deepseek-v4-pro` | DeepSeek efforts (default `high`) |
 
 | Preset | Base | Get API Key |
 |--------|------|-------------|
 | DeepSeek | `https://api.deepseek.com/v1` (`chat_completions`) | https://platform.deepseek.com/ |
 | Amux | `https://api.amux.ai/v1` (`responses`) | https://api.amux.ai/register?aff=Vccp |
 | Yun API | `https://api.yunyi.ai/v1` (`responses`) | https://api.yunyi.ai/register/?aff_code=W0iw |
+| OpenCode Go | `https://opencode.ai/zen/go/v1` (`chat_completions`) | https://opencode.ai/ |
+
+### Protocol pitfall (OpenCode Go / DeepSeek)
+
+Grok Build’s stream parsers are strict. OpenCode Zen Go historically breaks both backends:
+
+| Backend | Failure mode |
+|---------|----------------|
+| `responses` | Non-OpenAI frames (`{"type":"ping"}`) or `response.*.delta` **without** `sequence_number` → CLI worker fatal |
+| `chat_completions` | Trailer frames like `{"choices":[],"x-opencode-type":"inference-cost",…}` **without** required `id` → `Failed to deserialize ChatCompletionChunk` → same crash |
+
+**App fix (automatic):**
+
+1. Prefer preset `api_backend = "chat_completions"` for OpenCode Go (do **not** use `responses`).
+2. Host starts a **loopback SSE sanitize proxy** (`relay_stream_proxy`): rewrites that provider’s `base_url` to `http://127.0.0.1:{port}/r/{id}/v1`, stores the real host in `app_upstream_base_url` (CLI ignores unknown keys), and **drops** cost / ping / missing-`id` frames before Grok Build sees them.
+3. Settings UI still shows the real upstream URL; repair runs on app start and `providers_list`.
 
 Form shows a **Get API Key** text control under the key field when the channel matches a preset (by id or base host). Opens the URL via `open_external_url`.
 
@@ -69,6 +86,14 @@ Left / right split (`ProvidersPanel`):
 | Right | Create/edit form when adding or selecting a custom card; official detail when selecting the official card; empty placeholder otherwise. |
 
 Each card has **Use** to activate that route (`providers_activate`). Clicking a card opens detail/edit. No long intro copy, agent-home path, or separate “active route” switcher.
+
+## Official tool injection
+
+Settings → Account → **Extras** → toggle **Inject official tools** (`official_aux_inject`).
+
+**Only while the active main route is a custom provider.** Official Grok subscription sessions never inject `official-aux` (native tools only).
+
+When the toggle is on, credentials exist, and the route is custom: MCP **official-aux** (`web_search`, all `x_*`, `vision_describe`) under `agent-home-official`. Default does **not** also load extension MCPs (`official_aux_with_user_mcp` off) so tools are not stuck behind 30s Playwright timeouts. Does **not** put `auth.json` back into the custom main agent-home. See [model-routing.md](./model-routing.md).
 
 ## Route switching (auth isolation)
 

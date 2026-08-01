@@ -91,6 +91,11 @@ export function isSearchToolKind(
   toolCallId?: string | null,
 ): boolean {
   if (isBrowseToolKind(kind, title, toolCallId)) return false;
+  // Host official-aux X pre-search is a single chip, not "Ran N searches".
+  const id = (toolCallId || "").toLowerCase();
+  if (id.startsWith("host-x") || id.startsWith("host-vision")) return false;
+  const t = (title || "").toLowerCase();
+  if (/搜索\s*x\s*信息|识别图片内容/.test(t)) return false;
   return classifyToolKind(kind, title, toolCallId) === "search";
 }
 
@@ -126,8 +131,21 @@ export function classifyToolKind(
   if (isBrowseToolKind(kind || inferred, title, toolCallId)) {
     return "browse";
   }
+  // Host vision side-channel — never collapse into "Ran 1 search".
+  if (
+    k === "vision" ||
+    /host[-_]?vision|识图|识别图片|recogniz(e|ing)\s*image|image\s*descri/i.test(
+      blob,
+    )
+  ) {
+    return "read";
+  }
   // Host often persists titles like "Web search:" / "X search:" with empty kind.
   // Call ids `ws_…` also mark web search when kind/title were lost on journal.
+  // Exclude host-vision ids even if title mentions "search".
+  if (/host[-_]?vision/.test(lower(toolCallId))) {
+    return "read";
+  }
   if (
     /grep|glob|search|find_files|web_search|web_keyword|web_semantic|x_search|x_keyword|x_semantic|\bweb search\b|\bx search\b|^ws_/.test(
       blob,
@@ -194,13 +212,28 @@ export function summarizeToolDisplay(input: {
   const detailFirst = detail
     ? (detail.split("\n")[0] || detail).trim()
     : "";
+  // Host side-channel: always prefer stable title over stream body / status.
+  const hostSide = /host[-_]?(vision|x)/i.test(lower(input.toolCallId));
+  const statusyDetail =
+    /^(done|ok|failed|unavailable|识别完成|识别失败|搜索完成|搜索失败|\d+\s*image)/i.test(
+      detailFirst,
+    );
   if (bucket === "bash" && detailFirst) {
     summary = clip(detailFirst);
+  } else if (hostSide && cleanTitle && !/^tool$/i.test(cleanTitle)) {
+    summary = clip(cleanTitle);
   } else if (path && !/^tool$/i.test(cleanTitle || "tool")) {
     summary = basename(path);
   } else if (path && /^tool$/i.test(cleanTitle || "tool")) {
     summary = basename(path);
-  } else if (detailFirst && !/^tool$/i.test(detailFirst)) {
+  } else if (cleanTitle && !/^tool$/i.test(cleanTitle) && hostSide) {
+    summary = clip(cleanTitle);
+  } else if (
+    detailFirst &&
+    !/^tool$/i.test(detailFirst) &&
+    !(cleanTitle && statusyDetail) &&
+    !hostSide
+  ) {
     summary = clip(detailFirst);
   } else if (cleanTitle && !/^tool$/i.test(cleanTitle)) {
     summary = clip(cleanTitle);

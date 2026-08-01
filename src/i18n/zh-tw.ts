@@ -2881,10 +2881,71 @@ export const zhTW: Record<MessageKey, string> = {
     "獨立模式會話存在應用目錄；共用模式使用 CLI 主目錄，與終端機共用會話。兩種模式均可匯入 CLI 工作階段；獨立模式掃描的是 agent-home（不一定是 ~/.grok）。",
   "settings.tabOfficial": "官方帳戶",
   "settings.tabProviders": "自訂供應商",
+  "settings.tabExtras": "拓展",
   "settings.tabOfficialHint":
     "使用 Grok Build 官方登入，檢視 SuperGrok 額度、熱力圖與官方模型。",
   "settings.tabProvidersHint":
     "新增 OpenAI 相容中轉（CPA、sub2api、自建等）。金鑰僅保存在本機。",
+  "settings.tabExtrasHint":
+    "自訂主模型下的官方工具注入（MCP official-aux），以及是否同時載入其它擴充 MCP。",
+
+  "modelAux.title": "輔助模型路由",
+  "modelAux.desc":
+    "主模型負責對話與工具決策；側任務可指到更強的多模態模型（類似 Hermes 的 auxiliary 槽）。只寫入 [models] 任務鍵，絕不改主路由。",
+  "modelAux.loading": "正在載入模型分層…",
+  "modelAux.refresh": "重新整理",
+  "modelAux.saved": "輔助模型已儲存。下一回合將重連 Agent。",
+  "modelAux.sharedReadOnly":
+    "目前為共用工作階段模式：應用程式不會改寫 ~/.grok。請切換到獨立模式，或在 CLI 中編輯 config.toml。",
+  "modelAux.mainDefault": "主模型 [models].default",
+  "modelAux.activeSource": "目前路由",
+  "modelAux.option.auto": "自動（CLI 預設）",
+  "modelAux.slot.imageDescription": "圖片辨識",
+  "modelAux.slot.imageDescriptionDesc":
+    "主模型不支援視覺時，由該模型描述附件圖片。",
+  "modelAux.slot.webSearch": "網頁搜尋",
+  "modelAux.slot.webSearchDesc":
+    "web_search 工具使用的模型（Grok 系對 backend search 支援較好）。",
+  "modelAux.slot.sessionSummary": "工作階段摘要",
+  "modelAux.slot.sessionSummaryDesc": "工作階段摘要 / 壓縮相關側任務使用的模型。",
+  "modelAux.slot.promptSuggestion": "提示建議",
+  "modelAux.slot.promptSuggestionDesc":
+    "CLI 啟用提示建議時使用的模型。",
+  "modelAux.saveGrok": "省 Grok",
+  "modelAux.saveGrokHint": "四個輔助槽全部指向 {model}。主模型不變。",
+  "modelAux.saveGrokNoTarget":
+    "尚無可用的多模態目標。請先設定官方 API Key（帳戶 → 自訂供應商 → 官方）或 Grok 能力中轉（Amux / 雲驛），再試。",
+  "modelAux.saveGrokConfirmTitle": "套用「省 Grok」預設？",
+  "modelAux.saveGrokConfirmBody":
+    "將把圖片辨識、網頁搜尋、工作階段摘要、提示建議全部設為 {model}。主模型與目前路由保持不變。",
+  "modelAux.saveGrokDone": "輔助槽已全部指向 {model}",
+  "modelAux.resetDefaults": "還原官方預設",
+  "modelAux.resetConfirmTitle": "還原 CLI 預設？",
+  "modelAux.resetConfirmBody":
+    "將清除四個輔助槽的自訂覆蓋，恢復 Grok Build 內建預設。主模型與自訂供應商不會改動。若要主路由也回官方，請到「自訂供應商」對官方點 Use。",
+  "modelAux.resetDone": "輔助槽已恢復為 CLI 預設。",
+  "modelAux.footnote":
+    "提示：切回官方訂閱後，可在此點「還原官方預設」，讓側任務不再走自訂中轉。",
+  "modelAux.pathLabel": "設定檔",
+  "modelAux.needOfficialKey":
+    "主路由為自訂中轉時，若要用 Official · grok-4.5 做輔助識圖/搜尋，請在「自訂供應商 → 官方」填寫官方 API Key（自訂路由下不會掛 auth.json）。",
+  "modelAux.health.officialIncomplete":
+    "輔助槽指向了 grok-4.5，但官方模型設定不完整或缺少 API Key。圖片不會以像素注入（避免 DeepSeek image_url 400）。處理：在「自訂供應商 → 官方」填寫 xAI API Key；或點「還原官方預設」清空壞設定；或新增 Amux/雲驛 後點「省 Grok」。",
+  "modelAux.health.textOnlyNoVision":
+    "主模型為純文字，且識圖輔助尚未就緒。附件圖片目前只會作為路徑說明傳送，設定好多模態輔助槽後即可識圖。",
+  "modelAux.nextStepsTitle": "純文字主模型如何啟用識圖",
+  "modelAux.nextStep1":
+    "方案 A — 官方：帳戶 → 自訂供應商 → 官方 → 貼上 xAI API Key，再把「圖片辨識」設為 Official · grok-4.5（或點「省 Grok」）。",
+  "modelAux.nextStep2":
+    "方案 B — 中轉：新增 Amux / 雲驛（模型含 grok-4.5），把輔助槽指到該通道（或點「省 Grok」）。",
+  "modelAux.nextStep3":
+    "若輔助槽卡在無效的 grok-4.5，請先點「還原官方預設」清空，再重新設定。",
+  "modelAux.goProviders": "開啟自訂供應商",
+  "modelAux.officialAuxTitle": "官方側信道",
+  "modelAux.officialAuxReady":
+    "官方 Grok 側信道就緒（{reason}）。工作階段 MCP「official-aux」提供 web_search 與 x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe，經隔離 grok -p 呼叫（不走 DeepSeek 驗證）。",
+  "modelAux.officialAuxMissing":
+    "官方側信道未就緒。請先 Grok 官方登入（CLI auth）或在「自訂供應商 → 官方」填寫 API Key，然後重新連線工作階段。",
   "settings.openTarget": "開啟檔案方式",
   "settings.openTargetDesc": "資源面板中開啟路徑時的預設應用程式",
   "settings.openFinder": "Finder / 檔案總管",
@@ -2932,6 +2993,8 @@ export const zhTW: Record<MessageKey, string> = {
     "Amux 中轉 — Grok 4.5，推理 low/medium/high",
   "prov.preset.yunApi.blurb":
     "Yun API（雲驛）— Grok 4.5，推理 low/medium/high",
+  "prov.preset.opencodeGo.blurb":
+    "OpenCode Zen Go — DeepSeek V4 須用 Chat Completions（勿用 Responses）",
   "prov.getApiKey": "取得 API Key",
   "prov.efforts": "思考深度",
   "prov.effortsHint":
@@ -2971,6 +3034,18 @@ export const zhTW: Record<MessageKey, string> = {
   "prov.err.unknownProvider": "找不到該供應商。",
   "prov.officialName": "官方 Grok",
   "prov.officialDesc": "Grok Build 官方登入 / API Key",
+  "prov.officialAuxInject": "注入官方工具能力",
+  "prov.officialAuxInjectDesc":
+    "僅自訂主模型（DeepSeek、中繼等）生效：注入 MCP official-aux（web_search、全部 x_*、vision_describe、image_gen / image_edit、image_to_video / reference_to_video Imagine），使用隔離官方憑證。預設只載入 official-aux，避免其它 MCP 拖慢工具就緒。",
+  "prov.officialAuxInjectDisabled":
+    "不可用 — 請先 Grok 官方登入或填寫官方 API Key。",
+  "prov.officialAuxInjectOfficialRoute":
+    "目前為官方 Grok 訂閱：保持原生 Imagine / X / 識圖，不注入 official-aux（避免雙軌污染）。切換到自訂提供商後可開啟。",
+  "prov.officialAuxInjectOn": "已開啟",
+  "prov.officialAuxInjectOff": "已關閉",
+  "prov.officialAuxWithUserMcp": "同時載入擴充 MCP",
+  "prov.officialAuxWithUserMcpDesc":
+    "注入開啟時一併啟動你設定的其它 MCP（Playwright 等）。預設關閉，保證 official-aux 立刻可用。",
   "prov.officialApiKey": "官方 xAI API Key",
   "prov.officialKeyPh": "xai-…",
   "prov.officialKeySave": "儲存金鑰",
@@ -4720,6 +4795,10 @@ export const zhTW: Record<MessageKey, string> = {
   "chat.searchedWebFor": "搜尋了 {query}",
   "chat.searchResults": "{n} 條結果",
   "chat.toolGeneric": "工具",
+  "chat.hostVisionWait": "正在辨識，請耐心等待…",
+  "chat.hostSearchWait": "正在搜尋，請耐心等待…",
+  "chat.hostVisionTitle": "辨識圖片內容",
+  "chat.hostSearchTitle": "搜尋 X 資訊",
   "chat.turnFailed": "本輪執行失敗",
   "chat.thoughtDone": "思考",
   "chat.thoughtFor": "思考了 {n} 秒",

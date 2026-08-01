@@ -5,6 +5,11 @@
 //! a soft cancel/keep-waiting prompt. Long-running tools that still emit tool
 //! events must not count as stalled. Hard silence ends the turn while keeping
 //! journal content (less interruption, fewer false positives).
+//!
+//! **Maybe-done recovery:** when the Host already has assistant body (or tools
+//! finished and body is present) and no open tools, soft silence is treated as
+//! terminal — cancel the hung `session/prompt` and Ready the UI instead of
+//! waiting the full hard window (model streams that die mid-answer after tools).
 
 use std::time::{Duration, Instant};
 
@@ -142,6 +147,18 @@ pub fn stall_tier_from_evidence(
         return StallTier::WorkingTools;
     }
     StallTier::PreFirstToken
+}
+
+/// Whether soft silence should auto-end the turn (heal) instead of only banner.
+///
+/// True when tools are idle and the journal/stream already shows assistant body —
+/// hanging further usually means the model stream died after work completed.
+pub fn should_auto_end_maybe_done(
+    saw_model_output: bool,
+    open_tool_count: usize,
+    deferred_prompt_complete: bool,
+) -> bool {
+    saw_model_output && open_tool_count == 0 && !deferred_prompt_complete
 }
 
 /// Whether an open tool id should be pruned as orphaned.
@@ -282,5 +299,13 @@ mod tests {
         assert_eq!(DEFAULT_STREAM_STALL_SECONDS, 180);
         assert_eq!(MIN_STREAM_STALL_SECONDS, 15);
         assert_eq!(MAX_SOFT_STALL_EMITS_PER_TURN, 1);
+    }
+
+    #[test]
+    fn maybe_done_auto_end_requires_body_and_idle_tools() {
+        assert!(should_auto_end_maybe_done(true, 0, false));
+        assert!(!should_auto_end_maybe_done(false, 0, false));
+        assert!(!should_auto_end_maybe_done(true, 1, false));
+        assert!(!should_auto_end_maybe_done(true, 0, true));
     }
 }

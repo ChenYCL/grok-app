@@ -259,6 +259,30 @@ export function buildGrokActivitySteps(
     }
 
     const tool = item.tool;
+    const hostId = (tool.toolCallId || "").toLowerCase();
+    const isHostVision =
+      hostId.startsWith("host-vision") ||
+      (tool.toolKind || "").toLowerCase() === "vision";
+    const isHostX = hostId.startsWith("host-x");
+
+    // Host side-channels: one stable title row (never "Searched web for …").
+    // Prefer title over stream detail so the phase rail does not show two
+    // "识别图片内容" lines (title + detail first line).
+    if (isHostVision || isHostX) {
+      const title = (tool.title || "").trim();
+      steps.push({
+        type: "tool",
+        key: tool.toolCallId || `host-${i}`,
+        summary:
+          title ||
+          (isHostVision ? "识别图片内容" : isHostX ? "搜索 X 信息" : toolOneLine(tool)),
+        failed: toolFailed(tool),
+        running: toolRunning(tool),
+        tool,
+      });
+      i += 1;
+      continue;
+    }
 
     // Browse page
     if (isBrowseToolKind(tool.toolKind, tool.title, tool.toolCallId)) {

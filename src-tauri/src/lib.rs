@@ -63,6 +63,9 @@ mod project_rules;
 mod skill_edit;
 mod permission_rules;
 mod providers;
+mod relay_stream_proxy;
+mod models_aux;
+mod official_aux;
 mod cc_switch_import;
 mod secrets;
 mod session_import;
@@ -228,6 +231,19 @@ pub fn run() {
                 }
                 Err(e) => {
                     tracing::error!(error = %e, "media server failed to start — local media previews may break");
+                }
+            }
+            // OpenCode Zen Go etc. append non-OpenAI SSE trailers (missing `id`)
+            // that fatal Grok Build — sanitize via loopback reverse proxy and
+            // rewrite affected provider base_url in agent-home config.toml.
+            {
+                if let Err(e) =
+                    tauri::async_runtime::block_on(relay_stream_proxy::ensure_started())
+                {
+                    tracing::warn!(error = %e, "relay stream proxy failed to start");
+                }
+                if let Err(e) = relay_stream_proxy::repair_sanitize_proxy_bases() {
+                    tracing::warn!(error = %e, "relay stream proxy base_url repair failed");
                 }
             }
             if let Some(window) = app.get_webview_window("main") {
@@ -574,6 +590,21 @@ pub fn run() {
             commands::providers_list_models,
             commands::providers_cc_switch_scan,
             commands::providers_cc_switch_import,
+            commands::models_aux_get,
+            commands::models_aux_set,
+            commands::models_aux_apply_save_grok,
+            commands::models_aux_reset_defaults,
+            commands::models_aux_headless,
+            commands::models_aux_web_search,
+            commands::official_aux_status,
+            commands::official_aux_ensure_home,
+            commands::official_aux_dispatch,
+            commands::official_aux_web_search,
+            commands::official_aux_x_keyword_search,
+            commands::official_aux_x_semantic_search,
+            commands::official_aux_x_user_search,
+            commands::official_aux_x_thread_fetch,
+            commands::official_aux_vision_describe,
             commands::editors_list,
             commands::open_in_editor,
             mirror::mirror_status,

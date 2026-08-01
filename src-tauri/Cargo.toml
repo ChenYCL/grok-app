@@ -67,6 +67,8 @@ url = "2"
 
 # Remote mirror host (HTTP + WS + token gate) — see src/mirror/
 axum = { version = "0.8", features = ["ws", "macros"] }
+# SSE frame filter stream for OpenCode/Zen reverse proxy (relay_stream_proxy).
+async-stream = "0.3"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 rand = "0.8"

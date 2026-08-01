@@ -285,6 +285,17 @@ pub struct AppSettings {
     /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
     #[serde(default)]
     pub disable_web_search: bool,
+    /// Inject MCP **official-aux** (isolated official auth) into **custom**
+    /// main-route sessions only: `web_search`, all `x_*`, `vision_describe`.
+    /// Default **true**. Never applies on official Grok subscription route.
+    /// Grayed out in UI when no CLI login / official API key. Soft-respawns.
+    #[serde(default = "default_true")]
+    pub official_aux_inject: bool,
+    /// When official-aux inject is on, also load the user's other MCP servers
+    /// into the same session. Default **false** so flaky Playwright /
+    /// open-websearch handshakes do not block official-aux tools for ~30s.
+    #[serde(default)]
+    pub official_aux_with_user_mcp: bool,
     /// When true, spawn agents with top-level `--no-ask-user` so the agent
     /// does not emit `ask_user_question` questionnaires (CLI ≥ 0.2.117).
     /// Default false (CLI default — agent may still ask). Soft-respawn on change.
@@ -541,6 +552,8 @@ impl Default for AppSettings {
             background_wait_timeout_sec: default_background_wait_timeout_sec(),
             include_partial_messages: false,
             disable_web_search: false,
+            official_aux_inject: true,
+            official_aux_with_user_mcp: false,
             no_ask_user: false,
             disallowed_tools: Vec::new(),
             allowed_tools: Vec::new(),

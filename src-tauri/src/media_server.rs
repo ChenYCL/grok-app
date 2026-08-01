@@ -5,6 +5,7 @@
 //! - Standard `http://127.0.0.1:{port}/…` URLs (WebView + browser + tools)
 //! - Token gate (embedded browsers without the token cannot read disk)
 //! - Same `path_scope` allowlist as the old protocol
+//! - Full-body delivery for images (`<img>` cannot reassemble Range chunks)
 //! - HTTP Range with bounded chunks (video/audio/PDF)
 //!
 //! URL shape (path never appears unencoded in the path segment):
@@ -28,8 +29,13 @@ use serde::Serialize;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
-/// Max bytes returned per request (keeps memory bounded — same as media_protocol).
+/// Max bytes returned per Range request (keeps memory bounded — video/audio/PDF).
 const MAX_CHUNK: u64 = 2 * 1024 * 1024; // 2 MiB
+
+/// Max full-body response without Range (chat images, small binaries).
+/// `<img>` tags do not reassemble multi-Range responses — truncating at
+/// MAX_CHUNK yields broken/empty thumbnails for common multi-MB photos.
+const MAX_FULL_BODY: u64 = 40 * 1024 * 1024; // 40 MiB
 
 /// Endpoint published to the frontend (base URL + secret token).
 #[derive(Debug, Clone, Serialize)]
@@ -82,7 +88,10 @@ pub async fn start() -> Result<MediaServerHandle, String> {
     };
 
     let app = Router::new()
-        .route("/v1/media", get(media_get).head(media_get))
+        .route(
+            "/v1/media",
+            get(media_get).head(media_get).options(media_options),
+        )
         .route("/v1/health", get(health))
         .fallback(fallback_not_found)
         .with_state(state);
@@ -168,20 +177,90 @@ async fn fallback_not_found() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "not found")
 }
 
+/// Origins allowed to `fetch` media (main window only — not embedded browsers).
+/// `<img>` / `<video>` often omit Origin; CORS is still required for
+/// `fetch` (copy image, office preview reassembly).
+fn allowed_origins() -> &'static [&'static str] {
+    &[
+        "http://localhost:1421",
+        "https://localhost:1421",
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "http://localhost",
+        "https://localhost",
+    ]
+}
+
+fn cors_origin_from_headers(headers: &HeaderMap) -> Option<&'static str> {
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())?;
+    allowed_origins()
+        .iter()
+        .find(|o| **o == origin)
+        .copied()
+}
+
+fn request_origin_allowed(headers: &HeaderMap) -> bool {
+    match headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+    {
+        None => true, // same-document / <img>/<video> from main webview
+        Some(origin) => allowed_origins().iter().any(|o| *o == origin),
+    }
+}
+
+/// CORS preflight for fetch/Range clients.
+async fn media_options(req: Request<Body>) -> Response {
+    let Some(origin) = cors_origin_from_headers(req.headers()) else {
+        return text_status(StatusCode::FORBIDDEN, "origin not allowed");
+    };
+    let mut headers = HeaderMap::new();
+    if let Ok(v) = HeaderValue::from_str(origin) {
+        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, v);
+    }
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET, HEAD, OPTIONS"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("range, content-type, accept, origin"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static(
+            "content-range, accept-ranges, content-length, content-type",
+        ),
+    );
+    headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    headers.insert(header::VARY, HeaderValue::from_static("Origin"));
+    (StatusCode::NO_CONTENT, headers, Body::empty()).into_response()
+}
+
 async fn media_get(
     State(state): State<ServerState>,
     Query(q): Query<MediaQuery>,
     req: Request<Body>,
 ) -> Response {
+    let acao = cors_origin_from_headers(req.headers());
+
+    if !request_origin_allowed(req.headers()) {
+        tracing::warn!("media server: rejected disallowed Origin");
+        return text_status_cors(StatusCode::FORBIDDEN, "origin not allowed", acao);
+    }
+
     // Token must match exactly (constant-time-ish via subtle compare of equal length).
     if !tokens_equal(state.token.as_str(), &q.t) {
         tracing::warn!("media server: bad or missing token");
-        return text_status(StatusCode::UNAUTHORIZED, "unauthorized");
+        return text_status_cors(StatusCode::UNAUTHORIZED, "unauthorized", acao);
     }
 
     let path_raw = q.p.trim();
     if path_raw.is_empty() {
-        return text_status(StatusCode::BAD_REQUEST, "missing path");
+        return text_status_cors(StatusCode::BAD_REQUEST, "missing path", acao);
     }
     let path = PathBuf::from(path_raw);
 
@@ -189,12 +268,12 @@ async fn media_get(
         Ok(p) => p,
         Err(_) => {
             tracing::warn!(path = %path.display(), "media server: path not allowed");
-            return text_status(StatusCode::FORBIDDEN, "path not allowed");
+            return text_status_cors(StatusCode::FORBIDDEN, "path not allowed", acao);
         }
     };
 
     if !path.is_file() {
-        return text_status(StatusCode::NOT_FOUND, "file not found");
+        return text_status_cors(StatusCode::NOT_FOUND, "file not found", acao);
     }
 
     let method = req.method().clone();
@@ -211,11 +290,14 @@ async fn media_get(
     .await;
 
     match result {
-        Ok(Ok(chunk)) => chunk.into_response(),
-        Ok(Err((status, msg))) => text_status(status, msg),
+        Ok(Ok(mut chunk)) => {
+            chunk.cors_origin = acao;
+            chunk.into_response()
+        }
+        Ok(Err((status, msg))) => text_status_cors(status, msg, acao),
         Err(e) => {
             tracing::error!(error = %e, "media server: join error");
-            text_status(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+            text_status_cors(StatusCode::INTERNAL_SERVER_ERROR, "internal error", acao)
         }
     }
 }
@@ -229,6 +311,7 @@ struct FileChunk {
     partial: bool,
     body: Vec<u8>,
     head_only: bool,
+    cors_origin: Option<&'static str>,
 }
 
 impl IntoResponse for FileChunk {
@@ -242,10 +325,20 @@ impl IntoResponse for FileChunk {
                 "content-range, accept-ranges, content-length, content-type",
             ),
         );
-        headers.insert(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static("no-cache"),
-        );
+        // Images remount often in chat virtual lists — allow short private cache.
+        // Streaming media keeps no-cache so Range windows stay fresh.
+        let cache = if self.mime.starts_with("image/") && !self.partial {
+            "private, max-age=120"
+        } else {
+            "no-cache"
+        };
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
+        if let Some(o) = self.cors_origin {
+            if let Ok(v) = HeaderValue::from_str(o) {
+                headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, v);
+            }
+            headers.insert(header::VARY, HeaderValue::from_static("Origin"));
+        }
         if self.partial && self.total > 0 {
             if let Ok(v) = HeaderValue::from_str(&format!(
                 "bytes {}-{}/{}",
@@ -259,12 +352,6 @@ impl IntoResponse for FileChunk {
         } else {
             Body::from(self.body)
         };
-        if !self.head_only {
-            if let Ok(v) = HeaderValue::from_str(&body_len_hint(&body)) {
-                // Content-Length set by axum for full Body; for HEAD set explicitly.
-                let _ = v;
-            }
-        }
         if self.head_only {
             let nbytes = if self.total == 0 {
                 0
@@ -277,10 +364,6 @@ impl IntoResponse for FileChunk {
         }
         (self.status, headers, body).into_response()
     }
-}
-
-fn body_len_hint(_body: &Body) -> String {
-    String::new()
 }
 
 fn read_file_chunk(
@@ -299,6 +382,7 @@ fn read_file_chunk(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "stat failed"))?
         .len();
     let mime = mime_from_path(&path.to_string_lossy());
+    let is_image = mime.starts_with("image/");
 
     let (start, end, partial) = if let Some(rh) = range_hdr {
         match parse_range(rh, len) {
@@ -309,10 +393,16 @@ fn read_file_chunk(
         }
     } else if len == 0 {
         (0, 0, false)
-    } else if len <= MAX_CHUNK {
+    } else if is_image || len <= MAX_CHUNK {
+        // Full body for images (any size ≤ MAX_FULL_BODY) and small non-images.
+        // `<img src>` never sends Range and cannot decode a 206 first-chunk.
+        if len > MAX_FULL_BODY {
+            return Err((StatusCode::PAYLOAD_TOO_LARGE, "file too large"));
+        }
         (0, len - 1, false)
     } else {
-        // No Range on a large file: first chunk as 206 (player learns Accept-Ranges).
+        // No Range on a large video/audio/pdf: first chunk as 206 so the
+        // player learns Accept-Ranges (frontend reassembly / Plyr).
         (0, MAX_CHUNK - 1, true)
     };
 
@@ -321,7 +411,8 @@ fn read_file_chunk(
     } else {
         end.saturating_sub(start).saturating_add(1)
     };
-    if nbytes > MAX_CHUNK {
+    let max_allowed = if partial { MAX_CHUNK } else { MAX_FULL_BODY };
+    if nbytes > max_allowed {
         return Err((StatusCode::INTERNAL_SERVER_ERROR, "chunk too large"));
     }
 
@@ -354,11 +445,31 @@ fn read_file_chunk(
         partial,
         body,
         head_only,
+        cors_origin: None,
     })
 }
 
 fn text_status(status: StatusCode, msg: &str) -> Response {
     (status, msg.to_string()).into_response()
+}
+
+fn text_status_cors(
+    status: StatusCode,
+    msg: &str,
+    cors_origin: Option<&'static str>,
+) -> Response {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    if let Some(o) = cors_origin {
+        if let Ok(v) = HeaderValue::from_str(o) {
+            headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, v);
+        }
+        headers.insert(header::VARY, HeaderValue::from_static("Origin"));
+    }
+    (status, headers, msg.to_string()).into_response()
 }
 
 fn tokens_equal(a: &str, b: &str) -> bool {
@@ -487,6 +598,73 @@ mod tests {
         let res = client.get(&bad).send().await.expect("get bad");
         assert_eq!(res.status(), 401);
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn serves_full_body_for_large_image_without_range() {
+        // Regression: >2 MiB images must be 200 + full body so <img> can decode.
+        let dir = std::env::temp_dir().join(format!("grok-media-img-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("big.png");
+        let size = (MAX_CHUNK as usize) + 1024;
+        {
+            let mut f = std::fs::File::create(&file).unwrap();
+            f.write_all(b"\x89PNG\r\n\x1a\n").unwrap();
+            f.write_all(&vec![0xABu8; size - 8]).unwrap();
+        }
+        crate::path_scope::grant_path(&file);
+
+        let handle = start().await.expect("start");
+        let url = url_for_path(&handle.endpoint(), &file.to_string_lossy());
+        let client = reqwest::Client::new();
+        let res = client.get(&url).send().await.expect("get");
+        assert_eq!(res.status(), 200, "large image must not be truncated 206");
+        let bytes = res.bytes().await.unwrap();
+        assert_eq!(bytes.len(), size);
+        assert!(bytes.starts_with(b"\x89PNG"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn large_non_image_without_range_returns_first_chunk_206() {
+        let dir = std::env::temp_dir().join(format!("grok-media-bin-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("clip.bin");
+        let size = (MAX_CHUNK as usize) + 4096;
+        {
+            let mut f = std::fs::File::create(&file).unwrap();
+            f.write_all(&vec![0xCDu8; size]).unwrap();
+        }
+        crate::path_scope::grant_path(&file);
+
+        let handle = start().await.expect("start");
+        let url = url_for_path(&handle.endpoint(), &file.to_string_lossy());
+        let client = reqwest::Client::new();
+        let res = client.get(&url).send().await.expect("get");
+        assert_eq!(res.status(), 206);
+        let bytes = res.bytes().await.unwrap();
+        assert_eq!(bytes.len(), MAX_CHUNK as usize);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn decide_window_images_full_body() {
+        // Unit-level: read_file_chunk on a synthetic image path extension.
+        let dir = std::env::temp_dir().join(format!("grok-media-unit-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("photo.jpg");
+        let size = (MAX_CHUNK as usize) + 512;
+        {
+            let mut f = std::fs::File::create(&file).unwrap();
+            f.write_all(&vec![0xFFu8; size]).unwrap();
+        }
+        let chunk = read_file_chunk(&file, None, false).expect("read");
+        assert!(!chunk.partial);
+        assert_eq!(chunk.status, StatusCode::OK);
+        assert_eq!(chunk.body.len(), size);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

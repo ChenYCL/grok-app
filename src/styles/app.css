@@ -14374,6 +14374,57 @@ textarea::-webkit-scrollbar-thumb:active,
   max-width: 52ch;
 }
 
+/* ── Official aux inject (providers panel) ───────────────────────────────── */
+.prov-official-aux {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 18px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+
+.prov-official-aux.is-disabled {
+  opacity: 0.72;
+}
+
+.prov-official-aux__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.prov-official-aux__desc {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  max-width: 52ch;
+}
+
+.prov-official-aux__switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.prov-official-aux__switch input:disabled {
+  cursor: not-allowed;
+}
+
+.prov-official-aux.is-disabled .prov-official-aux__switch {
+  cursor: not-allowed;
+}
+
 /* ── Providers panel: left list + right detail/form ──────────────────────── */
 .prov-panel {
   display: flex;
@@ -14970,8 +15021,9 @@ textarea::-webkit-scrollbar-thumb:active,
   flex-shrink: 0;
 }
 
-/* Amux: follows theme ink (black in light, white in dark) */
-.provider-brand-icon--amux {
+/* Amux / OpenCode Go: follows theme ink (black in light, white in dark) */
+.provider-brand-icon--amux,
+.provider-brand-icon--opencode-go {
   color: var(--text-primary);
 }
 

@@ -126,12 +126,16 @@ pub struct RemoteModel {
     pub owned_by: Option<String>,
 }
 
-struct Section {
-    id: String,
-    start: usize,
-    end: usize,
-    fields: std::collections::HashMap<String, String>,
+/// Parsed `[model.*]` section (shared with relay stream proxy).
+#[derive(Debug, Clone)]
+pub struct ModelSection {
+    pub id: String,
+    pub start: usize,
+    pub end: usize,
+    pub fields: std::collections::HashMap<String, String>,
 }
+
+type Section = ModelSection;
 
 /// Unquote a TOML basic string written by [`quote`].
 ///
@@ -214,6 +218,9 @@ pub fn normalize_openai_base_url(raw: &str, api_backend: &str) -> String {
 }
 
 /// One-shot repair: rewrite stored custom base_url values that omit /v1.
+///
+/// When the section is already pointed at the stream-sanitize loopback proxy,
+/// normalize `app_upstream_base_url` instead of the local `base_url`.
 pub fn repair_custom_base_urls() -> Result<bool, String> {
     let path = agent_config_toml();
     if !path.is_file() {
@@ -228,44 +235,33 @@ pub fn repair_custom_base_urls() -> Result<bool, String> {
             continue;
         }
         let backend = normalize_backend(s.fields.get("api_backend").map(|x| x.as_str()));
-        let Some(old) = s.fields.get("base_url").cloned() else {
+        let Some(old_base) = s.fields.get("base_url").cloned() else {
             continue;
         };
-        let new = normalize_openai_base_url(&old, &backend);
-        if new != old.trim().trim_end_matches('/') && new != old {
-            // Re-write whole section via remove + append to keep format stable.
-            let model = s
-                .fields
-                .get("model")
-                .cloned()
-                .unwrap_or_else(|| s.id.clone());
-            let name = s.fields.get("name").cloned().unwrap_or_else(|| s.id.clone());
-            let key = s.fields.get("api_key").cloned().unwrap_or_default();
-            let app_models = s
-                .fields
-                .get(APP_MODELS_KEY)
-                .cloned()
-                .unwrap_or_default();
-            let app_efforts = s
-                .fields
-                .get(APP_EFFORTS_KEY)
-                .cloned()
-                .unwrap_or_default();
-            out = remove_section(&out, &s.id);
-            let mut fields = vec![
-                ("model".into(), model),
-                ("base_url".into(), new),
-                ("name".into(), name),
-                ("api_key".into(), key),
-                ("api_backend".into(), backend),
-            ];
-            if !app_models.trim().is_empty() {
-                fields.push((APP_MODELS_KEY.into(), app_models));
+        let is_proxy = crate::relay_stream_proxy::is_local_sanitize_proxy_url(&old_base);
+        let upstream_key = crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY;
+        if is_proxy {
+            // Fix real upstream if it lost /v1; leave loopback base_url alone.
+            let Some(old_up) = s.fields.get(upstream_key).cloned() else {
+                continue;
+            };
+            let new_up = normalize_openai_base_url(&old_up, &backend);
+            if new_up == old_up.trim().trim_end_matches('/') || new_up == old_up {
+                continue;
             }
-            if !app_efforts.trim().is_empty() {
-                fields.push((APP_EFFORTS_KEY.into(), app_efforts));
-            }
-            out = append_section(&out, &s.id, &fields);
+            out = rewrite_section_base_urls(&out, &s.id, &old_base, Some(&new_up))?;
+            changed = true;
+            tracing::info!(
+                target: "providers",
+                id = %s.id,
+                "repaired app_upstream_base_url to include /v1"
+            );
+            continue;
+        }
+        let new = normalize_openai_base_url(&old_base, &backend);
+        if new != old_base.trim().trim_end_matches('/') && new != old_base {
+            let keep_up = s.fields.get(upstream_key).map(|x| x.as_str());
+            out = rewrite_section_base_urls(&out, &s.id, &new, keep_up)?;
             changed = true;
             tracing::info!(
                 target: "providers",
@@ -283,6 +279,75 @@ pub fn repair_custom_base_urls() -> Result<bool, String> {
         write_text(&path, &out)?;
     }
     Ok(changed)
+}
+
+/// Parse all `[model.*]` sections (for stream-proxy repair / lookup).
+pub fn parse_model_sections_for_proxy(text: &str) -> Vec<ModelSection> {
+    parse_model_sections(text)
+}
+
+/// Update `base_url` and optional `app_upstream_base_url` while keeping other fields.
+pub fn rewrite_section_base_urls(
+    text: &str,
+    id: &str,
+    cli_base: &str,
+    upstream: Option<&str>,
+) -> Result<String, String> {
+    let sections = parse_model_sections(text);
+    let Some(s) = sections.iter().find(|x| x.id == id) else {
+        return Err(format!("provider `{id}` not found"));
+    };
+    let upstream_key = crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY;
+    // Stable-ish field order: known keys first, then the rest alphabetically.
+    let preferred = [
+        "model",
+        "base_url",
+        "name",
+        "api_key",
+        "api_backend",
+        APP_MODELS_KEY,
+        APP_EFFORTS_KEY,
+        upstream_key,
+    ];
+    let mut fields: Vec<(String, String)> = Vec::new();
+    let mut used = std::collections::HashSet::new();
+    for k in preferred {
+        if k == "base_url" {
+            fields.push(("base_url".into(), cli_base.to_string()));
+            used.insert("base_url".to_string());
+            continue;
+        }
+        if k == upstream_key {
+            if let Some(up) = upstream.map(str::trim).filter(|s| !s.is_empty()) {
+                fields.push((upstream_key.into(), up.to_string()));
+            }
+            used.insert(upstream_key.to_string());
+            continue;
+        }
+        if let Some(v) = s.fields.get(k) {
+            if !v.is_empty() {
+                fields.push((k.into(), v.clone()));
+                used.insert(k.to_string());
+            }
+        }
+    }
+    let mut rest: Vec<_> = s
+        .fields
+        .iter()
+        .filter(|(k, _)| !used.contains(k.as_str()) && *k != upstream_key)
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    rest.sort_by(|a, b| a.0.cmp(&b.0));
+    fields.extend(rest);
+    if let Some(up) = upstream.map(str::trim).filter(|s| !s.is_empty()) {
+        if !fields.iter().any(|(k, _)| k == upstream_key) {
+            fields.push((upstream_key.into(), up.to_string()));
+        }
+    }
+    let mut out = remove_section(text, id);
+    out = append_section(&out, id, &fields);
+    // Preserve [models].default if remove_section somehow touched it (it doesn't).
+    Ok(out)
 }
 
 fn model_header(id: &str) -> String {
@@ -734,7 +799,8 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             .get("model")
             .cloned()
             .unwrap_or_else(|| s.id.clone());
-        let base_url = s.fields.get("base_url").cloned().unwrap_or_default();
+        // UI shows the real upstream; CLI may use loopback sanitize proxy.
+        let base_url = crate::relay_stream_proxy::effective_upstream_base(&s.fields);
         let name = s.fields.get("name").cloned().unwrap_or_else(|| s.id.clone());
         let has_api_key = s
             .fields
@@ -852,6 +918,14 @@ pub fn prepare_route_auth_for_agent() {
             }
         }
     }
+    // Never import Claude/Cursor MCP catalogs into App agent-home sessions.
+    let mode = crate::store::load_settings().session_data_mode;
+    if let Err(e) = crate::agent_home_config::apply_compat_mcp_disabled(&mode) {
+        tracing::warn!(
+            target: "providers",
+            "compat.claude/cursor mcps=false pin failed: {e}"
+        );
+    }
 }
 
 /// Switch active route: `official` or `custom` (+ provider_id).
@@ -933,13 +1007,17 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         }
     };
     let api_backend = normalize_backend(input.api_backend.as_deref());
-    let base_url = normalize_openai_base_url(input.base_url.trim(), &api_backend);
-    if base_url.is_empty() {
+    let user_base = normalize_openai_base_url(input.base_url.trim(), &api_backend);
+    if user_base.is_empty() {
         return Err("base_url is required".into());
     }
-    if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
+    if !(user_base.starts_with("http://") || user_base.starts_with("https://")) {
         return Err("base_url must start with http:// or https://".into());
     }
+    // OpenCode Zen Go etc.: CLI talks to loopback sanitize proxy; real host in
+    // app_upstream_base_url (ignored by Grok Build).
+    let (base_url, app_upstream) =
+        crate::relay_stream_proxy::rewrite_base_for_cli(&id, &user_base, &api_backend)?;
 
     let _ = ensure_agent_home()?;
     let path = agent_config_toml();
@@ -1006,7 +1084,7 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     text = remove_section(&text, &id);
     let mut fields = vec![
         ("model".into(), model),
-        ("base_url".into(), base_url),
+        ("base_url".into(), base_url.clone()),
         ("name".into(), name),
         ("api_key".into(), next_key),
         ("api_backend".into(), api_backend),
@@ -1014,6 +1092,24 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     ];
     if !app_efforts_json.is_empty() && app_efforts_json != "[]" {
         fields.push((APP_EFFORTS_KEY.into(), app_efforts_json));
+    }
+    if let Some(up) = app_upstream {
+        fields.push((
+            crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY.into(),
+            up,
+        ));
+    } else if crate::relay_stream_proxy::is_local_sanitize_proxy_url(&base_url) {
+        // User re-saved a local proxy URL without retyping upstream: keep previous.
+        if let Some(prev) = existing
+            .and_then(|s| s.fields.get(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY))
+            .cloned()
+            .filter(|s| !s.trim().is_empty())
+        {
+            fields.push((
+                crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY.into(),
+                prev,
+            ));
+        }
     }
     text = append_section(&text, &id, &fields);
 
