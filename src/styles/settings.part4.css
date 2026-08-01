@@ -1,5 +1,292 @@
 /* domain CSS chunk (move-only split; selectors unchanged) */
 
+
+.wallpaper-source-tabs__btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-active) 70%, transparent);
+}
+
+.wallpaper-source-tabs__btn--active {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 12%, transparent);
+}
+
+.wallpaper-source-tabs__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Shared control metrics for X search + Imagine form rows */
+.wallpaper-source-form {
+  --ws-control-h: var(--control-height, 32px);
+  --ws-control-gap: 8px;
+  --ws-control-radius: var(--radius-md);
+  --ws-control-font: var(--text-sm, 13px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-control-gap);
+}
+
+.wallpaper-source-form__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.wallpaper-source-form__row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--ws-control-gap);
+  align-items: center;
+  min-height: var(--ws-control-h);
+}
+
+.wallpaper-source-form__input,
+.wallpaper-source-form__textarea {
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--ws-control-font);
+  line-height: 1.25;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--ws-control-radius);
+  margin: 0;
+}
+
+.wallpaper-source-form__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--ws-control-h);
+  padding: 0 12px;
+}
+
+/* Kill UA search field chrome so height stays exact */
+.wallpaper-source-form__input[type="search"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.wallpaper-source-form__input[type="search"]::-webkit-search-decoration,
+.wallpaper-source-form__input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.wallpaper-source-form__textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: calc(var(--ws-control-h) * 3);
+  padding: 8px 12px;
+  line-height: 1.4;
+}
+
+/* App Select — same height / radius / border as input + button */
+.wallpaper-source-form__select {
+  flex: 0 0 auto;
+  min-width: 96px;
+  height: var(--ws-control-h);
+}
+
+.wallpaper-source-form__select .c-select__trigger {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--ws-control-h);
+  min-height: var(--ws-control-h);
+  max-height: var(--ws-control-h);
+  padding: 0 10px;
+  font-size: var(--ws-control-font);
+  line-height: 1;
+  border-radius: var(--ws-control-radius);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Search / Generate CTA — match control height (ignore btn--sm) */
+.wallpaper-source-form__row > .btn {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  height: var(--ws-control-h);
+  min-height: var(--ws-control-h);
+  max-height: var(--ws-control-h);
+  padding: 0 14px;
+  font-size: var(--ws-control-font);
+  border-radius: var(--ws-control-radius);
+  line-height: 1;
+}
+
+.wallpaper-source-modal .modal-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.wallpaper-source-footer-hint {
+  flex: 1 1 140px;
+  min-width: 0;
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+
+.wallpaper-source-status {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.wallpaper-source-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger, #e55) 12%, var(--bg-elevated));
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
+.wallpaper-source-error p {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+/*
+ * X search gallery scroll + masonry
+ *
+ * CSS multi-column MUST NOT be the overflow scroller. With max-height +
+ * overflow-y on the same element, WebKit/Blink pack overflow into extra
+ * columns to the *right* (not taller content). overflow-x:hidden then
+ * clips those columns — only the first “page” of thumbs is visible and
+ * the rest of a long X search is unreachable (wasted results).
+ *
+ * Scroll lives on the outer shell; multi-column lives on the inner track
+ * with unconstrained height so all cards participate in 3 columns and
+ * the shell scrolls vertically.
+ */
+.wallpaper-masonry-scroll {
+  flex: 1 1 auto;
+  min-height: 180px;
+  /* Prefer remaining modal body height over a short fixed cap */
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px;
+  border: none;
+  outline: none;
+  background: transparent;
+}
+
+.wallpaper-masonry-scroll:focus,
+.wallpaper-masonry-scroll:focus-visible {
+  outline: none;
+}
+
+/* True 3-col masonry — height follows image, no fixed crop box */
+.wallpaper-masonry {
+  column-count: 3;
+  column-gap: 10px;
+  column-fill: balance;
+  column-rule: none;
+  width: 100%;
+  /* Never constrain height here — see .wallpaper-masonry-scroll */
+  max-height: none;
+  overflow: visible;
+}
+
+/* Imagine: one full-width column */
+.wallpaper-masonry--full {
+  column-count: 1;
+  column-gap: 0;
+}
+
+.wallpaper-masonry__empty {
+  column-span: all;
+  margin: 24px 8px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.wallpaper-masonry__card {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  overflow: hidden;
+  cursor: zoom-in;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  vertical-align: top;
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+.wallpaper-masonry--full .wallpaper-masonry__card {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.wallpaper-masonry__card:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+}
+
+.wallpaper-masonry__card--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.wallpaper-masonry__card--loading {
+  cursor: wait;
+  opacity: 0.85;
+}
+
+.wallpaper-masonry__card:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Natural image height — no aspect-ratio crop */
+.wallpaper-masonry__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--bg-hover) 80%, #000);
+  border: none;
+  object-fit: contain;
+}
+
+.wallpaper-masonry__meta {
+  display: block;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: none;
+}
+
+@media (max-width: 640px) {
+  .wallpaper-masonry:not(.wallpaper-masonry--full) {
+    column-count: 2;
   }
 }
 
@@ -517,299 +804,3 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   border: 1px solid var(--border-subtle);
   color: var(--text-tertiary);
 }
-
-.settings-cli-sessions__filter input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 13px;
-}
-
-.settings-cli-sessions__filter input[type="search"]::-webkit-search-decoration,
-.settings-cli-sessions__filter input[type="search"]::-webkit-search-cancel-button {
-  -webkit-appearance: none;
-}
-
-.settings-cli-sessions__search-note {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  line-height: 1.35;
-}
-
-.settings-cli-sessions__prompt {
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.35;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  word-break: break-word;
-}
-
-.settings-cli-sessions__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 320px;
-  overflow: auto;
-}
-
-.settings-cli-sessions__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-elevated, var(--bg-input));
-  min-width: 0;
-}
-
-.settings-cli-sessions__item--linked {
-  border-color: color-mix(in srgb, var(--accent, #6b8afd) 36%, var(--border-subtle));
-  background: color-mix(
-    in srgb,
-    var(--accent, #6b8afd) 6%,
-    var(--bg-elevated, var(--bg-input))
-  );
-}
-
-.settings-cli-sessions__meta {
-  min-width: 0;
-  flex: 1;
-}
-
-.settings-cli-sessions__title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.settings-cli-sessions__title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.settings-cli-sessions__sub {
-  margin-top: 2px;
-  font-size: 11.5px;
-  color: var(--text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-cli-sessions__id-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-  min-width: 0;
-}
-
-.settings-cli-sessions__id {
-  font-size: 11px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  color: var(--text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.settings-cli-sessions__copy {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin: 0;
-  padding: 2px 6px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.settings-cli-sessions__copy:hover {
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-  color: var(--text-secondary);
-}
-
-.settings-cli-sessions__row-actions {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.settings-cli-sessions__badge {
-  flex-shrink: 0;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent, #6b8afd) 18%, transparent);
-  color: var(--text-secondary);
-  font-weight: 560;
-}
-
-.settings-cli-sessions__empty {
-  font-size: 12.5px;
-  color: var(--text-tertiary);
-  padding: 6px 2px;
-}
-
-.settings-cli-sessions__err {
-  font-size: 12.5px;
-  color: var(--danger, #d33);
-  padding: 4px 2px;
-}
-
-.settings-cli-sessions__ok {
-  font-size: 12.5px;
-  color: var(--text-secondary);
-  padding: 4px 2px;
-}
-
-/* Settings → About: GitHub release check */
-.settings-about-update {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  margin-top: 4px;
-}
-
-.settings-about-update__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.settings-about-update__status {
-  font-size: 12.5px;
-  color: var(--text-secondary);
-  line-height: 1.45;
-}
-
-.settings-about-update__status.is-available {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.settings-about-update__err {
-  font-size: 12.5px;
-  color: var(--danger, #d33);
-  line-height: 1.45;
-}
-
-.settings-about-update__assets {
-  font-size: 11.5px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  line-height: 1.4;
-  word-break: break-all;
-}
-
-/* ===== Drag-drop zone overlays (OS file drop) =====
-   Full-bleed wash + inset ring (no dashed frame with margins).
-   Hint card floats center; icons from Tabler only. */
-.drop-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 80;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  border-radius: inherit;
-  animation: drop-overlay-in 180ms ease-out;
-}
-
-@keyframes drop-overlay-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.drop-overlay__card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  max-width: 300px;
-  padding: 20px 24px;
-  border-radius: var(--modal-radius, 16px);
-  text-align: center;
-  /* Material from unified .drop-overlay__card glass surface */
-  animation: drop-card-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-@keyframes drop-card-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.drop-overlay__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.drop-overlay__card strong {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.drop-overlay__card span {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-
-/* Main / chat: soft blue wash, full bleed, inset ring via box-shadow */
-.drop-overlay--attach {
-  background: linear-gradient(
-    180deg,
-    rgba(70, 130, 255, 0.09) 0%,
-    rgba(70, 130, 255, 0.14) 100%
-  );
-  box-shadow: inset 0 0 0 2px rgba(80, 140, 255, 0.42);
-}
-
-.drop-overlay--attach .drop-overlay__icon {
-  color: rgb(70, 130, 255);
-  background: rgba(70, 130, 255, 0.12);
-}
-
-/* Sidebar: soft green wash, full bleed */

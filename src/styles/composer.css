@@ -1,4 +1,4 @@
-/* composer.css — re-exports part files */
+/* composer.css — domain shell */
 @import "./composer.part1.css";
 @import "./composer.part2.css";
 @import "./composer.part3.css";

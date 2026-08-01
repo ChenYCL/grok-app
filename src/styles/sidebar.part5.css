@@ -1,5 +1,212 @@
 /* domain CSS chunk (move-only split; selectors unchanged) */
 
+
+.account-mgr__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-mgr__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-hover) 40%, transparent);
+}
+
+.account-mgr__row.is-active {
+  border-color: color-mix(in srgb, var(--accent, #6b9fff) 40%, transparent);
+  background: color-mix(in srgb, var(--accent, #6b9fff) 10%, transparent);
+}
+
+.account-mgr__av {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--accent-muted, rgba(107, 159, 255, 0.15));
+  color: var(--accent, #6b9fff);
+}
+
+.account-mgr__meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.account-mgr__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--text-primary);
+}
+
+.account-mgr__email {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-mgr__actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.account-mgr__actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Multiple thinking phases stacked (pre-tool + post-tool) */
+.lobe-chat-thinking-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+/* Composer project picker chip */
+.chip--project {
+  cursor: pointer;
+  max-width: 160px;
+}
+.chip--project .chip__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip--muted {
+  opacity: 0.85;
+}
+.chip--project.is-open {
+  background: var(--bg-active, rgba(255, 255, 255, 0.08));
+}
+.chip--project-path-missing {
+  color: var(--warning);
+  background: var(--warning-muted);
+}
+.chip--project-path-missing.is-open {
+  background: var(--warning-muted);
+}
+.cpm__item--path-missing .cmm__opt-title {
+  color: var(--warning);
+}
+.cpm__path-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--warning);
+  background: var(--warning-muted);
+  border-radius: 4px;
+  padding: 0 5px;
+  line-height: 16px;
+  vertical-align: middle;
+}
+.cpm {
+  position: relative;
+  flex-shrink: 0;
+}
+/* Project pop: solid surface; top dual actions + scrollable project list */
+.cpm__pop {
+  z-index: 10050;
+  max-height: min(360px, 50vh);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 240px;
+  background: var(--menu-context-bg, var(--bg-elevated, #2a2a2c));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--menu-context-border, var(--border-subtle));
+  box-shadow: var(--menu-context-shadow, var(--glass-shadow));
+  transform: none;
+  isolation: auto;
+}
+/* Top row: 未选项目 | 添加项目 */
+.cpm__actions {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.cpm__action {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px; /* icon + text tight */
+  padding: 8px 8px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cpm__action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cpm__action:hover {
+  background: var(--bg-active, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary);
+  border-color: var(--border-strong, rgba(255, 255, 255, 0.12));
+}
+.cpm__action.is-active {
+  background: color-mix(in srgb, var(--accent, #6b9fff) 16%, var(--bg-hover, transparent));
+  border-color: color-mix(in srgb, var(--accent, #6b9fff) 35%, transparent);
+  color: var(--text-primary);
+}
+.cpm__action--add {
+  color: var(--text-secondary);
+}
+.cpm__action svg {
+  flex-shrink: 0;
+}
+/* Project list — scrolls when taller than max-height */
+.cpm__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  overscroll-behavior: contain;
+}
+.cpm__pop .cpm__item {
+  align-items: center;
+  margin: 0;
+  flex-shrink: 0;
+}
+.cpm__pop .cpm__item .cmm__opt-check {
+  margin-top: 0;
 }
 
 .cpm__worktrees {
@@ -594,262 +801,3 @@
   color: var(--text-tertiary);
 }
 
-.gh-heatmap__body {
-  display: flex;
-  align-items: flex-start;
-}
-
-.gh-heatmap__dow {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  font-size: 10px;
-  line-height: 1;
-  color: var(--text-tertiary);
-}
-
-.gh-heatmap__dow-label {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 4px;
-}
-
-.gh-heatmap__grid {
-  display: grid;
-}
-
-.gh-heatmap__cell {
-  border-radius: 2px;
-  /* Soft edge like GitHub cells — not a hard black frame */
-  border: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
-  padding: 0;
-  outline: none;
-  cursor: pointer;
-  background: var(--heatmap-0);
-  box-sizing: border-box;
-  transition:
-    box-shadow 0.1s ease,
-    border-color 0.1s ease;
-}
-
-.gh-heatmap__cell.is-empty {
-  pointer-events: none;
-  opacity: 0;
-  border-color: transparent;
-  cursor: default;
-}
-
-/*
- * Selected / focus: thin outer ring (clearer than inset), kept restrained:
- * 1px canvas gap + ~1.5px soft green — fits the 3px gutters without a heavy halo.
- */
-.gh-heatmap__cell.is-selected {
-  z-index: 2;
-  border-color: transparent;
-  box-shadow:
-    0 0 0 1px var(--bg-elevated, var(--surface-1, var(--bg, #fff))),
-    0 0 0 2.5px color-mix(in srgb, var(--heatmap-3, #30a14e) 72%, transparent);
-}
-
-.gh-heatmap__cell:not(.is-empty):hover:not(.is-selected) {
-  z-index: 1;
-  border-color: color-mix(in srgb, var(--text-primary) 20%, transparent);
-  box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--text-primary) 16%, transparent);
-}
-
-.gh-heatmap__cell:not(.is-empty):focus-visible {
-  z-index: 2;
-  border-color: transparent;
-  box-shadow:
-    0 0 0 1px var(--bg-elevated, var(--surface-1, var(--bg, #fff))),
-    0 0 0 2.5px color-mix(in srgb, var(--heatmap-3, #30a14e) 72%, transparent);
-}
-
-.account-section__title--row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.account-heatmap-title-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex-shrink: 0;
-}
-
-.account-heatmap-total {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.account-heat-toggle {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--surface-2, rgba(127, 127, 127, 0.12));
-  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.2));
-  gap: 2px;
-}
-
-.account-heat-toggle__btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1;
-  padding: 5px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition:
-    background 0.1s ease,
-    color 0.1s ease;
-}
-
-.account-heat-toggle__btn:hover {
-  color: var(--text-primary);
-}
-
-.account-heat-toggle__btn.is-active {
-  background: var(--bg-elevated, var(--surface-1, #fff));
-  color: var(--text-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-}
-
-.gh-heatmap__cell--week {
-  border-radius: 3px;
-}
-
-.gh-heatmap__legend {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 10px;
-  font-size: 10px;
-  color: var(--text-tertiary);
-}
-
-/* Portaled to document.body (fixed) — not clipped by heatmap overflow parents */
-.gh-heatmap__tip {
-  position: fixed;
-  z-index: 10060;
-  width: 168px;
-  box-sizing: border-box;
-  padding: 7px 10px;
-  border-radius: 8px;
-  background: var(--glass-surface-solid, var(--bg-elevated, #fff));
-  color: var(--text-primary);
-  border: 1px solid var(--glass-border, var(--border-subtle));
-  box-shadow: var(
-    --glass-shadow,
-    var(--shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.18))
-  );
-  backdrop-filter: blur(var(--glass-blur, 24px))
-    saturate(var(--glass-saturate, 1.4));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 24px))
-    saturate(var(--glass-saturate, 1.4));
-  font-size: 12px;
-  pointer-events: none;
-  /* Instant feel — no enter delay; light fade only */
-  animation: gh-heatmap-tip-in 0.06s ease-out;
-}
-
-.gh-heatmap__tip--hover {
-  width: 168px;
-}
-
-@keyframes gh-heatmap-tip-in {
-  from {
-    opacity: 0.55;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.gh-heatmap__tip--above {
-  transform: translateY(-100%);
-}
-
-.gh-heatmap__tip--below {
-  transform: none;
-}
-
-.gh-heatmap__tip-date {
-  font-weight: 600;
-  margin-bottom: 4px;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.gh-heatmap__tip-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
-.gh-heatmap__tip-row span:last-child {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.account-logs__row.is-day-hit {
-  background: color-mix(in srgb, var(--accent, #30a14e) 8%, transparent);
-}
-
-.account-logs__empty {
-  font-size: 13px;
-  color: var(--text-secondary);
-  padding: 16px 14px;
-}
-
-.account-logs {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  min-width: 560px;
-}
-
-.account-logs__head,
-.account-logs__row {
-  display: grid;
-  grid-template-columns: minmax(100px, 1.4fr) minmax(80px, 1fr) 56px 72px 72px 88px;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 14px;
-  font-size: 12px;
-}
-
-.account-logs__head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  color: var(--text-tertiary);
-  border-bottom: 1px solid var(--border-subtle);
-  font-weight: 500;
-  background: var(--bg-elevated);
-}
-
-.account-logs__row {
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-subtle);
-  font-variant-numeric: tabular-nums;
-}
-
-.account-logs__row:last-child {
-  border-bottom: none;
-}

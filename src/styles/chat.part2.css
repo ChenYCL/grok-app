@@ -1,5 +1,338 @@
 /* domain CSS chunk (move-only split; selectors unchanged) */
 
+
+.composer-stack .composer {
+  width: 100%;
+  max-width: none;
+}
+
+/* New-session only: semi-rounded project / local / branch bar above input */
+.composer__context-bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, var(--bg-main));
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+  color: var(--text-secondary);
+}
+
+/* Session / workspace change chips live in the context bar (not the input). */
+.composer__context-changes {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.composer__context-item--changes,
+.composer__context-item--git-dirty {
+  cursor: pointer;
+  max-width: none;
+}
+
+.composer__context-item--changes .chip__label--nums,
+.composer__context-item--git-dirty .chip__label--nums {
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="light"] .composer__context-bar {
+  background: color-mix(in srgb, var(--bg-elevated) 70%, #eef0f3);
+  border-color: color-mix(in srgb, var(--border-subtle) 80%, transparent);
+}
+
+.composer__context-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  max-width: min(200px, 42vw);
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: default;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+button.composer__context-item {
+  cursor: pointer;
+}
+
+.composer__context-item:hover:not(:disabled),
+.composer__context-item.is-open {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.composer__context-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.composer__context-item.is-muted {
+  opacity: 0.78;
+}
+
+.composer__context-item.is-path-missing {
+  color: var(--warning);
+}
+
+.composer__context-item--static {
+  cursor: default;
+}
+
+.composer__context-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.cpm--context {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+/* Branch / worktree menu (context bar) */
+.cwm {
+  position: relative;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.cwm--context {
+  min-width: 0;
+}
+
+.composer__context-item--branch.is-loading {
+  opacity: 0.72;
+}
+
+.cwm__pop {
+  z-index: 10050;
+  max-height: min(420px, 55vh);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Width locked by floatingStyle (fixed 288); avoid content reflow flash. */
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--menu-context-bg, var(--bg-elevated, #2a2a2c));
+  border: 1px solid var(--menu-context-border, var(--border-subtle));
+  box-shadow: var(--menu-context-shadow, var(--glass-shadow));
+  /* No size transition — first open must not animate width/height. */
+  transition: none;
+}
+
+.cwm__head {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.cwm__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+.cwm__list.is-loading {
+  opacity: 0.72;
+}
+
+.cwm__row {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.cwm__row-inner {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cwm__row-inner .cwm__item {
+  flex: 1;
+  min-width: 0;
+}
+
+.cwm__row-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.cwm__row-remove:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--danger, #e5484d);
+}
+
+.cwm__row-remove:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cwm__row-remove svg {
+  flex-shrink: 0;
+}
+
+.cwm__item {
+  width: 100%;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  margin: 0;
+}
+
+.cwm__item:disabled {
+  opacity: 0.9;
+  cursor: default;
+}
+
+.cwm__item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.cwm__item-name {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-primary);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.cwm__item-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.cwm__empty {
+  margin: 0;
+  padding: 8px 10px 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.cwm__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cwm__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cwm__action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* CLI-tracked worktrees (`grok worktree list`) section under git worktrees */
+.cwm__cli {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+
+.cwm__cli-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cwm__head--inline {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 0;
+}
+
+.cwm__cli-refresh {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0 2px 0 0;
+  padding: 0;
+  border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--text-tertiary);
@@ -474,340 +807,3 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
-
-.attach-chip__main:hover .attach-chip__name {
-  color: var(--text-primary);
-}
-
-/*
- * Remove control: solid dark disc at top-right, half outside the card.
- * Avoid --bg-active — near-transparent and “vanishes” on hover.
- */
-.attach-chip__x {
-  --x-size: 16px;
-  position: absolute;
-  top: calc(var(--x-size) / -2);
-  right: calc(var(--x-size) / -2);
-  width: var(--x-size);
-  height: var(--x-size);
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: rgba(0, 0, 0, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  color: #fff;
-  opacity: 0;
-  transition:
-    opacity 0.12s ease,
-    background 0.12s ease,
-    transform 0.12s ease;
-  z-index: 2;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-}
-
-.attach-chip:hover .attach-chip__x,
-.attach-chip:focus-within .attach-chip__x,
-.attach-chip__x:hover,
-.attach-chip__x:focus-visible {
-  opacity: 1;
-}
-
-.attach-chip__x:hover,
-.attach-chip__x:focus-visible {
-  background: rgba(0, 0, 0, 0.9);
-  color: #fff;
-  transform: scale(1.06);
-}
-
-/* Message attachment cards */
-.message__user-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  max-width: 100%;
-}
-
-.message__atts {
-  display: flex;
-  flex-wrap: wrap;
-  flex-direction: row;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  max-width: min(100%, 360px);
-}
-
-.message__atts--assistant {
-  justify-content: flex-start;
-  align-items: center;
-  max-width: 100%;
-  margin-top: 4px;
-}
-
-/*
- * Message attachments
- * - Image: 36×36 square
- * - File / folder: height 36px, width follows name (max capped)
- */
-.att-card {
-  --attach-h: 36px;
-  --attach-file-max-w: 220px;
-  position: relative;
-  height: var(--attach-h);
-  min-height: var(--attach-h);
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-elevated);
-  overflow: hidden;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
-  box-sizing: border-box;
-}
-
-.att-card--image {
-  width: var(--attach-h);
-  flex: 0 0 var(--attach-h);
-}
-
-.att-card:not(.att-card--image) {
-  width: max-content;
-  max-width: var(--attach-file-max-w);
-  flex: 0 1 auto;
-}
-
-.att-card--dir {
-  border-color: rgba(80, 180, 120, 0.3);
-  background: color-mix(in srgb, rgba(80, 180, 120, 0.08) 100%, var(--bg-elevated));
-}
-
-.att-card__btn {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  background: transparent;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  box-sizing: border-box;
-}
-
-/* File row */
-.att-card:not(.att-card--image) .att-card__btn {
-  flex-direction: row;
-  justify-content: flex-start;
-  gap: 8px;
-  padding: 0 10px 0 8px;
-  text-align: left;
-}
-
-.att-card__btn--image {
-  padding: 0;
-  justify-content: center;
-}
-
-.att-card__btn:hover {
-  background: var(--bg-hover);
-}
-
-.att-card__btn--image:hover {
-  background: transparent;
-  filter: brightness(0.96);
-}
-
-.att-card__thumb {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: var(--bg-hover);
-}
-
-.att-card__thumb--placeholder {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  color: var(--text-tertiary);
-}
-
-.att-card__thumb--fail,
-.att-card--preview-fail .att-card__thumb--placeholder {
-  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--text-tertiary) 45%, transparent);
-  color: var(--text-tertiary);
-}
-
-.att-card__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.att-card--dir .att-card__icon {
-  color: rgb(50, 150, 100);
-  background: rgba(80, 180, 120, 0.12);
-}
-
-.att-card__meta {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  overflow: hidden;
-}
-
-.att-card__name {
-  max-width: 160px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.2;
-  text-align: left;
-}
-
-/* Path available via tooltip */
-.att-card__path,
-.att-card__sub {
-  display: none;
-}
-
-/* Markdown inline images — RATIO-AWARE FRAME
- *
- * Frame always has a non-zero size (default 4:3, then natural ratio from JS)
- * so scrollHeight never collapses to 0 mid-decode. Width/height follow the
- * image; max 280×280. Inline style sets width + aspect-ratio per image.
- */
-.md-body__img-frame {
-  display: block;
-  position: relative;
-  box-sizing: border-box;
-  margin: 10px 0;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
-  vertical-align: middle;
-  /* Height comes from aspect-ratio (set inline); never leave empty box */
-  height: auto;
-}
-
-.md-body__img-frame--card {
-  max-width: min(100%, 280px);
-  max-height: 280px;
-  border-radius: 12px;
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
-}
-
-/* Resource sidebar / full-width previews — no chat 280 cap */
-.md-body__img-frame--pane {
-  width: 100%;
-  max-width: 100%;
-  max-height: none;
-  margin: 0;
-  border-radius: 8px;
-  border: none;
-  box-shadow: none;
-  background: transparent;
-}
-
-.md-body__img-frame__el {
-  display: block;
-  /* Absolute fill: % height of aspect-ratio boxes is unreliable in WebKit */
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  /* Box matches natural ratio → contain fills without crop or letterbox */
-  object-fit: contain;
-  object-position: center;
-  border: none;
-  margin: 0;
-  padding: 0;
-  border-radius: inherit;
-  cursor: zoom-in;
-  opacity: 1;
-}
-
-.md-body__img-frame.is-pending {
-  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
-}
-
-.md-body__img-frame.is-broken {
-  border-style: dashed;
-  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
-}
-
-.md-body__img-frame__fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  padding: 8px 12px;
-  box-sizing: border-box;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  text-align: center;
-  word-break: break-all;
-}
-
-/* Legacy class names still applied via ImageUi className props */
-.md-body__img-pending,
-.md-body__img-broken {
-  /* Kept as no-ops if any external CSS still references them */
-  display: none;
-}
-
-.md-body__img,
-.md-body__img--card {
-  /* Size lives on .md-body__img-frame--card; bare img rules must not fight it */
-  max-width: 100%;
-}
-
-/* Path-in-place video card (replaces `videos/1.mp4` / links)
- *
- * Stage always has a non-zero reserved size (default 16:9 via JS aspect-ratio).
- * Video is absolute-fill so metadata load / stream remounts do not thrash
- * scrollHeight (that thrash + stick-to-bottom follow = chat flicker).
- */
-.md-body__video-card {
-  display: block;
-  box-sizing: border-box;
-  max-width: min(100%, 360px);
-  margin: 10px 0;
-  border-radius: 12px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-elevated);
-  overflow: hidden;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
-}
-
-.md-body__video-card__stage {
-  position: relative;
-  display: block;
-  width: 100%;
-  /* Height from aspect-ratio (inline); never leave an empty collapsing box */
-  height: auto;
-  background: #000;
-  overflow: hidden;
-}
-

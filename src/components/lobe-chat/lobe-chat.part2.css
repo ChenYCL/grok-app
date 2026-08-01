@@ -1,6 +1,4 @@
 /* lobe-chat css chunk */
-  letter-spacing: -0.01em;
-}
 
 /* Worked for 1m 2s ∨ — lighter than step text, ~14px */
 .grok-act__header {
@@ -752,5 +750,11 @@
   max-height: min(70vh, 520px);
   padding: 4px 2px;
   pointer-events: none;
+}
+
+.lobe-msg-rail__step,
+.lobe-msg-rail__tick,
+.lobe-msg-rail__list {
+  pointer-events: auto;
 }
 

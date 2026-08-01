@@ -1,5 +1,87 @@
 /* domain CSS chunk (move-only split; selectors unchanged) */
 
+.skills-task-picker__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 4px 4px;
+}
+
+.skills-task-picker__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.skills-task-picker__item.is-active {
+  background: var(--menu-hover);
+}
+
+.skills-task-picker__ico {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.skills-task-picker__item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.skills-task-picker__item-name {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-task-picker__item-desc {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-tertiary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.skills-task-picker__empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.skills-task-picker__empty-title {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.skills-task-picker__empty-hint {
   max-width: 28em;
   line-height: 1.4;
 }
@@ -718,46 +800,5 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.doctor-linux-dayuse__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.doctor-linux-dayuse__title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.doctor-linux-dayuse__title {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-secondary);
-}
-
-.doctor-linux-dayuse__badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent, #5b8def) 18%, transparent);
-  color: var(--text-primary);
-  opacity: 0.9;
-  white-space: nowrap;
-}
-
-.doctor-linux-dayuse__summary {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.4;
 }
 

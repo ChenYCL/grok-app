@@ -1,5 +1,109 @@
 /* domain CSS chunk (move-only split; selectors unchanged) */
 
+
+/*
+ * ===== Unified frosted glass surface =====
+ * Modals, search, effort/model pops, drawers, drop cards, glass popovers.
+ * Context / right-click menus are solid (see block below) — not glass.
+ */
+.glass-surface,
+.composer-plus,
+.c-select__menu,
+.user-menu__pop,
+.slash-palette,
+.prompt-history,
+.modal,
+.search-panel,
+.effort-panel__pop,
+.cmm__pop,
+.auto-panel,
+.drop-overlay__card {
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  transform: translateZ(0);
+  isolation: isolate;
+}
+
+/* Floating menu chrome (dropdown reference: radius / pad / type) */
+.menu-panel,
+.ctx-menu,
+.open-loc-menu,
+.composer-plus,
+.c-select__menu,
+.user-menu__pop,
+.att-menu,
+.rp-open-menu,
+.auto-page__create-menu,
+.auto-row__menu,
+.project-menu {
+  border-radius: var(--menu-radius);
+  padding: var(--menu-pad);
+  font-size: var(--menu-font);
+  font-weight: var(--menu-font-weight);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  /* Content + padding; no fixed panel width */
+  width: max-content;
+  max-width: var(--menu-max-width);
+  min-width: 0;
+}
+
+/*
+ * Context / right-click menus — solid opaque (no glass / blur).
+ * Unified component: .context-menu (chat att-menu baseline).
+ * Legacy .ctx-menu / .att-menu aliases kept for any residual markup.
+ */
+.context-menu,
+.ctx-menu,
+.att-menu,
+.open-loc-menu,
+.rp-open-menu,
+.auto-page__create-menu,
+.auto-row__menu,
+.project-menu,
+.menu-panel.context-menu,
+.menu-panel.ctx-menu,
+.menu-panel.att-menu,
+.menu-panel.open-loc-menu,
+.menu-panel.rp-open-menu,
+.menu-panel.auto-page__create-menu,
+.menu-panel.auto-row__menu {
+  background: var(--menu-context-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--menu-context-border);
+  box-shadow: var(--menu-context-shadow);
+  border-radius: var(--menu-context-radius, 10px);
+  padding: var(--menu-context-pad, 4px);
+  transform: none;
+  isolation: auto;
+  gap: var(--menu-context-gap, 1px);
+}
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .glass-surface,
+  .composer-plus,
+  .c-select__menu,
+  .user-menu__pop,
+  .slash-palette,
+  .prompt-history,
+  .modal,
+  .search-panel,
+  .effort-panel__pop,
+  .cmm__pop,
+  .auto-panel,
+  .drop-overlay__card {
+    background: var(--glass-surface-solid);
+  }
+}
+
+/* Shared menu rows (buttons / options) */
+.ctx-menu button,
 .open-loc-menu__item,
 .c-select__option,
 .user-menu__item,
@@ -699,161 +803,5 @@ html[data-sidebar-density="compact"] .tree-l3--hint {
   height: 22px;
   min-height: 22px;
   font-size: 11px;
-}
-
-html[data-sidebar-density="compact"] .tree-l3-list-wrap {
-  padding: 1px 0 4px 12px;
-  gap: 0;
-}
-
-html[data-sidebar-density="compact"] .tree-l3-list,
-html[data-sidebar-density="compact"] .tree-orphan-list {
-  gap: 0;
-}
-
-html[data-sidebar-density="compact"] .tree-l3__time {
-  max-width: 6.5em;
-  font-size: 10px;
-}
-
-html[data-sidebar-density="compact"] .tree-l3__status {
-  width: 20px;
-  min-width: 20px;
-  height: 20px;
-}
-
-html[data-sidebar-density="compact"] .tree-l3__actions {
-  height: 20px;
-}
-
-html[data-sidebar-density="compact"] .tree-l3 .tree-icon-btn {
-  width: 20px;
-  height: 20px;
-}
-
-html[data-sidebar-density="compact"] .session-list {
-  gap: 0;
-  margin-bottom: 2px;
-}
-
-html[data-sidebar-density="compact"] .session-row {
-  padding: 3px 6px;
-  gap: 0;
-  font-size: 12px;
-}
-
-html[data-sidebar-density="compact"] .session-row__meta {
-  font-size: 9px;
-}
-
-
-.sidebar-empty {
-  padding: 12px 10px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  line-height: 1.45;
-}
-
-.status-pill-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-tertiary);
-  padding: 4px 8px;
-}
-
-.status-pill-inline__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-tertiary);
-}
-
-.status-pill-inline__dot.is-ok {
-  background: var(--success);
-}
-
-.status-pill-inline__dot.is-warn {
-  background: var(--warning);
-}
-
-.status-pill-inline__dot.is-err {
-  background: var(--danger);
-}
-
-/* Primary actions under logo (new session / scheduled) */
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px 10px 8px;
-  flex-shrink: 0;
-}
-
-.sidebar-nav .nav-new,
-.sidebar-nav .nav-item {
-  width: 100%;
-  margin: 0;
-}
-
-.nav-new {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0 var(--space-1) var(--space-2);
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  text-align: left;
-  font-weight: 500;
-}
-
-.nav-new:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: calc(100% - 8px);
-  margin: 1px 4px;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  text-align: left;
-}
-
-.nav-item:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-/* Match session row selection (.tree-l3--active / .session-row--active) */
-.nav-item--active {
-  background: var(--bg-active);
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.nav-item--soon {
-  opacity: 0.55;
-}
-
-.nav-item__icon {
-  width: 16px;
-  text-align: center;
-  opacity: 0.85;
-  font-size: 13px;
-}
-
-.nav-item__badge {
-  margin-left: auto;
-  font-size: 10px;
-  color: var(--text-tertiary);
 }
 

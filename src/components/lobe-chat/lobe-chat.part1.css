@@ -741,3 +741,23 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
 }
 
 /*
+ * Official palette (light):
+ *   header / steps text ≈ #737373
+ *   rail ≈ #e5e5e5
+ *   answer text ≈ #0a0a0a
+ * Dark theme uses chat-text-* tokens with similar relative weight.
+ */
+.grok-act {
+  --grok-act-fg: color-mix(in srgb, var(--chat-text-2, #737373) 100%, transparent);
+  --grok-act-fg-dim: color-mix(in srgb, var(--chat-text-3, #a3a3a3) 100%, transparent);
+  --grok-act-rail: color-mix(in srgb, var(--chat-border, #e5e5e5) 85%, transparent);
+  width: 100%;
+  max-width: var(--chat-content-max, 48rem);
+  margin: 0 0 8px;
+  color: var(--grok-act-fg);
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 400;
+  font-family: inherit;
+  letter-spacing: -0.01em;
+}
