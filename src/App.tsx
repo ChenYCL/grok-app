@@ -20649,6 +20649,11 @@ export default function App() {
               onDismissPlan={() => void dismissPlan()}
               onOpenPlanHistory={() => setShowPlanHistory(true)}
               onShip={openShipFlow}
+              onDiffCommentToChat={(prompt) => {
+                setDraft(prompt);
+                requestComposerFocus();
+                showToast(tr("changes.commentInsertedToast"), 2400);
+              }}
               onAsideLayoutHint={applyAsideLayoutHint}
               onClose={() => {
                 // Manual close — do not treat as plan-owned pane on later dismiss.

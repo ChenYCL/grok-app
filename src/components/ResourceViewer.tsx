@@ -41,6 +41,7 @@ import {
   IconFolder,
   IconFiles,
   IconListTree,
+  IconChat,
   IconPlan,
   IconRefresh,
   IconRewind,
@@ -91,6 +92,10 @@ import {
   type BatchFileInput,
   type UnifiedHunk,
 } from "@/lib/diffAccept";
+import {
+  formatHunkSnippet,
+  planDiffCommentToChat,
+} from "@/lib/diffComment";
 import {
   filterWorkspaceGitEntries,
   normalizeWorkspaceGitEntries,
@@ -199,6 +204,11 @@ export interface ResourceViewerProps {
    * Parent opens in-app Ship dialog; never window.confirm.
    */
   onShip?: () => void;
+  /**
+   * Diff hunk review comment → parent inserts structured prompt into composer
+   * (prefer draft insert over auto-send). When omitted, per-hunk Comment is hidden.
+   */
+  onDiffCommentToChat?: (prompt: string) => void;
   /**
    * Content-aware right-pane layout hint (preview kind, tree open, tabs).
    * App soft-grows aside width so chrome icons never collide with window controls.
@@ -347,6 +357,7 @@ export function ResourceViewer({
   onDismissPlan,
   onOpenPlanHistory,
   onShip,
+  onDiffCommentToChat,
   onAsideLayoutHint,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -439,6 +450,18 @@ export function ResourceViewer({
   } | null>(null);
   /** In-app confirm for file-scoped reject-all-remaining hunks. */
   const [batchHunkRejectConfirm, setBatchHunkRejectConfirm] = useState(false);
+  /** Per-hunk review comment → insert structured prompt into composer. */
+  const [diffCommentTarget, setDiffCommentTarget] = useState<{
+    path: string;
+    name: string;
+    hunkIndex: number;
+    hunkHeader: string;
+    hunkSnippet: string;
+  } | null>(null);
+  const [diffCommentNote, setDiffCommentNote] = useState("");
+  const [diffCommentError, setDiffCommentError] = useState<
+    "empty" | "too_long" | "no_path" | "no_snippet" | null
+  >(null);
   /** Open-with target for the location button (finder / editor id). */
   const [openWithTarget, setOpenWithTarget] = useState(() => {
     try {
@@ -2828,6 +2851,29 @@ export function ResourceViewer({
                     <IconClose size={12} />
                   </button>
                 </Tip>
+                {onDiffCommentToChat ? (
+                  <Tip label={tr("changes.commentTip")}>
+                    <button
+                      type="button"
+                      className="chrome-btn rp-diff-action rp-diff-action--comment"
+                      data-testid={`changes-comment-hunk-${idx}`}
+                      onClick={() => {
+                        setDiffCommentError(null);
+                        setDiffCommentNote("");
+                        setDiffCommentTarget({
+                          path: diffView.path,
+                          name: diffView.name,
+                          hunkIndex: idx,
+                          hunkHeader: h.header,
+                          hunkSnippet: formatHunkSnippet(h),
+                        });
+                      }}
+                      aria-label={tr("changes.comment")}
+                    >
+                      <IconChat size={12} />
+                    </button>
+                  </Tip>
+                ) : null}
               </div>
             ))}
           </div>
@@ -4531,6 +4577,102 @@ export function ResourceViewer({
             name: diffView?.name ?? "",
           })}
         </p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!diffCommentTarget}
+        onClose={() => {
+          setDiffCommentTarget(null);
+          setDiffCommentNote("");
+          setDiffCommentError(null);
+        }}
+        title={tr("changes.commentModalTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="rp-diff-comment-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                setDiffCommentTarget(null);
+                setDiffCommentNote("");
+                setDiffCommentError(null);
+              }}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              data-testid="changes-comment-insert"
+              disabled={!onDiffCommentToChat}
+              onClick={() => {
+                if (!diffCommentTarget || !onDiffCommentToChat) return;
+                const planned = planDiffCommentToChat({
+                  path: diffCommentTarget.path,
+                  name: diffCommentTarget.name,
+                  hunkHeader: diffCommentTarget.hunkHeader,
+                  hunkSnippet: diffCommentTarget.hunkSnippet,
+                  note: diffCommentNote,
+                });
+                if (!planned.ok) {
+                  setDiffCommentError(planned.reason);
+                  return;
+                }
+                onDiffCommentToChat(planned.prompt);
+                setDiffCommentTarget(null);
+                setDiffCommentNote("");
+                setDiffCommentError(null);
+              }}
+            >
+              {tr("changes.commentInsert")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-diff-comment-modal__desc">
+          {diffCommentTarget
+            ? tr("changes.commentModalDesc", {
+                name:
+                  diffCommentTarget.name ||
+                  diffCommentTarget.path ||
+                  "",
+                n: String(diffCommentTarget.hunkIndex + 1),
+              })
+            : null}
+        </p>
+        {diffCommentTarget?.hunkHeader ? (
+          <p className="rp-diff-comment-modal__hunk" title={diffCommentTarget.hunkHeader}>
+            {diffCommentTarget.hunkHeader}
+          </p>
+        ) : null}
+        <label className="rp-diff-comment-modal__field">
+          <span className="sr-only">{tr("changes.commentPlaceholder")}</span>
+          <textarea
+            className="rp-diff-comment-modal__textarea"
+            value={diffCommentNote}
+            onChange={(e) => {
+              setDiffCommentNote(e.target.value);
+              if (diffCommentError) setDiffCommentError(null);
+            }}
+            placeholder={tr("changes.commentPlaceholder")}
+            rows={4}
+            autoFocus
+            data-testid="changes-comment-note"
+          />
+        </label>
+        {diffCommentError ? (
+          <p className="rp-diff-comment-modal__error" role="alert">
+            {diffCommentError === "empty"
+              ? tr("changes.commentErrorEmpty")
+              : diffCommentError === "too_long"
+                ? tr("changes.commentErrorTooLong")
+                : tr("changes.commentErrorGeneric")}
+          </p>
+        ) : null}
       </GlassModal>
     </div>
   );

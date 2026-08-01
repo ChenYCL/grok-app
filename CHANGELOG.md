@@ -11,6 +11,11 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+#### Composer & chat
+- **Diff hunk comment → chat**: Changes panel per-hunk **Comment** opens a GlassModal for a review note, then inserts a structured prompt (file + hunk snippet + note) into the composer without auto-send; pure `diffComment` helpers + tests; en/zh/zh-TW
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

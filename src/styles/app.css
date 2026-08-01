@@ -17187,6 +17187,54 @@ textarea::-webkit-scrollbar-thumb:active,
   white-space: nowrap;
 }
 
+/* Diff hunk review comment → composer */
+.rp-diff-comment-modal__desc {
+  margin: 0 0 8px;
+  font-size: var(--text-sm, 13px);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.rp-diff-comment-modal__hunk {
+  margin: 0 0 10px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-diff-comment-modal__field {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+.rp-diff-comment-modal__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 96px;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: var(--menu-item-radius, 8px);
+  border: 1px solid var(--glass-border, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-code, var(--bg-app)) 70%, transparent);
+  color: var(--text-primary);
+  font-size: var(--text-sm, 13px);
+  line-height: 1.45;
+  outline: none;
+  font-family: inherit;
+}
+.rp-diff-comment-modal__textarea:focus,
+.rp-diff-comment-modal__textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--text-primary) 28%, var(--border-subtle));
+}
+.rp-diff-comment-modal__error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger, #e35d6a);
+}
+
 .rp-diff-host > .rp-code {
   flex: 1 1 auto;
   min-height: 0;
