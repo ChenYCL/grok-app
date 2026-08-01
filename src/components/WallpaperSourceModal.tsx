@@ -25,6 +25,18 @@ import {
   type WallpaperGalleryItem,
   type WallpaperSourceErrorCode,
 } from "@/lib/wallpaperSource";
+import {
+  classifyWallpaperGalleryError,
+  countGalleryByKind,
+  filterGalleryItems,
+  isWallpaperGallerySoftFail,
+  resolveWallpaperGalleryEmptyState,
+  wallpaperGalleryErrorTitleKey,
+  wallpaperGalleryHasActiveFilters,
+  wallpaperGalleryKindFilterLabelKey,
+  WALLPAPER_GALLERY_KIND_FILTERS,
+  type WallpaperGalleryKindFilter,
+} from "@/lib/wallpaperGalleryPro";
 import { WallpaperPrepareError } from "@/lib/themeSkin";
 import { resolveImageSrcSync } from "@/lib/imageSrc";
 import type { MessageKey } from "@/i18n";
@@ -103,6 +115,12 @@ export function WallpaperSourceModal({
   const [prompt, setPrompt] = useState("");
   const [aspect, setAspect] = useState("16:9");
   const [items, setItems] = useState<WallpaperGalleryItem[]>([]);
+  /** Client-side gallery filter (not the X search box). */
+  const [galleryFilter, setGalleryFilter] = useState("");
+  const [kindFilter, setKindFilter] =
+    useState<WallpaperGalleryKindFilter>("all");
+  /** True after at least one search/generate finished this open. */
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -121,11 +139,71 @@ export function WallpaperSourceModal({
     setStatusHint(null);
     setSelectedId(null);
     setPreviewingId(null);
+    setGalleryFilter("");
+    setKindFilter("all");
+    setHasSearched(false);
   }, [open, initialTab]);
 
+  const kindCounts = useMemo(() => countGalleryByKind(items), [items]);
+
+  const visibleItems = useMemo(
+    () =>
+      filterGalleryItems(items, {
+        query: galleryFilter,
+        kind: kindFilter,
+      }),
+    [items, galleryFilter, kindFilter],
+  );
+
+  const filtersActive = wallpaperGalleryHasActiveFilters({
+    query: galleryFilter,
+    kind: kindFilter,
+  });
+
+  const emptyState = useMemo(
+    () =>
+      resolveWallpaperGalleryEmptyState({
+        loading: busy,
+        query: galleryFilter,
+        itemCount: visibleItems.length,
+        error: errorCode
+          ? { code: errorCode, message: error ?? errorCode }
+          : error,
+        totalCount: items.length,
+        kindFilter,
+        hasSearched,
+      }),
+    [
+      busy,
+      galleryFilter,
+      visibleItems.length,
+      errorCode,
+      error,
+      items.length,
+      kindFilter,
+      hasSearched,
+    ],
+  );
+
+  const galleryErrorKind = useMemo(() => {
+    if (!errorCode && !error) return null;
+    // Prefer structured code + detail so desktop-only / free-text still classify
+    // (e.g. generic + "desktop app" → host soft-fail).
+    return classifyWallpaperGalleryError(
+      errorCode
+        ? { code: errorCode, message: error ?? errorCode }
+        : error,
+    );
+  }, [errorCode, error]);
+
+  const clearGalleryFilters = useCallback(() => {
+    setGalleryFilter("");
+    setKindFilter("all");
+  }, []);
+
   const selected = useMemo(
-    () => items.find((i) => i.id === selectedId) ?? null,
-    [items, selectedId],
+    () => visibleItems.find((i) => i.id === selectedId) ?? null,
+    [visibleItems, selectedId],
   );
 
   const sortOptions = useMemo(
@@ -164,11 +242,15 @@ export function WallpaperSourceModal({
     setErrorCode(null);
     setStatusHint(t("settings.wallpaperSource.searching"));
     setSelectedId(null);
+    setGalleryFilter("");
+    setKindFilter("all");
     try {
       const res = await api.wallpaperXSearch(q, sort);
       const list = dedupeGalleryItems(res.items || []);
       const code = errorCodeFromSearchResult({ ...res, items: list });
+      setHasSearched(true);
       if (code) {
+        // Honest empty/error — never invent CDN gallery cards
         setItems([]);
         setErrorCode(code);
         setError(errorMessage(t, code));
@@ -178,6 +260,7 @@ export function WallpaperSourceModal({
         setErrorCode(null);
       }
     } catch (e) {
+      setHasSearched(true);
       setItems([]);
       const code = parseWallpaperSourceError(e);
       setErrorCode(code);
@@ -205,10 +288,13 @@ export function WallpaperSourceModal({
     setErrorCode(null);
     setStatusHint(t("settings.wallpaperSource.generating"));
     setSelectedId(null);
+    setGalleryFilter("");
+    setKindFilter("all");
     try {
       const res = await api.wallpaperImagine(p, aspect);
       const list = dedupeGalleryItems(res.items || []);
       const code = errorCodeFromSearchResult({ ...res, items: list });
+      setHasSearched(true);
       if (code) {
         setItems([]);
         setErrorCode(code);
@@ -220,6 +306,7 @@ export function WallpaperSourceModal({
         if (list[0]) setSelectedId(list[0].id);
       }
     } catch (e) {
+      setHasSearched(true);
       setItems([]);
       const code = parseWallpaperSourceError(e);
       setErrorCode(code);
@@ -270,7 +357,8 @@ export function WallpaperSourceModal({
         );
 
         // Only open downloadable / already-local siblings in the lightbox
-        const viable = items.filter(
+        // (visible set only — never invent off-filter CDN cards).
+        const viable = visibleItems.filter(
           (it) => it.id === item.id || it.localPath || it.fullUrl.startsWith("http"),
         );
         const slides = viable.map((it) => {
@@ -306,7 +394,7 @@ export function WallpaperSourceModal({
         setStatusHint(null);
       }
     },
-    [busy, applying, previewingId, items, t, viewer, dropItem],
+    [busy, applying, previewingId, visibleItems, t, viewer, dropItem],
   );
 
   const applySelected = useCallback(async () => {
@@ -349,6 +437,17 @@ export function WallpaperSourceModal({
   const authNeeded = errorCode === "auth_required";
   const locked = busy || applying || previewingId !== null;
   const isImagineLayout = tab === "imagine";
+  const showGalleryFilters = items.length > 0 || filtersActive;
+  const softFailError =
+    galleryErrorKind != null && isWallpaperGallerySoftFail(galleryErrorKind);
+  // Error banner already carries detail for empty/error — avoid stacking the
+  // same honesty block; still show loading / idle / filter-empty surfaces.
+  const showEmptyBlock =
+    emptyState != null &&
+    (emptyState.kind === "loading" ||
+      emptyState.kind === "idle" ||
+      emptyState.kind === "filter_empty" ||
+      !error);
 
   return (
     <GlassModal
@@ -510,7 +609,24 @@ export function WallpaperSourceModal({
       ) : null}
 
       {error ? (
-        <div className="wallpaper-source-error" role="alert">
+        <div
+          className={
+            "wallpaper-source-error" +
+            (softFailError ? " wallpaper-source-error--soft" : "")
+          }
+          role="alert"
+        >
+          {galleryErrorKind ? (
+            <span
+              className={
+                "wallpaper-source-err-chip" +
+                (softFailError ? " wallpaper-source-err-chip--soft" : "")
+              }
+              data-kind={galleryErrorKind}
+            >
+              {t(wallpaperGalleryErrorTitleKey(galleryErrorKind) as MessageKey)}
+            </span>
+          ) : null}
           <p>{error}</p>
           {authNeeded && onRequestLogin ? (
             <button
@@ -519,6 +635,63 @@ export function WallpaperSourceModal({
               onClick={onRequestLogin}
             >
               {t("settings.wallpaperSource.goLogin")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showGalleryFilters ? (
+        <div className="wallpaper-source-filters">
+          <div
+            className="wallpaper-source-chips"
+            role="toolbar"
+            aria-label={t("settings.wallpaperSource.kindLabel")}
+          >
+            {WALLPAPER_GALLERY_KIND_FILTERS.map((id) => {
+              const n = kindCounts[id];
+              // Hide zero-count chips except "all" and the active selection.
+              if (id !== "all" && n === 0 && kindFilter !== id) return null;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={
+                    "wallpaper-source-chip" +
+                    (kindFilter === id ? " is-active" : "")
+                  }
+                  aria-pressed={kindFilter === id}
+                  disabled={locked && id !== kindFilter}
+                  onClick={() => setKindFilter(id)}
+                >
+                  <span>
+                    {t(
+                      wallpaperGalleryKindFilterLabelKey(id) as MessageKey,
+                    )}
+                  </span>
+                  <span className="wallpaper-source-chip-count">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <input
+            type="search"
+            className="wallpaper-source-form__input wallpaper-source-filters__query"
+            value={galleryFilter}
+            placeholder={t("settings.wallpaperSource.filterPlaceholder")}
+            disabled={locked}
+            onChange={(e) => setGalleryFilter(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            aria-label={t("settings.wallpaperSource.filterPlaceholder")}
+          />
+          {filtersActive ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={clearGalleryFilters}
+              disabled={locked}
+            >
+              {t("settings.wallpaperSource.clearFilters")}
             </button>
           ) : null}
         </div>
@@ -534,7 +707,7 @@ export function WallpaperSourceModal({
         role="list"
         aria-label={t("settings.wallpaperSource.gallery")}
         aria-busy={busy || previewingId !== null}
-        tabIndex={items.length > 0 ? 0 : undefined}
+        tabIndex={visibleItems.length > 0 ? 0 : undefined}
       >
         <div
           className={
@@ -542,12 +715,40 @@ export function WallpaperSourceModal({
             (isImagineLayout ? " wallpaper-masonry--full" : "")
           }
         >
-          {items.length === 0 && !busy && !error ? (
-            <p className="wallpaper-masonry__empty">
-              {t("settings.wallpaperSource.emptyGallery")}
-            </p>
+          {showEmptyBlock && emptyState ? (
+            <div
+              className={
+                "wallpaper-masonry__empty" +
+                (emptyState.kind === "filter_empty"
+                  ? " wallpaper-masonry__empty--filter"
+                  : "") +
+                (emptyState.kind === "error"
+                  ? " wallpaper-masonry__empty--error"
+                  : "")
+              }
+              data-kind={emptyState.kind}
+              data-soft-fail={emptyState.softFail ? "1" : "0"}
+            >
+              <p className="wallpaper-masonry__empty-title">
+                {t(emptyState.titleKey as MessageKey)}
+              </p>
+              {emptyState.hintKey ? (
+                <p className="wallpaper-masonry__empty-hint">
+                  {t(emptyState.hintKey as MessageKey)}
+                </p>
+              ) : null}
+              {emptyState.showClearFilters ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={clearGalleryFilters}
+                >
+                  {t("settings.wallpaperSource.clearFilters")}
+                </button>
+              ) : null}
+            </div>
           ) : null}
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const active = item.id === selectedId;
             const loadingThis = previewingId === item.id;
             const src = itemThumbSrc(item);

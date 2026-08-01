@@ -6594,9 +6594,102 @@ textarea.settings-input.settings-agents-json__textarea {
   font-size: 12.5px;
 }
 
+.wallpaper-source-error--soft {
+  background: color-mix(in srgb, var(--warning, #c90) 12%, var(--bg-elevated));
+}
+
 .wallpaper-source-error p {
   margin: 0;
   flex: 1 1 auto;
+}
+
+.wallpaper-source-err-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--danger, #e55) 35%, transparent);
+  background: color-mix(in srgb, var(--danger, #e55) 10%, transparent);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 560;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.wallpaper-source-err-chip--soft {
+  border-color: color-mix(in srgb, var(--warning, #c90) 40%, transparent);
+  background: color-mix(in srgb, var(--warning, #c90) 12%, transparent);
+}
+
+.wallpaper-source-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.wallpaper-source-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.wallpaper-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallpaper-source-chip:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.wallpaper-source-chip.is-active {
+  border-color: color-mix(in srgb, var(--accent, #6b8cff) 30%, transparent);
+  background: color-mix(in srgb, var(--accent, #6b8cff) 14%, transparent);
+  color: var(--text-primary);
+  font-weight: 560;
+}
+
+.wallpaper-source-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.wallpaper-source-chip-count {
+  font-size: 11px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.wallpaper-source-chip.is-active .wallpaper-source-chip-count {
+  opacity: 0.9;
+}
+
+.wallpaper-source-filters__query {
+  flex: 1 1 140px;
+  min-width: 120px;
+  max-width: 280px;
 }
 
 /*
@@ -6652,10 +6745,34 @@ textarea.settings-input.settings-agents-json__textarea {
 
 .wallpaper-masonry__empty {
   column-span: all;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   margin: 24px 8px;
   text-align: center;
   color: var(--text-tertiary);
   font-size: 13px;
+}
+
+.wallpaper-masonry__empty-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 550;
+}
+
+.wallpaper-masonry__empty-hint {
+  margin: 0;
+  max-width: 36em;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.wallpaper-masonry__empty--filter .wallpaper-masonry__empty-title,
+.wallpaper-masonry__empty--error .wallpaper-masonry__empty-title {
+  color: var(--text-primary);
 }
 
 .wallpaper-masonry__card {
@@ -6738,7 +6855,8 @@ textarea.settings-input.settings-agents-json__textarea {
 .wallpaper-source-modal__body > .wallpaper-source-tabs,
 .wallpaper-source-modal__body > .wallpaper-source-form,
 .wallpaper-source-modal__body > .wallpaper-source-status,
-.wallpaper-source-modal__body > .wallpaper-source-error {
+.wallpaper-source-modal__body > .wallpaper-source-error,
+.wallpaper-source-modal__body > .wallpaper-source-filters {
   flex: 0 0 auto;
 }
 

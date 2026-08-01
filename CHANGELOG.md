@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Wallpaper gallery pro** (Settings → Appearance → wallpaper source modal): honest empty states (idle · loading · no results · filter empty · classified error), kind filter chips (All · Images · Videos) with counts, client-side gallery filter, and soft-fail error chips (network · host · untrusted · empty · other). Never invents CDN gallery tiles — only real Host/search items. Pure `wallpaperGalleryPro` helpers + tests; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

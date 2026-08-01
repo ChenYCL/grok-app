@@ -2646,6 +2646,38 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.wallpaperSource.gallery": "壁紙畫廊",
   "settings.wallpaperSource.emptyGallery":
     "結果會以瀑布流展示。請先搜尋或生成。",
+  "settings.wallpaperSource.empty.idleHint":
+    "尚未載入任何壁紙。請搜尋 X 或用 Imagine 生成 — 結果僅來自 Host，不會偽造 CDN 佔位圖。",
+  "settings.wallpaperSource.empty.loading": "正在載入畫廊…",
+  "settings.wallpaperSource.empty.loadingHint":
+    "等待真實搜尋或 Imagine 結果；載入過程中不會偽造條目。",
+  "settings.wallpaperSource.empty.noResults": "沒有找到壁紙",
+  "settings.wallpaperSource.empty.noResultsHint":
+    "請換個關鍵字或提示詞。空結果表示 Host 回傳了零筆媒體，不是佔位畫廊。",
+  "settings.wallpaperSource.empty.filterEmpty": "目前篩選無相符項目",
+  "settings.wallpaperSource.empty.filterEmptyHint":
+    "類型晶片或篩選隱藏了全部結果。清除篩選可重新看到 Host 回傳的真實條目。",
+  "settings.wallpaperSource.clearFilters": "清除篩選",
+  "settings.wallpaperSource.filterPlaceholder": "篩選畫廊…",
+  "settings.wallpaperSource.kindLabel": "媒體類型",
+  "settings.wallpaperSource.kind.all": "全部",
+  "settings.wallpaperSource.kind.image": "圖片",
+  "settings.wallpaperSource.kind.video": "影片",
+  "settings.wallpaperSource.errKind.network": "網路",
+  "settings.wallpaperSource.errKind.host": "Host / CLI",
+  "settings.wallpaperSource.errKind.untrusted": "已封鎖網址",
+  "settings.wallpaperSource.errKind.empty": "空結果",
+  "settings.wallpaperSource.errKind.other": "錯誤",
+  "settings.wallpaperSource.errKind.hint.network":
+    "請檢查網路後重試搜尋或下載。",
+  "settings.wallpaperSource.errKind.hint.host":
+    "請安裝或設定 Grok CLI，或使用桌面端應用程式。",
+  "settings.wallpaperSource.errKind.hint.untrusted":
+    "該主機不在壁紙下載允許清單（twimg / filesystem.site）。",
+  "settings.wallpaperSource.errKind.hint.empty":
+    "未回傳媒體 — 請換個查詢或提示詞。",
+  "settings.wallpaperSource.errKind.hint.other":
+    "見上方詳情；必要時請登入或重試。",
   "settings.wallpaperSource.goLogin": "去登入",
   "settings.wallpaperSource.loadingOriginal": "正在載入原圖…",
   "settings.wallpaperSource.openPreview": "開啟大圖預覽",
