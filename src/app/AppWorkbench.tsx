@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
+  type MouseEvent as ReactMouseEvent
 } from "react";
 import { useThemeShell } from "@/providers/ThemeProvider";
 import { createPortal } from "react-dom";
@@ -14,36 +14,32 @@ import { DEFAULT_WALLPAPER_FOCUS } from "@/lib/themeSkin";
 import {
   loadMessageTimestampsPref,
   MESSAGE_TIMESTAMPS_CHANGE_EVENT,
-  saveMessageTimestampsPref,
+  saveMessageTimestampsPref
 } from "@/lib/messageTimestampsPref";
 import {
   loadShowReplyLengthPref,
   saveShowReplyLengthPref,
-  SHOW_REPLY_LENGTH_CHANGE_EVENT,
+  SHOW_REPLY_LENGTH_CHANGE_EVENT
 } from "@/lib/messageLength";
 import {
   loadShowUsageEstimatesPref,
   saveShowUsageEstimatesPref,
-  USAGE_ESTIMATES_CHANGE_EVENT,
+  USAGE_ESTIMATES_CHANGE_EVENT
 } from "@/lib/usageEstimatesPref";
-import {
-  recordCostUsageSample,
-  sampleFromUsageEvent,
-} from "@/lib/costRollup";
 import {
   loadMessageTimeFormatPref,
   MESSAGE_TIME_FORMAT_CHANGE_EVENT,
   saveMessageTimeFormatPref,
-  type MessageTimeFormat,
+  type MessageTimeFormat
 } from "@/lib/messageTimeFormatPref";
 import {
   loadSidebarShowRelativeTimePref,
   saveSidebarShowRelativeTimePref,
-  SIDEBAR_SHOW_RELATIVE_TIME_CHANGE_EVENT,
+  SIDEBAR_SHOW_RELATIVE_TIME_CHANGE_EVENT
 } from "@/lib/sidebarShowRelativeTimePref";
 import {
   formatMessageTime,
-  formatRelativeTime,
+  formatRelativeTime
 } from "@/lib/accountUi";
 import { loadConfirmExternalLinksPref } from "@/lib/externalLinkPref";
 import { loadStopAllSkipConfirmPref } from "@/lib/stopAllSkipConfirmPref";
@@ -51,17 +47,17 @@ import { detectAppPlatform, revealInOsLabel } from "@/lib/appPlatform";
 import {
   APP_CLOSE_REQUESTED_EVENT,
   loadAlwaysQuitWithoutAskingPref,
-  shouldConfirmQuit,
+  shouldConfirmQuit
 } from "@/lib/confirmQuit";
 import {
   loadNotifySoundPref,
   NOTIFY_SOUND_CHANGE_EVENT,
-  saveNotifySoundPref,
+  saveNotifySoundPref
 } from "@/lib/notifySound";
 import {
   applyWindowAlwaysOnTop,
   loadWindowAlwaysOnTopPref,
-  saveWindowAlwaysOnTopPref,
+  saveWindowAlwaysOnTopPref
 } from "@/lib/windowAlwaysOnTop";
 import {
   canLiveParticipate,
@@ -71,22 +67,22 @@ import {
   resolveSecondarySessionId,
   resolveStopTargets,
   shouldDeferWarmConnectForForeignBusy,
-  shouldSkipWarmConnect,
+  shouldSkipWarmConnect
 } from "@/lib/multiWindow";
 import {
   applyChatWidth,
-  loadChatWidth,
+  loadChatWidth
 } from "@/lib/chatWidthPref";
 import {
   loadPermissionTimeoutSec,
   PERMISSION_TIMEOUT_CHANGE_EVENT,
   permissionTimeoutRemainingSec,
-  savePermissionTimeoutSec,
+  savePermissionTimeoutSec
 } from "@/lib/permissionTimeout";
 import {
   ASK_USER_TIMEOUT_CHANGE_EVENT,
   loadAskUserTimeoutSec,
-  saveAskUserTimeoutSec,
+  saveAskUserTimeoutSec
 } from "@/lib/askUserTimeout";
 import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
 import {
@@ -105,7 +101,7 @@ import {
   saveLayout,
   suggestAsideWidth,
   withMirrorPhoneDrawerDefault,
-  type AsideLayoutHint,
+  type AsideLayoutHint
 } from "@/lib/layout";
 import {
   ZEN_MODE_CHANGE_EVENT,
@@ -114,45 +110,38 @@ import {
   loadZenMode,
   loadZenModePrior,
   saveZenMode,
-  saveZenModePrior,
+  saveZenModePrior
 } from "@/lib/zenMode";
 import {
   TRANSCRIPT_FILTER_CHANGE_EVENT,
   loadTranscriptFilterPref,
   saveTranscriptFilterPref,
-  type TranscriptFilterMode,
+  type TranscriptFilterMode
 } from "@/lib/transcriptFilterPref";
 import {
   ensureWindowFitsLayout,
-  isWindowFitSuppressed,
+  isWindowFitSuppressed
 } from "@/lib/windowFit";
 import {
   PHONE_KEYBOARD_INSET_VAR,
-  keyboardInsetBottom,
+  keyboardInsetBottom
 } from "@/lib/phoneViewport";
 import {
   hitDragZoneFromRects,
   querySidebarEl,
-  toClientDragPoint,
+  toClientDragPoint
 } from "@/lib/dragZone";
 import {
-  applyContextCompact,
-  applyGeneratedImage,
-  applyInterjection,
-  applyStreamChunk,
-  applyToolEvent,
   applyTurnError,
   applyTurnMarker,
   canSend,
   canType,
   clearPriorTurnStreaming,
-  isSessionBusy,
   isSessionLiveStreaming,
   isSessionNotLiveError,
   preferSessionMessages,
   presentErrorBanner,
   snapshotOutgoingMessages,
-  upgradeMessagesFromJournal,
   type ErrorBannerView,
   weaveToolsIntoAssistantSegments,
   truncateBeforeLastUser,
@@ -164,13 +153,9 @@ import {
   IDLE_SNAPSHOT,
   type AskUserPayload,
   type ChatMessage,
-  type GeneratedImagePayload,
   type PermissionPayload,
-  type SessionSnapshot,
-  type StreamPayload,
-  type TurnErrorPayload,
+  type SessionSnapshot
 } from "@/lib/session";
-import { StreamCoalescer } from "@/lib/streamCoalesce";
 import { UiErrorBoundary } from "@/components/UiErrorBoundary";
 import {
   buildCompactSlashCommand,
@@ -180,12 +165,11 @@ import {
   formatCompactBeforeAfterRange,
   formatTokenCount,
   INITIAL_CONTEXT_USAGE,
-  mergeCompactTokensBefore,
   reduceContextUsage,
   resolveCompactNoteBody,
   resolveContextUsageDisplay,
   type CompactPresetId,
-  type ContextUsageState,
+  type ContextUsageState
 } from "@/lib/contextUsage";
 import {
   COMPACTION_DETAILS,
@@ -196,15 +180,14 @@ import {
   normalizeCompactionDetail,
   normalizeCompactionMode,
   type CompactionDetailId,
-  type CompactionModeId,
+  type CompactionModeId
 } from "@/lib/compactionMode";
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import {
   closedSessionPlan,
   emptySessionPlan,
-  mergePlanFromEvent,
-  type SessionPlanState,
+  type SessionPlanState
 } from "@/lib/planSession";
 import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import { AgentDashboardModal } from "@/components/AgentDashboardModal";
@@ -213,21 +196,21 @@ import { ReliabilityCenterModal } from "@/components/ReliabilityCenterModal";
 import {
   collectActivitySessions,
   countBusyLiveMapSessions,
-  stoppableActivitySessions,
+  stoppableActivitySessions
 } from "@/lib/agentActivity";
 import {
   classifyTasksBindCwdError,
   classifyTasksStopError,
-  type TasksBindCwdResult,
+  type TasksBindCwdResult
 } from "@/lib/tasksPanelPro";
 import {
   loadTrayBusyBadgePref,
-  saveTrayBusyBadgePref,
+  saveTrayBusyBadgePref
 } from "@/lib/trayBusyBadgePref";
 import { resolveTrayBusyBadgeCount } from "@/lib/trayNotifyPro";
 import {
   collectAgentDashboardRows,
-  countBusyDashboardRows,
+  countBusyDashboardRows
 } from "@/lib/agentDashboard";
 import {
   BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
@@ -240,33 +223,25 @@ import {
   type BatchDispatchItemResult,
   type BatchDispatchMode,
   type BatchDispatchSummary,
-  type BatchProjectInput,
+  type BatchProjectInput
 } from "@/lib/batchAgents";
 import {
-  parseProcessLimitEvent,
-  type ProcessLimitEvent,
+  type ProcessLimitEvent
 } from "@/lib/processBudget";
 import {
   buildReliabilityCenter,
   DEFAULT_RELIABILITY_MAX_ERRORS,
-  DEFAULT_RELIABILITY_MAX_STALLS,
   prependReliabilityRing,
-  recordStallHistoryFromSignal,
   reliabilityErrorFromDeck,
-  reliabilityStallFromEvent,
   type ReliabilityErrorEntry,
-  type ReliabilityStallSignal,
+  type ReliabilityStallSignal
 } from "@/lib/reliabilityCenter";
 import {
-  GOAL_ORCH_EVENT_MAX,
-  goalEventFromHostPayload,
   goalOrchPhaseLabelKey,
   loadGoalOrchUiEnabled,
-  prependGoalOrchEvent,
   resolveGoalOrchSessionIndicator,
   saveGoalOrchUiEnabled,
-  type GoalOrchEvent,
-  type GoalOrchHostPayload,
+  type GoalOrchEvent
 } from "@/lib/goalOrch";
 import * as api from "@/lib/api";
 import {
@@ -275,70 +250,58 @@ import {
   normalizeSandboxProfile,
   sandboxDangerConfirmKey,
   sandboxProfileLabelKey,
-  type SandboxProfileId,
+  type SandboxProfileId
 } from "@/lib/sandboxProfile";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import {
   archiveAgeEmptyMessageKey,
   listArchiveAgeOptionPreviews,
   planArchiveOlderThan,
-  type ArchiveAgePlan,
+  type ArchiveAgePlan
 } from "@/lib/sessionArchiveAge";
 import {
   collapsedIdsFromExpandMap,
   expandMapFromCollapsedIds,
-  sameCollapsedIdSet,
+  sameCollapsedIdSet
 } from "@/lib/sidebarExpand";
 import {
   pruneSelectedIds,
-  toggleIdInSet,
+  toggleIdInSet
 } from "@/lib/sessionSelect";
 import {
   collectSessionTasks,
-  countRunningTasks,
+  countRunningTasks
 } from "@/lib/sessionTasks";
 import {
   armStopLatch,
-  canStopWithStopLatch,
   createStopLatchState,
   tickStopLatch,
-  type StopLatchState,
-  STOP_LATCH_MS,
+  STOP_LATCH_MS
 } from "@/lib/stopLatch";
 import { shouldEscapeStopGeneration } from "@/lib/escapeStop";
 import {
   isSameView,
   isViewingSendTarget,
-  shouldAdoptView,
-  type ViewFocus,
+  shouldAdoptView
 } from "@/lib/viewFocus";
 import {
-  busySessionIds,
   projectHostIntoLiveMap,
-  mayPromoteStreamingFromStreamChunk,
-  projectLiveToolFromMessages,
-  markSawModelOutput,
-  markSawToolActivity,
-  mergeTurnProgressFromMessages,
   resumeStateForSession,
-  settleStoppedSessionInLiveMap,
-  settleStoppedSessionSnapshot,
-  type SessionLiveMap,
+  settleStoppedSessionInLiveMap
 } from "@/lib/sessionLiveStore";
 import { endOfTurnMarkerContent } from "@/lib/endOfTurn";
 import {
   stallMessageKey,
   stallTierFromProgress,
   normalizeStallTier,
-  reconcileSessionState,
-  reconcileUiBusyGate,
+  reconcileSessionState
 } from "@/lib/sessionPhase";
 import {
   isMirrorClient,
   mirrorEnsureTransport,
   mirrorHello,
   mirrorToken,
-  mirrorWsConnected,
+  mirrorWsConnected
 } from "@/lib/mirrorTransport";
 import { deriveMirrorClientLinkStatus } from "@/lib/mirrorStatus";
 
@@ -349,7 +312,7 @@ import {
   resolveLocaleFromSystem,
   resolveLocalePreference,
   type Locale,
-  type LocalePreference,
+  type LocalePreference
 } from "@/i18n";
 import {
   DEFAULT_EFFORT,
@@ -369,11 +332,11 @@ import {
   type ComposerPrefsScope,
   type EffortOption,
   type ModelOption,
-  type PermissionPolicyId,
+  type PermissionPolicyId
 } from "@/lib/grokCatalog";
 import {
   formatPermissionSummary,
-  mapPermissionButtons,
+  mapPermissionButtons
 } from "@/lib/permissionOptions";
 import { AskUserModal } from "@/components/AskUserModal";
 import { DoctorModal } from "@/components/DoctorModal";
@@ -396,22 +359,22 @@ import {
   type SessionContentHit,
   type SessionSearchMode,
   SESSION_SEARCH_MODES,
-  type SessionSearchRankMode,
+  type SessionSearchRankMode
 } from "@/lib/sessionSearch";
 import {
   loadSessionSearchFilterPref,
   saveSessionSearchFilterPref,
-  SESSION_SEARCH_FILTER_CHANGE_EVENT,
+  SESSION_SEARCH_FILTER_CHANGE_EVENT
 } from "@/lib/sessionSearchFilterPref";
 import {
   loadSessionSearchRankPref,
   saveSessionSearchRankPref,
-  SESSION_SEARCH_RANK_CHANGE_EVENT,
+  SESSION_SEARCH_RANK_CHANGE_EVENT
 } from "@/lib/sessionSearchRankPref";
 import {
   defaultPaletteActions,
   filterPaletteActions,
-  type PaletteActionDef,
+  type PaletteActionDef
 } from "@/lib/paletteActions";
 import {
   canOfferContinueCwd,
@@ -420,7 +383,7 @@ import {
   evaluateContinueCwd,
   resolveContinueCwdEmptyHonesty,
   resolveContinueCwdSoftFail,
-  type ContinueCwdSoftFailKind,
+  type ContinueCwdSoftFailKind
 } from "@/lib/continueCwd";
 import {
   sessionExportMimeType,
@@ -428,13 +391,13 @@ import {
   sessionToJson,
   sessionToMarkdown,
   sessionToPlain,
-  shouldPreferCliMarkdownExport,
+  shouldPreferCliMarkdownExport
 } from "@/lib/sessionExport";
 import {
   buildStreamSessionNdjson,
   streamSessionExportFilename,
   streamSessionExportMimeType,
-  type StreamSessionExportFormat,
+  type StreamSessionExportFormat
 } from "@/lib/streamSessionExport";
 import {
   canSessionExportActions,
@@ -444,7 +407,7 @@ import {
   resolveSessionExportSoftFail,
   sessionExportFormatNameKey,
   sessionExportSafeFilename,
-  sessionExportSizeClassLabelKey,
+  sessionExportSizeClassLabelKey
 } from "@/lib/sessionExportPro";
 import {
   blobToBase64 as pngBlobToBase64,
@@ -453,17 +416,17 @@ import {
   downloadPngBlob,
   exportableToShareMessages,
   sessionExportImageFilename,
-  type ShareCardMessage,
+  type ShareCardMessage
 } from "@/lib/sessionExportImage";
 import {
   buildSessionFilePathMap,
-  mergePathMaps,
+  mergePathMaps
 } from "@/lib/sessionPathMap";
 import {
   loadExportImageSkinPref,
   saveExportImageSkinPref,
   SHARE_CARD_SKIN_IDS,
-  type ShareCardSkinId,
+  type ShareCardSkinId
 } from "@/lib/shareCardSkins";
 import {
   buildExportImageMetaParts,
@@ -474,7 +437,7 @@ import {
   resolveExportImageError,
   shareCardSkinMessageKey,
   stampFromPipelineResult,
-  type ExportImageBlobStamp,
+  type ExportImageBlobStamp
 } from "@/lib/exportSharePro";
 import { loadExportLogoPref } from "@/lib/exportLogoPref";
 import { recordTraceExport } from "@/lib/traceHistory";
@@ -483,23 +446,19 @@ import {
   loadPlanHistory,
   recordPlanHistory,
   PLAN_HISTORY_CHANGE_EVENT,
-  PLAN_HISTORY_STORAGE_KEY,
+  PLAN_HISTORY_STORAGE_KEY
 } from "@/lib/planHistory";
 import type { PlanHistoryEntry } from "@/lib/planHistory";
 import { planDisplayMarkdown } from "@/lib/planBody";
 import {
-  computePlanProgress,
-  parsePlanEntries,
-} from "@/lib/planStatus";
-import {
   findChatMatches,
   stepChatFindIndex,
-  type ChatFindMatch,
+  type ChatFindMatch
 } from "@/lib/chatFind";
 import { connPillForState } from "@/lib/connStatus";
 import {
   matchGlobalShortcut,
-  shortcutsForPlatform,
+  shortcutsForPlatform
 } from "@/lib/shortcuts";
 import { nextSessionId } from "@/lib/sidebarSessionNav";
 import {
@@ -507,41 +466,35 @@ import {
   loadShortcutRemaps,
   SHORTCUT_REMAP_CHANGED_EVENT,
   SHORTCUT_REMAP_STORAGE_KEY,
-  type ShortcutRemapMap,
+  type ShortcutRemapMap
 } from "@/lib/shortcutRemap";
 import {
   SHORTCUT_KEYS_OFF,
   loadVoiceHotkeyEnabled,
   shouldFireLiveVoiceHotkey,
   VOICE_HOTKEY_CHANGED_EVENT,
-  VOICE_HOTKEY_STORAGE_KEY,
+  VOICE_HOTKEY_STORAGE_KEY
 } from "@/lib/voiceHotkeyPref";
 import {
   ensureNotifyPermission,
-  setDesktopNotifySessionFocusHandler,
-  shouldShowDesktopNotify,
-  showDesktopNotification,
+  setDesktopNotifySessionFocusHandler
 } from "@/lib/desktopNotify";
 import {
   clearAllMutes as clearAllSessionMutes,
   loadMutedSessionIds,
   SESSION_MUTE_CHANGE_EVENT,
   shouldConfirmClearAllMutes,
-  toggle as toggleSessionMute,
+  toggle as toggleSessionMute
 } from "@/lib/sessionMute";
 import {
   clearAllUnread as clearAllSessionUnread,
   clearUnread as clearSessionUnread,
-  isTurnDoneReadyTransition,
   loadUnreadSessionIds,
-  markUnread as markSessionUnread,
   SESSION_UNREAD_CHANGE_EVENT,
   shouldConfirmClearAllUnread,
-  shouldMarkUnreadOnTurnDone,
 } from "@/lib/sessionUnread";
 import {
   SESSION_NOTE_MAX_LENGTH,
-  SESSION_NOTES_CHANGE_EVENT,
   clampSessionNoteInput,
   clearNote as clearSessionNote,
   getNote as getSessionNote,
@@ -551,11 +504,11 @@ import {
   setNote as setSessionNote,
   shouldConfirmSessionNoteClear,
   shouldConfirmSessionNoteDiscard,
-  validateSessionNote,
+  validateSessionNote
 } from "@/lib/sessionNotes";
 import {
   dismissCliUpdateNotice,
-  shouldOfferCliUpdateNotice,
+  shouldOfferCliUpdateNotice
 } from "@/lib/cliUpdateNotice";
 import { GlassModal } from "@/components/GlassModal";
 import { Select } from "@/components/Select";
@@ -563,7 +516,7 @@ import { ProductTutorial } from "@/components/ProductTutorial";
 import {
   loadDone as loadProductTutorialDone,
   markDone as markProductTutorialDone,
-  shouldAutoOffer as shouldAutoOfferProductTutorial,
+  shouldAutoOffer as shouldAutoOfferProductTutorial
 } from "@/lib/productTutorial";
 import { ChatFindBar } from "@/components/ChatFindBar";
 import {
@@ -573,17 +526,17 @@ import {
   collectSessionRelativeMediaRefs,
   isImagePath,
   mergeAttachments,
-  type Attachment,
+  type Attachment
 } from "@/lib/attachments";
 import { mapStoredMessagesToChat } from "@/lib/mapStoredMessages";
 import {
   detectAtQueryFromEditor,
   rankAtFileHits,
-  removeAtTokenFromDraft,
+  removeAtTokenFromDraft
 } from "@/lib/atFileQuery";
 import {
   ComposerAtPanel,
-  type ComposerAtFileEntry,
+  type ComposerAtFileEntry
 } from "@/components/ComposerAtPanel";
 import {
   formatAttachErrorMessage,
@@ -591,7 +544,7 @@ import {
   resolveAttachError,
   resolveAttachSavedToast,
   resolveHostOnlyAttach,
-  resolveNativeClipboardEmpty,
+  resolveNativeClipboardEmpty
 } from "@/lib/attachmentsPro";
 import { fileKey as clipboardFileKey } from "@/lib/clipboardPaste";
 import {
@@ -599,31 +552,31 @@ import {
   isDraftEmpty,
   detectSlashQueryFromEditor,
   parseStoredContent,
-  serializeForAgent,
+  serializeForAgent
 } from "@/lib/draftDoc";
 import {
   isActiveJsonSchema,
   parseJsonSchemaText,
-  wrapAgentTextWithJsonSchema,
+  wrapAgentTextWithJsonSchema
 } from "@/lib/jsonSchema";
 import {
   SESSION_EXTRA_RULES_MAX_CHARS,
-  sanitizeExtraRules,
+  sanitizeExtraRules
 } from "@/lib/sessionExtraRules";
 import {
   MAX_AGENT_TURNS_CAP,
-  normalizeMaxAgentTurns,
+  normalizeMaxAgentTurns
 } from "@/lib/sessionMaxAgentTurns";
 import {
   SESSION_SYSTEM_PROMPT_MAX_CHARS,
-  sanitizeSystemPromptOverride,
+  sanitizeSystemPromptOverride
 } from "@/lib/sessionSystemPrompt";
 import {
   clampSessionTextInput,
   presentSessionPromptSoftFail,
   sessionPromptSaveOutcome,
   shouldConfirmSessionTextDiscard,
-  validateSessionTextField,
+  validateSessionTextField
 } from "@/lib/rulesPromptPro";
 import {
   collectUserPromptHistory,
@@ -632,7 +585,7 @@ import {
   shouldHandlePromptHistoryKey,
   stepPromptHistory,
   stepPromptHistoryListIndex,
-  type PromptHistoryEntry,
+  type PromptHistoryEntry
 } from "@/lib/composerPromptHistory";
 import {
   clearRecentPromptHistory,
@@ -641,59 +594,51 @@ import {
   recordRecentPrompt,
   removeRecentPrompt,
   RECENT_PROMPT_HISTORY_CHANGE_EVENT,
-  RECENT_PROMPT_HISTORY_STORAGE_KEY,
-  type RecentPromptEntry,
+  RECENT_PROMPT_HISTORY_STORAGE_KEY
 } from "@/lib/recentPromptHistory";
-import {
-  ingestHookLogLine,
-  ingestHostHookPayload,
-  ingestToolHookSignal,
-} from "@/lib/hooksDebug";
 import {
   COMPOSER_SEND_KEY_CHANGED_EVENT,
   loadComposerSendKeyPref,
   shouldSendOnKeydown,
-  type ComposerSendKeyPref,
+  type ComposerSendKeyPref
 } from "@/lib/composerSendKey";
 import {
   COMPOSER_DRAFT_STATS_CHANGED_EVENT,
   computeDraftStats,
   countDraftChars,
-  loadComposerDraftStatsPref,
+  loadComposerDraftStatsPref
 } from "@/lib/draftStats";
 import {
   COMPOSER_SPELLCHECK_CHANGED_EVENT,
-  loadComposerSpellcheck,
+  loadComposerSpellcheck
 } from "@/lib/composerSpellcheck";
 import {
   clearComposerProjectDraft,
   loadComposerProjectDraft,
   projectDraftKey,
   saveComposerProjectDraft,
-  type ComposerProjectDraft,
+  type ComposerProjectDraft
 } from "@/lib/composerProjectDraft";
 import {
   PromptHistoryPanel,
-  type PromptHistoryScope,
+  type PromptHistoryScope
 } from "@/components/PromptHistoryPanel";
 import {
   planClearSendQueue,
   queuePreviewText,
   resolveSendQueueStripState,
   shouldEnqueueSend,
-  type QueuedSend,
+  type QueuedSend
 } from "@/lib/sendQueue";
 import {
   useSendQueue,
-  type ExecuteSendFromQueue,
+  type ExecuteSendFromQueue
 } from "@/hooks/useSendQueue";
 import {
   buildSlashCatalog,
   countSlashByKind,
   flattenFilteredCatalog,
-  type SlashItem,
-  type SlashKindFilter,
-  type SkillInfo,
+  type SlashItem
 } from "@/lib/slashCatalog";
 import type { MessageKey } from "@/i18n";
 import { AttachmentCard } from "@/components/AttachmentCard";
@@ -705,7 +650,7 @@ import {
   SIDEBAR_DENSITY_EVENT,
   loadSidebarDensity,
   sidebarSessionRowMetrics,
-  type SidebarDensity,
+  type SidebarDensity
 } from "@/lib/sidebarDensity";
 import { sortSessionsForSidebar } from "@/lib/sidebarDateGroups";
 import { GrokLogo } from "@/components/GrokLogo";
@@ -714,11 +659,11 @@ import {
   buildAuthDeferredFlags,
   formatCliTooOldDetail,
   isCliVersionUnsupported,
-  resolveSetupGateBoot,
+  resolveSetupGateBoot
 } from "@/lib/setupGatePro";
 import {
   ComposerEditor,
-  getComposerCaretOffset,
+  getComposerCaretOffset
 } from "@/components/ComposerEditor";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import { ComposerWorktreeMenu } from "@/components/ComposerWorktreeMenu";
@@ -736,7 +681,7 @@ import {
   worktreeLabel,
   worktreeRemoveErrorSuggestsForce,
   type SessionWorktreeBadge,
-  type WorktreeLayout,
+  type WorktreeLayout
 } from "@/lib/gitWorktree";
 import { filterCliWorktreesForProject } from "@/lib/cliWorktrees";
 import {
@@ -746,13 +691,13 @@ import {
   redactShipOutput,
   sanitizePrBody,
   sanitizePrTitle,
-  shipOutcomeSummary,
+  shipOutcomeSummary
 } from "@/lib/wtShipFlow";
 import {
   PR_HUB_ANCHOR_ID,
   buildPrHubDeepLink,
   parseGithubPrNumber,
-  parsePrHubDeepLink,
+  parsePrHubDeepLink
 } from "@/lib/prHubDeepLink";
 import {
   buildForkWorktreeName,
@@ -764,19 +709,19 @@ import {
   resolveForkAgentSession,
   resolveSessionForkSoftFail,
   resumeRestoreSuccessToastKey,
-  softFailKindFromRestoreGate,
+  softFailKindFromRestoreGate
 } from "@/lib/sessionFork";
 import {
   buildResumeWorktreeName,
   canOfferResumeWithCodeRestore,
-  canRestoreCodeOnResume,
+  canRestoreCodeOnResume
 } from "@/lib/sessionResumeRestore";
 import { isProjectPathMissing } from "@/lib/projectPath";
 import {
   PROJECT_COLOR_TOKENS,
   normalizeProjectColor,
   resolveProjectColorCss,
-  type ProjectColorToken,
+  type ProjectColorToken
 } from "@/lib/projectColor";
 import { appendPluginDir } from "@/lib/sessionPluginDirs";
 import {
@@ -792,19 +737,19 @@ import {
   voiceStealsEscape,
   VOICE_MAX_RECORD_MS,
   type VoiceErrorClass,
-  type VoiceFsmState,
+  type VoiceFsmState
 } from "@/lib/voiceDictation";
 import {
   blobToBase64,
   extensionForMime,
   startVoiceCapture,
-  type CaptureHandle,
+  type CaptureHandle
 } from "@/lib/voiceCapture";
 import {
   ComposerPlusPanel,
   buildComposerPlusEntries,
   jsonSchemaMatchesQuery,
-  uploadMatchesQuery,
+  uploadMatchesQuery
 } from "@/components/ComposerPlusPanel";
 import { StatusModal } from "@/components/StatusModal";
 import { McpStatusModal } from "@/components/McpStatusModal";
@@ -867,13 +812,8 @@ import {
   IconUpload,
   IconFileText,
   IconSettings,
-  IconDoctor,
-  IconKeyboard,
   IconAppearance,
-  IconInfo,
-  IconHelp,
-  IconPlug,
-  IconPuzzle,
+  IconPuzzle
 } from "@/components/icons";
 import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
 import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
@@ -885,39 +825,39 @@ import {
   computeNextRunAt,
 
   parseScheduledUserContent,
-  type Automation,
+  type Automation
 } from "@/lib/automations";
 import { automationsBackgroundStatus } from "@/lib/automationsBackgroundStatus";
 import { recordAutomationRun } from "@/lib/automationRunHistory";
 import {
   extractAutomationPayload,
   looksLikeScheduleIntent,
-  wrapAutomationSetupAgentText,
+  wrapAutomationSetupAgentText
 } from "@/lib/automationSetup";
 import {
   ComposerAccessMenu,
-  ComposerModelMenu,
+  ComposerModelMenu
 } from "@/components/ComposerModelMenu";
 import type { ComposerModelPick } from "@/lib/composerModelGroups";
 import { resolveProviderBrandId } from "@/lib/providerPresets";
 import {
   ProviderBrandIcon,
-  providerAvatarLetter,
+  providerAvatarLetter
 } from "@/components/ProviderBrandIcon";
 import {
   ResourceViewer,
-  type ResourceOpenTarget,
+  type ResourceOpenTarget
 } from "@/components/ResourceViewer";
 import { ProjectRulesModal } from "@/components/ProjectRulesModal";
 import {
   mergeSessionChange,
   sessionChangesFromMessages,
   summarizeSessionChanges,
-  type SessionFileChange,
+  type SessionFileChange
 } from "@/lib/sessionChanges";
 import {
   summarizeGitDirty,
-  type GitDirtySummary,
+  type GitDirtySummary
 } from "@/lib/workspaceGit";
 import { ConversationThread } from "@/components/lobe-chat";
 import { dispatchCollapseAllActivity } from "@/lib/collapseAllActivity";
@@ -925,24 +865,24 @@ import {
   installDialogFocus,
   isTypingTarget,
   preferPermissionFocus,
-  trapTabKey,
+  trapTabKey
 } from "@/lib/a11yFocus";
 import { Spinner } from "@/components/ui/spinner";
 import { UserMenu, remainingPercent } from "@/components/UserMenu";
 import {
   SettingsPage,
-  type SettingsSectionId,
+  type SettingsSectionId
 } from "@/components/SettingsPage";
 import {
   buildSettingsHash,
   isSettingsSectionId,
   parseSettingsHash,
-  type SettingsTabId,
+  type SettingsTabId
 } from "@/lib/settingsCatalog";
 import {
   loadSettingsLastRoute,
   resolveOpenSettingsLocation,
-  saveSettingsLastRoute,
+  saveSettingsLastRoute
 } from "@/lib/settingsLastRoute";
 import {
   accountDisplayName,
@@ -951,266 +891,39 @@ import {
   loadCachedSuperGrokBrand,
   resolveWelcomeBrandKind,
   saveCachedSuperGrokBrand,
-  superGrokBrandKind,
+  superGrokBrandKind
 } from "@/lib/accountUi";
 import {
   SuperGrokMark,
-  type SuperGrokBrandKind,
+  type SuperGrokBrandKind
 } from "@/components/SuperGrokMark";
 import { Tip } from "@/components/ui/tooltip";
 import {
   WindowControls,
-  toggleMaximizeFromTitlebar,
+  toggleMaximizeFromTitlebar
 } from "@/components/WindowControls";
 
-/** Icon for a command-palette action row (stable by action id). */
-function paletteActionIcon(id: string) {
-  const size = 15;
-  switch (id) {
-    case "new-chat":
-      return <IconSquarePen size={size} />;
-    case "add-project":
-      return <IconFolder size={size} />;
-    case "open-automations":
-      return <IconScheduled size={size} />;
-    case "open-tasks":
-      return <IconList size={size} />;
-    case "open-agent-dashboard":
-      return <IconActivity size={size} />;
-    case "open-batch-agents":
-      return <IconList size={size} />;
-    case "doctor":
-      return <IconDoctor size={size} />;
-    case "traces":
-      return <IconArchive size={size} />;
-    case "reliability":
-      return <IconActivity size={size} />;
-    case "shortcuts-help":
-    case "settings-shortcuts":
-      return <IconKeyboard size={size} />;
-    case "product-tutorial":
-      return <IconHelp size={size} />;
-    case "copy-conversation-md":
-      return <IconCopy size={size} />;
-    case "continue-cwd":
-      return <IconHistory size={size} />;
-    case "resume-with-code-restore":
-      return <IconRewind size={size} />;
-    case "settings-appearance":
-      return <IconAppearance size={size} />;
-    case "settings-account":
-      return <IconUser size={size} />;
-    case "settings-extensions":
-      return <IconPlug size={size} />;
-    case "settings-runtime":
-    case "settings-workflows":
-    case "workflows-docs":
-      return <IconDoctor size={size} />;
-    case "settings-remote":
-      return <IconDeviceMobile size={size} />;
-    case "settings-about":
-      return <IconInfo size={size} />;
-    case "settings-general":
-    default:
-      return <IconSettings size={size} />;
-  }
-}
-
-interface Project {
-  id: string;
-  name: string;
-  path: string;
-  trusted: boolean;
-  pathOk: boolean;
-  pinned?: boolean;
-  /** App-managed general workspace — cannot be removed. */
-  system?: boolean;
-  /** Project-level permission tier (L10). Null/undefined → app default. */
-  permissionPolicy?: string | null;
-  /** Project-level OS sandbox profile. Null/undefined → app Settings. */
-  sandboxProfile?: string | null;
-  /** Optional sidebar accent: token or #hex. Null/undefined → none. */
-  color?: string | null;
-}
-
-/** Retired sidebar project id — sessions rehomed to orphan ("其他会话"). */
-const GENERAL_PROJECT_ID = "system:general";
-
-function isGeneralProject(p: { id?: string | null; system?: boolean } | null | undefined) {
-  return !!p && (p.id === GENERAL_PROJECT_ID || !!p.system);
-}
-
-/** Treat legacy system:general bindings as unbound (other sessions). */
-function normalizeProjectId(id: string | null | undefined): string | null {
-  if (!id || id === GENERAL_PROJECT_ID) return null;
-  return id;
-}
-
-function projectDisplayName(
-  p: { id?: string | null; name?: string | null; system?: boolean } | null | undefined,
-  tr: (k: MessageKey, vars?: Record<string, string>) => string,
-): string {
-  if (!p || isGeneralProject(p)) return tr("composer.noProject");
-  return (p?.name || "").trim() || tr("main.noProject");
-}
-
-/** Normalize API project rows; drop retired system:general if Host still returns it. */
-function normalizeProject(x: Project): Project {
-  return {
-    ...x,
-    system: false,
-    pinned: !!x.pinned,
-    trusted: !!x.trusted,
-    color: normalizeProjectColor(x.color) ?? null,
-  };
-}
-
-function mapProjectsList(list: Project[]): Project[] {
-  return list
-    .filter((p) => !isGeneralProject(p))
-    .map((p) => normalizeProject({ ...p, pinned: !!p.pinned }));
-}
-
-interface SessionRow {
-  id: string;
-  title: string;
-  projectId: string | null;
-  updatedAt: string;
-  /** Last known model on session meta (from sessions_list). */
-  modelId?: string | null;
-  /** Last known effort on session meta when stored. */
-  effort?: string | null;
-  archived?: boolean;
-  /** Pinned chats float to the top of the sidebar */
-  pinned?: boolean;
-  /** Shell scheduled-automation run */
-  scheduled?: boolean;
-  /** Linked git worktree this chat was opened against (optional). */
-  worktreePath?: string | null;
-  worktreeBranch?: string | null;
-  isWorktreeSession?: boolean;
-  /** Optional JSON Schema for structured model output. */
-  jsonSchema?: string | null;
-  /** Session-only plugin directories (`--plugin-dir`). */
-  pluginDirs?: string[];
-  /** Per-session extra rules (`--rules`). */
-  extraRules?: string | null;
-  /** Per-session max agent turns (`--max-turns`); null = inherit global. */
-  maxAgentTurns?: number | null;
-  /** Per-session system prompt override (`--system-prompt-override`). */
-  systemPromptOverride?: string | null;
-  /** Linked Grok agent session id (for CLI `--fork-session` / session/load). */
-  agentSessionId?: string | null;
-}
-
-/** Normalize sessions_list / create rows into sidebar SessionRow shape. */
-function normalizeSessionRow(
-  x: Partial<SessionRow> & {
-    id: string;
-    title?: string;
-    projectId?: string | null;
-    updatedAt?: string;
-    agentSessionId?: string | null;
-  },
-): SessionRow {
-  const worktreePath = (x.worktreePath || "").trim() || null;
-  const worktreeBranch = (x.worktreeBranch || "").trim() || null;
-  const isWorktreeSession = !!(x.isWorktreeSession || worktreePath);
-  const agentSessionId = (x.agentSessionId || "").trim() || null;
-  return {
-    id: x.id,
-    title: x.title || "",
-    projectId: normalizeProjectId(x.projectId),
-    updatedAt: x.updatedAt || "",
-    archived: !!x.archived,
-    pinned: !!x.pinned,
-    scheduled: !!x.scheduled,
-    worktreePath,
-    worktreeBranch,
-    isWorktreeSession,
-    agentSessionId,
-  };
-}
-
-/** Map host session index rows into sidebar/dashboard SessionRow. */
-function mapSessionListRow(
-  x: Partial<SessionRow> & {
-    id: string;
-    title?: string;
-    projectId?: string | null;
-    updatedAt?: string;
-    modelId?: string | null;
-    effort?: string | null;
-    jsonSchema?: string | null;
-    pluginDirs?: string[] | null;
-    extraRules?: string | null;
-    maxAgentTurns?: number | null;
-    systemPromptOverride?: string | null;
-    agentSessionId?: string | null;
-  },
-): SessionRow {
-  const schema =
-    typeof x.jsonSchema === "string" && x.jsonSchema.trim()
-      ? x.jsonSchema
-      : null;
-  const pluginDirs = Array.isArray(x.pluginDirs)
-    ? x.pluginDirs.map((d) => String(d).trim()).filter(Boolean)
-    : [];
-  const extraRules = sanitizeExtraRules(
-    typeof x.extraRules === "string" ? x.extraRules : null,
-  );
-  const maxAgentTurns = normalizeMaxAgentTurns(
-    typeof x.maxAgentTurns === "number" ? x.maxAgentTurns : null,
-  );
-  const systemPromptOverride = sanitizeSystemPromptOverride(
-    typeof x.systemPromptOverride === "string" ? x.systemPromptOverride : null,
-  );
-  return {
-    ...normalizeSessionRow(x),
-    modelId: x.modelId ?? null,
-    effort: x.effort ?? null,
-    jsonSchema: schema,
-    pluginDirs,
-    extraRules: extraRules || null,
-    maxAgentTurns,
-    systemPromptOverride: systemPromptOverride || null,
-  };
-}
-
-type ContextMenuState =
-  | { kind: "project"; id: string; x: number; y: number }
-  | { kind: "project-policy"; id: string; x: number; y: number }
-  | { kind: "project-sandbox"; id: string; x: number; y: number }
-  | { kind: "project-color"; id: string; x: number; y: number }
-  | { kind: "session"; id: string; x: number; y: number }
-  | { kind: "archive-older"; x: number; y: number }
-  | null;
-
-/** In-app dialogs — window.prompt/confirm are unreliable in Tauri WebView. */
-type AppDialog =
-  | {
-      kind: "confirm";
-      title: string;
-      message: string;
-      confirmLabel?: string;
-      danger?: boolean;
-      onConfirm: () => void | Promise<void>;
-    }
-  | {
-      kind: "prompt";
-      title: string;
-      initial: string;
-      /** Optional secondary copy above the input (e.g. compact confirm). */
-      message?: string;
-      placeholder?: string;
-      /** Primary submit button label (default: common.save). */
-      submitLabel?: string;
-      onSubmit: (value: string) => void | Promise<void>;
-    }
-  | null;
+import { paletteActionIcon } from "@/app/paletteActionIcon";
+import {
+  isGeneralProject,
+  mapProjectsList,
+  mapSessionListRow,
+  normalizeProject,
+  normalizeProjectId,
+  normalizeSessionRow,
+  projectDisplayName,
+  type Project,
+  type SessionRow
+} from "@/lib/app/sidebarModels";
+import type { ContextMenuState } from "@/lib/app/appDialogTypes";
+import { useSessionRuntime } from "@/hooks/useSessionRuntime";
+import { useComposerController } from "@/hooks/useComposerController";
+import { useAppDialogs } from "@/hooks/useAppDialogs";
+import { useSessionHostEvents } from "@/hooks/useSessionHostEvents";
 
 /** App-local plan chrome state (session-scoped via planBySessionRef). */
 type PlanState = SessionPlanState;
+
 
 export function AppWorkbench() {
   const {
@@ -1300,56 +1013,80 @@ export function AppWorkbench() {
     return () =>
       window.removeEventListener(SESSION_UNREAD_CHANGE_EVENT, onChange);
   }, []);
-  /** Per-session sticky notes (localStorage map; never sent to agent). */
-  const [sessionNotesMap, setSessionNotesMap] = useState<
-    Record<string, string>
-  >(() => loadSessionNotes());
-  useEffect(() => {
-    const onChange = () => setSessionNotesMap(loadSessionNotes());
-    window.addEventListener(SESSION_NOTES_CHANGE_EVENT, onChange);
-    return () =>
-      window.removeEventListener(SESSION_NOTES_CHANGE_EVENT, onChange);
-  }, []);
-  const [sessionNoteTarget, setSessionNoteTarget] = useState<{
-    id: string;
-    title: string;
-  } | null>(null);
-  const [sessionNoteDraft, setSessionNoteDraft] = useState("");
-  const [sessionNoteBaseline, setSessionNoteBaseline] = useState("");
-  const [sessionNoteDiscardOpen, setSessionNoteDiscardOpen] = useState(false);
-  const [sessionNoteClearOpen, setSessionNoteClearOpen] = useState(false);
-  /** Per-session extra rules editor (`--rules`). */
-  const [sessionRulesTarget, setSessionRulesTarget] = useState<{
-    id: string;
-    title: string;
-  } | null>(null);
-  const [sessionRulesDraft, setSessionRulesDraft] = useState("");
-  const [sessionRulesBaseline, setSessionRulesBaseline] = useState("");
-  const [sessionRulesBusy, setSessionRulesBusy] = useState(false);
-  const [sessionRulesError, setSessionRulesError] = useState<string | null>(
-    null,
-  );
-  const [sessionRulesDiscardOpen, setSessionRulesDiscardOpen] = useState(false);
-  /** Per-session max agent turns editor (`--max-turns`). */
-  const [sessionMaxTurnsTarget, setSessionMaxTurnsTarget] = useState<{
-    id: string;
-    title: string;
-  } | null>(null);
-  /** Draft as string so empty input means inherit global. */
-  const [sessionMaxTurnsDraft, setSessionMaxTurnsDraft] = useState("");
-  /** Per-session system prompt override editor (`--system-prompt-override`). */
-  const [sessionSysPromptTarget, setSessionSysPromptTarget] = useState<{
-    id: string;
-    title: string;
-  } | null>(null);
-  const [sessionSysPromptDraft, setSessionSysPromptDraft] = useState("");
-  const [sessionSysPromptBaseline, setSessionSysPromptBaseline] = useState("");
-  const [sessionSysPromptBusy, setSessionSysPromptBusy] = useState(false);
-  const [sessionSysPromptError, setSessionSysPromptError] = useState<
-    string | null
-  >(null);
-  const [sessionSysPromptDiscardOpen, setSessionSysPromptDiscardOpen] =
-    useState(false);
+  const {
+    appDialog,
+    setAppDialog,
+    dialogInput,
+    setDialogInput,
+    dialogInputRef,
+    confirmBtnRef,
+    appDialogPanelRef,
+    appDialogRef,
+    sessionNotesMap,
+    setSessionNotesMap,
+    sessionNoteTarget,
+    setSessionNoteTarget,
+    sessionNoteDraft,
+    setSessionNoteDraft,
+    sessionNoteBaseline,
+    setSessionNoteBaseline,
+    sessionNoteDiscardOpen,
+    setSessionNoteDiscardOpen,
+    sessionNoteClearOpen,
+    setSessionNoteClearOpen,
+    sessionRulesTarget,
+    setSessionRulesTarget,
+    sessionRulesDraft,
+    setSessionRulesDraft,
+    sessionRulesBaseline,
+    setSessionRulesBaseline,
+    sessionRulesBusy,
+    setSessionRulesBusy,
+    sessionRulesError,
+    setSessionRulesError,
+    sessionRulesDiscardOpen,
+    setSessionRulesDiscardOpen,
+    sessionMaxTurnsTarget,
+    setSessionMaxTurnsTarget,
+    sessionMaxTurnsDraft,
+    setSessionMaxTurnsDraft,
+    sessionSysPromptTarget,
+    setSessionSysPromptTarget,
+    sessionSysPromptDraft,
+    setSessionSysPromptDraft,
+    sessionSysPromptBaseline,
+    setSessionSysPromptBaseline,
+    sessionSysPromptBusy,
+    setSessionSysPromptBusy,
+    sessionSysPromptError,
+    setSessionSysPromptError,
+    sessionSysPromptDiscardOpen,
+    setSessionSysPromptDiscardOpen,
+    rewindTimeline,
+    setRewindTimeline,
+    rewindBusy,
+    setRewindBusy,
+    rewindConfirm,
+    setRewindConfirm,
+    rewindRestoreFiles,
+    setRewindRestoreFiles,
+    rewindModalRef,
+    forkConfirm,
+    setForkConfirm,
+    forkRestoreCode,
+    setForkRestoreCode,
+    forkCliSession,
+    setForkCliSession,
+    forkBusy,
+    setForkBusy,
+    resumeRestoreConfirm,
+    setResumeRestoreConfirm,
+    resumeForkCliSession,
+    setResumeForkCliSession,
+    resumeRestoreBusy,
+    setResumeRestoreBusy,
+  } = useAppDialogs();
+
   const [notifySound, setNotifySound] = useState(() =>
     loadNotifySoundPref(localStorage),
   );
@@ -1401,9 +1138,6 @@ export function AppWorkbench() {
   const [transcriptFilter, setTranscriptFilter] =
     useState<TranscriptFilterMode>(() => loadTranscriptFilterPref());
 
-  const [session, setSession] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
-  /** Host live agent (may differ from the session currently viewed in the UI). */
-  const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /**
    * Secondary session window (`session-*` label / `#/session/<id>` deep link).
    * Live-capable (session-keyed Host pool): send / stop / warm-connect use the
@@ -1432,18 +1166,33 @@ export function AppWorkbench() {
     () => !api.isDesktopHost(),
   );
   const secondaryOpenedRef = useRef(false);
-  /** Multi-session live projection (busy / permission badges). */
-  const [liveMap, setLiveMap] = useState<SessionLiveMap>({});
-  /** Latest live map for callbacks that must not close over a stale render. */
-  const liveMapRef = useRef(liveMap);
-  liveMapRef.current = liveMap;
-  /** Stop interrupt honesty latch (force unlock after budget). */
-  const [stopLatch, setStopLatch] = useState<StopLatchState>(() =>
-    createStopLatchState(),
-  );
-  const stopLatchRef = useRef<StopLatchState>(createStopLatchState());
-  stopLatchRef.current = stopLatch;
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const {
+    session,
+    setSession,
+    liveHost,
+    setLiveHost,
+    liveHostRef,
+    liveMap,
+    setLiveMap,
+    liveMapRef,
+    stopLatch,
+    setStopLatch,
+    stopLatchRef,
+    messages,
+    setMessages,
+    messagesRef,
+    messagesBySessionRef,
+    viewingSessionIdRef,
+    currentViewFocus,
+    bumpViewEpoch,
+    patchSessionMessages,
+    busyIds,
+    settleStoppedSessionUi,
+    stopGate,
+    effectiveCanSend,
+    effectiveCanStop,
+  } = useSessionRuntime({ isSecondaryWindow });
+
   /** Context usage chip — known tokens from compact events + estimate fallback. */
   const [contextUsage, setContextUsage] = useState<ContextUsageState>(
     INITIAL_CONTEXT_USAGE,
@@ -1461,43 +1210,72 @@ export function AppWorkbench() {
    */
   const [gitDirtySummary, setGitDirtySummary] =
     useState<GitDirtySummary | null>(null);
-  /** Composer stored form (may include [[skill:name]] tokens). */
-  const [draft, setDraft] = useState("");
-  /**
-   * Skip debounced project-draft persist while programmatically loading a
-   * saved buffer into the composer (newChat restore).
-   */
-  const suppressProjectDraftPersistRef = useRef(false);
-  /**
-   * CLI-like prompt history browse index (0 = newest user msg).
-   * null = not browsing; only engaged when draft empty (or already browsing).
-   * Ref tracks live index for key-repeat before React re-renders.
-   */
-  const [promptHistoryIndex, setPromptHistoryIndex] = useState<number | null>(
-    null,
-  );
-  const promptHistoryIndexRef = useRef<number | null>(null);
-  promptHistoryIndexRef.current = promptHistoryIndex;
-  /**
-   * `/history` + empty-↑ picker — session tab (Build) + cross-session recent.
-   * Filter focuses on slash open; empty ↑ keeps focus in the composer.
-   */
-  const [promptHistoryOpen, setPromptHistoryOpen] = useState(false);
-  const [promptHistoryFilter, setPromptHistoryFilter] = useState("");
-  const [promptHistoryActive, setPromptHistoryActive] = useState(0);
-  const [promptHistoryFocusFilter, setPromptHistoryFocusFilter] =
-    useState(false);
-  const [promptHistoryScope, setPromptHistoryScope] =
-    useState<PromptHistoryScope>("session");
-  const promptHistoryScopeRef = useRef<PromptHistoryScope>("session");
-  promptHistoryScopeRef.current = promptHistoryScope;
-  const [recentPromptHistory, setRecentPromptHistory] = useState<
-    RecentPromptEntry[]
-  >(() =>
-    typeof localStorage !== "undefined" ? loadRecentPromptHistory() : [],
-  );
-  /** Clear recent prompts — App-level GlassModal (avoids floating-menu dismiss). */
-  const [promptHistoryClearOpen, setPromptHistoryClearOpen] = useState(false);
+  const {
+    draft,
+    setDraft,
+    attachments,
+    setAttachments,
+    suppressProjectDraftPersistRef,
+    setPromptHistoryIndex,
+    promptHistoryIndexRef,
+    promptHistoryOpen,
+    setPromptHistoryOpen,
+    promptHistoryFilter,
+    setPromptHistoryFilter,
+    promptHistoryActive,
+    setPromptHistoryActive,
+    promptHistoryFocusFilter,
+    setPromptHistoryFocusFilter,
+    promptHistoryScope,
+    setPromptHistoryScope,
+    promptHistoryScopeRef,
+    recentPromptHistory,
+    setRecentPromptHistory,
+    promptHistoryClearOpen,
+    setPromptHistoryClearOpen,
+    promptHistoryPanelRef,
+    promptHistoryOpenRef,
+    skillInfos,
+    setSkillInfos,
+    skillsLoading,
+    setSkillsLoading,
+    skillsLoadError,
+    setSkillsLoadError,
+    slashQuery,
+    setSlashQuery,
+    liveSlash,
+    setLiveSlash,
+    liveSlashRef,
+    slashDismissedSigRef,
+    showComposerPlusRef,
+    slashActiveIndex,
+    setSlashActiveIndex,
+    slashKindFilter,
+    setSlashKindFilter,
+    liveAt,
+    setLiveAt,
+    liveAtRef,
+    atDismissedSigRef,
+    atActiveIndex,
+    setAtActiveIndex,
+    atEntries,
+    setAtEntries,
+    atLoading,
+    setAtLoading,
+    atSoftFail,
+    setAtSoftFail,
+    atPanelRef,
+    atSearchGenRef,
+    showComposerPlus,
+    setShowComposerPlus,
+    composerPlusTriggerRef,
+    composerPlusPanelRef,
+    composerInputRef,
+    composerShellRef,
+    composerFloatPad,
+    setComposerFloatPad,
+  } = useComposerController();
+
   /**
    * Archive-by-age pro confirm (GlassModal with preview count + title samples).
    * Null when closed. Built via pure `planArchiveOlderThan`.
@@ -1505,9 +1283,6 @@ export function AppWorkbench() {
   const [archiveAgeConfirm, setArchiveAgeConfirm] =
     useState<ArchiveAgePlan<SessionRow> | null>(null);
   const [archiveAgeBusy, setArchiveAgeBusy] = useState(false);
-  const promptHistoryPanelRef = useRef<HTMLDivElement>(null);
-  const promptHistoryOpenRef = useRef(false);
-  promptHistoryOpenRef.current = promptHistoryOpen;
   /** Composer voice dictation FSM (record → STT → insert draft). */
   const [voice, setVoice] = useState<VoiceFsmState>(() => initialVoiceState());
   /** Full-duplex live voice overlay (separate from composer dictation). */
@@ -1538,54 +1313,6 @@ export function AppWorkbench() {
   const executeSendFromQueueRef = useRef<ExecuteSendFromQueue>(
     async () => false,
   );
-  const [skillInfos, setSkillInfos] = useState<SkillInfo[]>([]);
-  const [skillsLoading, setSkillsLoading] = useState(false);
-  /** Host `skills_list` error (CLI missing / inspect fail); empty when ok. */
-  const [skillsLoadError, setSkillsLoadError] = useState<string | null>(null);
-  const [slashQuery, setSlashQuery] = useState<{
-    start: number;
-    query: string;
-    end: number;
-  } | null>(null);
-  /**
-   * Live slash token from contenteditable.innerText (rAF poll).
-   * Independent of React draft so IME / <br> / missed onChange cannot desync.
-   * `present` is true for bare `/` as well as `/query`.
-   */
-  const [liveSlash, setLiveSlash] = useState<{
-    present: boolean;
-    query: string;
-    start: number;
-    end: number;
-  }>({ present: false, query: "", start: 0, end: 0 });
-  const liveSlashRef = useRef(liveSlash);
-  liveSlashRef.current = liveSlash;
-  /** After Escape, suppress re-open until the `/token` text changes. */
-  const slashDismissedSigRef = useRef<string | null>(null);
-  const showComposerPlusRef = useRef(false);
-  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
-  /** Kind chip for slash / + palette (`all` | mode | action | prompt | skill). */
-  const [slashKindFilter, setSlashKindFilter] =
-    useState<SlashKindFilter>("all");
-  /**
-   * Live `@` file token (rAF, same source as slash).
-   * Suppressed while slash/plus menu is open (slash wins).
-   */
-  const [liveAt, setLiveAt] = useState<{
-    present: boolean;
-    query: string;
-    start: number;
-    end: number;
-  }>({ present: false, query: "", start: 0, end: 0 });
-  const liveAtRef = useRef(liveAt);
-  liveAtRef.current = liveAt;
-  const atDismissedSigRef = useRef<string | null>(null);
-  const [atActiveIndex, setAtActiveIndex] = useState(0);
-  const [atEntries, setAtEntries] = useState<ComposerAtFileEntry[]>([]);
-  const [atLoading, setAtLoading] = useState(false);
-  const [atSoftFail, setAtSoftFail] = useState<string | null>(null);
-  const atPanelRef = useRef<HTMLDivElement>(null);
-  const atSearchGenRef = useRef(0);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMcpModal, setShowMcpModal] = useState(false);
   const [showCompactModal, setShowCompactModal] = useState(false);
@@ -1618,33 +1345,6 @@ export function AppWorkbench() {
   const [mcpDoctorError, setMcpDoctorError] = useState<string | null>(null);
   const [mcpDoctorLoading, setMcpDoctorLoading] = useState(false);
   const [mcpDoctorFocus, setMcpDoctorFocus] = useState<string | null>(null);
-  /** Rewind timeline picker (session menu / status). */
-  const [rewindTimeline, setRewindTimeline] = useState<{
-    sessionId: string;
-    points: Array<{ promptIndex: number; messageId?: string | null; preview: string }>;
-  } | null>(null);
-  const [rewindBusy, setRewindBusy] = useState(false);
-  /** Confirm rewind target + optional file restore (default off). */
-  const [rewindConfirm, setRewindConfirm] = useState<{
-    sessionId: string;
-    targetPromptIndex: number;
-    preview?: string;
-  } | null>(null);
-  const [rewindRestoreFiles, setRewindRestoreFiles] = useState(false);
-  /** Fork chat confirm + optional restore-code / CLI --fork-session (default off). */
-  const [forkConfirm, setForkConfirm] = useState<{
-    source: SessionRow;
-    throughUserPromptIndex?: number | null;
-  } | null>(null);
-  const [forkRestoreCode, setForkRestoreCode] = useState(false);
-  /** CLI `--fork-session`: new agent session id with parent context. */
-  const [forkCliSession, setForkCliSession] = useState(false);
-  const [forkBusy, setForkBusy] = useState(false);
-  /** Resume existing chat on a clean worktree (restore-code). */
-  const [resumeRestoreConfirm, setResumeRestoreConfirm] =
-    useState<SessionRow | null>(null);
-  const [resumeForkCliSession, setResumeForkCliSession] = useState(false);
-  const [resumeRestoreBusy, setResumeRestoreBusy] = useState(false);
   /** Last user message open in inline edit (not main composer). */
   const [editingUserMessageId, setEditingUserMessageId] = useState<
     string | null
@@ -1671,28 +1371,6 @@ export function AppWorkbench() {
   /** Effective agent / resource root: bound project, else general workspace dir. */
   const effectiveProjectPath =
     activeProject?.path?.trim() || generalWorkspacePath || null;
-  /** Per-session message cache so switching away mid-turn does not drop the UI. */
-  const messagesBySessionRef = useRef<Map<string, ChatMessage[]>>(new Map());
-  const viewingSessionIdRef = useRef<string | null>(null);
-  /**
-   * Bumped on every user navigation (open chat / new chat). Async work captures
-   * {@link currentViewFocus} before its first await and must re-check before
-   * touching view state — otherwise a slow connect started on one draft yanks
-   * the workbench away from the draft the user opened since.
-   */
-  const viewEpochRef = useRef(0);
-  const currentViewFocus = useCallback(
-    (): ViewFocus => ({
-      sessionId: viewingSessionIdRef.current,
-      epoch: viewEpochRef.current,
-    }),
-    [],
-  );
-  const bumpViewEpoch = useCallback(() => {
-    viewEpochRef.current += 1;
-  }, []);
-  const liveHostRef = useRef<SessionSnapshot>(IDLE_SNAPSHOT);
-  const messagesRef = useRef<ChatMessage[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   /** Avoid writing collapse prefs before settings hydrate on launch. */
   const expandedProjectsHydratedRef = useRef(false);
@@ -1709,17 +1387,8 @@ export function AppWorkbench() {
     path: string;
     name: string;
   } | null>(null);
-  const [appDialog, setAppDialog] = useState<AppDialog>(null);
-  const [dialogInput, setDialogInput] = useState("");
-  const dialogInputRef = useRef<HTMLInputElement>(null);
-  const confirmBtnRef = useRef<HTMLButtonElement>(null);
-  const appDialogPanelRef = useRef<HTMLDivElement>(null);
   const searchPanelRef = useRef<HTMLDivElement>(null);
   const compactModalRef = useRef<HTMLFormElement>(null);
-  const rewindModalRef = useRef<HTMLDivElement>(null);
-  /** Latest dialog for Enter/Escape handlers (avoids stale chained confirms). */
-  const appDialogRef = useRef<AppDialog>(null);
-  appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   /** Keyword hybrid scope: all | title | content (no embeddings). Persisted. */
@@ -1739,16 +1408,8 @@ export function AppWorkbench() {
   >([]);
   const [contentSearchLoading, setContentSearchLoading] = useState(false);
   const contentSearchSeq = useRef(0);
-  const [showComposerPlus, setShowComposerPlus] = useState(false);
-  showComposerPlusRef.current = showComposerPlus;
-  const composerPlusTriggerRef = useRef<HTMLButtonElement>(null);
-  const composerPlusPanelRef = useRef<HTMLDivElement>(null);
-  const composerInputRef = useRef<HTMLDivElement>(null);
-  /** Actual input card (.composer) — command panel anchors here. */
-  const composerShellRef = useRef<HTMLDivElement>(null);
   /** Floating composer shell — height drives chat bottom padding. */
   const composerWrapRef = useRef<HTMLDivElement>(null);
-  const [composerFloatPad, setComposerFloatPad] = useState(168);
   /** Set by newChat; applied after chat pane + textarea mount. */
   const pendingComposerFocus = useRef(false);
   const [sessionDataMode, setSessionDataMode] = useState("independent");
@@ -1792,60 +1453,6 @@ export function AppWorkbench() {
 
   // ContextMenu handles outside click + Escape for sidebar menus.
 
-  useEffect(() => {
-    if (!appDialog) return;
-    if (appDialog.kind === "prompt") {
-      setDialogInput(appDialog.initial);
-      const t = window.setTimeout(() => {
-        dialogInputRef.current?.focus();
-        dialogInputRef.current?.select();
-      }, 0);
-      return () => window.clearTimeout(t);
-    }
-    // Confirm: focus primary action so keyboard users land on Confirm.
-    // Enter is also handled globally below so it still confirms if focus
-    // sits on Cancel / close (needed for multi-step YOLO Enter spam).
-    if (appDialog.kind === "confirm") {
-      const t = window.setTimeout(() => {
-        confirmBtnRef.current?.focus();
-      }, 0);
-      return () => window.clearTimeout(t);
-    }
-  }, [appDialog]);
-
-  // appDialog: Tab focus trap + Escape dismiss + restore previous focus.
-  // Enter-confirm stays in a separate capture handler below.
-  useEffect(() => {
-    if (!appDialog) return;
-    return installDialogFocus(() => appDialogPanelRef.current, {
-      onEscape: () => setAppDialog(null),
-      capture: true,
-      // Initial focus handled by the prompt/confirm effect above.
-      initialFocus: "none",
-      restoreFocus: true,
-    });
-  }, [appDialog]);
-
-  useEffect(() => {
-    if (!appDialog) return;
-    const onKey = (e: KeyboardEvent) => {
-      // Confirm dialogs: Enter always accepts (including chained YOLO steps).
-      // Capture phase + preventDefault so we don't double-fire with a focused
-      // submit button's native activation. Escape is handled by installDialogFocus.
-      if (e.key !== "Enter" && e.key !== "NumpadEnter") return;
-      if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
-      const dialog = appDialogRef.current;
-      if (!dialog || dialog.kind !== "confirm") return;
-      e.preventDefault();
-      e.stopPropagation();
-      const run = dialog.onConfirm;
-      setAppDialog(null);
-      void run();
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [appDialog]);
-
   // Command palette: Tab trap + Escape (autoFocus on input).
   useEffect(() => {
     if (!showSearch) return;
@@ -1871,19 +1478,6 @@ export function AppWorkbench() {
       restoreFocus: true,
     });
   }, [showCompactModal]);
-
-  // Rewind timeline dialog — focus trap + Escape.
-  useEffect(() => {
-    if (!rewindTimeline) return;
-    return installDialogFocus(() => rewindModalRef.current, {
-      onEscape: () => {
-        if (!rewindBusy) setRewindTimeline(null);
-      },
-      capture: true,
-      initialFocus: "first",
-      restoreFocus: true,
-    });
-  }, [rewindTimeline, rewindBusy]);
 
   // Settings (or other windows) may change hybrid rank pref via localStorage event.
   // Settings (or other windows) may change hybrid rank / filter prefs.
@@ -2403,8 +1997,6 @@ export function AppWorkbench() {
     return () => window.removeEventListener(SIDEBAR_DENSITY_EVENT, reload);
   }, []);
   const sidebarRowMetrics = sidebarSessionRowMetrics(sidebarDensity);
-  /** Files/folders attached for next send (@path to agent). */
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
   /** Chat file/url card → open in right resource pane. */
   const [resourceOpenTarget, setResourceOpenTarget] =
     useState<ResourceOpenTarget | null>(null);
@@ -3541,39 +3133,6 @@ export function AppWorkbench() {
     };
   }, []);
 
-  useEffect(() => {
-    liveHostRef.current = liveHost;
-  }, [liveHost]);
-
-  // Mirror viewed-session messages into the cache on every change.
-  useEffect(() => {
-    messagesRef.current = messages;
-    const id = session.sessionId;
-    if (!id) return;
-    messagesBySessionRef.current.set(id, messages);
-  }, [messages, session.sessionId]);
-
-  /** Apply a message reducer to the viewed session or only to the cache. */
-  const patchSessionMessages = useCallback(
-    (
-      targetSessionId: string | undefined | null,
-      reduce: (prev: ChatMessage[]) => ChatMessage[],
-    ) => {
-      if (!targetSessionId) return;
-      if (viewingSessionIdRef.current === targetSessionId) {
-        setMessages((prev) => {
-          const next = reduce(prev);
-          messagesBySessionRef.current.set(targetSessionId, next);
-          return next;
-        });
-      } else {
-        const prev = messagesBySessionRef.current.get(targetSessionId) ?? [];
-        messagesBySessionRef.current.set(targetSessionId, reduce(prev));
-      }
-    },
-    [],
-  );
-
   /**
    * After any turn, if the last assistant message contains a grok-automation
    * fence, strip it from the bubble and call automation_create.
@@ -3916,1241 +3475,57 @@ export function AppWorkbench() {
     });
   }, []);
 
-  // Event listeners: StrictMode-safe (cleanup cancels pending + live unsubs)
-  // Mirror clients subscribe via WebSocket (same payload shapes as desktop).
-  useEffect(() => {
-    if (!api.isTauri() && !isMirrorClient()) return;
-    let cancelled = false;
-    const cleanups: Array<() => void> = [];
+  useSessionHostEvents({
+    patchSessionMessages,
+    tryApplyAutomationFromSession,
+    setLiveHost,
+    liveHostRef,
+    setLiveMap,
+    liveMapRef,
+    setSession,
+    setMessages,
+    messagesBySessionRef,
+    viewingSessionIdRef,
+    isSecondaryWindowRef,
+    secondaryFocusSessionIdRef,
+    openingSessionIdRef,
+    setStopLatch,
+    stopLatchRef,
+    setLocalError,
+    setToast,
+    setSessions,
+    sessionsRef,
+    projectsRef,
+    setSessionChangesById,
+    setContextUsage,
+    setRetryStatus,
+    setStreamStall,
+    setTurnStartedAt,
+    setRecentStallSignals,
+    setGoalOrchEvents,
+    setLastProcessLimit,
+    setAskUser,
+    setPerm,
+    setPlan,
+    setPlanFocusKey,
+    planBySessionRef,
+    planOpenedAsideRef,
+    planCompletedRecordedRef,
+    openAsidePane,
+    openAsidePaneRef,
+    pendingAskUserBySessionRef,
+    pendingPermBySessionRef,
+    pendingCompactBeforeRef,
+    clearPendingGatesRef,
+    notifyPrefsRef,
+    localeRef,
+    trRef,
+    tr,
+    modeRef,
+    maxConcurrentAgents,
+    streamStallSeconds,
+  });
 
-    const track = async (p: Promise<() => void>) => {
-      const un = await p;
-      if (cancelled) {
-        un();
-      } else {
-        cleanups.push(un);
-      }
-    };
-
-    void (async () => {
-      try {
-        const snap = await api.sessionGetState();
-        if (!cancelled) {
-          setLiveHost(snap);
-          liveHostRef.current = snap;
-          // Project Host live row into liveMap for sidebar busy badges.
-          // Secondary windows keep their deep-link focus — never adopt the
-          // Host live slot as the viewed session (that would fight main).
-          const secondary =
-            isSecondaryWindowRef.current ||
-            !!secondaryFocusSessionIdRef.current;
-          if (snap.sessionId) {
-            setLiveMap((prev) =>
-              projectHostIntoLiveMap(prev, {
-                sessionId: snap.sessionId,
-                state: snap.state,
-                streamingMessageId: snap.streamingMessageId,
-              }),
-            );
-            if (!secondary) {
-              setSession((prev) => ({
-                ...snap,
-                state: reconcileSessionState(snap.state, prev.state),
-              }));
-              viewingSessionIdRef.current = snap.sessionId;
-            } else if (
-              secondaryFocusSessionIdRef.current &&
-              snap.sessionId === secondaryFocusSessionIdRef.current
-            ) {
-              // Same chat is already live on Host — mirror state without
-              // passive warm-connect (secondary still follows streams by id).
-              setSession((prev) => ({
-                ...snap,
-                state: reconcileSessionState(snap.state, prev.state),
-              }));
-              viewingSessionIdRef.current = snap.sessionId;
-            }
-          }
-        }
-
-        await track(
-          api.listen<SessionSnapshot>("session://state", (s) => {
-            if (cancelled) return;
-            // Host focus slot (the process under the live cursor). Multi-session
-            // busy demotions also emit session://runtime so liveMap stays honest.
-            const prevLiveState = s.sessionId
-              ? liveMapRef.current[s.sessionId]?.state
-              : undefined;
-            setLiveHost(s);
-            liveHostRef.current = s;
-            setLiveMap((prev) =>
-              projectHostIntoLiveMap(prev, {
-                sessionId: s.sessionId,
-                state: s.state,
-                streamingMessageId: s.streamingMessageId,
-              }),
-            );
-            // Background turn finished while user is elsewhere → unread dot.
-            // Mute only suppresses desktop notify; unread still applies.
-            if (
-              s.sessionId &&
-              s.state === "ready" &&
-              isTurnDoneReadyTransition(prevLiveState, s.state) &&
-              shouldMarkUnreadOnTurnDone({
-                sessionId: s.sessionId,
-                viewingSessionId: viewingSessionIdRef.current,
-              })
-            ) {
-              markSessionUnread(s.sessionId);
-            }
-            if (
-              s.state !== "streaming" &&
-              s.state !== "awaiting_permission" &&
-              stopLatchRef.current.phase !== "idle"
-            ) {
-              const cleared = createStopLatchState();
-              stopLatchRef.current = cleared;
-              setStopLatch(cleared);
-            }
-            // Only update the workbench session when the user is viewing it.
-            // Otherwise switching sessions would yank selection back to the live agent.
-            if (
-              s.sessionId &&
-              s.sessionId === viewingSessionIdRef.current
-            ) {
-              setSession((prev) => ({
-                ...s,
-                state: reconcileSessionState(s.state, prev.state),
-              }));
-              // Clear retry chip / turn timer / stall banner when turn ends or errors out
-              if (s.state !== "streaming" && s.state !== "awaiting_permission") {
-                setRetryStatus(null);
-                setStreamStall(null);
-                setTurnStartedAt(null);
-                // Ensure no assistant is left with streaming=true after the turn
-                // (missed done chunk) — otherwise the next send can bind to it.
-                setMessages((prev) => {
-                  if (!prev.some((m) => m.streaming)) return prev;
-                  const next = prev.map((m) =>
-                    m.streaming ? { ...m, streaming: false } : m,
-                  );
-                  if (s.sessionId) {
-                    messagesBySessionRef.current.set(s.sessionId, next);
-                  }
-                  return next;
-                });
-                if (
-                  s.state === "ready" &&
-                  shouldShowDesktopNotify(
-                    "turn_done",
-                    notifyPrefsRef.current,
-                  )
-                ) {
-                  const turnSid = s.sessionId || null;
-                  showDesktopNotification({
-                    title: trRef.current("notify.turnDoneTitle"),
-                    body: trRef.current("notify.turnDoneBody"),
-                    tag: `turn-done-${turnSid || "x"}`,
-                    sessionId: turnSid,
-                  });
-                }
-              } else if (
-                (s.state === "streaming" || s.state === "awaiting_permission") &&
-                s.sessionId === viewingSessionIdRef.current
-              ) {
-                setTurnStartedAt((prev) => prev ?? Date.now());
-              }
-              // After a turn, rehydrate any longer journal body (missed stream
-              // tail) and resolve `images/N.jpg` short paths into image cards.
-              if (s.state === "ready") {
-                const sid = s.sessionId;
-                if (
-                  isTurnDoneReadyTransition(prevLiveState, s.state) &&
-                  sid
-                ) {
-                  void api
-                    .sessionMessages(sid)
-                    .then((stored) => {
-                      if (
-                        cancelled ||
-                        viewingSessionIdRef.current !== sid
-                      ) {
-                        return;
-                      }
-                      const mapped = mapStoredMessagesToChat(stored);
-                      const woven = weaveToolsIntoAssistantSegments(mapped);
-                      setMessages((prev) => {
-                        const next = upgradeMessagesFromJournal(prev, woven);
-                        if (next !== prev) {
-                          messagesBySessionRef.current.set(sid, next);
-                        }
-                        return next;
-                      });
-                    })
-                    .catch(() => {
-                      /* journal rehydrate is best-effort */
-                    });
-                }
-                setMessages((prev) => {
-                  const rels = collectSessionRelativeMediaRefs(prev);
-                  if (!rels.length) return prev;
-                  void api
-                    .sessionResolveRelativeMedia(sid, rels)
-                    .then((list) => {
-                      if (
-                        cancelled ||
-                        !list.length ||
-                        viewingSessionIdRef.current !== sid
-                      ) {
-                        return;
-                      }
-                      const resolved = list.map((a) => ({
-                        path: a.path,
-                        name:
-                          a.name ||
-                          a.path.split(/[/\\]/).pop() ||
-                          a.path,
-                        isDir: !!a.isDir,
-                      }));
-                      setMessages((cur) =>
-                        applyResolvedSessionMedia(cur, resolved),
-                      );
-                    })
-                    .catch(() => {
-                      /* ignore */
-                    });
-                  return prev;
-                });
-              }
-            } else if (!isSessionBusy(s.state)) {
-              if (viewingSessionIdRef.current === s.sessionId) {
-                setRetryStatus(null);
-              }
-              // Backup apply path if stream `done` chunk was missed.
-              if (s.sessionId) {
-                void tryApplyAutomationFromSession(s.sessionId);
-              }
-            }
-          }),
-        );
-        // Background / parked multi-session runtime (does not steal liveHost focus).
-        await track(
-          api.listen<SessionSnapshot>("session://runtime", (s) => {
-            if (cancelled || !s.sessionId) return;
-            const prevLiveState = liveMapRef.current[s.sessionId]?.state;
-            setLiveMap((prev) =>
-              projectHostIntoLiveMap(prev, {
-                sessionId: s.sessionId,
-                state: s.state,
-                streamingMessageId: s.streamingMessageId,
-              }),
-            );
-            // Background turn finished (demoted agent) → unread; mute is separate.
-            if (
-              s.state === "ready" &&
-              isTurnDoneReadyTransition(prevLiveState, s.state) &&
-              shouldMarkUnreadOnTurnDone({
-                sessionId: s.sessionId,
-                viewingSessionId: viewingSessionIdRef.current,
-              })
-            ) {
-              markSessionUnread(s.sessionId);
-            }
-            // If user is viewing this demoted session, keep workbench state in sync.
-            if (s.sessionId === viewingSessionIdRef.current) {
-              setSession((prev) => ({
-                ...prev,
-                sessionId: s.sessionId,
-                state: reconcileSessionState(s.state, prev.state),
-                streamingMessageId: s.streamingMessageId,
-                lastError: s.lastError ?? prev.lastError,
-                title: s.title || prev.title,
-              }));
-              // Background turn finished while still viewing → heal missed stream tail.
-              if (
-                s.state === "ready" &&
-                isTurnDoneReadyTransition(prevLiveState, s.state)
-              ) {
-                const sid = s.sessionId;
-                void api
-                  .sessionMessages(sid)
-                  .then((stored) => {
-                    if (
-                      cancelled ||
-                      viewingSessionIdRef.current !== sid
-                    ) {
-                      return;
-                    }
-                    const mapped = mapStoredMessagesToChat(stored);
-                    const woven = weaveToolsIntoAssistantSegments(mapped);
-                    setMessages((prev) => {
-                      const cleared = prev.map((m) =>
-                        m.streaming ? { ...m, streaming: false } : m,
-                      );
-                      const next = upgradeMessagesFromJournal(cleared, woven);
-                      messagesBySessionRef.current.set(sid, next);
-                      return next;
-                    });
-                  })
-                  .catch(() => {
-                    /* best-effort */
-                  });
-              }
-              if (
-                s.state !== "streaming" &&
-                s.state !== "awaiting_permission"
-              ) {
-                setMessages((prev) => {
-                  if (!prev.some((m) => m.streaming)) return prev;
-                  const next = prev.map((m) =>
-                    m.streaming ? { ...m, streaming: false } : m,
-                  );
-                  messagesBySessionRef.current.set(s.sessionId!, next);
-                  return next;
-                });
-              }
-            }
-          }),
-        );
-        // Batch high-frequency stream tokens before React setState (long turns).
-        const applyStreamToUi = (chunk: StreamPayload) => {
-          if (cancelled) return;
-          // Ignore empty terminal ticks that only flip done
-          if (!chunk.text && !chunk.done) return;
-          // Anti-replay: only drop when the *same* focused host session is idle.
-          // Multi-session: background turns keep streaming after switch — never
-          // gate on liveHost.state alone (that monopolizes the focused chat).
-          const host = liveHostRef.current;
-          if (
-            chunk.text &&
-            chunk.sessionId &&
-            chunk.sessionId === host.sessionId &&
-            !isSessionLiveStreaming(host.state)
-          ) {
-            return;
-          }
-          if (
-            chunk.text &&
-            chunk.sessionId === viewingSessionIdRef.current
-          ) {
-            setRetryStatus(null);
-            // Progress clears stall banner (I06).
-            setStreamStall(null);
-          }
-          // Multi-session busy projection for in-progress streams only.
-          // Never re-promote a turn already settled to ready/idle (late/coalesced
-          // tokens after host ready — issue #225 stuck sidebar spinner).
-          if (chunk.sessionId && !chunk.done) {
-            setLiveMap((prev) => {
-              const sid = chunk.sessionId!;
-              if (
-                !mayPromoteStreamingFromStreamChunk(prev[sid], {
-                  done: chunk.done,
-                })
-              ) {
-                return prev;
-              }
-              return projectHostIntoLiveMap(prev, {
-                sessionId: sid,
-                state: "streaming",
-                streamingMessageId: chunk.messageId ?? null,
-              });
-            });
-          }
-          if (chunk.done && chunk.sessionId) {
-            setLiveMap((prev) =>
-              projectHostIntoLiveMap(prev, {
-                sessionId: chunk.sessionId!,
-                state: "ready",
-                streamingMessageId: null,
-              }),
-            );
-            // Stream done for a non-viewed session → unread (mute still allows this).
-            if (
-              shouldMarkUnreadOnTurnDone({
-                sessionId: chunk.sessionId,
-                viewingSessionId: viewingSessionIdRef.current,
-              })
-            ) {
-              markSessionUnread(chunk.sessionId);
-            }
-          }
-          patchSessionMessages(chunk.sessionId, (prev) => {
-            const next = applyStreamChunk(prev, chunk);
-            // Keep cache in sync immediately so post-turn apply sees final text.
-            if (chunk.sessionId) {
-              messagesBySessionRef.current.set(chunk.sessionId, next);
-            }
-            return next;
-          });
-          if (chunk.sessionId && chunk.text) {
-            setLiveMap((prev) =>
-              markSawModelOutput(prev, chunk.sessionId!),
-            );
-          }
-          // After a completed assistant stream, try silent automation create.
-          if (chunk.done && chunk.sessionId) {
-            void tryApplyAutomationFromSession(chunk.sessionId);
-          }
-        };
-        const streamCoalescer = new StreamCoalescer({
-          flushMs: 48,
-          onFlush: (raw) => {
-            applyStreamToUi({
-              sessionId: raw.sessionId ?? "",
-              messageId: raw.messageId ?? "",
-              text: raw.text ?? "",
-              done: !!raw.done,
-              kind: (raw.kind as StreamPayload["kind"]) || "assistant",
-              thoughtPhase: raw.thoughtPhase ?? undefined,
-            });
-          },
-        });
-        cleanups.push(() => streamCoalescer.dispose());
-        await track(
-          api.listen<StreamPayload>("session://stream", (chunk) => {
-            if (cancelled) return;
-            streamCoalescer.push(chunk);
-          }),
-        );
-        await track(
-          api.listen<{ sessionId: string; message: ChatMessage }>(
-            "session://interjection",
-            (payload) => {
-              if (cancelled || !payload?.sessionId || !payload.message?.id) {
-                return;
-              }
-              // Only apply to the journal for that session; multi-session safe.
-              patchSessionMessages(payload.sessionId, (prev) =>
-                applyInterjection(prev, payload.message),
-              );
-            },
-          ),
-        );
-        await track(
-          api.listen<GeneratedImagePayload>(
-            "session://generated_image",
-            (p) => {
-              if (cancelled || !p?.path) return;
-              patchSessionMessages(p.sessionId, (prev) =>
-                applyGeneratedImage(prev, p),
-              );
-            },
-          ),
-        );
-        await track(
-          api.listen<{
-            sessionId?: string;
-            messageId?: string;
-            trigger?: string;
-            tokensBefore?: number;
-            tokensAfter?: number;
-            summaryPreview?: string;
-            note?: string;
-            content?: string;
-          }>("session://context_compact", (p) => {
-            if (cancelled || !p) return;
-            const sid = p.sessionId;
-            if (!sid) return;
-            const trigger = (p.trigger || "auto").toLowerCase();
-            const isManual = trigger === "manual";
-            const pending = pendingCompactBeforeRef.current;
-            const pendingFresh =
-              pending &&
-              pending.sessionId === sid &&
-              Date.now() - pending.at < 120_000
-                ? pending
-                : null;
-            // Prefer agent tokensBefore; for manual compact, fall back to the
-            // estimate captured in the confirm dialog so the banner can show a range.
-            const tokensBefore = mergeCompactTokensBefore(
-              p.tokensBefore,
-              isManual ? pendingFresh?.tokensBefore : null,
-            );
-            if (pendingFresh && isManual) {
-              pendingCompactBeforeRef.current = null;
-            }
-            const payload = { ...p, tokensBefore };
-            patchSessionMessages(sid, (prev) =>
-              applyContextCompact(prev, payload),
-            );
-            // Cost rollup: compact tokensAfter is a known context snapshot (not spend).
-            if (p.tokensAfter != null) {
-              const row = sessionsRef.current.find((s) => s.id === sid);
-              const project = row?.projectId
-                ? projectsRef.current.find((pr) => pr.id === row.projectId)
-                : null;
-              recordCostUsageSample(
-                sampleFromUsageEvent({
-                  sessionId: sid,
-                  projectId: row?.projectId ?? null,
-                  projectName: project?.name ?? null,
-                  modelId: row?.modelId ?? null,
-                  totalTokens: p.tokensAfter,
-                  source: "journal_compact",
-                }),
-              );
-            }
-            if (sid === viewingSessionIdRef.current) {
-              setContextUsage((prev) =>
-                reduceContextUsage(prev, {
-                  type: "compact",
-                  trigger: p.trigger,
-                  tokensBefore,
-                  tokensAfter: p.tokensAfter,
-                  summaryPreview: p.summaryPreview,
-                  note: p.note,
-                  messageId: p.messageId,
-                }),
-              );
-              const auto = !isManual;
-              setToast(
-                auto
-                  ? tr("compact.toastAuto")
-                  : tr("compact.toastManual"),
-              );
-              window.setTimeout(() => setToast(null), 3200);
-            }
-          }),
-        );
-        await track(
-          api.listen<{
-            sessionId?: string;
-            totalTokens?: number;
-            inputTokens?: number;
-            outputTokens?: number;
-            systemTokens?: number;
-            toolsTokens?: number;
-            historyTokens?: number;
-            source?: string;
-          }>("session://usage", (p) => {
-            if (cancelled || !p) return;
-            const sid = p.sessionId;
-            if (!sid) return;
-            // Cost rollup: record known usage for any session (not only focused).
-            const row = sessionsRef.current.find((s) => s.id === sid);
-            const project = row?.projectId
-              ? projectsRef.current.find((pr) => pr.id === row.projectId)
-              : null;
-            recordCostUsageSample(
-              sampleFromUsageEvent({
-                sessionId: sid,
-                projectId: row?.projectId ?? null,
-                projectName: project?.name ?? null,
-                modelId: row?.modelId ?? null,
-                inputTokens: p.inputTokens,
-                outputTokens: p.outputTokens,
-                totalTokens: p.totalTokens,
-                source: p.source ?? "usage",
-              }),
-            );
-            if (sid !== viewingSessionIdRef.current) return;
-            setContextUsage((prev) =>
-              reduceContextUsage(prev, {
-                type: "usage",
-                totalTokens: p.totalTokens,
-                inputTokens: p.inputTokens,
-                outputTokens: p.outputTokens,
-                systemTokens: p.systemTokens,
-                toolsTokens: p.toolsTokens,
-                historyTokens: p.historyTokens,
-                source: p.source,
-              }),
-            );
-          }),
-        );
-        await track(
-          api.listen<{
-            sessionId?: string;
-            toolCallId?: string;
-            title?: string;
-            kind?: string;
-            status?: string;
-            path?: string | null;
-            detail?: string | null;
-            before?: string | null;
-            after?: string | null;
-          }>("session://tool", (p) => {
-            if (cancelled || !p?.toolCallId) return;
-            const sid = p.sessionId || viewingSessionIdRef.current;
-            if (!sid) return;
-            // Hooks debug: tool failures / hookSpecificOutput (Extensions → Hooks).
-            ingestToolHookSignal({
-              title: p.title,
-              kind: p.kind,
-              status: p.status,
-              detail: p.detail,
-              path: p.path,
-              toolCallId: p.toolCallId,
-            });
-            patchSessionMessages(sid, (prev) => {
-              const next = applyToolEvent(prev, p);
-              setLiveMap((lm) => {
-                let m = projectLiveToolFromMessages(lm, sid, next);
-                m = markSawToolActivity(m, sid);
-                return m;
-              });
-              return next;
-            });
-            // Track write/edit tools for the session Changes panel.
-            setSessionChangesById((prev) => {
-              const list = prev[sid] ?? [];
-              const next = mergeSessionChange(list, {
-                toolCallId: p.toolCallId,
-                title: p.title,
-                kind: p.kind,
-                status: p.status,
-                path: p.path,
-                detail: p.detail,
-                before: p.before,
-                after: p.after,
-              });
-              if (next === list) return prev;
-              return { ...prev, [sid]: next };
-            });
-            if (sid === viewingSessionIdRef.current) {
-              setTurnStartedAt((t) => t ?? Date.now());
-              // Tool activity counts as progress — clear stall banner (I06).
-              setStreamStall(null);
-            }
-          }),
-        );
-        await track(
-          api.listen<{
-            sessionId?: string;
-            kind?: string;
-            eventName?: string;
-            toolName?: string;
-            ok?: boolean | null;
-            detail?: string;
-            update?: unknown;
-          }>("session://hook", (p) => {
-            if (cancelled || !p) return;
-            // Structured ACP hook_execution / hook_annotation from Host.
-            ingestHostHookPayload(p);
-          }),
-        );
-        await track(
-          api.listen<GoalOrchHostPayload>("session://goal", (p) => {
-            if (cancelled || !p) return;
-            // CLI 0.2.117+ goal_updated — soft-fail when CLI never emits.
-            const ev = goalEventFromHostPayload(p);
-            if (!ev) return;
-            setGoalOrchEvents((prev) =>
-              prependGoalOrchEvent(prev, ev, GOAL_ORCH_EVENT_MAX),
-            );
-          }),
-        );
-        await track(
-          api.listen<{ line?: string }>("session://stderr", (p) => {
-            if (cancelled || !p?.line) return;
-            // Fallback: agent log lines that mention hooks (fail-open, timeouts, …).
-            ingestHookLogLine(p.line);
-          }),
-        );
-        await track(
-          api.listen<{
-            sessionId?: string;
-            messageId?: string;
-            marker?: string;
-            reason?: string;
-            content?: string;
-          }>("session://turn_marker", (p) => {
-            if (cancelled || !p) return;
-            const sid = p.sessionId;
-            if (!sid) return;
-            patchSessionMessages(sid, (prev) => applyTurnMarker(prev, p));
-            // Turn is over — any gate it raised can no longer be answered.
-            clearPendingGatesRef.current(sid);
-            if (sid === viewingSessionIdRef.current) {
-              setTurnStartedAt(null);
-              setStreamStall(null);
-              if (p.marker === "turn_cancelled") {
-                setToast(tr("activity.cancelledToast"));
-                window.setTimeout(() => setToast(null), 2800);
-              }
-            }
-          }),
-        );
-        await track(
-          api.listen<{ sessionId?: string; reason?: string }>(
-            "session://idle_recycled",
-            (p) => {
-              if (cancelled || !p) return;
-              // Process gone — never leave sidebar spinner on a recycled chat.
-              if (p.sessionId) {
-                setLiveMap((prev) =>
-                  settleStoppedSessionInLiveMap(prev, p.sessionId!),
-                );
-              }
-              if (p.reason === "capacity") {
-                // Housekeeping, NOT a failure: Host reclaimed an *idle parked*
-                // chat so this spawn could proceed. Reporting it as "process
-                // limit reached" made a successful connect look broken, and
-                // claimed every slot was running a task when none was.
-                setToast(tr("agent.capacityRecycledToast"));
-                window.setTimeout(() => setToast(null), 4200);
-                return;
-              }
-              // Toast when the focused (or unknown) session was idle-recycled.
-              if (
-                !p.sessionId ||
-                p.sessionId === viewingSessionIdRef.current
-              ) {
-                setToast(tr("agent.idleRecycledToast"));
-                window.setTimeout(() => setToast(null), 4200);
-              }
-            },
-          ),
-        );
-        await track(
-          api.listen<{ reason?: string; killed?: number }>(
-            "session://agents_recycled",
-            (p) => {
-              if (cancelled || !p) return;
-              // session_data_mode flip, custom provider route apply (#376), CLI upgrade, etc.
-              if (p.reason === "provider_route") {
-                setToast(tr("prov.switchedHotReload"));
-                window.setTimeout(() => setToast(null), 3600);
-                return;
-              }
-              if (
-                p.reason === "session_data_mode" ||
-                (p.killed != null && p.killed > 0)
-              ) {
-                setToast(tr("agent.dataModeRecycledToast"));
-                window.setTimeout(() => setToast(null), 4800);
-              }
-            },
-          ),
-        );
-        await track(
-          api.listen<{ reason?: string }>(
-            "session://agent_soft_respawn",
-            (p) => {
-              if (cancelled || !p) return;
-              // Spawn flags / extensions changed while an agent was live.
-              setToast(tr("agent.softRespawnToast"));
-              window.setTimeout(() => setToast(null), 3600);
-            },
-          ),
-        );
-        await track(
-          api.listen<{
-            sessionId?: string;
-            stopReason?: string;
-            toolCount?: number;
-          }>("session://turn_empty_run", (p) => {
-            if (cancelled || !p) return;
-            // Host already force-ended; ensure sidebar liveMap leaves busy even if
-            // stream `done` / state event was lost (issue #225).
-            if (p.sessionId) {
-              setLiveMap((prev) =>
-                settleStoppedSessionInLiveMap(prev, p.sessionId!),
-              );
-              if (p.sessionId === viewingSessionIdRef.current) {
-                setSession((prev) =>
-                  settleStoppedSessionSnapshot(prev, p.sessionId!),
-                );
-                setLiveHost((prev) => {
-                  const next = settleStoppedSessionSnapshot(prev, p.sessionId!);
-                  liveHostRef.current = next;
-                  return next;
-                });
-                setMessages((prev) => {
-                  if (!prev.some((m) => m.streaming)) return prev;
-                  const next = prev.map((m) =>
-                    m.streaming ? { ...m, streaming: false } : m,
-                  );
-                  messagesBySessionRef.current.set(p.sessionId!, next);
-                  return next;
-                });
-              }
-            }
-            if (
-              p.sessionId &&
-              p.sessionId !== viewingSessionIdRef.current
-            ) {
-              return;
-            }
-            setToast(tr("session.emptyRunToast"));
-            window.setTimeout(() => setToast(null), 7200);
-          }),
-        );
-        await track(
-          api.listen<{
-            sessionId?: string;
-            code?: string;
-            message?: string;
-            maxConcurrentAgents?: number;
-          }>("session://process_limit", (p) => {
-            if (cancelled || !p) return;
-            // Remember for process-budget UI (Settings pool / Reliability).
-            const ev = parseProcessLimitEvent(p, Date.now());
-            if (ev) setLastProcessLimit(ev);
-            setToast(tr("agent.processLimitToast"));
-            window.setTimeout(() => setToast(null), 5200);
-            if (
-              !p.sessionId ||
-              p.sessionId === viewingSessionIdRef.current
-            ) {
-              setLocalError(
-                p.message
-                  ? `PROCESS_LIMIT: ${p.message}`
-                  : "PROCESS_LIMIT",
-              );
-            }
-          }),
-        );
-        await track(
-          api.listen<{
-            sessionId?: string;
-            stallSeconds?: number;
-            code?: string;
-            message?: string;
-            tier?: string;
-            sawModelOutput?: boolean;
-            sawToolActivity?: boolean;
-          }>("session://stream_stall", (p) => {
-            if (cancelled || !p) return;
-            // Only prompt for the viewed session (or unknown id).
-            if (
-              p.sessionId &&
-              p.sessionId !== viewingSessionIdRef.current
-            ) {
-              return;
-            }
-            const secs =
-              typeof p.stallSeconds === "number" && p.stallSeconds > 0
-                ? Math.round(p.stallSeconds)
-                : streamStallSeconds;
-            // Merge journal evidence so we never show pre-token after a full answer.
-            const sid = p.sessionId || viewingSessionIdRef.current || "";
-            if (sid) {
-              setLiveMap((prev) => {
-                const msgs = messagesBySessionRef.current.get(sid) ?? [];
-                let next = mergeTurnProgressFromMessages(prev, sid, msgs);
-                if (p.sawModelOutput) {
-                  next = markSawModelOutput(next, sid);
-                }
-                if (p.sawToolActivity) {
-                  next = markSawToolActivity(next, sid);
-                }
-                return next;
-              });
-            }
-            setStreamStall({
-              sessionId: p.sessionId,
-              stallSeconds: secs,
-              tier: p.tier,
-              sawModelOutput: p.sawModelOutput,
-              sawToolActivity: p.sawToolActivity,
-            });
-            // Reliability center ring — title resolved at view assembly time.
-            const activeStall = reliabilityStallFromEvent({
-              kind: "active",
-              sessionId: p.sessionId ?? null,
-              stallSeconds: secs,
-              tier: p.tier ?? null,
-              reason: "stall",
-            });
-            setRecentStallSignals((prev) =>
-              prependReliabilityRing(
-                prev,
-                activeStall,
-                DEFAULT_RELIABILITY_MAX_STALLS,
-              ),
-            );
-            // Persist stall timeline (localStorage ring; no secrets).
-            recordStallHistoryFromSignal(activeStall);
-          }),
-        );
-        // Long-tool heartbeat: Host re-armed stall; clear soft banner for this chat.
-        await track(
-          api.listen<{
-            sessionId?: string;
-            toolCallIds?: string[];
-            openCount?: number;
-          }>("session://tool_heartbeat", (p) => {
-            if (cancelled || !p?.sessionId) return;
-            const sid = p.sessionId;
-            setLiveMap((prev) => markSawToolActivity(prev, sid));
-            if (sid === viewingSessionIdRef.current) {
-              setStreamStall(null);
-            }
-          }),
-        );
-        await track(
-          api.listen<{
-            sessionId?: string;
-            stallSeconds?: number;
-            code?: string;
-          }>("session://stream_stall_hard_end", (p) => {
-            if (cancelled || !p) return;
-            setStreamStall(null);
-            const hardEndStall = reliabilityStallFromEvent({
-              kind: "hard_end",
-              sessionId: p.sessionId ?? null,
-              stallSeconds:
-                typeof p.stallSeconds === "number" ? p.stallSeconds : null,
-              reason: "stall",
-            });
-            setRecentStallSignals((prev) =>
-              prependReliabilityRing(
-                prev,
-                hardEndStall,
-                DEFAULT_RELIABILITY_MAX_STALLS,
-              ),
-            );
-            // Persist stall timeline (localStorage ring; no secrets).
-            recordStallHistoryFromSignal(hardEndStall);
-            // Host force-ended the turn (runtime Ready already emitted). Settle
-            // client projection so the sidebar cannot stay spinning if a late
-            // stream token races after this event (issue #225).
-            if (p.sessionId) {
-              setLiveMap((prev) =>
-                settleStoppedSessionInLiveMap(prev, p.sessionId!),
-              );
-              if (p.sessionId === viewingSessionIdRef.current) {
-                setSession((prev) =>
-                  settleStoppedSessionSnapshot(prev, p.sessionId!),
-                );
-                setLiveHost((prev) => {
-                  const next = settleStoppedSessionSnapshot(prev, p.sessionId!);
-                  liveHostRef.current = next;
-                  return next;
-                });
-                setMessages((prev) => {
-                  if (!prev.some((m) => m.streaming)) return prev;
-                  return prev.map((m) =>
-                    m.streaming ? { ...m, streaming: false } : m,
-                  );
-                });
-              }
-            }
-            if (
-              !p.sessionId ||
-              p.sessionId === viewingSessionIdRef.current
-            ) {
-              setToast(tr("agent.streamStallHardEndToast"));
-              window.setTimeout(() => setToast(null), 4200);
-            }
-          }),
-        );
-        await track(
-          api.listen<{
-            attempt?: number;
-            maxRetries?: number;
-            reason?: string;
-            aborting?: boolean;
-            sessionId?: string;
-          }>("session://retry", (p) => {
-            if (cancelled) return;
-            // Retry chip is only meaningful on the viewed live session.
-            if (
-              p.sessionId &&
-              p.sessionId !== viewingSessionIdRef.current
-            ) {
-              return;
-            }
-            if (
-              liveHostRef.current.sessionId &&
-              liveHostRef.current.sessionId !== viewingSessionIdRef.current
-            ) {
-              return;
-            }
-            const attempt = p.attempt ?? 0;
-            const maxRetries = p.maxRetries ?? 12;
-            const reason = (p.reason || "").trim();
-            setRetryStatus({ attempt, maxRetries, reason });
-          }),
-        );
-        await track(
-          api.listen<TurnErrorPayload>("session://turn_error", (p) => {
-            if (cancelled) return;
-            clearPendingGatesRef.current(p.sessionId);
-            if (p.sessionId === viewingSessionIdRef.current) {
-              setRetryStatus(null);
-            }
-            patchSessionMessages(p.sessionId, (prev) =>
-              applyTurnError(prev, p, localeRef.current),
-            );
-          }),
-        );
-        await track(
-          api.listen<PermissionPayload>("session://permission", (p) => {
-            if (cancelled) return;
-            // Park it against its session so returning to that chat can answer.
-            if (p.sessionId) {
-              pendingPermBySessionRef.current.set(p.sessionId, p);
-            }
-            // Only surface the bar when viewing the session that needs it.
-            if (
-              p.sessionId &&
-              p.sessionId !== viewingSessionIdRef.current
-            ) {
-              // Multi-session stream: another chat needs approval — nudge user.
-              setToast(trRef.current("session.backgroundPermission"));
-              window.setTimeout(() => setToast(null), 4200);
-              if (
-                shouldShowDesktopNotify(
-                  "permission",
-                  notifyPrefsRef.current,
-                )
-              ) {
-                showDesktopNotification({
-                  title: trRef.current("notify.permissionTitle"),
-                  body: trRef.current("session.backgroundPermission"),
-                  tag: `perm-bg-${p.sessionId || p.rpcId}`,
-                  force: true,
-                  sessionId: p.sessionId ?? null,
-                });
-              }
-              return;
-            }
-            setPerm(p);
-            if (
-              shouldShowDesktopNotify("permission", notifyPrefsRef.current)
-            ) {
-              showDesktopNotification({
-                title: trRef.current("notify.permissionTitle"),
-                body: trRef.current("notify.permissionBody"),
-                tag: `perm-${p.sessionId || p.rpcId}`,
-                force: true,
-                sessionId: p.sessionId ?? null,
-              });
-            }
-          }),
-        );
-        await track(
-          api.listen<AskUserPayload>("session://ask_user", (p) => {
-            if (cancelled) return;
-            if (!p?.rpcId || !Array.isArray(p.questions) || !p.questions.length) {
-              return;
-            }
-            if (p.sessionId) {
-              pendingAskUserBySessionRef.current.set(p.sessionId, p);
-            }
-            if (
-              p.sessionId &&
-              p.sessionId !== viewingSessionIdRef.current
-            ) {
-              // Background chat asked a question — answer it on reopen.
-              setToast(trRef.current("session.backgroundPermission"));
-              window.setTimeout(() => setToast(null), 4200);
-              if (
-                shouldShowDesktopNotify("ask_user", notifyPrefsRef.current)
-              ) {
-                showDesktopNotification({
-                  title: trRef.current("notify.askUserTitle"),
-                  body: trRef.current("notify.askUserBody"),
-                  tag: `ask-bg-${p.sessionId || p.rpcId}`,
-                  force: true,
-                  sessionId: p.sessionId ?? null,
-                });
-              }
-              return;
-            }
-            setAskUser(p);
-            // Agent is blocked on an answer — same as permission bar.
-            if (
-              shouldShowDesktopNotify("ask_user", notifyPrefsRef.current)
-            ) {
-              showDesktopNotification({
-                title: trRef.current("notify.askUserTitle"),
-                body: trRef.current("notify.askUserBody"),
-                tag: `ask-${p.sessionId || p.rpcId}`,
-                force: true,
-                sessionId: p.sessionId ?? null,
-              });
-            }
-          }),
-        );
-        await track(
-          api.listen<{
-            entries?: unknown[];
-            body?: string | null;
-            sessionId?: string;
-            rpcId?: number | null;
-            toolCallId?: string | null;
-            waiting?: boolean;
-          }>("session://plan", (p) => {
-            if (cancelled) return;
-            const readyTitle = trRef.current("plan.ready");
-            const composerMode = modeRef.current;
-            const targetSid =
-              (p.sessionId && p.sessionId.trim()) ||
-              viewingSessionIdRef.current ||
-              null;
-
-            const planJustCompleted = (
-              prev: PlanState,
-              next: PlanState,
-              sid: string | null,
-            ) => {
-              if (!sid) return;
-              const prevProg = computePlanProgress(
-                parsePlanEntries(prev.entries),
-              );
-              const nextProg = computePlanProgress(
-                parsePlanEntries(next.entries),
-              );
-              const wasDone =
-                prevProg.total > 0 &&
-                prevProg.completed + prevProg.cancelled >= prevProg.total &&
-                prevProg.inProgress === 0 &&
-                prevProg.pending === 0;
-              const nowDone =
-                nextProg.total > 0 &&
-                nextProg.completed + nextProg.cancelled >= nextProg.total &&
-                nextProg.inProgress === 0 &&
-                nextProg.pending === 0;
-              if (!nowDone || wasDone) return;
-              const cycleKey = `${sid}|${next.toolCallId ?? "notool"}`;
-              if (planCompletedRecordedRef.current.has(cycleKey)) return;
-              planCompletedRecordedRef.current.add(cycleKey);
-              // Bound the dedupe set.
-              if (planCompletedRecordedRef.current.size > 80) {
-                const first = planCompletedRecordedRef.current.values().next()
-                  .value;
-                if (first != null) planCompletedRecordedRef.current.delete(first);
-              }
-              const bodyMd = planDisplayMarkdown(next.body, next.entries);
-              if (!bodyMd.trim()) return;
-              const row = sessionsRef.current.find((s) => s.id === sid);
-              const sessionTitle = row?.title?.trim() || undefined;
-              try {
-                recordPlanHistory({
-                  sessionId: sid,
-                  decision: "completed",
-                  title: sessionTitle,
-                  bodyPreview: bodyMd,
-                });
-              } catch {
-                /* private mode */
-              }
-            };
-
-            // Background session: keep plan cache warm without stealing the bar.
-            if (
-              p.sessionId &&
-              p.sessionId !== viewingSessionIdRef.current
-            ) {
-              const prev =
-                planBySessionRef.current.get(p.sessionId) ??
-                emptySessionPlan(readyTitle);
-              const next = mergePlanFromEvent(
-                prev,
-                p,
-                readyTitle,
-                composerMode,
-              );
-              planBySessionRef.current.set(p.sessionId, next);
-              planJustCompleted(prev, next, p.sessionId);
-              return;
-            }
-
-            setPlan((prev) => {
-              const next = mergePlanFromEvent(
-                prev,
-                p,
-                readyTitle,
-                composerMode,
-              );
-              // Suppressed hard-dismiss: no UI thrash.
-              if (prev.userClosed && next.userClosed) {
-                return prev;
-              }
-              const becameReview =
-                next.rpcId != null &&
-                (prev.rpcId == null || !prev.visible);
-              if (becameReview && next.visible && !next.userClosed) {
-                // Auto-open resource Plan workbench when gate is ready.
-                // openAsidePane grows the window first, then clamps aside.
-                queueMicrotask(() => {
-                  planOpenedAsideRef.current = true;
-                  openAsidePaneRef.current();
-                  setPlanFocusKey((k) => k + 1);
-                });
-              }
-              if (targetSid) {
-                planBySessionRef.current.set(targetSid, next);
-                planJustCompleted(prev, next, targetSid);
-              }
-              return next;
-            });
-          }),
-        );
-        await track(
-          api.listen<{ sessionId?: string; title?: string }>(
-            "session://title",
-            (p) => {
-              if (cancelled || !p.sessionId || !p.title) return;
-              setSessions((list) =>
-                list.map((s) =>
-                  s.id === p.sessionId ? { ...s, title: p.title! } : s,
-                ),
-              );
-              setSession((prev) =>
-                prev.sessionId === p.sessionId
-                  ? { ...prev, title: p.title! }
-                  : prev,
-              );
-              setLiveHost((prev) =>
-                prev.sessionId === p.sessionId
-                  ? { ...prev, title: p.title! }
-                  : prev,
-              );
-            },
-          ),
-        );
-        // Remote IM wrote sessions_index / messages.json — refresh sidebar +
-        // reload journal if the user is currently viewing that session.
-        await track(
-          api.listen<{ sessionId?: string; source?: string }>(
-            "session://index_changed",
-            (p) => {
-              if (cancelled) return;
-              void (async () => {
-                try {
-                  const list = await api.sessionsList();
-                  if (cancelled) return;
-                  setSessions(list.map(mapSessionListRow));
-                  setSessions(list.map((s) => mapSessionListRow(s)));
-                  const sid = p?.sessionId;
-                  if (
-                    !sid ||
-                    viewingSessionIdRef.current !== sid ||
-                    openingSessionIdRef.current
-                  ) {
-                    return;
-                  }
-                  // Drop cache so preferSessionMessages cannot hide disk IM turns.
-                  messagesBySessionRef.current.delete(sid);
-                  const stored = await api.sessionMessages(sid);
-                  if (cancelled || viewingSessionIdRef.current !== sid) return;
-                  // Same mapper as openSession — keep attachments on IM reload.
-                  const mapped = mapStoredMessagesToChat(stored);
-                  const woven = weaveToolsIntoAssistantSegments(mapped);
-                  messagesBySessionRef.current.set(sid, woven);
-                  setMessages(woven);
-                } catch {
-                  /* ignore */
-                }
-              })();
-            },
-          ),
-        );
-      } catch (e) {
-        if (!cancelled) setLocalError(String(e));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      cleanups.forEach((u) => u());
-    };
-  }, [patchSessionMessages, tryApplyAutomationFromSession]);
 
 
   const navigateWorkbench = useCallback(() => {
@@ -6043,46 +4418,6 @@ export function AppWorkbench() {
     }
     return groups;
   }, [sessions, projects, tr]);
-
-  /**
-   * Multi-session busy ids (stream / permission) for sidebar spinner.
-   * Uses liveMap projection + liveHost fallback. Excludes connecting.
-   */
-  const busyIds = useMemo(() => {
-    const set = busySessionIds(liveMap);
-    if (liveHost.sessionId && isSessionLiveStreaming(liveHost.state)) {
-      set.add(liveHost.sessionId);
-    }
-    return set;
-  }, [liveMap, liveHost.sessionId, liveHost.state]);
-  const settleStoppedSessionUi = useCallback((sessionId: string) => {
-    setLiveMap((prev) => {
-      const next = settleStoppedSessionInLiveMap(prev, sessionId);
-      liveMapRef.current = next;
-      return next;
-    });
-    setLiveHost((prev) => {
-      const next = settleStoppedSessionSnapshot(prev, sessionId);
-      liveHostRef.current = next;
-      return next;
-    });
-    setSession((prev) => settleStoppedSessionSnapshot(prev, sessionId));
-  }, []);
-  const stopGate = useMemo(
-    () =>
-      reconcileUiBusyGate({
-        hostState: session.state,
-        stopLatch,
-      }),
-    [session.state, stopLatch],
-  );
-  // Session-keyed pool: secondary shares Host — send/stop allowed (session-targeted).
-  // Composer Stop = current viewed session only (see resolveStopTargets "current").
-  const effectiveCanSend =
-    stopGate.sendable && canLiveParticipate(isSecondaryWindow);
-  const effectiveCanStop =
-    canLiveParticipate(isSecondaryWindow) &&
-    canStopWithStopLatch(session.state, stopLatch);
 
   const refreshSessions = async () => {
     try {
