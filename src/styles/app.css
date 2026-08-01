@@ -18661,6 +18661,108 @@ textarea::-webkit-scrollbar-thumb:active,
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
+/* Automations Inbox (review queue over observed run history) */
+.auto-page__inbox-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.auto-page__inbox-unread {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  min-width: 1.25rem;
+  height: 1.15rem;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  background: color-mix(in srgb, var(--accent, #5b8def) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #5b8def) 35%, transparent);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.auto-page__inbox-banner {
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent, #5b8def) 22%, transparent);
+  background: color-mix(in srgb, var(--accent, #5b8def) 8%, transparent);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.auto-page__inbox-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.auto-page__inbox-search {
+  max-width: 100%;
+}
+
+.auto-page__inbox-search input {
+  font-size: 12.5px;
+}
+
+.auto-page__inbox-row--unread {
+  border-color: color-mix(in srgb, var(--accent, #5b8def) 28%, transparent);
+  background: color-mix(in srgb, var(--accent, #5b8def) 6%, transparent);
+}
+
+.auto-page__inbox-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent, #5b8def);
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.auto-page__inbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 4px;
+}
+
+.auto-page__inbox-action {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 550;
+  line-height: 1.4;
+  color: var(--accent, #5b8def);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.auto-page__inbox-action:hover {
+  text-decoration: underline;
+}
+
+.auto-page__inbox-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #5b8def) 55%, transparent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 .app-dialog__msg--muted {
   opacity: 0.88;
   font-size: 12.5px;

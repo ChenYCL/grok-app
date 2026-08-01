@@ -51,7 +51,7 @@
 - **写入时机**：Host 事件 `automation://ran` / `automation://error`（进程存活期间观察到的触发）；以及 UI「立即执行」返回 ok / error / skipped。
 - **字段**：`id` · `scheduleId` · `name` · `at` · `outcome`（`ok|error|skipped`）· 脱敏 `error` · `source`（`host|run_now|unknown`）。
 - **诚实**：完全退出后**不会**虚构离线触发；空列表是 soft-fail 空态，不是「后台什么都没发生过」的宣称。
-- **UI**：`AutomationsPage` 历史面板 + outcome 筛选 chips + GlassModal 清空（禁止 `window.confirm`）。
+- **UI**：`AutomationsPage` **Inbox** 审阅队列（outcome chips + 搜索 + 未读 / 打开会话 / 软 Run now）+ GlassModal 清空（禁止 `window.confirm`）。纯 helpers：`automationsInbox.ts`。
 
 ### 托盘与「退出后」诚实模型（AUTO-RUNNER + AUTO-HEADLESS-LITE + A2 one-shot）
 
