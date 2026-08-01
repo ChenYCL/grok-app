@@ -84,6 +84,7 @@ src-tauri/src/
 2. **Settings still prop-heavy at call site** — gate satisfied via outer routing destructure + `...rest`; full SettingsModel context wiring optional follow-up.
 3. **`useComposerController` / `useSessionRuntime`** — extraction anchors exist; workbench still owns most runtime state.
 4. **Clippy** — `cargo clippy --all-targets -- -D warnings` currently reports ~400 historical findings. CI runs `cargo clippy --all-targets -- -W clippy::all` so hard errors still fail while warnings do not block merge. Follow-up: ratify allowlist or fix batches; do **not** loosen `check-code-quality-gates.py`.
+5b. **ESLint** — CI `pnpm lint` uses `typescript-eslint` + `eslint-plugin-react-hooks` (rules mostly off) so TS/TSX parse cleanly and historical `eslint-disable` comments resolve; enforces no `window.confirm/alert/prompt` only.
 5. **i18n giants** (`messages.ts`, `zh-tw.ts`) and `ResourceViewer` / `SettingsPage` remain large; not required for final gates once ≥1k count ≤45.
 6. **CSS part files** are mechanical chunks (not semantic subsections); re-chunk by selector domain when editing styles.
 
