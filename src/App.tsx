@@ -316,12 +316,20 @@ import {
 import * as api from "@/lib/api";
 import {
   SANDBOX_PROFILES,
+  cliSupportsSandbox,
   isDangerousSandboxProfile,
   normalizeSandboxProfile,
   sandboxDangerConfirmKey,
   sandboxProfileLabelKey,
   type SandboxProfileId,
 } from "@/lib/sandboxProfile";
+import { SandboxWizard } from "@/components/SandboxWizard";
+import {
+  loadSandboxWizardDismissed,
+  markSandboxWizardDismissed,
+  shouldOfferSandboxWizard,
+  type SandboxWizardMode,
+} from "@/lib/sandboxWizard";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import {
   archiveAgeEmptyMessageKey,
@@ -2367,6 +2375,10 @@ export default function App() {
   /** Optional product tour (not first-run account setup). */
   const [showProductTutorial, setShowProductTutorial] = useState(false);
   const productTutorialAutoOfferedRef = useRef(false);
+  /** Sandbox profile wizard after trust / Settings guide. */
+  const [sandboxWizardOpen, setSandboxWizardOpen] = useState(false);
+  const [sandboxWizardMode, setSandboxWizardMode] =
+    useState<SandboxWizardMode>("trust");
   // Soft one-time product tour after setup gate — never blocks setup wizard.
   useEffect(() => {
     if (appGate !== "ready") return;
@@ -7143,6 +7155,31 @@ export default function App() {
 
     commit();
   };
+
+  /** Soft offer sandbox guide after a successful project trust. */
+  const maybeOfferSandboxWizardAfterTrust = useCallback(() => {
+    try {
+      if (
+        !shouldOfferSandboxWizard({
+          justTrusted: true,
+          currentProfile: sandboxProfile,
+          dismissed: loadSandboxWizardDismissed(),
+        })
+      ) {
+        return;
+      }
+      setSandboxWizardMode("trust");
+      // After trust confirm dialog closes — open wizard next tick.
+      window.setTimeout(() => setSandboxWizardOpen(true), 0);
+    } catch {
+      /* ignore */
+    }
+  }, [sandboxProfile]);
+
+  const openSandboxWizardGuide = useCallback(() => {
+    setSandboxWizardMode("info");
+    setSandboxWizardOpen(true);
+  }, []);
 
   /** Remove project from app list only (disk folder + chats kept). */
   const removeProjectFromApp = (proj: Project) => {
@@ -12887,6 +12924,7 @@ export default function App() {
             try {
               const trusted = (await api.projectTrust(p.id)) as Project;
               await apply(trusted);
+              maybeOfferSandboxWizardAfterTrust();
             } catch (e) {
               setLocalError(String(e));
             }
@@ -12896,7 +12934,7 @@ export default function App() {
       }
       await apply(p);
     },
-    [bindSessionProject, showToast, tr],
+    [bindSessionProject, maybeOfferSandboxWizardAfterTrust, showToast, tr],
   );
 
   /** Open gc dialog and run dry-run preview. */
@@ -13754,6 +13792,7 @@ export default function App() {
       setActiveProject(p);
       setProjects(mapProjectsList((await api.projectsList()) as Project[]));
       setLocalError(null);
+      maybeOfferSandboxWizardAfterTrust();
       // CLI connects on first send only.
     } catch (e) {
       setLocalError(String(e));
@@ -17283,6 +17322,7 @@ export default function App() {
           onSandboxProfile={(v) => {
             applyGlobalSandboxProfile(v);
           }}
+          onOpenSandboxWizard={openSandboxWizardGuide}
           preferredAgent={preferredAgent}
           onPreferredAgent={(v) => {
             setPreferredAgent(v);
@@ -22363,6 +22403,32 @@ export default function App() {
         onDone={() => {
           markProductTutorialDone();
           setShowProductTutorial(false);
+        }}
+      />
+      <SandboxWizard
+        open={sandboxWizardOpen}
+        locale={locale}
+        mode={sandboxWizardMode}
+        platform={platform}
+        cliSupportsSandbox={cliSupportsSandbox(cliInfo.version)}
+        onClose={() => {
+          if (sandboxWizardMode === "trust") {
+            // Soft dismiss for this session only unless checkbox used via skip/apply.
+          }
+          setSandboxWizardOpen(false);
+        }}
+        onSkip={({ dontOfferAgain }) => {
+          if (sandboxWizardMode === "trust" && dontOfferAgain) {
+            markSandboxWizardDismissed();
+          }
+          setSandboxWizardOpen(false);
+        }}
+        onApply={(profile, { dontOfferAgain }) => {
+          if (dontOfferAgain) {
+            markSandboxWizardDismissed();
+          }
+          setSandboxWizardOpen(false);
+          applyGlobalSandboxProfile(profile);
         }}
       />
       <VoiceOverlay
