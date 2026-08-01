@@ -283,6 +283,19 @@ import {
 } from "@/i18n";
 import { useUpdaterContext } from "@/hooks/UpdaterProvider";
 import {
+  isAutoUpdatePath,
+  isUpdateActionBusy,
+  mapUpdateStatusCopy,
+  resolveManualUpdateUrls,
+  resolveUpdateChannelHonestyPreferHost,
+  shouldShowInstallButton,
+  shouldShowInstallProgress,
+  shouldShowManualDownloadCtas,
+  updateChannelLabelKey,
+  updateStatusToneClass,
+  type AppUpdateStatusLike,
+} from "@/lib/appUpdateHonesty";
+import {
   loadCodeLineNumbersPref,
   saveCodeLineNumbersPref,
 } from "@/lib/codeLineNumbersPref";
@@ -8710,6 +8723,7 @@ function AboutUpdateRow({
   t: (key: MessageKey, vars?: Record<string, string | number>) => string;
 }) {
   // Single authority: useUpdater (plugin path or GitHub fallback).
+  // Status / channel copy via appUpdateHonesty — never invent versions.
   const {
     status,
     channelInfo,
@@ -8728,64 +8742,67 @@ function AboutUpdateRow({
     }
   };
 
+  const statusLike = status as AppUpdateStatusLike;
+  const copy = mapUpdateStatusCopy(statusLike);
+  const channel = resolveUpdateChannelHonestyPreferHost({
+    hostChannel: channelInfo.channel,
+    pluginEnabled: channelInfo.pluginEnabled,
+    autoUpdateSupported:
+      channelInfo.platformSupported && channelInfo.pluginEnabled,
+    isDesktopHost: true,
+    status: statusLike,
+  });
+  const channelLabelKey = updateChannelLabelKey(channel);
+
   const statusText = (() => {
-    switch (status.state) {
-      case "checking":
-        return t("settings.autoUpdateChecking");
-      case "up-to-date":
-        return status.version
-          ? t("settings.checkUpdateLatest", { version: status.version })
-          : t("settings.autoUpdateUpToDate");
-      case "available":
-        return t("settings.autoUpdateAvailable", { version: status.version });
-      case "downloading":
-        return t("settings.autoUpdateDownloading");
-      case "ready":
-        return t("settings.autoUpdateReady");
-      case "installing":
-        return t("settings.autoUpdateInstalling");
-      case "manual-required":
-        return t("settings.autoUpdateManualRequired", {
-          version: status.version,
-        });
-      case "error":
-        return null;
-      default:
-        return null;
+    if (!copy.titleKey || status.state === "idle" || status.state === "error") {
+      return null;
     }
+    if (copy.version) {
+      return t(copy.titleKey, { version: copy.version });
+    }
+    return t(copy.titleKey);
   })();
 
-  const busy =
-    status.state === "checking" ||
-    status.state === "downloading" ||
-    status.state === "installing";
+  const bodyText = (() => {
+    if (!copy.bodyKey) return null;
+    // Error body is shown under the alert line separately.
+    if (status.state === "error") return null;
+    // Agents note only on auto path; manual path uses manual body.
+    if (
+      copy.bodyKey === "settings.autoUpdateBody.agentsNote" &&
+      !isAutoUpdatePath(channel)
+    ) {
+      return null;
+    }
+    return t(copy.bodyKey);
+  })();
 
+  const busy = isUpdateActionBusy(statusLike);
+  const showInstallProgress = shouldShowInstallProgress(statusLike);
   // Only show install when download finished (ready), never on available.
-  const showInstall = status.state === "ready";
-  const showInstalling = status.state === "installing";
-  const showOpenRelease = status.state === "manual-required";
-  const releaseUrl =
-    status.state === "manual-required" ? status.releaseUrl : githubReleasesUrl;
-  const downloadUrl =
-    status.state === "manual-required" ? status.downloadUrl : null;
-  const assetNames =
-    status.state === "manual-required" ? status.assetNames : undefined;
-  const highlight =
-    status.state === "available" ||
-    status.state === "ready" ||
-    status.state === "downloading" ||
-    status.state === "manual-required";
+  const showInstall = shouldShowInstallButton(statusLike);
+  const showOpenRelease = shouldShowManualDownloadCtas(statusLike);
+  const manualUrls = showOpenRelease
+    ? resolveManualUpdateUrls(statusLike, githubReleasesUrl)
+    : null;
+  const releaseUrl = manualUrls?.releaseUrl ?? githubReleasesUrl;
+  const downloadUrl = manualUrls?.downloadUrl ?? null;
+  const assetNames = manualUrls?.assetNames;
+  const toneClass = updateStatusToneClass(copy.severity);
 
   return (
     <div className="settings-row settings-row--stack">
       <div className="settings-row__text">
         <div className="settings-row__label">{t("settings.checkUpdate")}</div>
         <div className="settings-row__desc">{t("settings.checkUpdateDesc")}</div>
-        <div className="settings-row__hint" data-updater-channel={channelInfo.channel}>
-          {channelInfo.channel === "silent"
-            ? t("settings.autoUpdateChannelSilent")
-            : t("settings.autoUpdateChannelManual")}
-          {channelInfo.endpoint
+        <div
+          className="settings-row__hint"
+          data-updater-channel={channel}
+          data-updater-host-channel={channelInfo.channel}
+        >
+          {t(channelLabelKey)}
+          {channelInfo.endpoint && isAutoUpdatePath(channel)
             ? ` · ${channelInfo.endpoint.replace(/^https:\/\//, "")}`
             : ""}
         </div>
@@ -8802,7 +8819,7 @@ function AboutUpdateRow({
               ? t("settings.checkUpdateChecking")
               : t("settings.checkUpdate")}
           </button>
-          {showInstalling ? (
+          {showInstallProgress && status.state === "installing" ? (
             <button type="button" className="btn btn--solid" disabled>
               {t("settings.autoUpdateInstalling")}
             </button>
@@ -8838,16 +8855,38 @@ function AboutUpdateRow({
         {statusText ? (
           <div
             className={
-              "settings-about-update__status" + (highlight ? " is-available" : "")
+              "settings-about-update__status" +
+              (toneClass ? ` ${toneClass}` : "")
             }
             role="status"
+            data-update-state={status.state}
+            data-update-severity={copy.severity}
           >
             {statusText}
           </div>
         ) : null}
+        {bodyText ? (
+          <div
+            className="settings-about-update__body"
+            data-update-body={copy.bodyKey ?? undefined}
+          >
+            {bodyText}
+          </div>
+        ) : null}
         {status.state === "error" ? (
-          <div className="settings-about-update__err" role="alert">
-            {t("settings.autoUpdateError", { error: status.message })}
+          <div
+            className="settings-about-update__err"
+            role="alert"
+            data-update-error-kind={copy.errorKind ?? "other"}
+          >
+            {t("settings.autoUpdateError", {
+              error: copy.errorMessage ?? status.message,
+            })}
+            {copy.bodyKey ? (
+              <div className="settings-about-update__err-hint">
+                {t(copy.bodyKey)}
+              </div>
+            ) : null}
           </div>
         ) : null}
         {openError ? (
