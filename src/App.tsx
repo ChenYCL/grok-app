@@ -21739,6 +21739,7 @@ export default function App() {
           setGoalOrchEvents(plan.next);
         }}
         lastProcessLimit={lastProcessLimit}
+        existingSessionIds={sessions.map((s) => s.id)}
         onOpenDoctor={() => void openDoctor()}
         onSelectSession={(id) => {
           setShowReliability(false);

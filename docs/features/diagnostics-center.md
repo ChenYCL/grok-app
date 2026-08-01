@@ -14,7 +14,7 @@ Pure assembly: `src/lib/reliabilityCenter.ts` (`buildReliabilityCenter` / `assem
 | Stall signals | Active soft stall, liveMap `terminalReason: stall`, in-memory hard_end ring |
 | Recent errors | Current error-deck banner + in-memory ring of prior cards |
 
-Actions reuse Host APIs: `exportSupportBundle`, open Doctor. Export from Reliability center also attaches a redacted **stall timeline** snapshot (`stall-timeline.json`: structured kinds/seconds/session ids only; Host runs `redact_text`). The Stall timeline card can **download** a client-side redacted history JSON (`buildStallHistoryExport` / known fields only) and **clear** via GlassModal confirm (`planClearStallHistory`). Does **not** scrape secrets from logs into the UI. Empty states are explicit when no signals are present.
+Actions reuse Host APIs: `exportSupportBundle`, open Doctor. Export from Reliability center also attaches a redacted **stall timeline** snapshot (`stall-timeline.json`: structured kinds/seconds/session ids only; Host runs `redact_text`). The Stall timeline card can **download** a client-side redacted history JSON (`buildStallHistoryExport` / known fields only), **clear** via GlassModal confirm (`planClearStallHistory`), and **Open session** when the row’s session id is still in the app list (`planOpenStallSession`). Empty honesty distinguishes no history vs filter-empty (`resolveStallTimelineEmptyState`); durations use `formatStallDuration`. Does **not** scrape secrets from logs into the UI.
 
 ## Windows day-use checklist
 
