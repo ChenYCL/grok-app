@@ -4132,6 +4132,70 @@ const en = {
   "doctor.finding.destructive": "destructive",
   "doctor.finding.noDetail": "No additional detail.",
 
+  // Platform capability matrix (mac / Windows / Linux honesty)
+  "doctor.platformMatrix.title": "Platform matrix",
+  "doctor.platformMatrix.hint":
+    "Honest macOS / Windows / Linux capability notes for this install — path probe, sandbox kernel, window chrome, update path, media loopback. Complements the Windows day-use checklist without inventing probe results.",
+  "doctor.platformMatrix.col.capability": "Capability",
+  "doctor.platformMatrix.col.status": "Status",
+  "doctor.platformMatrix.col.detail": "Detail",
+  "doctor.platformMatrix.row.platform": "Platform",
+  "doctor.platformMatrix.row.cliPathProbe": "CLI path probe",
+  "doctor.platformMatrix.row.sandboxEnforcement": "Sandbox kernel",
+  "doctor.platformMatrix.row.windowChrome": "Window chrome",
+  "doctor.platformMatrix.row.autoUpdate": "App auto-update",
+  "doctor.platformMatrix.row.mediaLoopback": "Media loopback",
+  "doctor.platformMatrix.status.pass": "Pass",
+  "doctor.platformMatrix.status.warn": "Warn",
+  "doctor.platformMatrix.status.na": "N/A",
+  "doctor.platformMatrix.status.unknown": "Unknown",
+  "doctor.platformMatrix.msg.platform.mac": "macOS (detected).",
+  "doctor.platformMatrix.msg.platform.win": "Windows (detected).",
+  "doctor.platformMatrix.msg.platform.linux": "Linux (detected).",
+  "doctor.platformMatrix.msg.platform.unknown":
+    "Platform not recognized — capability notes may be incomplete.",
+  "doctor.platformMatrix.msg.cli.found": "Grok Build CLI binary resolved by path probe.",
+  "doctor.platformMatrix.msg.cli.missing":
+    "CLI path probe did not find a Grok Build binary — install or set path in Settings → Runtime.",
+  "doctor.platformMatrix.msg.cli.unknown":
+    "CLI path probe result not available yet (re-run Doctor).",
+  "doctor.platformMatrix.msg.sandbox.off":
+    "Sandbox isolation is off — no kernel enforcement requested.",
+  "doctor.platformMatrix.msg.sandbox.macSeatbelt":
+    "macOS Seatbelt: CLI OS sandbox enforcement is documented when isolation is on.",
+  "doctor.platformMatrix.msg.sandbox.linuxLandlock":
+    "Linux Landlock: CLI OS sandbox enforcement is documented when isolation is on.",
+  "doctor.platformMatrix.msg.sandbox.winSoftFail":
+    "Windows: CLI may accept the sandbox profile but soft-fails without kernel enforcement — not a hard security boundary.",
+  "doctor.platformMatrix.msg.sandbox.platformSoft":
+    "This platform soft-fails OS sandbox enforcement (CLI may continue without isolation).",
+  "doctor.platformMatrix.msg.sandbox.unknown":
+    "Sandbox kernel support unknown on this platform.",
+  "doctor.platformMatrix.msg.chrome.macOverlay":
+    "macOS Overlay title bar + traffic lights (tauri.macos.conf).",
+  "doctor.platformMatrix.msg.chrome.winFrameless":
+    "Windows frameless custom chrome (min / max / close) — tauri.windows.conf.",
+  "doctor.platformMatrix.msg.chrome.linuxDecorated":
+    "Linux uses standard window decorations (base tauri.conf).",
+  "doctor.platformMatrix.msg.chrome.unknown":
+    "Window chrome layout not classified for this platform.",
+  "doctor.platformMatrix.msg.update.silent":
+    "Signed release path: silent in-app auto-update is available.",
+  "doctor.platformMatrix.msg.update.manual":
+    "Manual / GitHub update path (local, unsigned, or plugin off) — open Releases; no silent install claimed.",
+  "doctor.platformMatrix.msg.update.unsupported":
+    "This package type cannot silent-auto-update (e.g. Linux .deb/.rpm) — use manual download.",
+  "doctor.platformMatrix.msg.update.hostOnly":
+    "Not running in the desktop app host — auto-update N/A.",
+  "doctor.platformMatrix.msg.update.unknown":
+    "Update channel not reported yet — do not assume silent install.",
+  "doctor.platformMatrix.msg.media.loopback":
+    "Local media uses loopback HTTP (127.0.0.1) with path-scope allowlist — not raw media:// in product paths.",
+  "doctor.platformMatrix.msg.media.unavailable":
+    "Media loopback endpoint unavailable — previews may soft-fail until the host media server is up.",
+  "doctor.platformMatrix.msg.media.unknown":
+    "Media loopback capability not classified for this platform.",
+
   // Reliability / Observability center (long-task signals)
   "reliability.title": "Reliability",
   "reliability.close": "Close reliability center",
@@ -11003,6 +11067,70 @@ const zh: Record<MessageKey, string> = {
   "doctor.finding.fixId": "修复 id",
   "doctor.finding.destructive": "破坏性",
   "doctor.finding.noDetail": "无更多详情。",
+
+  // Platform capability matrix (mac / Windows / Linux honesty)
+  "doctor.platformMatrix.title": "平台能力矩阵",
+  "doctor.platformMatrix.hint":
+    "如实展示本安装在 macOS / Windows / Linux 上的能力说明：路径探测、沙箱内核、窗口装饰、更新路径、媒体环回。补充 Windows 日用清单，不编造探测结果。",
+  "doctor.platformMatrix.col.capability": "能力",
+  "doctor.platformMatrix.col.status": "状态",
+  "doctor.platformMatrix.col.detail": "说明",
+  "doctor.platformMatrix.row.platform": "平台",
+  "doctor.platformMatrix.row.cliPathProbe": "CLI 路径探测",
+  "doctor.platformMatrix.row.sandboxEnforcement": "沙箱内核",
+  "doctor.platformMatrix.row.windowChrome": "窗口装饰",
+  "doctor.platformMatrix.row.autoUpdate": "应用自动更新",
+  "doctor.platformMatrix.row.mediaLoopback": "媒体环回",
+  "doctor.platformMatrix.status.pass": "通过",
+  "doctor.platformMatrix.status.warn": "警告",
+  "doctor.platformMatrix.status.na": "不适用",
+  "doctor.platformMatrix.status.unknown": "未知",
+  "doctor.platformMatrix.msg.platform.mac": "macOS（已检测）。",
+  "doctor.platformMatrix.msg.platform.win": "Windows（已检测）。",
+  "doctor.platformMatrix.msg.platform.linux": "Linux（已检测）。",
+  "doctor.platformMatrix.msg.platform.unknown":
+    "未能识别平台 — 能力说明可能不完整。",
+  "doctor.platformMatrix.msg.cli.found": "路径探测已解析到 Grok Build CLI 二进制。",
+  "doctor.platformMatrix.msg.cli.missing":
+    "路径探测未找到 Grok Build 二进制 — 请安装或在 设置 → 运行环境 中指定路径。",
+  "doctor.platformMatrix.msg.cli.unknown":
+    "CLI 路径探测结果尚不可用（请重新运行 Doctor）。",
+  "doctor.platformMatrix.msg.sandbox.off":
+    "沙箱隔离已关闭 — 未请求内核强制。",
+  "doctor.platformMatrix.msg.sandbox.macSeatbelt":
+    "macOS Seatbelt：开启隔离时 CLI 文档支持 OS 沙箱强制。",
+  "doctor.platformMatrix.msg.sandbox.linuxLandlock":
+    "Linux Landlock：开启隔离时 CLI 文档支持 OS 沙箱强制。",
+  "doctor.platformMatrix.msg.sandbox.winSoftFail":
+    "Windows：CLI 可能接受沙箱配置但 soft-fail、无内核强制 — 请勿当作硬安全边界。",
+  "doctor.platformMatrix.msg.sandbox.platformSoft":
+    "此平台 OS 沙箱强制 soft-fail（CLI 可能在无隔离情况下继续运行）。",
+  "doctor.platformMatrix.msg.sandbox.unknown":
+    "此平台的沙箱内核支持未知。",
+  "doctor.platformMatrix.msg.chrome.macOverlay":
+    "macOS Overlay 标题栏 + 交通灯（tauri.macos.conf）。",
+  "doctor.platformMatrix.msg.chrome.winFrameless":
+    "Windows 无边框自绘窗控（最小化 / 最大化 / 关闭）— tauri.windows.conf。",
+  "doctor.platformMatrix.msg.chrome.linuxDecorated":
+    "Linux 使用标准窗口装饰（基础 tauri.conf）。",
+  "doctor.platformMatrix.msg.chrome.unknown":
+    "此平台的窗口装饰布局未分类。",
+  "doctor.platformMatrix.msg.update.silent":
+    "已签名发行路径：支持应用内静默自动更新。",
+  "doctor.platformMatrix.msg.update.manual":
+    "手动 / GitHub 更新路径（本地、未签名或插件关闭）— 打开 Releases；不宣称静默安装。",
+  "doctor.platformMatrix.msg.update.unsupported":
+    "此安装包类型不支持静默自动更新（例如 Linux .deb/.rpm）— 请手动下载。",
+  "doctor.platformMatrix.msg.update.hostOnly":
+    "未在桌面应用宿主中运行 — 自动更新不适用。",
+  "doctor.platformMatrix.msg.update.unknown":
+    "更新通道尚未报告 — 请勿假定静默安装。",
+  "doctor.platformMatrix.msg.media.loopback":
+    "本地媒体走环回 HTTP（127.0.0.1）并经 path-scope 白名单 — 产品路径不用 raw media://。",
+  "doctor.platformMatrix.msg.media.unavailable":
+    "媒体环回端点不可用 — 宿主媒体服务就绪前预览可能 soft-fail。",
+  "doctor.platformMatrix.msg.media.unknown":
+    "此平台的媒体环回能力未分类。",
 
   "reliability.title": "可靠性",
   "reliability.close": "关闭可靠性中心",
