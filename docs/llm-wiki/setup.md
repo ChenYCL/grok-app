@@ -36,6 +36,8 @@ Each mirror is tried multiple times before failing over.
 
 **Checksum trust:** download is HTTPS-allowlisted; streamed SHA-256 is always computed. If the mirror publishes a sidecar, **mismatch aborts**. Official mirrors currently omit sidecars (same as `install.sh` / `install.ps1`), so **missing checksum is allowed by default** and stored as `checksum_verified: false`. Strict fail-closed: `GROK_CLI_REQUIRE_CHECKSUM=1` (override with Settings → Runtime “Allow unverified CLI install” or `GROK_CLI_ALLOW_UNVERIFIED=1`).
 
+**Trust grades (UI):** pure `src/lib/cliTrustSupplyChain.ts` maps install outcomes to grades `verified` · `missing_sidecar` · `mismatch` · `unverified_allowed` · `unknown` — never invents sidecar presence. Setup shows a risk chip on missing sidecar / mismatch (hard-fail honesty; no force on mismatch). Settings → Runtime shows a trust chip for the last App-managed install; Doctor adds a `cli_checksum` finding when `lastCliChecksumVerified` is known.
+
 ### Step 2 — Account (skippable)
 
 OAuth, official key, relay, import CLI / grok-go. No `window.prompt`.
@@ -70,7 +72,7 @@ Pure helpers: `src/lib/setupGatePro.ts` (+ tests).
 | Ready checklist | Never soft-ok CLI; auth row is soft when skipped |
 | Legacy migrate | Older `onboardingDone` / `setupSkipped` + CLI → write `setupWizardCompleted` once |
 
-Checksum: missing sidecar may offer **Install without checksum**; **mismatch never** offers unverified force.
+Checksum: missing sidecar may offer **Install without checksum**; **mismatch never** offers unverified force. Grades + chips: `cliTrustSupplyChain` (`resolveChecksumTrustGrade` / `planInstallWithoutChecksum`).
 
 ## CLI probe (mac + Windows)
 

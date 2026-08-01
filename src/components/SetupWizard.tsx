@@ -25,6 +25,13 @@ import {
   type SetupGateErrorView,
   type SetupWizardStep,
 } from "@/lib/setupGatePro";
+import {
+  cliTrustChipClass,
+  gradeFromSetupErrorKind,
+  resolveChecksumTrustGrade,
+  resolveCliTrustBanner,
+  type ChecksumTrustGrade,
+} from "@/lib/cliTrustSupplyChain";
 
 type Tr = ReturnType<typeof createT>;
 
@@ -64,6 +71,8 @@ export function SetupWizard({
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState<api.CliInstallProgress | null>(null);
   const [errorView, setErrorView] = useState<SetupGateErrorView | null>(null);
+  /** Trust grade from last install attempt or classified checksum error. */
+  const [trustGrade, setTrustGrade] = useState<ChecksumTrustGrade | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [installCmds, setInstallCmds] = useState<api.CliInstallCommands | null>(
     null,
@@ -88,6 +97,8 @@ export function SetupWizard({
       return view;
     }
     setErrorView(view);
+    const g = gradeFromSetupErrorKind(view.kind);
+    if (g) setTrustGrade(g);
     return view;
   }, []);
 
@@ -185,6 +196,16 @@ export function SetupWizard({
           reportError(res.message || tr("setup.error"));
           return;
         }
+        // Honest grade from Host — never invent verified when flag is false/absent.
+        setTrustGrade(
+          resolveChecksumTrustGrade({
+            verifiedFlag:
+              typeof res.checksumVerified === "boolean"
+                ? res.checksumVerified
+                : null,
+            allowUnverified: opts?.allowUnverified === true,
+          }),
+        );
         const next = await recheck(res.path);
         if (next?.found && canAdvancePastRuntime(next.found)) {
           setStep("account");
@@ -207,6 +228,15 @@ export function SetupWizard({
   );
 
   const checksumMissing = !!errorView?.offerUnverifiedInstall;
+  const trustBanner = useMemo(
+    () => (trustGrade ? resolveCliTrustBanner(trustGrade) : null),
+    [trustGrade],
+  );
+  /** Risk chip: missing sidecar (warn) or mismatch (hard fail honesty). */
+  const showTrustRiskChip =
+    trustGrade === "missing_sidecar" ||
+    trustGrade === "mismatch" ||
+    trustGrade === "unverified_allowed";
 
   const pickBinary = useCallback(async () => {
     clearError();
@@ -497,6 +527,33 @@ export function SetupWizard({
                   <p className="setup-mono">
                     {tr("setup.cli.path", { path: cli.path })}
                   </p>
+                )}
+                {showTrustRiskChip && trustBanner && (
+                  <div
+                    className="setup-trust-chip-row"
+                    data-testid="setup-cli-trust-chip"
+                    data-trust-grade={trustGrade ?? undefined}
+                  >
+                    <span
+                      className={cliTrustChipClass(trustBanner.severity)}
+                      title={
+                        trustBanner.hintKey
+                          ? tr(trustBanner.hintKey as MessageKey)
+                          : undefined
+                      }
+                    >
+                      {tr(trustBanner.titleKey as MessageKey)}
+                    </span>
+                    {trustGrade === "mismatch" ? (
+                      <span className="setup-trust-chip-row__hint">
+                        {tr("cliTrust.hint.mismatch" as MessageKey)}
+                      </span>
+                    ) : trustBanner.hintKey ? (
+                      <span className="setup-trust-chip-row__hint">
+                        {tr(trustBanner.hintKey as MessageKey)}
+                      </span>
+                    ) : null}
+                  </div>
                 )}
               </div>
 

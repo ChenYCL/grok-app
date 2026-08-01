@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **CLI supply-chain trust grades**: Setup + Settings → Runtime show explicit checksum risk chips (`verified` · `missing_sidecar` · `mismatch` · `unverified_allowed` · `unknown`) via pure `cliTrustSupplyChain` helpers. Missing sidecar is warn-grade honesty (official mirrors often omit sidecars); mismatch stays fail-closed and is never forceable. Clearer allow-unverified description; Doctor adds a `cli_checksum` finding when last install recorded `checksumVerified`. en/zh/zh-TW + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

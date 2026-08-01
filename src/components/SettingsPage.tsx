@@ -43,6 +43,11 @@ import {
   filterCliSessions,
 } from "@/lib/cliSessionsFilter";
 import {
+  cliTrustChipClass,
+  gradeFromLastInstall,
+  resolveCliTrustBanner,
+} from "@/lib/cliTrustSupplyChain";
+import {
   listArchiveAgeOptionPreviews,
   hasAnyArchiveAgeMatches,
   type ArchiveAgeSessionLike,
@@ -6581,13 +6586,32 @@ export function SettingsPage({
                       {cliInfo.cliAuthPresent
                         ? ` · ${t("account.cliAuthOk")}`
                         : ` · ${t("account.cliAuthMissing")}`}
-                      {lastCliChecksumVerified === true
-                        ? ` · ${t("settings.cliChecksumVerified")}`
-                        : lastCliChecksumVerified === false
-                          ? ` · ${t("settings.cliChecksumUnverified")}`
-                          : ""}
                     </div>
                   )}
+                  {(() => {
+                    const grade = gradeFromLastInstall({
+                      lastCliChecksumVerified,
+                      allowUnverified: allowUnverifiedCliInstall,
+                    });
+                    if (grade === "unknown") return null;
+                    const banner = resolveCliTrustBanner(grade);
+                    return (
+                      <div
+                        className="settings-cli-trust"
+                        data-testid="settings-cli-trust-chip"
+                        data-trust-grade={grade}
+                      >
+                        <span className={cliTrustChipClass(banner.severity)}>
+                          {t(banner.titleKey as MessageKey)}
+                        </span>
+                        {banner.hintKey ? (
+                          <span className="settings-row__hint">
+                            {t(banner.hintKey as MessageKey)}
+                          </span>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                 </div>
                 {onAllowUnverifiedCliInstall ? (
                   <div

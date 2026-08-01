@@ -402,6 +402,13 @@ export interface CliInstallResult {
   version: string | null;
   mirrorUsed: string | null;
   message: string;
+  /** Streamed SHA-256 when Host computed it. */
+  sha256?: string | null;
+  /**
+   * `true` = published sidecar matched; `false` = installed without sidecar
+   * (HTTPS allowlist + binary probe). Mismatch never returns ok.
+   */
+  checksumVerified?: boolean | null;
 }
 
 export interface CliInstallCommands {

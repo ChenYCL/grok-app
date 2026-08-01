@@ -1837,9 +1837,22 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.codebaseSearch.clear": "清除",
   "settings.allowUnverifiedCli": "允許未校驗的 CLI 安裝",
   "settings.allowUnverifiedCliDesc":
-    "官方鏡像通常不發佈 SHA-256 校驗檔；缺少校驗時預設仍可安裝（HTTPS 白名單 + 二進位探測）。開啟此項可在設定了 GROK_CLI_REQUIRE_CHECKSUM=1 時仍允許安裝。校驗和不一致一律拒絕。",
+    "官方鏡像通常不發佈 SHA-256 校驗檔——缺少校驗為警告級風險（HTTPS 白名單 + 二進位探測），預設仍可安裝。僅在設定了 GROK_CLI_REQUIRE_CHECKSUM=1 時需要開啟此項以繼續安裝。已發佈校驗和不匹配時一律拒絕，且不可強制略過。",
   "settings.cliChecksumVerified": "上次安裝校驗通過",
   "settings.cliChecksumUnverified": "上次安裝未校驗",
+  "cliTrust.grade.verified": "校驗已通過",
+  "cliTrust.grade.missingSidecar": "無校驗檔",
+  "cliTrust.grade.mismatch": "校驗和不匹配",
+  "cliTrust.grade.unverifiedAllowed": "已允許未校驗安裝",
+  "cliTrust.grade.unknown": "校驗狀態未知",
+  "cliTrust.hint.missingSidecar":
+    "官方鏡像目前未發佈 SHA-256 校驗檔。安裝依賴 HTTPS 白名單 + 二進位探測，未經密碼學校驗。",
+  "cliTrust.hint.mismatch":
+    "已發佈校驗和與下載內容不一致，安裝已拒絕——校驗失敗時不可強制略過。",
+  "cliTrust.hint.unverifiedAllowed":
+    "在無已發佈校驗檔的情況下完成安裝（逃生開關或預設「缺校驗可裝」策略）。",
+  "cliTrust.hint.unknown":
+    "尚無 App 託管安裝的校驗記錄。手動或外部安裝不評級。",
   "settings.cliPath": "CLI 路徑",
   "settings.cliPathDesc": "Grok Build CLI 可執行檔路徑",
   "settings.cliNotFound": "（未找到）",
