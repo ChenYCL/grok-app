@@ -73,15 +73,15 @@ Machine gate `final` green; handoff `docs/plans/CODE-QUALITY-COMPLETION.md` writ
 
 ## Residual program (post-final, 2026-08-01)
 
-Parallel non-overlapping tracks (multi-agent):
+Parallel non-overlapping tracks (multi-agent) — **landed**:
 
-| Track | Owner path | Status |
-|-------|------------|--------|
-| residual-clippy | `src-tauri/**` | IN_PROGRESS |
-| residual-resource-viewer | ResourceViewer + parts | IN_PROGRESS |
-| residual-i18n | `src/i18n/**` | IN_PROGRESS |
-| residual-settings | SettingsPage + settings/* | IN_PROGRESS |
-| residual-appworkbench | AppWorkbench + hooks | IN_PROGRESS |
-| residual-settings-catalog | settingsCatalog split | IN_PROGRESS |
+| Track | Owner path | Status | Notes |
+|-------|------------|--------|-------|
+| residual-clippy | `src-tauri/**` | **PASS** | 478→0; CI `-D warnings` |
+| residual-resource-viewer | ResourceViewer + parts | **PASS** | 4938→modules |
+| residual-i18n | `src/i18n/**` | **PASS** | domain modules + barrels |
+| residual-settings | SettingsPage + settings/* | **PASS** | 8874→1817 |
+| residual-appworkbench | AppWorkbench + hooks | **PASS** | 24572→22907; host events |
+| residual-settings-catalog | settingsCatalog split | **PASS** | domain entries |
 
-Behavior freeze still applies; do not loosen gate script.
+Open: further AppWorkbench shrink (modals / send / view shell). Gate thresholds unchanged; final still **PASS**.
