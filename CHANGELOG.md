@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Remote security ops** (Settings → Remote control → IM → Bridge overview): unified honesty checklist for allow-from ACL summary, inbound rate-limit status, Bridge health, phone-mirror write default, remote YOLO, and live-claim (never invents WS/Gateway without Bridge link). Pure `remoteSecurityOps` helpers (`parseAllowFromList` · `summarizeAllowFrom` · `classifyRemoteSecurityRisk` · `buildRemoteSecurityChecklist` · redacted `formatRemoteSecuritySummaryText`) + tests; copy summary button; link to channel allow-from; dangerous-write confirm inventory; YOLO enable uses GlassModal (no `window.confirm`); i18n en/zh/zh-TW; `docs/features/remote-security.md`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
