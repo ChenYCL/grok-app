@@ -91,12 +91,6 @@ import {
   shouldConfirmQuit,
 } from "@/lib/confirmQuit";
 import {
-  formatSessionDataModeConfirmBody,
-  joinSessionDataModeConfirmMessage,
-  normalizeSessionDataMode,
-  planSessionDataModeSwitch,
-} from "@/lib/sessionDataMode";
-import {
   loadNotifySoundPref,
   NOTIFY_SOUND_CHANGE_EVENT,
   saveNotifySoundPref,
@@ -116,7 +110,6 @@ import {
   shouldDeferWarmConnectForForeignBusy,
   shouldSkipWarmConnect,
 } from "@/lib/multiWindow";
-import { parseMessageDeepLink } from "@/lib/messageNodeDeepLink";
 import {
   applyChatWidth,
   loadChatWidth,
@@ -138,7 +131,11 @@ import {
   DEFAULT_LAYOUT,
   WINDOW_CONTROLS_INSET,
   clampAsideWidth,
+  clampSidebarDragWidth,
+  clampSidebarWidth,
+  resolveSidebarDragEnd,
   SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_WIDTH_MIN,
   isMirrorPhoneLayout,
   loadLayout,
   mergeAsideWidth,
@@ -183,8 +180,6 @@ import {
   applyToolEvent,
   applyTurnError,
   applyTurnMarker,
-  parseCompactContent,
-  parseToolStepContent,
   canSend,
   canType,
   clearPriorTurnStreaming,
@@ -195,9 +190,7 @@ import {
   presentErrorBanner,
   snapshotOutgoingMessages,
   type ErrorBannerView,
-  buildSegmentsFromLegacy,
   weaveToolsIntoAssistantSegments,
-  splitThoughtPhases,
   truncateBeforeLastUser,
   truncateThroughUserPrompt,
   canRewindToUserPrompt,
@@ -235,20 +228,12 @@ import {
   COMPACTION_MODES,
   DEFAULT_COMPACTION_DETAIL,
   DEFAULT_COMPACTION_MODE,
-  cliSupportsCompactionFlags,
   compactionDetailApplies,
   normalizeCompactionDetail,
   normalizeCompactionMode,
   type CompactionDetailId,
   type CompactionModeId,
 } from "@/lib/compactionMode";
-import {
-  buildCompactDialogFooter,
-  buildCompactPresetNote,
-  compactSettingsApplyMessageKey,
-  resolveCompactApplyEffect,
-  sessionHasLiveAgent,
-} from "@/lib/compactApplyHonesty";
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import {
@@ -259,13 +244,11 @@ import {
 } from "@/lib/planSession";
 import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import { AgentDashboardModal } from "@/components/AgentDashboardModal";
-import { SessionTaskBoardModal } from "@/components/SessionTaskBoardModal";
 import { BatchAgentsModal } from "@/components/BatchAgentsModal";
 import { ReliabilityCenterModal } from "@/components/ReliabilityCenterModal";
 import {
   collectActivitySessions,
   countBusyLiveMapSessions,
-  isActiveSessionSnapshot,
   stoppableActivitySessions,
 } from "@/lib/agentActivity";
 import {
@@ -274,10 +257,6 @@ import {
   type TasksBindCwdResult,
 } from "@/lib/tasksPanelPro";
 import {
-  formatOpenEditorErrorMessage,
-  resolveOpenEditorError,
-} from "@/lib/openEditorHonesty";
-import {
   loadTrayBusyBadgePref,
   saveTrayBusyBadgePref,
 } from "@/lib/trayBusyBadgePref";
@@ -285,9 +264,7 @@ import { resolveTrayBusyBadgeCount } from "@/lib/trayNotifyPro";
 import {
   collectAgentDashboardRows,
   countBusyDashboardRows,
-  planDashboardDispatch,
 } from "@/lib/agentDashboard";
-import { buildTaskBoard } from "@/lib/sessionTaskBoard";
 import {
   BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
   buildBatchPromptBody,
@@ -317,38 +294,25 @@ import {
   type ReliabilityStallSignal,
 } from "@/lib/reliabilityCenter";
 import {
-  buildGoalControlSummary,
-  canClearGoalBar,
-  filterGoalOrchEvents,
   GOAL_ORCH_EVENT_MAX,
   goalEventFromHostPayload,
   goalOrchPhaseLabelKey,
   loadGoalOrchUiEnabled,
-  planClearGoalOrchEvents,
   prependGoalOrchEvent,
   resolveGoalOrchSessionIndicator,
   saveGoalOrchUiEnabled,
-  shouldConfirmClearGoalOrch,
   type GoalOrchEvent,
   type GoalOrchHostPayload,
 } from "@/lib/goalOrch";
 import * as api from "@/lib/api";
 import {
   SANDBOX_PROFILES,
-  cliSupportsSandbox,
   isDangerousSandboxProfile,
   normalizeSandboxProfile,
   sandboxDangerConfirmKey,
   sandboxProfileLabelKey,
   type SandboxProfileId,
 } from "@/lib/sandboxProfile";
-import { SandboxWizard } from "@/components/SandboxWizard";
-import {
-  loadSandboxWizardDismissed,
-  markSandboxWizardDismissed,
-  shouldOfferSandboxWizard,
-  type SandboxWizardMode,
-} from "@/lib/sandboxWizard";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import {
   archiveAgeEmptyMessageKey,
@@ -494,13 +458,6 @@ import {
   resolveContinueCwdSoftFail,
   type ContinueCwdSoftFailKind,
 } from "@/lib/continueCwd";
-import {
-  buildParallelTaskComposerText,
-  evaluateParallelTaskPreflight,
-  parallelTaskPreflightMessageKey,
-  planParallelTask,
-  suggestParallelWorktreeName,
-} from "@/lib/worktreeParallel";
 import {
   sessionExportMimeType,
   sessionToHtml,
@@ -652,10 +609,18 @@ import {
   collectSessionRelativeMediaRefs,
   isImagePath,
   mergeAttachments,
-  mergeMessageAttachments,
-  parseAttachmentsFromContent,
   type Attachment,
 } from "@/lib/attachments";
+import { mapStoredMessagesToChat } from "@/lib/mapStoredMessages";
+import {
+  detectAtQueryFromEditor,
+  rankAtFileHits,
+  removeAtTokenFromDraft,
+} from "@/lib/atFileQuery";
+import {
+  ComposerAtPanel,
+  type ComposerAtFileEntry,
+} from "@/components/ComposerAtPanel";
 import {
   formatAttachErrorMessage,
   isAttachPayloadTooLarge,
@@ -668,7 +633,6 @@ import { fileKey as clipboardFileKey } from "@/lib/clipboardPaste";
 import {
   applySkillAtSlash,
   isDraftEmpty,
-  hydrateDisplayContent,
   detectSlashQueryFromEditor,
   parseStoredContent,
   serializeForAgent,
@@ -748,16 +712,6 @@ import {
   PromptHistoryPanel,
   type PromptHistoryScope,
 } from "@/components/PromptHistoryPanel";
-import { SkillsTaskPickerPanel } from "@/components/SkillsTaskPickerPanel";
-import {
-  filterPickerEligibleSkills,
-  loadRecentSkillIds,
-  planInsertSkill,
-  rankSkillsForTask,
-  recordRecentSkill,
-  SKILLS_RECENT_CHANGE_EVENT,
-  type SkillsPickerSkill,
-} from "@/lib/skillsTaskPicker";
 import {
   planClearSendQueue,
   queuePreviewText,
@@ -765,12 +719,6 @@ import {
   shouldEnqueueSend,
   type QueuedSend,
 } from "@/lib/sendQueue";
-import {
-  planOpenAsNewSessionInstead,
-  resolveSendControlLabelKey,
-  resolveSendIntent,
-  resolveSendQueueStripIntentLabel,
-} from "@/lib/sendIntent";
 import {
   useSendQueue,
   type ExecuteSendFromQueue,
@@ -788,6 +736,7 @@ import { AttachmentCard } from "@/components/AttachmentCard";
 import { ImageViewerProvider } from "@/components/ImageViewer";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { VirtualList } from "@/components/VirtualList";
+import { SidebarSessionName } from "@/components/SidebarSessionName";
 import {
   SIDEBAR_DENSITY_EVENT,
   loadSidebarDensity,
@@ -816,6 +765,7 @@ import {
   normalizeWorktreeLayout,
   pathsEqual,
   resolveSessionWorktreeBadge,
+  sanitizeWorktreeName,
   sanitizeWorktreeRef,
   sessionWorktreeTooltip,
   worktreeEntryForPath,
@@ -834,17 +784,6 @@ import {
   sanitizePrTitle,
   shipOutcomeSummary,
 } from "@/lib/wtShipFlow";
-import {
-  COMPARE_ENTRY_DISPLAY_CAP,
-  capCompareEntries,
-  formatCompareSummaryLine,
-  joinWorktreeRelPath,
-  nameStatusLetter,
-  parseNameStatus,
-  planWorktreeCompare,
-  summarizeCompareEntries,
-  type NameStatusEntry,
-} from "@/lib/worktreeCompare";
 import {
   PR_HUB_ANCHOR_ID,
   buildPrHubDeepLink,
@@ -971,7 +910,6 @@ import {
   IconHelp,
   IconPlug,
   IconPuzzle,
-  IconSkills,
 } from "@/components/icons";
 import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
 import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
@@ -997,14 +935,6 @@ import {
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
 import type { ComposerModelPick } from "@/lib/composerModelGroups";
-import {
-  buildApplyFooterNote,
-  buildApplyHonestyBanner,
-  classifyModelEffortError,
-  modelEffortErrorMessageKey,
-  resolveEffortApplyEffect,
-  resolveModelApplyEffect,
-} from "@/lib/modelEffortApply";
 import { resolveProviderBrandId } from "@/lib/providerPresets";
 import {
   ProviderBrandIcon,
@@ -1083,8 +1013,6 @@ function paletteActionIcon(id: string) {
       return <IconList size={size} />;
     case "open-agent-dashboard":
       return <IconActivity size={size} />;
-    case "open-task-board":
-      return <IconList size={size} />;
     case "open-batch-agents":
       return <IconList size={size} />;
     case "doctor":
@@ -1102,8 +1030,6 @@ function paletteActionIcon(id: string) {
       return <IconCopy size={size} />;
     case "continue-cwd":
       return <IconHistory size={size} />;
-    case "parallel-worktree-task":
-      return <IconSquarePen size={size} />;
     case "resume-with-code-restore":
       return <IconRewind size={size} />;
     case "settings-appearance":
@@ -1369,11 +1295,6 @@ export default function App() {
   );
   /** In-memory ring of CLI goal_updated / goal phase events (never invented). */
   const [goalOrchEvents, setGoalOrchEvents] = useState<GoalOrchEvent[]>([]);
-  /** Session chip control menu (open Reliability / copy / clear timeline). */
-  const [goalOrchChipMenuOpen, setGoalOrchChipMenuOpen] = useState(false);
-  /** GlassModal confirm for clearing local goal orch timeline from session chip. */
-  const [goalOrchClearConfirmOpen, setGoalOrchClearConfirmOpen] =
-    useState(false);
   const [messageTimeFormat, setMessageTimeFormat] = useState<MessageTimeFormat>(
     () => loadMessageTimeFormatPref(localStorage),
   );
@@ -1557,22 +1478,6 @@ export default function App() {
     secondaryFocusSessionId,
   );
   secondaryFocusSessionIdRef.current = secondaryFocusSessionId;
-  /**
-   * Pending message-node deep link (`#/session/<id>/m/<mid>`).
-   * Cleared after ConversationThread scrolls (or soft-misses).
-   */
-  const [pendingLocateMessageId, setPendingLocateMessageId] = useState<
-    string | null
-  >(() => {
-    if (typeof window === "undefined") return null;
-    return parseMessageDeepLink(window.location.hash)?.messageId ?? null;
-  });
-  /** Session id the pending locate belongs to (avoid scrolling the wrong chat). */
-  const pendingLocateSessionIdRef = useRef<string | null>(
-    typeof window !== "undefined"
-      ? (parseMessageDeepLink(window.location.hash)?.sessionId ?? null)
-      : null,
-  );
   /** False until desktop window label is resolved (or non-desktop path). */
   const [windowRoleReady, setWindowRoleReady] = useState(
     () => !api.isDesktopHost(),
@@ -1645,20 +1550,6 @@ export default function App() {
   /** Clear recent prompts — App-level GlassModal (avoids floating-menu dismiss). */
   const [promptHistoryClearOpen, setPromptHistoryClearOpen] = useState(false);
   /**
-   * Task-level skills picker (search + recent + host catalog).
-   * Catalog rows only from host `skills_list` — never invent names.
-   */
-  const [skillsPickerOpen, setSkillsPickerOpen] = useState(false);
-  const [skillsPickerQuery, setSkillsPickerQuery] = useState("");
-  const [skillsPickerActive, setSkillsPickerActive] = useState(0);
-  const [skillsPickerRecent, setSkillsPickerRecent] = useState<string[]>(() =>
-    typeof localStorage !== "undefined" ? loadRecentSkillIds() : [],
-  );
-  const skillsPickerPanelRef = useRef<HTMLDivElement>(null);
-  const skillsPickerTriggerRef = useRef<HTMLButtonElement>(null);
-  const skillsPickerOpenRef = useRef(false);
-  skillsPickerOpenRef.current = skillsPickerOpen;
-  /**
    * Archive-by-age pro confirm (GlassModal with preview count + title samples).
    * Null when closed. Built via pure `planArchiveOlderThan`.
    */
@@ -1727,6 +1618,25 @@ export default function App() {
   /** Kind chip for slash / + palette (`all` | mode | action | prompt | skill). */
   const [slashKindFilter, setSlashKindFilter] =
     useState<SlashKindFilter>("all");
+  /**
+   * Live `@` file token (rAF, same source as slash).
+   * Suppressed while slash/plus menu is open (slash wins).
+   */
+  const [liveAt, setLiveAt] = useState<{
+    present: boolean;
+    query: string;
+    start: number;
+    end: number;
+  }>({ present: false, query: "", start: 0, end: 0 });
+  const liveAtRef = useRef(liveAt);
+  liveAtRef.current = liveAt;
+  const atDismissedSigRef = useRef<string | null>(null);
+  const [atActiveIndex, setAtActiveIndex] = useState(0);
+  const [atEntries, setAtEntries] = useState<ComposerAtFileEntry[]>([]);
+  const [atLoading, setAtLoading] = useState(false);
+  const [atSoftFail, setAtSoftFail] = useState<string | null>(null);
+  const atPanelRef = useRef<HTMLDivElement>(null);
+  const atSearchGenRef = useRef(0);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMcpModal, setShowMcpModal] = useState(false);
   const [showCompactModal, setShowCompactModal] = useState(false);
@@ -2416,10 +2326,6 @@ export default function App() {
   /** Optional product tour (not first-run account setup). */
   const [showProductTutorial, setShowProductTutorial] = useState(false);
   const productTutorialAutoOfferedRef = useRef(false);
-  /** Sandbox profile wizard after trust / Settings guide. */
-  const [sandboxWizardOpen, setSandboxWizardOpen] = useState(false);
-  const [sandboxWizardMode, setSandboxWizardMode] =
-    useState<SandboxWizardMode>("trust");
   // Soft one-time product tour after setup gate — never blocks setup wizard.
   useEffect(() => {
     if (appGate !== "ready") return;
@@ -2654,9 +2560,6 @@ export default function App() {
   const didRestoreLastRef = useRef(false);
   const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
   const [agentDashboardOpen, setAgentDashboardOpen] = useState(false);
-  const [taskBoardOpen, setTaskBoardOpen] = useState(false);
-  const [taskBoardIncludeArchived, setTaskBoardIncludeArchived] =
-    useState(false);
   const [batchAgentsOpen, setBatchAgentsOpen] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
@@ -2680,11 +2583,6 @@ export default function App() {
   );
   /** When true, after create bind cwd and open a draft chat on that path. */
   const [worktreeCreateStartChat, setWorktreeCreateStartChat] = useState(false);
-  /** Optional first composer prompt for parallel-task / new-chat create. */
-  const [worktreeCreateFirstPrompt, setWorktreeCreateFirstPrompt] =
-    useState("");
-  /** When true + trusted, send first prompt once after open (default off). */
-  const [worktreeCreateAutoSend, setWorktreeCreateAutoSend] = useState(false);
   /** Absolute `~/.grok` from host list (CLI path preview + badge detection). */
   const [cliGrokHome, setCliGrokHome] = useState<string | null>(null);
   /** CLI-tracked worktrees from `grok worktree list` (soft-fail). */
@@ -2704,25 +2602,6 @@ export default function App() {
   const [worktreeGcError, setWorktreeGcError] = useState<string | null>(null);
   const [worktreeGcPreview, setWorktreeGcPreview] =
     useState<api.GitWorktreeGcResult | null>(null);
-  /** Compare linked worktree vs main (diff list only; no merge/apply). */
-  const [worktreeCompareOpen, setWorktreeCompareOpen] = useState(false);
-  const [worktreeCompareBusy, setWorktreeCompareBusy] = useState(false);
-  const [worktreeCompareError, setWorktreeCompareError] = useState<
-    string | null
-  >(null);
-  const [worktreeCompareEntries, setWorktreeCompareEntries] = useState<
-    NameStatusEntry[]
-  >([]);
-  const [worktreeCompareMeta, setWorktreeCompareMeta] = useState<{
-    base: string;
-    other: string;
-    baseRef?: string | null;
-    otherRef?: string | null;
-    baseBranch?: string | null;
-    otherBranch?: string | null;
-    truncated?: boolean;
-    hostTotal?: number;
-  } | null>(null);
   /** Worktree ship flow (push + Open PR) dialog. */
   const [shipOpen, setShipOpen] = useState(false);
   const [shipTitle, setShipTitle] = useState("");
@@ -2773,6 +2652,11 @@ export default function App() {
   /** Epoch ms when the current agent turn became busy (for elapsed UI). */
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [resizingAside, setResizingAside] = useState(false);
+  const [resizingSidebar, setResizingSidebar] = useState(false);
+  /** Pointer-drag origin for left-rail resize (clientX + width at down). */
+  const sidebarResizeStartRef = useRef<{ x: number; width: number } | null>(
+    null,
+  );
   const [account, setAccount] = useState<api.AccountStatus | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
@@ -2925,9 +2809,19 @@ export default function App() {
       return;
     }
     const cur = layoutRef.current;
+    // After auto-collapse (drag below threshold) width is stored as MIN;
+    // always open at least SIDEBAR_WIDTH_MIN.
+    const openWidth = clampSidebarWidth(
+      cur.sidebarWidth || SIDEBAR_WIDTH_MIN,
+      {
+        viewportWidth:
+          typeof window !== "undefined" ? window.innerWidth : undefined,
+        asideOccupiedWidth: cur.asideCollapsed ? 0 : cur.asideWidth || 0,
+      },
+    );
     const projected = {
       sidebarCollapsed: false as const,
-      sidebarWidth: cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+      sidebarWidth: openWidth,
       asideCollapsed: cur.asideCollapsed,
       asideWidth: cur.asideCollapsed
         ? cur.asideWidth
@@ -2935,7 +2829,11 @@ export default function App() {
     };
     void fitWindowThenClampAside(projected).then((width) => {
       setLayout((l) => {
-        let n = { ...l, sidebarCollapsed: false };
+        let n = {
+          ...l,
+          sidebarCollapsed: false,
+          sidebarWidth: openWidth,
+        };
         if (!projected.asideCollapsed) {
           n = { ...n, asideWidth: width };
         }
@@ -3313,9 +3211,7 @@ export default function App() {
           ) {
             setPrefsScope(settings.composerPrefsScope);
           }
-          setSessionDataMode(
-            normalizeSessionDataMode(settings.sessionDataMode),
-          );
+          setSessionDataMode(settings.sessionDataMode || "independent");
         }
         const catalog: ModelOption[] =
           modelsRes?.models?.length
@@ -3452,9 +3348,7 @@ export default function App() {
           }),
         );
       }
-      setSessionDataMode(
-        normalizeSessionDataMode(settings.sessionDataMode),
-      );
+      setSessionDataMode(settings.sessionDataMode || "independent");
       setDefaultOpenTarget(
         (settings as { defaultOpenTarget?: string }).defaultOpenTarget ||
           "finder",
@@ -5309,65 +5203,8 @@ export default function App() {
                   messagesBySessionRef.current.delete(sid);
                   const stored = await api.sessionMessages(sid);
                   if (cancelled || viewingSessionIdRef.current !== sid) return;
-                  const mapped: ChatMessage[] = stored.map((m) => {
-                    const parsed = parseAttachmentsFromContent(m.content);
-                    const rawContent =
-                      parsed.text ||
-                      (parsed.attachments.length ? "" : m.content);
-                    const content =
-                      m.role === "user"
-                        ? hydrateDisplayContent(rawContent)
-                        : rawContent;
-                    const rawMarker =
-                      (m as { marker?: string }).marker || undefined;
-                    const marker =
-                      rawMarker ||
-                      (m.role === "tool" && content.startsWith("context_compact")
-                        ? "context_compact"
-                        : m.role === "tool" && content.startsWith("tool_step|")
-                          ? "tool_step"
-                          : m.role === "tool" &&
-                              content.startsWith("turn_cancelled")
-                            ? "turn_cancelled"
-                            : undefined);
-                    const toolParsed =
-                      marker === "tool_step"
-                        ? parseToolStepContent(content)
-                        : null;
-                    const role = m.role as "user" | "assistant" | "tool";
-                    let displayContent = toolParsed?.title || content;
-                    if (role === "assistant" && displayContent) {
-                      displayContent =
-                        extractAutomationPayload(displayContent).cleanText;
-                    }
-                    const thoughtPhases = splitThoughtPhases(m.thought);
-                    return {
-                      id: m.id,
-                      role,
-                      content: displayContent,
-                      thought: m.thought ?? undefined,
-                      thoughtPhases,
-                      segments:
-                        role === "assistant"
-                          ? buildSegmentsFromLegacy(
-                              displayContent,
-                              m.thought,
-                              thoughtPhases,
-                            )
-                          : undefined,
-                      isError: m.isError || undefined,
-                      createdAt: m.createdAt || undefined,
-                      marker,
-                      toolCallId: m.id.startsWith("tool-")
-                        ? m.id.slice(5)
-                        : undefined,
-                      toolKind: toolParsed?.kind,
-                      toolStatus: toolParsed?.status,
-                      toolDetail: toolParsed?.detail,
-                      toolPath: toolParsed?.path,
-                      streaming: false,
-                    };
-                  });
+                  // Same mapper as openSession — keep attachments on IM reload.
+                  const mapped = mapStoredMessagesToChat(stored);
                   const woven = weaveToolsIntoAssistantSegments(mapped);
                   messagesBySessionRef.current.set(sid, woven);
                   setMessages(woven);
@@ -5600,7 +5437,6 @@ export default function App() {
   );
 
   // Hash route: #/settings[/section[/tab]][?pr=N] | #/automations | #/workbench
-  // | #/session/<id>[/m/<messageId>]
   // Explicit #/settings/{section}… deep links always win; bare #/settings uses last.
   useEffect(() => {
     const syncFromHash = () => {
@@ -5644,33 +5480,6 @@ export default function App() {
       } else if (raw === "" || raw === "workbench" || raw === "home") {
         setAppView("workbench");
         setMainPane("chat");
-      } else {
-        // Session / message-node deep link (multi-window + in-app jump).
-        const msgLink = parseMessageDeepLink(fullHash);
-        const sessionOnly = parseSessionDeepLinkHash(fullHash);
-        if (msgLink || sessionOnly) {
-          setAppView("workbench");
-          setMainPane("chat");
-          const focusId = msgLink?.sessionId ?? sessionOnly;
-          if (focusId) {
-            setSecondaryFocusSessionId(focusId);
-            secondaryFocusSessionIdRef.current = focusId;
-          }
-          if (msgLink) {
-            pendingLocateSessionIdRef.current = msgLink.sessionId;
-            setPendingLocateMessageId(msgLink.messageId);
-          } else {
-            pendingLocateSessionIdRef.current = null;
-            setPendingLocateMessageId(null);
-          }
-          // Open the session when the list is ready (same path as boot restore).
-          if (focusId && sessionsRef.current.length > 0) {
-            const row = sessionsRef.current.find((s) => s.id === focusId);
-            if (row) {
-              void openSessionRef.current(row);
-            }
-          }
-        }
       }
     };
     syncFromHash();
@@ -5738,74 +5547,7 @@ export default function App() {
 
     try {
       const stored = await api.sessionMessages(s.id);
-      let mapped: ChatMessage[] = stored.map((m) => {
-        const parsed = parseAttachmentsFromContent(m.content);
-        const storedAtts: Attachment[] = (m.attachments ?? []).map((a) => ({
-          path: a.path,
-          name: a.name || a.path.split(/[/\\]/).pop() || a.path,
-          isDir: !!a.isDir,
-        }));
-        // @path lines (user) + persisted image_gen cards + absolute paths in text
-        const attachments = mergeMessageAttachments(
-          mergeAttachments(parsed.attachments, storedAtts),
-          m.content,
-        );
-        const rawContent =
-          parsed.text || (parsed.attachments.length ? "" : m.content);
-        // User turns: restore [[skill:]] chips from agent-form `/name` history.
-        const content =
-          m.role === "user" ? hydrateDisplayContent(rawContent) : rawContent;
-        const rawMarker = (m as { marker?: string }).marker || undefined;
-        const marker =
-          rawMarker ||
-          (m.role === "tool" && content.startsWith("context_compact")
-            ? "context_compact"
-            : m.role === "tool" && content.startsWith("tool_step|")
-              ? "tool_step"
-              : m.role === "tool" && content.startsWith("turn_cancelled")
-                ? "turn_cancelled"
-                : undefined);
-        const compactMeta =
-          marker === "context_compact"
-            ? parseCompactContent(content) || undefined
-            : undefined;
-        const toolParsed =
-          marker === "tool_step" ? parseToolStepContent(content) : null;
-        const role = m.role as "user" | "assistant" | "tool";
-        let displayContent = toolParsed?.title || content;
-        // Never show silent automation fence to the user on reload.
-        if (role === "assistant" && displayContent) {
-          displayContent = extractAutomationPayload(displayContent).cleanText;
-        }
-        const thoughtPhases = splitThoughtPhases(m.thought);
-        return {
-          id: m.id,
-          role,
-          content: displayContent,
-          thought: m.thought ?? undefined,
-          thoughtPhases,
-          // Reconstruct interleaved timeline for reload (first phase → body → rest).
-          segments:
-            role === "assistant"
-              ? buildSegmentsFromLegacy(
-                  displayContent,
-                  m.thought,
-                  thoughtPhases,
-                )
-              : undefined,
-          isError: m.isError || undefined,
-          attachments,
-          createdAt: m.createdAt || undefined,
-          marker,
-          compactMeta: compactMeta ?? undefined,
-          toolCallId: m.id.startsWith("tool-") ? m.id.slice(5) : undefined,
-          toolKind: toolParsed?.kind,
-          toolStatus: toolParsed?.status,
-          toolDetail: toolParsed?.detail,
-          toolPath: toolParsed?.path,
-          streaming: false,
-        };
-      });
+      let mapped: ChatMessage[] = mapStoredMessagesToChat(stored);
       // Short paths like `images/1.jpg` → agent session dir → image cards
       if (api.isTauri()) {
         const rels = collectSessionRelativeMediaRefs(mapped);
@@ -6627,7 +6369,6 @@ export default function App() {
           outcome: "skipped",
           source: "run_now",
           error: "busy",
-          projectId: auto.projectId,
         });
         return false;
       }
@@ -6638,7 +6379,6 @@ export default function App() {
           outcome: "skipped",
           source: "run_now",
           error: "session_busy",
-          projectId: auto.projectId,
         });
         return false;
       }
@@ -6657,7 +6397,6 @@ export default function App() {
             outcome: "error",
             source: "run_now",
             error: detail,
-            projectId: auto.projectId,
           });
           return false;
         }
@@ -6670,7 +6409,6 @@ export default function App() {
             outcome: "error",
             source: "run_now",
             error: detail,
-            projectId: auto.projectId,
           });
           return false;
         }
@@ -6772,7 +6510,6 @@ export default function App() {
             outcome: "error",
             source: "run_now",
             error: detail,
-            projectId: auto.projectId,
           });
           // Drop empty shell sessions so sidebar does not show SuperGrok ghosts.
           if (createdSessionId && api.isTauri()) {
@@ -6853,8 +6590,6 @@ export default function App() {
             outcome: "error",
             source: "run_now",
             error: errText,
-            sessionId: sessionId,
-            projectId: auto.projectId,
           });
           return false;
         }
@@ -6877,8 +6612,6 @@ export default function App() {
           outcome: "ok",
           source: "run_now",
           at: lastRunAt,
-          sessionId: sessionId,
-          projectId: auto.projectId,
         });
         setToast(tr("automations.runningToast", { title: auto.title }));
         window.setTimeout(() => setToast(null), 3200);
@@ -6891,7 +6624,6 @@ export default function App() {
           outcome: "error",
           source: "run_now",
           error: e,
-          projectId: auto.projectId,
         });
         return false;
       } finally {
@@ -6930,7 +6662,6 @@ export default function App() {
           name: title,
           outcome: "ok",
           source: "host",
-          sessionId: p?.sessionId ?? null,
         });
         setToast(tr("automations.runningToast", { title }));
         window.setTimeout(() => setToast(null), 3200);
@@ -7337,31 +7068,6 @@ export default function App() {
 
     commit();
   };
-
-  /** Soft offer sandbox guide after a successful project trust. */
-  const maybeOfferSandboxWizardAfterTrust = useCallback(() => {
-    try {
-      if (
-        !shouldOfferSandboxWizard({
-          justTrusted: true,
-          currentProfile: sandboxProfile,
-          dismissed: loadSandboxWizardDismissed(),
-        })
-      ) {
-        return;
-      }
-      setSandboxWizardMode("trust");
-      // After trust confirm dialog closes — open wizard next tick.
-      window.setTimeout(() => setSandboxWizardOpen(true), 0);
-    } catch {
-      /* ignore */
-    }
-  }, [sandboxProfile]);
-
-  const openSandboxWizardGuide = useCallback(() => {
-    setSandboxWizardMode("info");
-    setSandboxWizardOpen(true);
-  }, []);
 
   /** Remove project from app list only (disk folder + chats kept). */
   const removeProjectFromApp = (proj: Project) => {
@@ -8366,33 +8072,6 @@ export default function App() {
     [agentDashboardRows],
   );
 
-  const taskBoard = useMemo(
-    () =>
-      buildTaskBoard({
-        sessions,
-        projects: projects.map((p) => ({
-          id: p.id,
-          name: p.name,
-          path: p.path,
-        })),
-        liveMap,
-        currentSessionId: session.sessionId,
-        includeArchived: taskBoardIncludeArchived,
-        untitledLabel: tr("session.untitled"),
-        generalWorkspacePath,
-        unboundProjectLabel: tr("sidebar.otherSessions"),
-      }),
-    [
-      sessions,
-      projects,
-      liveMap,
-      session.sessionId,
-      taskBoardIncludeArchived,
-      tr,
-      generalWorkspacePath,
-    ],
-  );
-
   const connPill = useMemo(
     () => connPillForState(session.state, connecting),
     [session.state, connecting],
@@ -8670,8 +8349,9 @@ export default function App() {
   };
 
   const compactPresetNote = (id: CompactPresetId): string => {
-    const { messageKey } = buildCompactPresetNote(id);
-    return tr(messageKey);
+    if (id === "light") return tr("slash.compactPresetNote.light");
+    if (id === "aggressive") return tr("slash.compactPresetNote.aggressive");
+    return tr("slash.compactPresetNote.standard");
   };
 
   const selectCompactPreset = (id: CompactPresetId) => {
@@ -8940,7 +8620,7 @@ export default function App() {
       // warm connect racing this send cannot deliver it to another chat — and
       // a mid-send "new chat" still lets this turn complete.
       try {
-        await api.sessionSend(agentText, storedDisplay, sessionId);
+        await api.sessionSend(agentText, storedDisplay, sessionId, att);
       } catch (sendErr) {
         // Host refuses rather than misroute when the chat lost its process
         // (idle recycle / crash while `liveHost` still looked ready).
@@ -8951,7 +8631,7 @@ export default function App() {
           force: true,
         });
         if (reconnected !== sessionId) throw sendErr;
-        await api.sessionSend(agentText, storedDisplay, sessionId);
+        await api.sessionSend(agentText, storedDisplay, sessionId, att);
       }
       // Keep liveMap busy for this session if the user already left the thread.
       setLiveMap((prev) =>
@@ -9333,25 +9013,6 @@ export default function App() {
     liveSlashRef.current = cleared;
   }, []);
 
-  const closeSkillsPicker = useCallback(() => {
-    setSkillsPickerOpen(false);
-    setSkillsPickerQuery("");
-    setSkillsPickerActive(0);
-  }, []);
-
-  const openSkillsPicker = useCallback(() => {
-    // Don't stack with slash/plus or prompt history.
-    setShowComposerPlus(false);
-    setSlashQuery(null);
-    setLiveSlash({ present: false, query: "", start: 0, end: 0 });
-    liveSlashRef.current = { present: false, query: "", start: 0, end: 0 };
-    setPromptHistoryOpen(false);
-    setSkillsPickerRecent(loadRecentSkillIds());
-    setSkillsPickerQuery("");
-    setSkillsPickerActive(0);
-    setSkillsPickerOpen(true);
-  }, []);
-
   /**
    * Clear kind chip + typed slash query (keeps bare `/` so the palette stays
    * open). Never uses window.confirm.
@@ -9663,6 +9324,95 @@ export default function App() {
     };
   }, [asideClampOpts, fitWindowThenClampAside, resizingAside]);
 
+  // Drag-resize left session rail.
+  // Collapse as soon as desired width crosses below the open min — never paint
+  // a crushed rail, and do not wait for pointer-up.
+  useEffect(() => {
+    if (!resizingSidebar) return;
+    const clampOpts = () => {
+      const cur = layoutRef.current;
+      return {
+        viewportWidth: window.innerWidth,
+        asideOccupiedWidth: cur.asideCollapsed ? 0 : cur.asideWidth || 0,
+      };
+    };
+    const endResizeChrome = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    const applyCollapseLive = () => {
+      const cur = layoutRef.current;
+      const n = {
+        ...cur,
+        sidebarCollapsed: true,
+        sidebarWidth: SIDEBAR_WIDTH_MIN,
+      };
+      setLayout(n);
+      saveLayout(localStorage, n);
+      sidebarResizeStartRef.current = null;
+      setResizingSidebar(false);
+      endResizeChrome();
+    };
+    const onMove = (e: PointerEvent) => {
+      if (isWindowFitSuppressed()) return;
+      const start = sidebarResizeStartRef.current;
+      if (!start) return;
+      const desired = Math.round(start.width + (e.clientX - start.x));
+      // Live collapse before any compressed layout is shown.
+      if (desired < SIDEBAR_WIDTH_MIN) {
+        applyCollapseLive();
+        return;
+      }
+      const next = clampSidebarDragWidth(desired, clampOpts());
+      setLayout((l) => {
+        if (l.sidebarWidth === next && !l.sidebarCollapsed) return l;
+        return { ...l, sidebarWidth: next, sidebarCollapsed: false };
+      });
+    };
+    const onUp = () => {
+      // If we already live-collapsed, effect teardown cleared state — still safe.
+      if (!sidebarResizeStartRef.current && layoutRef.current.sidebarCollapsed) {
+        setResizingSidebar(false);
+        endResizeChrome();
+        return;
+      }
+      setResizingSidebar(false);
+      sidebarResizeStartRef.current = null;
+      const cur = layoutRef.current;
+      if (cur.sidebarCollapsed) {
+        endResizeChrome();
+        return;
+      }
+      const resolved = resolveSidebarDragEnd(
+        cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+        clampOpts(),
+      );
+      const n =
+        resolved.action === "collapse"
+          ? {
+              ...cur,
+              sidebarCollapsed: true,
+              sidebarWidth: resolved.sidebarWidth,
+            }
+          : {
+              ...cur,
+              sidebarCollapsed: false,
+              sidebarWidth: resolved.sidebarWidth,
+            };
+      setLayout(n);
+      saveLayout(localStorage, n);
+      endResizeChrome();
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [resizingSidebar]);
+
   const resizeComposer = (el: HTMLElement) => {
     const line = 22; // ~line-height
     const min = line * 1;
@@ -9900,6 +9650,50 @@ export default function App() {
           setSlashQuery((q) => (q == null ? q : null));
         }
       }
+      // @ file mention — suppressed while slash/plus is open.
+      let atNext: {
+        present: boolean;
+        query: string;
+        start: number;
+        end: number;
+      } = {
+        present: false,
+        query: "",
+        start: 0,
+        end: 0,
+      };
+      if (!next.present && !showComposerPlusRef.current) {
+        const atDetected = detectAtQueryFromEditor(el);
+        if (atDetected) {
+          atNext = {
+            present: true,
+            query: atDetected.query,
+            start: atDetected.start,
+            end: atDetected.end,
+          };
+          if (atDismissedSigRef.current != null) {
+            const sig = `${atNext.start}:${atNext.query}`;
+            if (sig === atDismissedSigRef.current) {
+              atNext = { present: false, query: "", start: 0, end: 0 };
+            } else {
+              atDismissedSigRef.current = null;
+            }
+          }
+        } else {
+          atDismissedSigRef.current = null;
+        }
+      }
+      const prevAt = liveAtRef.current;
+      if (
+        prevAt.present !== atNext.present ||
+        prevAt.query !== atNext.query ||
+        prevAt.start !== atNext.start ||
+        prevAt.end !== atNext.end
+      ) {
+        liveAtRef.current = atNext;
+        setLiveAt(atNext);
+        if (atNext.present) setAtActiveIndex(0);
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -9924,6 +9718,119 @@ export default function App() {
     estHeight: 220,
     gap: 8,
     deps: [slashFilterQuery, composerMenuEntries.length],
+  });
+
+  const atMenuOpen = liveAt.present && !composerMenuOpen;
+  const closeAtMenu = useCallback(() => {
+    const live = liveAtRef.current;
+    if (live.present) {
+      atDismissedSigRef.current = `${live.start}:${live.query}`;
+    }
+    const cleared = { present: false, query: "", start: 0, end: 0 };
+    liveAtRef.current = cleared;
+    setLiveAt(cleared);
+    setAtEntries([]);
+    setAtSoftFail(null);
+    setAtLoading(false);
+  }, []);
+
+  const applyAtFile = useCallback(
+    (entry: ComposerAtFileEntry) => {
+      const live = liveAtRef.current;
+      if (live.present) {
+        setDraft((d) => removeAtTokenFromDraft(d, live.start, live.end));
+      }
+      const cleared = { present: false, query: "", start: 0, end: 0 };
+      liveAtRef.current = cleared;
+      setLiveAt(cleared);
+      setAtEntries([]);
+      setAtSoftFail(null);
+      setAttachments((prev) =>
+        mergeAttachments(prev, [
+          {
+            path: entry.path,
+            name: entry.name || entry.path.split(/[/\\]/).pop() || entry.path,
+            isDir: !!entry.isDir,
+          },
+        ]),
+      );
+      requestComposerFocus();
+    },
+    [requestComposerFocus],
+  );
+
+  // Debounced project file search for @ panel.
+  useEffect(() => {
+    if (!atMenuOpen) return;
+    const projectPath = activeProject?.path?.trim() || "";
+    if (!projectPath) {
+      setAtEntries([]);
+      setAtSoftFail("no_project");
+      setAtLoading(false);
+      return;
+    }
+    if (!api.isTauri()) {
+      setAtEntries([]);
+      setAtSoftFail("need_tauri");
+      setAtLoading(false);
+      return;
+    }
+    const gen = ++atSearchGenRef.current;
+    setAtLoading(true);
+    const q = liveAt.query;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await api.projectCodebaseSearch({
+            projectPath,
+            query: q,
+            mode: "name",
+            limit: 40,
+          });
+          if (gen !== atSearchGenRef.current) return;
+          if (res.softFail) {
+            setAtSoftFail(res.softFail);
+            setAtEntries([]);
+          } else {
+            setAtSoftFail(null);
+            const hits: ComposerAtFileEntry[] = rankAtFileHits(
+              (res.hits ?? []).map((h) => ({
+                path: h.path,
+                name: h.name,
+                relativePath: h.relativePath,
+                mtimeMs: h.mtimeMs,
+              })),
+              q,
+            );
+            setAtEntries(hits);
+          }
+        } catch (e) {
+          if (gen !== atSearchGenRef.current) return;
+          setAtSoftFail("host_error");
+          setAtEntries([]);
+        } finally {
+          if (gen === atSearchGenRef.current) setAtLoading(false);
+        }
+      })();
+    }, q.trim() ? 180 : 80);
+    return () => {
+      window.clearTimeout(t);
+    };
+  }, [atMenuOpen, liveAt.query, activeProject?.path]);
+
+  const { pos: composerAtPos, style: composerAtStyle } = useFloatingMenu({
+    open: atMenuOpen,
+    triggerRef: composerShellRef,
+    panelRef: atPanelRef,
+    roots: [composerShellRef, composerInputRef, atPanelRef],
+    onClose: closeAtMenu,
+    placement: "up",
+    fitContent: false,
+    matchTriggerWidth: true,
+    minWidth: 280,
+    estHeight: 220,
+    gap: 8,
+    deps: [liveAt.query, atEntries.length],
   });
 
   const sessionPromptHistory = useMemo(
@@ -10023,90 +9930,6 @@ export default function App() {
       promptHistoryScope,
     ],
   });
-
-  /** Host skills eligible for the task picker (enabled + invocable only). */
-  const skillsPickerCatalog = useMemo(
-    () => filterPickerEligibleSkills(skillInfos as SkillsPickerSkill[]),
-    [skillInfos],
-  );
-  const skillsPickerRanked = useMemo(
-    () =>
-      rankSkillsForTask({
-        skills: skillsPickerCatalog,
-        recentIds: skillsPickerRecent,
-        query: skillsPickerQuery,
-      }),
-    [skillsPickerCatalog, skillsPickerRecent, skillsPickerQuery],
-  );
-
-  const applySkillsPickerSkill = useCallback(
-    (skill: SkillsPickerSkill) => {
-      setDraft((d) => planInsertSkill(d, skill.name));
-      setSkillsPickerRecent(recordRecentSkill(skill.name));
-      closeSkillsPicker();
-      requestAnimationFrame(() => {
-        composerInputRef.current?.focus?.();
-      });
-    },
-    [closeSkillsPicker],
-  );
-
-  const { pos: skillsPickerPos, style: skillsPickerStyle } = useFloatingMenu({
-    open: skillsPickerOpen,
-    triggerRef: composerShellRef,
-    panelRef: skillsPickerPanelRef,
-    roots: [
-      composerShellRef,
-      composerInputRef,
-      skillsPickerPanelRef,
-      skillsPickerTriggerRef,
-    ],
-    onClose: closeSkillsPicker,
-    placement: "up",
-    fitContent: false,
-    matchTriggerWidth: true,
-    minWidth: 280,
-    estHeight: 320,
-    gap: 8,
-    deps: [skillsPickerQuery, skillsPickerRanked.length],
-  });
-
-  // Keep highlight in range when the ranked list shrinks; reset on filter.
-  const prevSkillsPickerQueryRef = useRef(skillsPickerQuery);
-  useEffect(() => {
-    if (!skillsPickerOpen) return;
-    if (prevSkillsPickerQueryRef.current !== skillsPickerQuery) {
-      prevSkillsPickerQueryRef.current = skillsPickerQuery;
-      setSkillsPickerActive(0);
-      return;
-    }
-    if (skillsPickerRanked.length === 0) {
-      setSkillsPickerActive(0);
-      return;
-    }
-    if (skillsPickerActive >= skillsPickerRanked.length) {
-      setSkillsPickerActive(skillsPickerRanked.length - 1);
-    }
-  }, [
-    skillsPickerOpen,
-    skillsPickerQuery,
-    skillsPickerRanked.length,
-    skillsPickerActive,
-  ]);
-
-  // Cross-tab / multi-window recent skill ring sync.
-  useEffect(() => {
-    const onChange = (ev: Event) => {
-      const detail = (ev as CustomEvent<string[]>).detail;
-      if (Array.isArray(detail)) {
-        setSkillsPickerRecent(detail);
-      } else {
-        setSkillsPickerRecent(loadRecentSkillIds());
-      }
-    };
-    window.addEventListener(SKILLS_RECENT_CHANGE_EVENT, onChange);
-    return () => window.removeEventListener(SKILLS_RECENT_CHANGE_EVENT, onChange);
-  }, []);
 
   // Keep highlight in range when the filtered list shrinks; reset on filter/scope.
   const prevPromptHistoryFilterRef = useRef(promptHistoryFilter);
@@ -10220,22 +10043,6 @@ export default function App() {
       setToast((cur) => (cur === msg ? null : cur));
     }, ms);
   }, []);
-
-  /** Clear pending message deep link after locate (soft-toast when missing). */
-  const onLocateMessageDeepLink = useCallback(
-    (result: {
-      ok: boolean;
-      messageId: string;
-      reason?: "missing" | "empty_id";
-    }) => {
-      setPendingLocateMessageId(null);
-      pendingLocateSessionIdRef.current = null;
-      if (!result.ok) {
-        showToast(tr("message.deepLinkMissing"), 3600);
-      }
-    },
-    [showToast, tr],
-  );
 
   /** Open GlassModal to edit per-session sticky note (local only; never sent to agent). */
   const openSessionNote = useCallback(
@@ -10418,12 +10225,11 @@ export default function App() {
         showToast(tr("slash.historyEmpty"), 2400);
         return;
       }
-      // Don't stack with slash/plus or skills picker.
+      // Don't stack with slash/plus menu.
       setShowComposerPlus(false);
       setSlashQuery(null);
       setLiveSlash({ present: false, query: "", start: 0, end: 0 });
       liveSlashRef.current = { present: false, query: "", start: 0, end: 0 };
-      setSkillsPickerOpen(false);
 
       // Prefer this chat; fall back to recent when the session has no prompts yet.
       const initialScope: PromptHistoryScope =
@@ -11021,43 +10827,6 @@ export default function App() {
       ? liveHost.state === "streaming"
       : session.state === "streaming");
 
-  /** Pure send-intent honesty (enqueue vs foreign concurrent vs blocked). */
-  const composerHasBody =
-    !isDraftEmpty(parseStoredContent(draft)) || attachments.length > 0;
-  const sendIntent = useMemo(
-    () =>
-      resolveSendIntent({
-        viewedState: session.state,
-        connecting,
-        liveSessionId: liveHost.sessionId,
-        liveState: liveHost.state,
-        viewedSessionId: session.sessionId,
-        hasBody: composerHasBody,
-        queueLength: sendQueue.activeQueue.length,
-      }),
-    [
-      session.state,
-      session.sessionId,
-      connecting,
-      liveHost.sessionId,
-      liveHost.state,
-      composerHasBody,
-      sendQueue.activeQueue.length,
-    ],
-  );
-  const openAsNewChatPlan = useMemo(
-    () =>
-      planOpenAsNewSessionInstead({
-        kind: sendIntent.kind,
-        queueLength: sendQueue.activeQueue.length,
-      }),
-    [sendIntent.kind, sendQueue.activeQueue.length],
-  );
-  const sendControlLabelKey = useMemo(
-    () => resolveSendControlLabelKey(sendIntent.kind),
-    [sendIntent.kind],
-  );
-
   const closeQueueEdit = useCallback(() => {
     setQueueEditItemId(null);
     setQueueEditText("");
@@ -11086,16 +10855,6 @@ export default function App() {
         flushHold: sendQueue.flushHold,
       }),
     [sendQueue.activeQueue, sendQueue.flushHold],
-  );
-
-  const sendQueueStripIntentLabel = useMemo(
-    () =>
-      resolveSendQueueStripIntentLabel({
-        visible: sendQueueStrip.visible,
-        showHold: sendQueueStrip.showHold,
-        canSteer: canGuideQueuedMessage,
-      }),
-    [sendQueueStrip.visible, sendQueueStrip.showHold, canGuideQueuedMessage],
   );
 
   const sendQueueClearPlan = useMemo(
@@ -11831,59 +11590,7 @@ export default function App() {
         // Refresh UI from truncated journal.
         if (viewingSessionIdRef.current === sessionId) {
           const stored = await api.sessionMessages(sessionId);
-          const mapped: ChatMessage[] = stored.map((m) => {
-            const content = m.content || "";
-            const rawMarker = m.marker || undefined;
-            const marker =
-              rawMarker ||
-              (m.role === "tool" && content.startsWith("tool_step|")
-                ? "tool_step"
-                : m.role === "tool" && content.startsWith("context_compact")
-                  ? "context_compact"
-                  : m.role === "tool" && content.startsWith("turn_cancelled")
-                    ? "turn_cancelled"
-                    : undefined);
-            const toolParsed =
-              marker === "tool_step" ? parseToolStepContent(content) : null;
-            const role = m.role as "user" | "assistant" | "tool";
-            let displayContent = toolParsed?.title || content;
-            if (role === "assistant" && displayContent) {
-              displayContent =
-                extractAutomationPayload(displayContent).cleanText;
-            }
-            const thoughtPhases = splitThoughtPhases(m.thought);
-            return {
-              id: m.id,
-              role,
-              content: displayContent,
-              thought: m.thought ?? undefined,
-              thoughtPhases,
-              segments:
-                role === "assistant"
-                  ? buildSegmentsFromLegacy(
-                      displayContent,
-                      m.thought,
-                      thoughtPhases,
-                    )
-                  : undefined,
-              isError: m.isError || undefined,
-              marker,
-              createdAt: m.createdAt || undefined,
-              toolCallId: m.id.startsWith("tool-")
-                ? m.id.slice(5)
-                : undefined,
-              toolKind: toolParsed?.kind,
-              toolStatus: toolParsed?.status,
-              toolDetail: toolParsed?.detail,
-              toolPath: toolParsed?.path,
-              attachments: (m.attachments ?? []).map((a) => ({
-                path: a.path,
-                name: a.name || a.path.split(/[/\\]/).pop() || a.path,
-                isDir: !!a.isDir,
-              })),
-              streaming: false,
-            };
-          });
+          const mapped = mapStoredMessagesToChat(stored);
           const woven = weaveToolsIntoAssistantSegments(mapped);
           const kept = truncateThroughUserPrompt(woven, targetPromptIndex);
           const finalMsgs =
@@ -12114,9 +11821,11 @@ export default function App() {
         if (q) {
           setDraft((d) => applySkillAtSlash(d, q.start, q.end, item.name));
         } else {
-          setDraft((d) => planInsertSkill(d, item.name));
+          setDraft((d) => {
+            const needsSpace = d.length > 0 && !/\s$/.test(d);
+            return `${d}${needsSpace ? " " : ""}[[skill:${item.name}]] `;
+          });
         }
-        setSkillsPickerRecent(recordRecentSkill(item.name));
         return;
       }
 
@@ -12496,94 +12205,6 @@ export default function App() {
     if (next !== effort) setEffort(next);
   }, [activeEffortCatalog, effort]);
 
-  /** Live ACP attached → model set_model / effort soft-respawn honesty. */
-  const composerHasLiveAgent = sessionHasLiveAgent(session.state);
-  /** Host ACP supports session/set_model when running under Tauri. */
-  const composerSupportsSetModel = api.isTauri();
-
-  const notifyModelApplyHonesty = useCallback(
-    (nextModelId: string) => {
-      const effect = resolveModelApplyEffect({
-        hasLiveAgent: sessionHasLiveAgent(session.state),
-        supportsSetModel: composerSupportsSetModel,
-      });
-      const banner = buildApplyHonestyBanner({
-        kind: "model",
-        effect,
-        modelId: nextModelId,
-      });
-      showToast(tr(banner.messageKey as MessageKey, banner.vars), 3200);
-    },
-    [session.state, composerSupportsSetModel, showToast, tr],
-  );
-
-  const notifyEffortApplyHonesty = useCallback(
-    (nextEffortId: string) => {
-      const effect = resolveEffortApplyEffect({
-        hasLiveAgent: sessionHasLiveAgent(session.state),
-      });
-      const banner = buildApplyHonestyBanner({
-        kind: "effort",
-        effect,
-        effortId: nextEffortId,
-      });
-      showToast(tr(banner.messageKey as MessageKey, banner.vars), 3200);
-    },
-    [session.state, showToast, tr],
-  );
-
-  const handleComposerEffortChange = useCallback(
-    (v: string) => {
-      if (!isValidEffort(v, channelEffortOptions ?? undefined)) return;
-      if (v === effort) return;
-      setEffort(v);
-      notifyEffortApplyHonesty(v);
-      void api
-        .composerPrefsSet({
-          projectId: activeProject?.id ?? null,
-          sessionId: session.sessionId ?? null,
-          effort: v,
-        })
-        .catch((e) => {
-          const kind = classifyModelEffortError(e);
-          const key = modelEffortErrorMessageKey(kind);
-          const detail = String(e).trim();
-          showToast(
-            detail
-              ? `${tr(key as MessageKey)}: ${detail}`
-              : tr(key as MessageKey),
-            4000,
-          );
-        });
-    },
-    [
-      channelEffortOptions,
-      effort,
-      notifyEffortApplyHonesty,
-      activeProject?.id,
-      session.sessionId,
-      showToast,
-      tr,
-    ],
-  );
-
-  const modelApplyFooter = useMemo(() => {
-    const note = buildApplyFooterNote({
-      kind: "model",
-      hasLiveAgent: composerHasLiveAgent,
-      supportsSetModel: composerSupportsSetModel,
-    });
-    return note ? tr(note.messageKey as MessageKey, note.vars) : null;
-  }, [composerHasLiveAgent, composerSupportsSetModel, tr]);
-
-  const effortApplyFooter = useMemo(() => {
-    const note = buildApplyFooterNote({
-      kind: "effort",
-      hasLiveAgent: composerHasLiveAgent,
-    });
-    return note ? tr(note.messageKey as MessageKey, note.vars) : null;
-  }, [composerHasLiveAgent, tr]);
-
   const handleModelPick = useCallback(
     async (pick: ComposerModelPick) => {
       if (modelPickBusy) return;
@@ -12595,7 +12216,6 @@ export default function App() {
             await refreshProviderRoute();
           }
           if (!isValidModelId(pick.modelId, availableModels)) return;
-          const modelChanged = pick.modelId !== modelId;
           setModelId(pick.modelId);
           // DeepSeek 4-tier → Grok 3-tier (low→low, high→medium, xhigh/max→high).
           setEffort((prev) =>
@@ -12605,24 +12225,13 @@ export default function App() {
               channelEffortOptions ?? undefined,
             ),
           );
-          if (modelChanged) notifyModelApplyHonesty(pick.modelId);
           void api
             .composerPrefsSet({
               projectId: activeProject?.id ?? null,
               sessionId: session.sessionId ?? null,
               modelId: pick.modelId,
             })
-            .catch((e) => {
-              const kind = classifyModelEffortError(e);
-              const key = modelEffortErrorMessageKey(kind);
-              const detail = String(e).trim();
-              showToast(
-                detail
-                  ? `${tr(key as MessageKey)}: ${detail}`
-                  : tr(key as MessageKey),
-                4000,
-              );
-            });
+            .catch((e) => showToast(String(e), 4000));
         } else {
           if (!api.isTauri()) return;
           const provider = customProviders.find(
@@ -12672,25 +12281,15 @@ export default function App() {
               channelEffortOptions ?? GROK_BUILD_EFFORTS,
             ),
           );
-          notifyModelApplyHonesty(pick.modelId);
         }
       } catch (e) {
-        const kind = classifyModelEffortError(e);
-        const key = modelEffortErrorMessageKey(kind);
-        const detail = String(e).trim();
-        showToast(
-          detail
-            ? `${tr(key as MessageKey)}: ${detail}`
-            : tr(key as MessageKey),
-          4000,
-        );
+        showToast(String(e), 4000);
       } finally {
         setModelPickBusy(false);
       }
     },
     [
       modelPickBusy,
-      modelId,
       providerActiveSource,
       providerActiveId,
       availableModels,
@@ -12701,7 +12300,6 @@ export default function App() {
       showToast,
       tr,
       channelEffortOptions,
-      notifyModelApplyHonesty,
     ],
   );
   const liveBrandKind = useMemo(
@@ -13140,7 +12738,6 @@ export default function App() {
             try {
               const trusted = (await api.projectTrust(p.id)) as Project;
               await apply(trusted);
-              maybeOfferSandboxWizardAfterTrust();
             } catch (e) {
               setLocalError(String(e));
             }
@@ -13150,7 +12747,7 @@ export default function App() {
       }
       await apply(p);
     },
-    [bindSessionProject, maybeOfferSandboxWizardAfterTrust, showToast, tr],
+    [bindSessionProject, showToast, tr],
   );
 
   /** Open gc dialog and run dry-run preview. */
@@ -13161,141 +12758,6 @@ export default function App() {
     setWorktreeGcPreview(null);
     setWorktreeGcOpen(true);
   }, []);
-
-  /**
-   * Open Compare with main… for the active linked worktree.
-   * Soft-fails when on main / same path / not git. Diff list only — no merge.
-   */
-  const openWorktreeCompare = useCallback(() => {
-    if (!api.isTauri() || !activeProject?.path) {
-      showToast(tr("composer.worktreeCompareNeedProject"), 3500);
-      return;
-    }
-    const otherPath = activeProject.path;
-    const other =
-      gitWorktrees.find((w) => pathsEqual(w.path, otherPath)) ?? null;
-    if (other?.isMain) {
-      showToast(tr("composer.worktreeCompareOnMain"), 3500);
-      return;
-    }
-    const basePath =
-      mainWorktreePath(gitWorktrees) ||
-      gitWorktrees.find((w) => w.isMain)?.path ||
-      "";
-    const mainWt =
-      gitWorktrees.find((w) => w.isMain) ??
-      gitWorktrees.find((w) => pathsEqual(w.path, basePath)) ??
-      null;
-    const plan = planWorktreeCompare({
-      basePath,
-      otherPath,
-      baseBranch: mainWt?.branch ?? null,
-      otherBranch: other?.branch ?? null,
-      baseAvailable: gitWorktreesAvailable,
-      otherAvailable: gitWorktreesAvailable,
-    });
-    if (!plan.ok) {
-      const reasonKey =
-        plan.reason === "same_path"
-          ? "composer.worktreeCompareSamePath"
-          : plan.reason === "not_git"
-            ? "composer.worktreeCompareNotGit"
-            : "composer.worktreeCompareMissingPath";
-      showToast(tr(reasonKey), 4000);
-      return;
-    }
-    setWorktreeCompareMeta({
-      base: plan.basePath,
-      other: plan.otherPath,
-      baseBranch: plan.baseBranch,
-      otherBranch: plan.otherBranch,
-    });
-    setWorktreeCompareEntries([]);
-    setWorktreeCompareError(null);
-    setWorktreeCompareBusy(true);
-    setWorktreeCompareOpen(true);
-  }, [
-    activeProject?.path,
-    gitWorktrees,
-    gitWorktreesAvailable,
-    showToast,
-    tr,
-  ]);
-
-  /** Load name-status when compare modal opens. */
-  const refreshWorktreeCompare = useCallback(async () => {
-    if (!api.isTauri() || !worktreeCompareOpen || !worktreeCompareMeta) return;
-    setWorktreeCompareBusy(true);
-    setWorktreeCompareError(null);
-    try {
-      const res = await api.gitWorktreeCompare({
-        basePath: worktreeCompareMeta.base,
-        otherPath: worktreeCompareMeta.other,
-        baseBranch: worktreeCompareMeta.baseBranch,
-        otherBranch: worktreeCompareMeta.otherBranch,
-      });
-      if (!res.available) {
-        setWorktreeCompareEntries([]);
-        setWorktreeCompareError(
-          (res.reason || "").trim() || tr("composer.worktreeCompareFailed"),
-        );
-        setWorktreeCompareMeta((prev) =>
-          prev
-            ? {
-                ...prev,
-                baseRef: res.baseRef,
-                otherRef: res.otherRef,
-                truncated: res.truncated,
-                hostTotal: res.total,
-              }
-            : prev,
-        );
-        return;
-      }
-      // Prefer pure client parse of raw for honesty; fall back to host entries.
-      const fromRaw = res.raw ? parseNameStatus(res.raw) : [];
-      const entries: NameStatusEntry[] =
-        fromRaw.length > 0
-          ? fromRaw
-          : (res.entries ?? []).map((e) => ({
-              status: e.status,
-              path: e.path,
-              oldPath: e.oldPath ?? undefined,
-            }));
-      setWorktreeCompareEntries(entries);
-      setWorktreeCompareMeta((prev) =>
-        prev
-          ? {
-              ...prev,
-              baseRef: res.baseRef,
-              otherRef: res.otherRef,
-              truncated: res.truncated,
-              hostTotal: res.total ?? entries.length,
-            }
-          : prev,
-      );
-    } catch (e) {
-      setWorktreeCompareEntries([]);
-      setWorktreeCompareError(String(e));
-    } finally {
-      setWorktreeCompareBusy(false);
-    }
-  }, [tr, worktreeCompareMeta, worktreeCompareOpen]);
-
-  useEffect(() => {
-    if (!worktreeCompareOpen || !worktreeCompareMeta) return;
-    void refreshWorktreeCompare();
-    // Only re-run when the modal opens with a meta snapshot (not on every meta field tweak).
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional open trigger
-  }, [worktreeCompareOpen, worktreeCompareMeta?.base, worktreeCompareMeta?.other]);
-
-  const closeWorktreeCompare = useCallback(() => {
-    if (worktreeCompareBusy) return;
-    setWorktreeCompareOpen(false);
-    setWorktreeCompareError(null);
-    setWorktreeCompareEntries([]);
-    setWorktreeCompareMeta(null);
-  }, [worktreeCompareBusy]);
 
   /** Open Ship… dialog for the active project / worktree cwd. */
   const openShipFlow = useCallback(() => {
@@ -13708,25 +13170,15 @@ export default function App() {
     [activeProject?.path, executeWorktreeRemove, tr],
   );
 
-  const openWorktreeCreate = useCallback(
-    (opts?: {
-      startNewChat?: boolean;
-      suggestedName?: string;
-      firstPrompt?: string;
-      autoSend?: boolean;
-    }) => {
-      setWorktreeCreateName((opts?.suggestedName ?? "").trim());
-      setWorktreeCreateRef("");
-      setWorktreeCreateLayout("cli");
-      setWorktreeCreateError(null);
-      setWorktreeCreateBusy(false);
-      setWorktreeCreateStartChat(!!opts?.startNewChat);
-      setWorktreeCreateFirstPrompt(opts?.firstPrompt ?? "");
-      setWorktreeCreateAutoSend(!!opts?.autoSend);
-      setWorktreeCreateOpen(true);
-    },
-    [],
-  );
+  const openWorktreeCreate = useCallback((opts?: { startNewChat?: boolean }) => {
+    setWorktreeCreateName("");
+    setWorktreeCreateRef("");
+    setWorktreeCreateLayout("cli");
+    setWorktreeCreateError(null);
+    setWorktreeCreateBusy(false);
+    setWorktreeCreateStartChat(!!opts?.startNewChat);
+    setWorktreeCreateOpen(true);
+  }, []);
 
   const worktreeCreatePreviewPath = (() => {
     try {
@@ -13805,7 +13257,6 @@ export default function App() {
    * Create worktree → refresh list → add as project (trust inherited) →
    * either bind current session or start a draft chat on that path.
    * Worktree+chat creates a real session immediately so meta can be persisted.
-   * Optional first prompt fills the composer; auto-send is best-effort when trusted.
    */
   const submitWorktreeCreate = useCallback(async () => {
     if (!api.isTauri() || !activeProject?.path) return;
@@ -13814,18 +13265,13 @@ export default function App() {
       setWorktreeCreateError(tr("composer.worktreeNameRequired"));
       return;
     }
-    let plan: ReturnType<typeof planParallelTask>;
+    let safeName: string;
     try {
-      plan = planParallelTask({
-        name: rawName,
-        firstPrompt: worktreeCreateFirstPrompt,
-        autoSend: worktreeCreateAutoSend,
-      });
+      safeName = sanitizeWorktreeName(rawName);
     } catch {
       setWorktreeCreateError(tr("composer.worktreeNameInvalid"));
       return;
     }
-    const safeName = plan.name;
     let start: string | null;
     try {
       start = sanitizeWorktreeRef(worktreeCreateRef);
@@ -13877,11 +13323,9 @@ export default function App() {
 
       if (startChat) {
         // Materialize session now so worktree meta survives before first send.
-        const sessionTitle =
-          plan.sessionTitle?.trim() || tr("session.new");
         const meta = (await api.sessionCreate(
           target.id,
-          sessionTitle,
+          tr("session.new"),
         )) as SessionRow & { id: string; title?: string };
         await markSessionWorktree(meta.id, path, branch);
         const row = normalizeSessionRow({
@@ -13893,26 +13337,6 @@ export default function App() {
         });
         setExpandedProjects((e) => ({ ...e, [target!.id]: true }));
         await openSession(row, target);
-        // openSession clears the composer — seed optional first prompt after.
-        if (plan.firstPrompt) {
-          const seed = buildParallelTaskComposerText(plan.firstPrompt, {
-            branch,
-            path,
-          });
-          if (seed) {
-            suppressProjectDraftPersistRef.current = true;
-            setDraft(seed);
-            requestAnimationFrame(() => {
-              suppressProjectDraftPersistRef.current = false;
-            });
-            // Best-effort auto-send (same pattern as voice dictation).
-            if (plan.autoSend) {
-              window.setTimeout(() => {
-                void sendRef.current?.();
-              }, 0);
-            }
-          }
-        }
         showToast(
           tr("composer.worktreeCreatedChat", {
             name: created.name,
@@ -13953,8 +13377,6 @@ export default function App() {
     session.sessionId,
     showToast,
     tr,
-    worktreeCreateAutoSend,
-    worktreeCreateFirstPrompt,
     worktreeCreateLayout,
     worktreeCreateName,
     worktreeCreateRef,
@@ -14008,7 +13430,6 @@ export default function App() {
       setActiveProject(p);
       setProjects(mapProjectsList((await api.projectsList()) as Project[]));
       setLocalError(null);
-      maybeOfferSandboxWizardAfterTrust();
       // CLI connects on first send only.
     } catch (e) {
       setLocalError(String(e));
@@ -14287,16 +13708,6 @@ export default function App() {
           window.location.hash = "#/workbench";
         }
         break;
-      case "open-task-board":
-        setAppView("workbench");
-        setTaskBoardOpen(true);
-        if (
-          typeof window !== "undefined" &&
-          window.location.hash.includes("settings")
-        ) {
-          window.location.hash = "#/workbench";
-        }
-        break;
       case "open-batch-agents":
         openBatchAgents();
         break;
@@ -14383,32 +13794,6 @@ export default function App() {
           break;
         }
         void continueLastAgentForProject(proj);
-        break;
-      }
-      case "parallel-worktree-task": {
-        const pre = evaluateParallelTaskPreflight({
-          isTauri: api.isTauri(),
-          projectPath: activeProject?.path,
-          trusted: activeProject?.trusted,
-          gitAvailable: gitWorktreesAvailable,
-        });
-        if (!pre.ok) {
-          showToast(
-            tr(parallelTaskPreflightMessageKey(pre.reason) as MessageKey),
-            3500,
-          );
-          break;
-        }
-        const existingNames = gitWorktrees
-          .map((w) => (w.branch || worktreeLabel(w) || "").trim())
-          .filter(Boolean);
-        const suggested = suggestParallelWorktreeName({
-          existingNames,
-        });
-        openWorktreeCreate({
-          startNewChat: true,
-          suggestedName: suggested,
-        });
         break;
       }
       case "settings-general":
@@ -14810,72 +14195,6 @@ export default function App() {
       }),
     [goalOrchUiEnabled, goalOrchEvents, session.sessionId],
   );
-
-  /** Session-scoped observed goal events (for chip menu copy / honesty). */
-  const goalOrchSessionEvents = useMemo(
-    () => filterGoalOrchEvents(goalOrchEvents, session.sessionId ?? null),
-    [goalOrchEvents, session.sessionId],
-  );
-
-  const clearLocalGoalOrchTimeline = useCallback(() => {
-    const plan = planClearGoalOrchEvents(goalOrchEvents);
-    setGoalOrchEvents(plan.next);
-    setGoalOrchClearConfirmOpen(false);
-    setGoalOrchChipMenuOpen(false);
-    if (plan.cleared > 0) {
-      showToast(
-        tr("reliability.goal.clearDone", { count: plan.cleared }),
-        2400,
-      );
-    }
-  }, [goalOrchEvents, showToast, tr]);
-
-  const requestClearLocalGoalOrchTimeline = useCallback(() => {
-    const plan = planClearGoalOrchEvents(goalOrchEvents);
-    if (plan.cleared <= 0) {
-      setGoalOrchChipMenuOpen(false);
-      return;
-    }
-    setGoalOrchChipMenuOpen(false);
-    if (shouldConfirmClearGoalOrch(plan.cleared)) {
-      setGoalOrchClearConfirmOpen(true);
-      return;
-    }
-    clearLocalGoalOrchTimeline();
-  }, [goalOrchEvents, clearLocalGoalOrchTimeline]);
-
-  const copyGoalOrchControlSummary = useCallback(async () => {
-    setGoalOrchChipMenuOpen(false);
-    try {
-      const text = buildGoalControlSummary(goalOrchSessionEvents, {
-        title: tr("reliability.goal.title"),
-        generatedAt: new Date().toISOString(),
-      });
-      await navigator.clipboard.writeText(text);
-      showToast(tr("reliability.goal.copied"), 2200);
-    } catch {
-      showToast(tr("reliability.goal.copyFail"), 3200);
-    }
-  }, [goalOrchSessionEvents, showToast, tr]);
-
-  useEffect(() => {
-    if (!goalOrchChipMenuOpen) return;
-    const onPointer = (e: MouseEvent) => {
-      const t = e.target;
-      if (!(t instanceof Element)) return;
-      if (t.closest(".goal-orch-session-chip-wrap")) return;
-      setGoalOrchChipMenuOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setGoalOrchChipMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [goalOrchChipMenuOpen]);
 
   // T15: announce stream start/end once (avoid token-level noise).
   useEffect(() => {
@@ -16622,7 +15941,7 @@ export default function App() {
             });
         }
 
-        await api.sessionSend(agentText, storedDisplay, sessionId);
+        await api.sessionSend(agentText, storedDisplay, sessionId, att);
         if (storedDisplay.trim()) {
           setRecentPromptHistory(
             recordRecentPrompt({
@@ -17033,8 +16352,10 @@ export default function App() {
       "settings.modeShared",
       "settings.tabOfficial",
       "settings.tabProviders",
+      "settings.tabExtras",
       "settings.tabOfficialHint",
       "settings.tabProvidersHint",
+      "settings.tabExtrasHint",
       "settings.openTarget",
       "settings.openTargetDesc",
       "settings.openFinder",
@@ -17177,21 +16498,15 @@ export default function App() {
         resumeRestoreConfirm ||
         worktreeCreateOpen ||
         worktreeGcOpen ||
-        worktreeCompareOpen ||
         shipOpen ||
         projectRulesTarget ||
-        agentDashboardOpen ||
-        taskBoardOpen,
+        agentDashboardOpen,
     ),
     permOpen: !!perm,
     askUserOpen: !!askUser,
     chatFindOpen: showChatFind,
     slashOrMenuOpen:
-      composerMenuOpen ||
-      phoneToolsOpen ||
-      !!ctxMenu ||
-      showUserMenu ||
-      skillsPickerOpen,
+      composerMenuOpen || phoneToolsOpen || !!ctxMenu || showUserMenu,
     promptHistoryOpen,
   };
 
@@ -17296,14 +16611,6 @@ export default function App() {
           phoneLayout={phoneLayout}
           focusAnchorId={settingsFocusAnchor}
           prHubHighlightPr={prHubHighlightPr}
-          onPrReviewDraftToChat={(prompt) => {
-            const text = (prompt ?? "").trim();
-            if (!text) return;
-            setDraft(text);
-            navigateWorkbench();
-            requestComposerFocus();
-            showToast(tr("prHub.draftInsertedToast"), 2800);
-          }}
           onFocusAnchorConsumed={() => setSettingsFocusAnchor(null)}
           labels={settingsLabels}
           locale={locale}
@@ -17388,37 +16695,24 @@ export default function App() {
             })();
           }}
           onSessionDataMode={(v) => {
-            const to = normalizeSessionDataMode(v);
-            const from = normalizeSessionDataMode(sessionDataMode);
             const commit = () => {
-              setSessionDataMode(to);
+              setSessionDataMode(v);
               void api.settingsGet().then((s) =>
-                api.settingsSet({ ...s, sessionDataMode: to }),
+                api.settingsSet({ ...s, sessionDataMode: v }),
               );
             };
             // Tauri WebView: window.confirm is unreliable (often always false).
-            // Independent ↔ shared always confirms with concrete risks (E04).
-            const plan = planSessionDataModeSwitch({ from, to });
-            if (!plan.needsConfirm) {
-              commit();
+            if (v === "shared") {
+              setAppDialog({
+                kind: "confirm",
+                title: tr("settings.sessionDataMode"),
+                message: tr("settings.sharedConfirm"),
+                confirmLabel: tr("common.confirm"),
+                onConfirm: commit,
+              });
               return;
             }
-            const body = formatSessionDataModeConfirmBody(from, to);
-            const message = joinSessionDataModeConfirmMessage({
-              intro: tr(body.introKey as MessageKey, {
-                fromHome: body.fromHome,
-                toHome: body.toHome,
-              }),
-              riskLines: body.riskKeys.map((k) => tr(k as MessageKey)),
-            });
-            setAppDialog({
-              kind: "confirm",
-              title: tr("settings.sessionDataMode"),
-              message,
-              confirmLabel: tr("common.confirm"),
-              danger: body.danger,
-              onConfirm: commit,
-            });
+            commit();
           }}
           policy={policy}
           onPolicy={(v) => {
@@ -17585,7 +16879,6 @@ export default function App() {
           onSandboxProfile={(v) => {
             applyGlobalSandboxProfile(v);
           }}
-          onOpenSandboxWizard={openSandboxWizardGuide}
           preferredAgent={preferredAgent}
           onPreferredAgent={(v) => {
             setPreferredAgent(v);
@@ -17634,15 +16927,6 @@ export default function App() {
               api.settingsSet({ ...s, compactionDetail: next }),
             );
           }}
-          compactionApplyNote={tr(
-            compactSettingsApplyMessageKey(
-              resolveCompactApplyEffect({
-                hasLiveAgent: sessionHasLiveAgent(session.state),
-                cliSupportsFlags: cliSupportsCompactionFlags(cliInfo.version),
-                forSettingsChange: true,
-              }),
-            ) as MessageKey,
-          )}
           twoPassCompactionEnabled={twoPassCompactionEnabled}
           onTwoPassCompactionEnabled={(v) => {
             setTwoPassCompactionEnabled(v);
@@ -17961,12 +17245,22 @@ export default function App() {
           className={
             "sidebar" +
             (layout.sidebarCollapsed ? " sidebar--hidden" : "") +
+            (resizingSidebar ? " is-resizing" : "") +
             (dragZone === "sidebar" ? " is-drop-target" : "") +
             (dragZone === "main" ? " is-drop-idle" : "") +
             (phoneLayout ? " sidebar--phone-drawer" : "")
           }
           aria-label={tr("a11y.sidebar")}
           aria-hidden={layout.sidebarCollapsed}
+          style={
+            !layout.sidebarCollapsed && !phoneLayout
+              ? {
+                  width: layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+                  minWidth: layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+                  maxWidth: layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+                }
+              : undefined
+          }
         >
           {dragZone === "sidebar" && (
             <div className="drop-overlay drop-overlay--project" aria-hidden>
@@ -17979,6 +17273,26 @@ export default function App() {
               </div>
             </div>
           )}
+          {/* Right-edge drag handle — desktop only (phone is overlay drawer) */}
+          {!layout.sidebarCollapsed && !phoneLayout ? (
+            <div
+              className="sidebar-resizer"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={tr("sidebar.resize")}
+              aria-valuenow={layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH}
+              aria-valuemin={SIDEBAR_WIDTH_MIN}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                sidebarResizeStartRef.current = {
+                  x: e.clientX,
+                  width: layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+                };
+                setResizingSidebar(true);
+              }}
+            />
+          ) : null}
           {/* Row 1: traffic-light height — panel toggle sits just right of traffic lights */}
           <div
             className="sidebar-chrome"
@@ -18512,9 +17826,9 @@ export default function App() {
                                               </span>
                                             );
                                           })()}
-                                          <span className="tree-l3__name">
-                                            {s.title || "Untitled"}
-                                          </span>
+                                          <SidebarSessionName
+                                            title={s.title || "Untitled"}
+                                          />
                                         </span>
                                         {renderSessionRelativeTime(s.updatedAt)}
                                         {sessionSelectMode ? null : working ? (
@@ -18794,9 +18108,9 @@ export default function App() {
                                     </span>
                                   );
                                 })()}
-                                <span className="tree-l3__name">
-                                  {s.title || "Untitled"}
-                                </span>
+                                <SidebarSessionName
+                                  title={s.title || "Untitled"}
+                                />
                               </span>
                               {renderSessionRelativeTime(s.updatedAt)}
                               {sessionSelectMode ? null : working ? (
@@ -19211,13 +18525,7 @@ export default function App() {
                       path={activeProject.path}
                       target={defaultOpenTarget || "finder"}
                       onTargetChange={persistOpenTarget}
-                      onOpenError={(e) => {
-                        const resolved = resolveOpenEditorError(e);
-                        if (resolved.silent) return;
-                        setLocalError(
-                          formatOpenEditorErrorMessage(resolved, tr),
-                        );
-                      }}
+                      onOpenError={(e) => setLocalError(e)}
                       onCopied={() => {
                         setToast(tr("attach.copyPath") + " ✓");
                         window.setTimeout(() => setToast(null), 1600);
@@ -19447,57 +18755,6 @@ export default function App() {
                 window.setTimeout(() => setToast(null), 4200);
               }}
               onRunNow={(auto) => void runAutomation(auto)}
-              locale={locale}
-              onOpenSession={(sessionId, projectId) => {
-                const id = (sessionId || "").trim();
-                if (!id) return;
-                void (async () => {
-                  let found =
-                    sessionsRef.current.find((s) => s.id === id) ?? null;
-                  if (!found) {
-                    try {
-                      const list = await api.sessionsList();
-                      const hit = list.find((s) => s.id === id);
-                      if (hit) {
-                        found = mapSessionListRow(hit);
-                        setSessions(list.map((s) => mapSessionListRow(s)));
-                      }
-                    } catch {
-                      /* soft-fail */
-                    }
-                  }
-                  if (!found) {
-                    setToast(tr("automations.inbox.sessionMissing"));
-                    window.setTimeout(() => setToast(null), 2800);
-                    return;
-                  }
-                  const pid = projectId ?? found.projectId;
-                  const proj =
-                    (pid
-                      ? projects.find((p) => p.id === pid) ?? null
-                      : null) ??
-                    (found.projectId
-                      ? projects.find((p) => p.id === found!.projectId) ?? null
-                      : null);
-                  setMainPane("chat");
-                  setAppView("workbench");
-                  await openSessionRef.current(found, proj);
-                })();
-              }}
-              onOpenProject={(projectId) => {
-                const id = (projectId || "").trim();
-                if (!id) return;
-                const proj = projects.find((p) => p.id === id) ?? null;
-                if (!proj) {
-                  setToast(tr("automations.inbox.projectMissing"));
-                  window.setTimeout(() => setToast(null), 2800);
-                  return;
-                }
-                setMainPane("chat");
-                setAppView("workbench");
-                setActiveProject(proj);
-                setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
-              }}
             />
           ) : (
           <>
@@ -19762,89 +19019,41 @@ export default function App() {
               onApprove={() => void approvePlan()}
               onRequestChanges={() => openRequestPlanChanges()}
               onDismiss={() => void dismissPlan()}
-              onClearGoal={
-                canClearGoalBar({ goalMode })
-                  ? () => setGoalMode(false)
-                  : undefined
-              }
+              onClearGoal={() => setGoalMode(false)}
               onOpenDetails={() => openPlanInResource()}
             />
           )}
 
           {mainPane === "chat" && goalOrchSessionChip ? (
-            <div className="goal-orch-session-chip-wrap">
-              <button
-                type="button"
-                className="goal-orch-session-chip"
-                data-testid="goal-orch-session-chip"
-                title={[
-                  tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
-                  goalOrchSessionChip.label,
-                  goalOrchSessionChip.progress,
-                  goalOrchSessionChip.detail,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-                aria-label={tr("reliability.goal.sessionChipAria", {
+            <button
+              type="button"
+              className="goal-orch-session-chip"
+              data-testid="goal-orch-session-chip"
+              title={[
+                tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+                goalOrchSessionChip.label,
+                goalOrchSessionChip.progress,
+                goalOrchSessionChip.detail,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              aria-label={tr("reliability.goal.sessionChipAria", {
+                phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+              })}
+              onClick={() => openReliability()}
+            >
+              <span className="goal-orch-session-chip__dot" aria-hidden />
+              <span className="goal-orch-session-chip__label">
+                {tr("reliability.goal.sessionChip", {
                   phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
                 })}
-                aria-haspopup="menu"
-                aria-expanded={goalOrchChipMenuOpen}
-                onClick={() => setGoalOrchChipMenuOpen((v) => !v)}
-              >
-                <span className="goal-orch-session-chip__dot" aria-hidden />
-                <span className="goal-orch-session-chip__label">
-                  {tr("reliability.goal.sessionChip", {
-                    phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
-                  })}
+              </span>
+              {goalOrchSessionChip.progress ? (
+                <span className="goal-orch-session-chip__meta">
+                  {goalOrchSessionChip.progress}
                 </span>
-                {goalOrchSessionChip.progress ? (
-                  <span className="goal-orch-session-chip__meta">
-                    {goalOrchSessionChip.progress}
-                  </span>
-                ) : null}
-              </button>
-              {goalOrchChipMenuOpen ? (
-                <div
-                  className="menu-panel goal-orch-session-chip__menu"
-                  role="menu"
-                  aria-label={tr("reliability.goal.sessionMenuAria")}
-                  data-testid="goal-orch-session-chip-menu"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="goal-orch-session-chip__menu-item"
-                    data-testid="goal-orch-chip-open-reliability"
-                    onClick={() => {
-                      setGoalOrchChipMenuOpen(false);
-                      openReliability();
-                    }}
-                  >
-                    {tr("reliability.goal.openReliability")}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="goal-orch-session-chip__menu-item"
-                    data-testid="goal-orch-chip-copy-summary"
-                    onClick={() => void copyGoalOrchControlSummary()}
-                  >
-                    {tr("reliability.goal.copySummary")}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="goal-orch-session-chip__menu-item"
-                    data-testid="goal-orch-chip-clear-timeline"
-                    disabled={goalOrchEvents.length === 0}
-                    onClick={requestClearLocalGoalOrchTimeline}
-                  >
-                    {tr("reliability.goal.clearTimeline")}
-                  </button>
-                </div>
               ) : null}
-            </div>
+            </button>
           ) : null}
 
           {mainPane === "chat" && showChatFind && (
@@ -20053,16 +19262,6 @@ export default function App() {
                 : session.state
             }
             sessionKey={session.sessionId ?? `draft-${session.title ?? "new"}`}
-            sessionId={session.sessionId}
-            locateMessageId={
-              pendingLocateMessageId &&
-              session.sessionId &&
-              (!pendingLocateSessionIdRef.current ||
-                session.sessionId === pendingLocateSessionIdRef.current)
-                ? pendingLocateMessageId
-                : null
-            }
-            onLocateMessage={onLocateMessageDeepLink}
             projectPath={effectiveProjectPath}
             suppressEmptyCopy={welcomeSession}
             canEditLastUser={canEditLastUser}
@@ -20239,21 +19438,34 @@ export default function App() {
                 </div>
               </div>
             ) : null}
+            {(() => {
+              const showWelcomeProjectRow =
+                welcomeSession && !phoneLayout && !!activeProject;
+              const showChangesChips =
+                !phoneLayout &&
+                (!!sessionChangesSummary || !!gitDirtySummary);
+              const showContextBar =
+                showWelcomeProjectRow || showChangesChips;
+              return (
             <div
               className={
                 "composer-stack" +
-                (welcomeSession && !phoneLayout && activeProject
-                  ? " composer-stack--with-context"
-                  : "")
+                (showContextBar ? " composer-stack--with-context" : "")
               }
             >
-            {/* New session + project bound: project + branch/worktree above input.
-                Hidden entirely when no project is selected. */}
-            {welcomeSession && !phoneLayout && activeProject ? (
+            {/* Project/branch (new session) + session/workspace change chips.
+                Hidden entirely when the bar would be empty. */}
+            {showContextBar ? (
               <div
                 className="composer__context-bar"
-                aria-label={tr("composer.pickProject")}
+                aria-label={
+                  showWelcomeProjectRow
+                    ? tr("composer.pickProject")
+                    : tr("changes.chipAria")
+                }
               >
+                {showWelcomeProjectRow && activeProject ? (
+                  <>
                 <ComposerProjectMenu
                   variant="context"
                   activeProject={
@@ -20321,8 +19533,6 @@ export default function App() {
                       worktreeGc: tr("composer.worktreeGc"),
                       worktreeShip: tr("composer.worktreeShip"),
                       worktreeShipTip: tr("composer.worktreeShipTip"),
-                      worktreeCompare: tr("composer.worktreeCompare"),
-                      worktreeCompareTip: tr("composer.worktreeCompareTip"),
                       worktreeRemove: tr("composer.worktreeRemove"),
                       worktreeRemoveTip: tr("composer.worktreeRemoveTip"),
                       cliWorktrees: tr("composer.cliWorktrees"),
@@ -20350,7 +19560,6 @@ export default function App() {
                     }
                     onGc={openWorktreeGc}
                     onShip={openShipFlow}
-                    onCompare={openWorktreeCompare}
                     onRemove={confirmRemoveWorktree}
                     onOpen={() => {
                       void refreshGitWorktrees();
@@ -20386,6 +19595,99 @@ export default function App() {
                     }}
                   />
                 ) : null}
+                  </>
+                ) : null}
+                {showChangesChips ? (
+                  <div className="composer__context-changes">
+                    {sessionChangesSummary ? (
+                      <Tip label={tr("changes.chipTip")}>
+                        <button
+                          type="button"
+                          className="composer__context-item composer__context-item--changes"
+                          data-testid="session-changes-chip"
+                          aria-label={
+                            sessionChangesSummary.mode === "diff"
+                              ? `${tr("changes.chipAria")}: ${tr(
+                                  "changes.chipDiff",
+                                  {
+                                    a: String(
+                                      sessionChangesSummary.addedLines ?? 0,
+                                    ),
+                                    d: String(
+                                      sessionChangesSummary.removedLines ?? 0,
+                                    ),
+                                  },
+                                )}`
+                              : `${tr("changes.chipAria")}: ${tr(
+                                  "changes.chipFiles",
+                                  {
+                                    n: String(sessionChangesSummary.fileCount),
+                                  },
+                                )}`
+                          }
+                          onClick={() => {
+                            openAsidePane();
+                            setResourceOpenTarget({ type: "changes" });
+                          }}
+                        >
+                          <IconFileDiff size={14} aria-hidden />
+                          <span className="composer__context-label chip__label--nums">
+                            {sessionChangesSummary.mode === "diff"
+                              ? tr("changes.chipDiff", {
+                                  a: String(
+                                    sessionChangesSummary.addedLines ?? 0,
+                                  ),
+                                  d: String(
+                                    sessionChangesSummary.removedLines ?? 0,
+                                  ),
+                                })
+                              : tr("changes.chipFiles", {
+                                  n: String(sessionChangesSummary.fileCount),
+                                })}
+                          </span>
+                        </button>
+                      </Tip>
+                    ) : null}
+                    {gitDirtySummary ? (
+                      <Tip label={tr("changes.workspace.chipTip")}>
+                        <button
+                          type="button"
+                          className="composer__context-item composer__context-item--git-dirty"
+                          data-testid="git-dirty-chip"
+                          aria-label={`${tr("changes.workspace.chipAria")}: ${tr(
+                            "changes.workspace.chip",
+                            { n: String(gitDirtySummary.count) },
+                          )}`}
+                          onClick={() => {
+                            const path = activeProject?.path?.trim() || "";
+                            if (
+                              api.isTauri() &&
+                              !isMirrorClient() &&
+                              path
+                            ) {
+                              openAsidePane();
+                              setResourceOpenTarget({ type: "changes" });
+                            } else if (path) {
+                              showToast(
+                                tr("changes.workspace.toastPath", {
+                                  path,
+                                }),
+                                4000,
+                              );
+                            }
+                          }}
+                        >
+                          <IconGitBranch size={14} aria-hidden />
+                          <span className="composer__context-label chip__label--nums">
+                            {tr("changes.workspace.chip", {
+                              n: String(gitDirtySummary.count),
+                            })}
+                          </span>
+                        </button>
+                      </Tip>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <div
@@ -20395,39 +19697,6 @@ export default function App() {
                 (dragZone === "main" ? " composer--drop-ready" : "")
               }
             >
-              {sendIntent.bannerKey && composerHasBody ? (
-                <div
-                  className={
-                    "composer__intent" +
-                    (sendIntent.kind === "foreign_concurrent"
-                      ? " composer__intent--foreign"
-                      : "") +
-                    (sendIntent.kind === "blocked_permission"
-                      ? " composer__intent--blocked"
-                      : "") +
-                    (sendIntent.kind === "enqueue"
-                      ? " composer__intent--enqueue"
-                      : "")
-                  }
-                  role="status"
-                  data-testid="composer-send-intent"
-                  data-intent={sendIntent.kind}
-                >
-                  <span className="composer__intent-text">
-                    {tr(sendIntent.bannerKey)}
-                  </span>
-                  {openAsNewChatPlan.show ? (
-                    <button
-                      type="button"
-                      className="composer__intent-cta"
-                      data-testid="composer-intent-open-new"
-                      onClick={() => void newChat(activeProject)}
-                    >
-                      {tr(openAsNewChatPlan.ctaKey)}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
               {sendQueueStrip.visible && (
                 <div
                   className="composer__queue"
@@ -20441,12 +19710,6 @@ export default function App() {
                       {tr("composer.queueCount", {
                         n: String(sendQueueStrip.count),
                       })}
-                      {sendQueueStripIntentLabel ? (
-                        <span className="composer__queue-intent-label">
-                          {" · "}
-                          {tr(sendQueueStripIntentLabel.labelKey)}
-                        </span>
-                      ) : null}
                     </span>
                     <button
                       type="button"
@@ -20653,42 +19916,23 @@ export default function App() {
                   />,
                   document.body,
                 )}
-              {skillsPickerOpen &&
-                skillsPickerPos &&
+              {atMenuOpen &&
+                composerAtPos &&
                 typeof document !== "undefined" &&
                 createPortal(
-                  <SkillsTaskPickerPanel
+                  <ComposerAtPanel
                     open
-                    panelRef={skillsPickerPanelRef}
-                    skills={skillsPickerCatalog}
-                    ranked={skillsPickerRanked}
-                    recentIds={skillsPickerRecent}
-                    query={skillsPickerQuery}
-                    activeIndex={skillsPickerActive}
-                    loading={skillsLoading}
-                    hostError={skillsLoadError}
-                    catalogCount={skillsPickerCatalog.length}
-                    focusFilter
-                    labels={{
-                      aria: tr("skillsPicker.aria"),
-                      placeholder: tr("skillsPicker.placeholder"),
-                      recent: tr("skillsPicker.recent"),
-                      all: tr("skillsPicker.all"),
-                      loading: tr("skillsPicker.loading"),
-                      empty: tr("skillsPicker.empty"),
-                      emptyHint: tr("skillsPicker.emptyHint"),
-                      filterEmpty: tr("skillsPicker.filterEmpty"),
-                      filterEmptyHint: tr("skillsPicker.filterEmptyHint"),
-                      hostOnly: tr("skillsPicker.hostOnly"),
-                      hostOnlyHint: tr("skillsPicker.hostOnlyHint"),
-                      clearFilter: tr("skillsPicker.clearFilter"),
-                    }}
-                    onQueryChange={setSkillsPickerQuery}
-                    onActiveIndexChange={setSkillsPickerActive}
-                    onSelect={applySkillsPickerSkill}
-                    onClearFilter={() => setSkillsPickerQuery("")}
+                    panelRef={atPanelRef}
+                    locale={locale}
+                    entries={atEntries}
+                    filterQuery={liveAt.query}
+                    loading={atLoading}
+                    softFail={atSoftFail}
+                    activeIndex={atActiveIndex}
+                    onActiveIndexChange={setAtActiveIndex}
+                    onSelect={applyAtFile}
                     style={{
-                      ...skillsPickerStyle,
+                      ...composerAtStyle,
                       zIndex: 10050,
                     }}
                   />,
@@ -20803,6 +20047,39 @@ export default function App() {
                     (e.nativeEvent as KeyboardEvent).keyCode === 229
                   ) {
                     return;
+                  }
+                  if (atMenuOpen) {
+                    const n = atEntries.length;
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      if (!n) return;
+                      setAtActiveIndex((i) => (i + 1) % n);
+                      return;
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      if (!n) return;
+                      setAtActiveIndex((i) => (i - 1 + n) % n);
+                      return;
+                    }
+                    if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
+                      e.preventDefault();
+                      if (!n) return;
+                      const entry =
+                        atEntries[
+                          Math.min(
+                            Math.max(0, atActiveIndex),
+                            Math.max(0, n - 1),
+                          )
+                        ];
+                      if (entry) applyAtFile(entry);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      closeAtMenu();
+                      return;
+                    }
                   }
                   if (composerMenuOpen) {
                     // Ref = same array the panel renders (never desync).
@@ -20976,10 +20253,6 @@ export default function App() {
                     }
                   }
                   if (e.key === "Escape") {
-                    if (skillsPickerOpenRef.current) {
-                      closeSkillsPicker();
-                      return;
-                    }
                     if (promptHistoryOpenRef.current) {
                       closePromptHistory();
                       return;
@@ -21006,13 +20279,11 @@ export default function App() {
                       if (phoneLayout) {
                         setPhoneToolsOpen((v) => !v);
                         closeComposerMenu();
-                        closeSkillsPicker();
                         return;
                       }
                       if (composerMenuOpen) {
                         closeComposerMenu();
                       } else {
-                        closeSkillsPicker();
                         setShowComposerPlus(true);
                       }
                     }}
@@ -21020,29 +20291,6 @@ export default function App() {
                     <IconPlus size={18} />
                   </button>
                 </Tip>
-                {!phoneLayout ? (
-                  <Tip label={tr("composer.skillsPicker")}>
-                    <button
-                      ref={skillsPickerTriggerRef}
-                      type="button"
-                      className={
-                        "icon-btn" + (skillsPickerOpen ? " is-open" : "")
-                      }
-                      aria-label={tr("composer.skillsPicker")}
-                      aria-expanded={skillsPickerOpen}
-                      aria-haspopup="listbox"
-                      onClick={() => {
-                        if (skillsPickerOpen) {
-                          closeSkillsPicker();
-                        } else {
-                          openSkillsPicker();
-                        }
-                      }}
-                    >
-                      <IconSkills size={18} />
-                    </button>
-                  </Tip>
-                ) : null}
                 {!phoneLayout ? (
                   <>
                     {goalMode ? (
@@ -21087,10 +20335,6 @@ export default function App() {
                       activeSource={providerActiveSource}
                       activeProviderId={providerActiveId}
                       channelEfforts={channelEffortOptions}
-                      applyNotes={{
-                        model: modelApplyFooter,
-                        effort: effortApplyFooter,
-                      }}
                       labels={{
                         model: tr("composer.model"),
                         modelGroupOfficial: tr("composer.modelGroupOfficial"),
@@ -21109,7 +20353,23 @@ export default function App() {
                       onModelPick={(pick) => {
                         void handleModelPick(pick);
                       }}
-                      onEffort={handleComposerEffortChange}
+                      onEffort={(v) => {
+                        if (
+                          !isValidEffort(
+                            v,
+                            channelEffortOptions ?? undefined,
+                          )
+                        )
+                          return;
+                        setEffort(v);
+                        void api
+                          .composerPrefsSet({
+                            projectId: activeProject?.id ?? null,
+                            sessionId: session.sessionId ?? null,
+                            effort: v,
+                          })
+                          .catch((e) => showToast(String(e), 4000));
+                      }}
                     />
                     <ComposerAccessMenu
                       mode={mode}
@@ -21214,94 +20474,6 @@ export default function App() {
                         setShowCompactModal(true);
                       }}
                     />
-                    {sessionChangesSummary ? (
-                      <Tip label={tr("changes.chipTip")}>
-                        <button
-                          type="button"
-                          className="chip chip--changes"
-                          data-testid="session-changes-chip"
-                          aria-label={
-                            sessionChangesSummary.mode === "diff"
-                              ? `${tr("changes.chipAria")}: ${tr(
-                                  "changes.chipDiff",
-                                  {
-                                    a: String(
-                                      sessionChangesSummary.addedLines ?? 0,
-                                    ),
-                                    d: String(
-                                      sessionChangesSummary.removedLines ?? 0,
-                                    ),
-                                  },
-                                )}`
-                              : `${tr("changes.chipAria")}: ${tr(
-                                  "changes.chipFiles",
-                                  {
-                                    n: String(sessionChangesSummary.fileCount),
-                                  },
-                                )}`
-                          }
-                          onClick={() => {
-                            openAsidePane();
-                            setResourceOpenTarget({ type: "changes" });
-                          }}
-                        >
-                          <IconFileDiff size={14} aria-hidden />
-                          <span className="chip__label chip__label--nums">
-                            {sessionChangesSummary.mode === "diff"
-                              ? tr("changes.chipDiff", {
-                                  a: String(
-                                    sessionChangesSummary.addedLines ?? 0,
-                                  ),
-                                  d: String(
-                                    sessionChangesSummary.removedLines ?? 0,
-                                  ),
-                                })
-                              : tr("changes.chipFiles", {
-                                  n: String(sessionChangesSummary.fileCount),
-                                })}
-                          </span>
-                        </button>
-                      </Tip>
-                    ) : null}
-                    {gitDirtySummary ? (
-                      <Tip label={tr("changes.workspace.chipTip")}>
-                        <button
-                          type="button"
-                          className="chip chip--git-dirty"
-                          data-testid="git-dirty-chip"
-                          aria-label={`${tr("changes.workspace.chipAria")}: ${tr(
-                            "changes.workspace.chip",
-                            { n: String(gitDirtySummary.count) },
-                          )}`}
-                          onClick={() => {
-                            const path = activeProject?.path?.trim() || "";
-                            // Desktop Resources pane: open Changes. Otherwise toast path.
-                            if (
-                              api.isTauri() &&
-                              !isMirrorClient() &&
-                              path
-                            ) {
-                              openAsidePane();
-                              setResourceOpenTarget({ type: "changes" });
-                            } else if (path) {
-                              showToast(
-                                tr("changes.workspace.toastPath", {
-                                  path,
-                                }),
-                                4000,
-                              );
-                            }
-                          }}
-                        >
-                          <IconGitBranch size={14} aria-hidden />
-                          <span className="chip__label chip__label--nums">
-                            {tr("changes.workspace.chip", {
-                              n: String(gitDirtySummary.count),
-                            })}
-                          </span>
-                        </button>
-                      </Tip>
-                    ) : null}
                   </>
                 ) : null}
                 {showComposerDraftStats &&
@@ -21400,24 +20572,15 @@ export default function App() {
                     {sendQueue.canShowQueueButton(
                       session.state,
                       connecting,
-                      composerHasBody,
+                      !isDraftEmpty(parseStoredContent(draft)) ||
+                        attachments.length > 0,
                     ) && (
-                      <Tip
-                        label={
-                          sendIntent.kind === "enqueue"
-                            ? tr(sendControlLabelKey)
-                            : tr("composer.queue")
-                        }
-                      >
+                      <Tip label={tr("composer.queue")}>
                         <button
                           type="button"
                           className="icon-btn icon-btn--primary"
                           onClick={() => void send()}
-                          aria-label={
-                            sendIntent.kind === "enqueue"
-                              ? tr(sendControlLabelKey)
-                              : tr("composer.queue")
-                          }
+                          aria-label={tr("composer.queue")}
                         >
                           <IconQueue size={16} />
                         </button>
@@ -21435,18 +20598,19 @@ export default function App() {
                     </Tip>
                   </>
                 ) : (
-                  <Tip label={tr(sendControlLabelKey)}>
+                  <Tip label={tr("composer.send")}>
                     <button
                       type="button"
                       className="icon-btn icon-btn--primary"
                       disabled={
                         (!effectiveCanSend &&
                           !shouldEnqueueSend(session.state, connecting)) ||
-                        !composerHasBody ||
+                        (isDraftEmpty(parseStoredContent(draft)) &&
+                          attachments.length === 0) ||
                         session.state === "awaiting_permission"
                       }
                       onClick={() => void send()}
-                      aria-label={tr(sendControlLabelKey)}
+                      aria-label={tr("composer.send")}
                     >
                       <IconSend size={16} />
                     </button>
@@ -21455,6 +20619,8 @@ export default function App() {
               </div>
             </div>
             </div>
+              );
+            })()}
           </div>
           </div>
           </>
@@ -21508,50 +20674,6 @@ export default function App() {
                 sessionChangesById[session.sessionId || ""] ?? []
               }
               sessionMessages={messages}
-              activeCwd={activeProject?.path ?? null}
-              subagentWorktreeSnapshotEnabled={
-                subagentWorktreeSnapshotEnabled
-              }
-              sessionBusy={
-                !!session.sessionId &&
-                isActiveSessionSnapshot(liveMap[session.sessionId])
-              }
-              onOpenAgentsCwd={async (cwd): Promise<TasksBindCwdResult> => {
-                const path = (cwd || "").trim();
-                if (!path) {
-                  return { ok: false, kind: "empty_path" };
-                }
-                if (!api.isTauri()) {
-                  return { ok: false, kind: "host_only" };
-                }
-                if (
-                  activeProject?.path &&
-                  pathsEqual(path, activeProject.path)
-                ) {
-                  return { ok: false, kind: "already_active" };
-                }
-                const wt = worktreeEntryForPath(path, gitWorktrees);
-                if (!wt) {
-                  return { ok: false, kind: "not_worktree" };
-                }
-                try {
-                  await switchToWorktree(wt);
-                  const liveId =
-                    viewingSessionIdRef.current || session.sessionId || null;
-                  if (liveId) {
-                    await markSessionWorktree(liveId, wt.path, wt.branch);
-                  }
-                  return { ok: true };
-                } catch (e) {
-                  const view = classifyTasksBindCwdError(e);
-                  showToast(tr(view.titleKey as MessageKey), 4000);
-                  return {
-                    ok: false,
-                    kind: view.kind,
-                    detail: view.detail || undefined,
-                  };
-                }
-              }}
               plan={plan}
               planFocusKey={planFocusKey}
               planChrome={{
@@ -21561,23 +20683,10 @@ export default function App() {
                 hasHistory: planHistoryNonEmpty,
               }}
               onApprovePlan={() => void approvePlan()}
-              onRequestPlanChanges={(note) => {
-                // Draft-from-edit canvas includes revised-plan markers — send
-                // immediately. Empty / omitted opens the optional note modal.
-                if (typeof note === "string" && note.trim().length > 0) {
-                  void requestPlanChanges(note);
-                  return;
-                }
-                openRequestPlanChanges();
-              }}
+              onRequestPlanChanges={() => openRequestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}
               onOpenPlanHistory={() => setShowPlanHistory(true)}
               onShip={openShipFlow}
-              onDiffCommentToChat={(prompt) => {
-                setDraft(prompt);
-                requestComposerFocus();
-                showToast(tr("changes.commentInsertedToast"), 2400);
-              }}
               onAsideLayoutHint={applyAsideLayoutHint}
               onClose={() => {
                 // Manual close — do not treat as plan-owned pane on later dismiss.
@@ -21675,7 +20784,20 @@ export default function App() {
             onModelPick={(pick) => {
               void handleModelPick(pick);
             }}
-            onEffort={handleComposerEffortChange}
+            onEffort={(v) => {
+              if (
+                !isValidEffort(v, channelEffortOptions ?? undefined)
+              )
+                return;
+              setEffort(v);
+              void api
+                .composerPrefsSet({
+                  projectId: activeProject?.id ?? null,
+                  sessionId: session.sessionId ?? null,
+                  effort: v,
+                })
+                .catch((e) => showToast(String(e), 4000));
+            }}
             onMode={(v) => {
               setMode(v);
               if (v === "plan") setGoalMode(false);
@@ -21733,7 +20855,6 @@ export default function App() {
         open={showDoctor}
         onClose={() => setShowDoctor(false)}
         locale={locale}
-        sandboxProfile={sandboxProfile}
         onConfirm={({ title, message, confirmLabel, danger, onConfirm }) => {
           setAppDialog({
             kind: "confirm",
@@ -21748,13 +20869,6 @@ export default function App() {
           void refreshLists();
         }}
         onOpenReliability={() => openReliability()}
-        onOpenSettings={(section, tab) => {
-          if (isSettingsSectionId(section)) {
-            navigateSettings(section, tab);
-          } else {
-            navigateSettings("about", tab);
-          }
-        }}
       />
       <ReliabilityCenterModal
         open={showReliability}
@@ -21763,10 +20877,6 @@ export default function App() {
         view={reliabilityView}
         goalOrchUiEnabled={goalOrchUiEnabled}
         goalOrchEvents={goalOrchEvents}
-        onClearGoalOrchEvents={() => {
-          const plan = planClearGoalOrchEvents(goalOrchEvents);
-          setGoalOrchEvents(plan.next);
-        }}
         lastProcessLimit={lastProcessLimit}
         existingSessionIds={sessions.map((s) => s.id)}
         onOpenDoctor={() => void openDoctor()}
@@ -21775,39 +20885,6 @@ export default function App() {
           trayHandlersRef.current.openSessionById(id);
         }}
       />
-      <GlassModal
-        open={goalOrchClearConfirmOpen}
-        onClose={() => setGoalOrchClearConfirmOpen(false)}
-        title={tr("reliability.goal.clearConfirmTitle")}
-        size="sm"
-        closeLabel={tr("common.cancel")}
-        titleId="goal-orch-clear-confirm-title"
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => setGoalOrchClearConfirmOpen(false)}
-            >
-              {tr("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="btn btn--danger"
-              data-testid="goal-orch-clear-confirm"
-              onClick={clearLocalGoalOrchTimeline}
-            >
-              {tr("reliability.goal.clearConfirmAction")}
-            </button>
-          </>
-        }
-      >
-        <p className="app-dialog__msg" style={{ margin: 0, padding: "12px 16px" }}>
-          {tr("reliability.goal.clearConfirmMessage", {
-            count: goalOrchEvents.length,
-          })}
-        </p>
-      </GlassModal>
       <ProjectRulesModal
         open={!!projectRulesTarget}
         onClose={() => setProjectRulesTarget(null)}
@@ -22047,45 +21124,6 @@ export default function App() {
               spellCheck={false}
             />
           </label>
-          <label className="wt-create__field">
-            <span className="wt-create__label">
-              {tr("composer.worktreeFirstPrompt")}
-            </span>
-            <textarea
-              className="settings-input wt-create__prompt"
-              value={worktreeCreateFirstPrompt}
-              onChange={(e) => {
-                setWorktreeCreateFirstPrompt(e.target.value);
-              }}
-              placeholder={tr("composer.worktreeFirstPromptPlaceholder")}
-              rows={3}
-              disabled={worktreeCreateBusy}
-              spellCheck
-            />
-            <span className="wt-create__field-hint">
-              {tr("composer.worktreeFirstPromptHint")}
-            </span>
-          </label>
-          <label className="wt-create__check">
-            <input
-              type="checkbox"
-              checked={worktreeCreateAutoSend}
-              onChange={(e) => {
-                setWorktreeCreateAutoSend(e.target.checked);
-              }}
-              disabled={
-                worktreeCreateBusy || !worktreeCreateFirstPrompt.trim()
-              }
-            />
-            <span>
-              <span className="wt-create__check-label">
-                {tr("composer.worktreeAutoSend")}
-              </span>
-              <span className="wt-create__field-hint">
-                {tr("composer.worktreeAutoSendHint")}
-              </span>
-            </span>
-          </label>
           {worktreeCreatePreviewPath ? (
             <p className="wt-create__preview">
               {tr("composer.worktreePathPreview", {
@@ -22195,224 +21233,6 @@ export default function App() {
             </p>
           ) : null}
         </div>
-      </GlassModal>
-      <GlassModal
-        open={worktreeCompareOpen}
-        onClose={closeWorktreeCompare}
-        title={tr("composer.worktreeCompareTitle")}
-        size="md"
-        closeLabel={tr("common.close")}
-        closeOnOverlay={!worktreeCompareBusy}
-        showClose={!worktreeCompareBusy}
-        wrapBody
-        footer={
-          <button
-            type="button"
-            className="btn btn--solid"
-            disabled={worktreeCompareBusy}
-            onClick={closeWorktreeCompare}
-            data-testid="worktree-compare-close"
-          >
-            {tr("common.close")}
-          </button>
-        }
-      >
-        {(() => {
-          const summary = summarizeCompareEntries(worktreeCompareEntries);
-          const capped = capCompareEntries(
-            worktreeCompareEntries,
-            COMPARE_ENTRY_DISPLAY_CAP,
-          );
-          const hostOverflow =
-            worktreeCompareMeta?.truncated &&
-            typeof worktreeCompareMeta.hostTotal === "number"
-              ? Math.max(
-                  0,
-                  worktreeCompareMeta.hostTotal - worktreeCompareEntries.length,
-                )
-              : 0;
-          const overflow = capped.overflow + hostOverflow;
-          const otherRoot = worktreeCompareMeta?.other ?? "";
-          const baseLabel =
-            worktreeCompareMeta?.baseBranch ||
-            worktreeCompareMeta?.baseRef?.slice(0, 7) ||
-            "main";
-          const otherLabel =
-            worktreeCompareMeta?.otherBranch ||
-            worktreeCompareMeta?.otherRef?.slice(0, 7) ||
-            "HEAD";
-          return (
-            <div className="wt-compare" data-testid="worktree-compare">
-              <p className="wt-compare__hint">
-                {tr("composer.worktreeCompareHint")}
-              </p>
-              <p className="wt-compare__range" title={`${baseLabel}...${otherLabel}`}>
-                {tr("composer.worktreeCompareRange", {
-                  base: baseLabel,
-                  other: otherLabel,
-                })}
-              </p>
-              {worktreeCompareBusy ? (
-                <p className="wt-compare__status">
-                  {tr("composer.worktreeCompareLoading")}
-                </p>
-              ) : worktreeCompareError ? (
-                <p className="wt-compare__error" role="alert">
-                  {worktreeCompareError}
-                </p>
-              ) : summary.total === 0 ? (
-                <p className="wt-compare__empty">
-                  {tr("composer.worktreeCompareEmpty")}
-                </p>
-              ) : (
-                <>
-                  <div
-                    className="wt-compare__chips"
-                    aria-label={formatCompareSummaryLine(summary)}
-                  >
-                    {summary.added > 0 ? (
-                      <span className="wt-compare__chip wt-compare__chip--a">
-                        {tr("composer.worktreeCompareChipAdded", {
-                          n: String(summary.added),
-                        })}
-                      </span>
-                    ) : null}
-                    {summary.modified > 0 ? (
-                      <span className="wt-compare__chip wt-compare__chip--m">
-                        {tr("composer.worktreeCompareChipModified", {
-                          n: String(summary.modified),
-                        })}
-                      </span>
-                    ) : null}
-                    {summary.deleted > 0 ? (
-                      <span className="wt-compare__chip wt-compare__chip--d">
-                        {tr("composer.worktreeCompareChipDeleted", {
-                          n: String(summary.deleted),
-                        })}
-                      </span>
-                    ) : null}
-                    {summary.renamed > 0 ? (
-                      <span className="wt-compare__chip wt-compare__chip--r">
-                        {tr("composer.worktreeCompareChipRenamed", {
-                          n: String(summary.renamed),
-                        })}
-                      </span>
-                    ) : null}
-                    {summary.other > 0 ? (
-                      <span className="wt-compare__chip">
-                        {tr("composer.worktreeCompareChipOther", {
-                          n: String(summary.other),
-                        })}
-                      </span>
-                    ) : null}
-                    <span className="wt-compare__chip wt-compare__chip--total">
-                      {tr("composer.worktreeCompareChipTotal", {
-                        n: String(summary.total),
-                      })}
-                    </span>
-                  </div>
-                  <ul className="wt-compare__list" role="list">
-                    {capped.shown.map((entry, idx) => {
-                      const letter = nameStatusLetter(entry.status);
-                      const abs = joinWorktreeRelPath(otherRoot, entry.path);
-                      const showOld =
-                        entry.oldPath &&
-                        entry.oldPath !== entry.path
-                          ? entry.oldPath
-                          : null;
-                      return (
-                        <li
-                          key={`${entry.status}:${entry.path}:${idx}`}
-                          className="wt-compare__row"
-                        >
-                          <span
-                            className={
-                              "wt-compare__badge wt-compare__badge--" +
-                              letter.toLowerCase()
-                            }
-                            title={entry.status}
-                            aria-label={entry.status}
-                          >
-                            {letter}
-                          </span>
-                          <span className="wt-compare__path" title={entry.path}>
-                            {showOld ? (
-                              <>
-                                <span className="wt-compare__old">
-                                  {showOld}
-                                </span>
-                                <span className="wt-compare__arrow" aria-hidden>
-                                  →
-                                </span>
-                              </>
-                            ) : null}
-                            {entry.path}
-                          </span>
-                          <span className="wt-compare__row-actions">
-                            <button
-                              type="button"
-                              className="wt-compare__icon-btn"
-                              title={tr("composer.worktreeCompareCopyPath")}
-                              aria-label={tr(
-                                "composer.worktreeCompareCopyPath",
-                              )}
-                              onClick={() => {
-                                const text = abs || entry.path;
-                                void (async () => {
-                                  try {
-                                    await navigator.clipboard.writeText(text);
-                                    showToast(
-                                      tr("composer.worktreeComparePathCopied"),
-                                      2000,
-                                    );
-                                  } catch {
-                                    showToast(text, 4000);
-                                  }
-                                })();
-                              }}
-                            >
-                              <IconCopy size={14} aria-hidden />
-                            </button>
-                            {abs ? (
-                              <button
-                                type="button"
-                                className="wt-compare__icon-btn"
-                                title={tr("composer.worktreeCompareReveal")}
-                                aria-label={tr(
-                                  "composer.worktreeCompareReveal",
-                                )}
-                                onClick={() => {
-                                  void api
-                                    .pathReveal(abs)
-                                    .catch((e) =>
-                                      showToast(String(e), 3500),
-                                    );
-                                }}
-                              >
-                                <IconFolder size={14} aria-hidden />
-                              </button>
-                            ) : null}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {overflow > 0 ? (
-                    <p className="wt-compare__overflow">
-                      {tr("composer.worktreeCompareOverflow", {
-                        n: String(overflow),
-                        shown: String(capped.shown.length),
-                        total: String(
-                          summary.total + hostOverflow,
-                        ),
-                      })}
-                    </p>
-                  ) : null}
-                </>
-              )}
-            </div>
-          );
-        })()}
       </GlassModal>
       <GlassModal
         open={shipOpen}
@@ -22644,32 +21464,6 @@ export default function App() {
           setShowProductTutorial(false);
         }}
       />
-      <SandboxWizard
-        open={sandboxWizardOpen}
-        locale={locale}
-        mode={sandboxWizardMode}
-        platform={platform}
-        cliSupportsSandbox={cliSupportsSandbox(cliInfo.version)}
-        onClose={() => {
-          if (sandboxWizardMode === "trust") {
-            // Soft dismiss for this session only unless checkbox used via skip/apply.
-          }
-          setSandboxWizardOpen(false);
-        }}
-        onSkip={({ dontOfferAgain }) => {
-          if (sandboxWizardMode === "trust" && dontOfferAgain) {
-            markSandboxWizardDismissed();
-          }
-          setSandboxWizardOpen(false);
-        }}
-        onApply={(profile, { dontOfferAgain }) => {
-          if (dontOfferAgain) {
-            markSandboxWizardDismissed();
-          }
-          setSandboxWizardOpen(false);
-          applyGlobalSandboxProfile(profile);
-        }}
-      />
       <VoiceOverlay
         locale={resolveLocale(locale)}
         open={liveVoiceOpen}
@@ -22683,11 +21477,6 @@ export default function App() {
         voiceId={voiceId}
         keepAgentsOnEnd={voiceKeepAgentsOnEnd}
         hasActiveSession={Boolean(session.sessionId)}
-        sessions={sessions.map((s) => ({
-          id: s.id,
-          title: s.title || tr("session.untitled"),
-          status: liveMap[s.id]?.state ?? "idle",
-        }))}
         onClose={() => setLiveVoiceOpen(false)}
         onSendTranscriptAsPrompt={
           session.sessionId
@@ -22704,7 +21493,7 @@ export default function App() {
               }
             : undefined
         }
-        onFocusSession={(id) => {
+        onOpenSession={(id) => {
           setLiveVoiceOpen(false);
           void (async () => {
             await refreshSessions();
@@ -22793,12 +21582,6 @@ export default function App() {
         open={agentDashboardOpen}
         locale={locale}
         rows={agentDashboardRows}
-        projects={projects.map((p) => ({
-          id: p.id,
-          name: p.name,
-          path: p.path,
-          trusted: p.trusted,
-        }))}
         onClose={() => setAgentDashboardOpen(false)}
         onSelectSession={(id) => {
           const row = sessions.find((s) => s.id === id);
@@ -22818,71 +21601,6 @@ export default function App() {
         onOpenBatchAgents={() => {
           setAgentDashboardOpen(false);
           openBatchAgents();
-        }}
-        onDispatchAgent={({ projectId, prompt }) => {
-          const plan = planDashboardDispatch({
-            projectId,
-            prompt,
-            projects: projects.map((p) => ({
-              id: p.id,
-              name: p.name,
-              path: p.path,
-              trusted: p.trusted,
-            })),
-          });
-          if (!plan.ok) {
-            const key =
-              plan.reason === "empty_prompt"
-                ? "dashboard.dispatch.emptyPrompt"
-                : plan.reason === "untrusted"
-                  ? "dashboard.dispatch.untrusted"
-                  : plan.reason === "no_trusted_project"
-                    ? "dashboard.dispatch.noTrusted"
-                    : "dashboard.dispatch.noProject";
-            showToast(tr(key), 2800);
-            return;
-          }
-          const proj = projects.find((p) => p.id === plan.project.id) ?? null;
-          if (!proj || !proj.trusted) {
-            showToast(tr("dashboard.dispatch.untrusted"), 2800);
-            return;
-          }
-          // New chat on project with prompt filled; soft-send after paint.
-          void (async () => {
-            await newChat(proj, {
-              seedDraft: plan.prompt,
-              switchToChat: true,
-            });
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                void sendRef.current?.();
-              });
-            });
-            showToast(
-              tr("dashboard.dispatch.started", {
-                name: proj.name || proj.path || proj.id,
-              }),
-              2200,
-            );
-          })();
-        }}
-        onOpenTaskBoard={() => {
-          setAgentDashboardOpen(false);
-          setTaskBoardOpen(true);
-        }}
-      />
-      <SessionTaskBoardModal
-        open={taskBoardOpen}
-        locale={locale}
-        board={taskBoard}
-        includeArchived={taskBoardIncludeArchived}
-        onIncludeArchivedChange={setTaskBoardIncludeArchived}
-        onClose={() => setTaskBoardOpen(false)}
-        onSelectSession={(id) => {
-          const row = sessions.find((s) => s.id === id);
-          if (!row) return;
-          const proj = projects.find((p) => p.id === row.projectId) || null;
-          void openSession(row, proj);
         }}
       />
       <BatchAgentsModal
@@ -23262,29 +21980,19 @@ export default function App() {
         <TraceHistoryList
           labels={{
             empty: tr("session.tracesEmpty"),
-            emptyHint: tr("session.tracesEmptyHint"),
             emptyFilter: tr("session.tracesEmptyFilter"),
-            emptyFilterHint: tr("session.tracesEmptyFilterHint"),
-            clearFilters: tr("session.tracesClearFilters"),
             reveal: tr("session.tracesReveal"),
             copyPath: tr("session.tracesCopyPath"),
             copied: tr("session.tracesCopied"),
             remove: tr("session.tracesRemove"),
             clearAll: tr("session.tracesClearAll"),
             clearConfirmTitle: tr("session.tracesClearConfirmTitle"),
-            // Leave {count} for TraceHistoryList (planClearTraceHistory).
             clearConfirmMessage: tr("session.tracesClearConfirmMessage"),
             clearConfirmAction: tr("session.tracesClearConfirmAction"),
             cancel: tr("common.cancel"),
-            closeLabel: tr("common.close"),
             searchPlaceholder: tr("session.tracesSearch"),
             listAria: tr("session.tracesTitle"),
             uploadedBadge: tr("session.tracesUploadedBadge"),
-            uploadedBadgeTitle: tr("session.tracesUploadedBadgeTitle"),
-            filterAll: tr("session.tracesFilter.all"),
-            filterLocal: tr("session.tracesFilter.local"),
-            filterUploaded: tr("session.tracesFilter.uploaded"),
-            filterAria: tr("session.tracesFilterAria"),
           }}
           onCopied={() => showToast(tr("session.tracesCopied"), 2000)}
           onError={(msg) => showToast(msg, 4000)}
@@ -24706,67 +23414,6 @@ export default function App() {
             <p className="compact-modal__hint">
               {tr("slash.compactEstimateHint")}
             </p>
-            {(() => {
-              const last = contextUsageDisplay.lastCompact;
-              const footer = buildCompactDialogFooter({
-                hasLiveAgent: sessionHasLiveAgent(session.state),
-                cliSupportsFlags: cliSupportsCompactionFlags(cliInfo.version),
-                mode: compactionMode,
-                detail: compactionDetail,
-                tokensBefore: last?.tokensBefore,
-                tokensAfter: last?.tokensAfter,
-              });
-              const modeLabel = tr(footer.dialog.modeLabelKey as MessageKey);
-              const detailLabel = footer.dialog.detailLabelKey
-                ? tr(footer.dialog.detailLabelKey as MessageKey)
-                : "";
-              const savingsVars =
-                footer.dialog.hasKnownSavings &&
-                footer.dialog.tokensBefore != null &&
-                footer.dialog.tokensAfter != null &&
-                footer.dialog.tokensSaved != null
-                  ? {
-                      before: formatTokenCount(
-                        footer.dialog.tokensBefore,
-                        locale,
-                      ),
-                      after: formatTokenCount(
-                        footer.dialog.tokensAfter,
-                        locale,
-                      ),
-                      saved: formatTokenCount(
-                        Math.abs(footer.dialog.tokensSaved),
-                        locale,
-                      ),
-                    }
-                  : {};
-              return (
-                <div
-                  className="compact-modal__honesty"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <p className="compact-modal__honesty-line">
-                    {tr(footer.apply.messageKey as MessageKey, footer.apply.vars)}
-                  </p>
-                  <p className="compact-modal__honesty-line">
-                    {tr(footer.mode.messageKey as MessageKey, {
-                      mode: modeLabel,
-                      detail: detailLabel,
-                    })}
-                  </p>
-                  <p className="compact-modal__honesty-line">
-                    {tr("slash.compactApply.presetNote")}
-                  </p>
-                  <p className="compact-modal__honesty-line">
-                    {tr(
-                      footer.savings.messageKey as MessageKey,
-                      savingsVars,
-                    )}
-                  </p>
-                </div>
-              );
-            })()}
             <label className="compact-modal__field-label" htmlFor="compact-note">
               {tr("slash.compactNote")}
             </label>

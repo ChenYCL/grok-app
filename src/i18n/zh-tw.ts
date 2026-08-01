@@ -1333,7 +1333,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.netProbeHonesty":
     "僅短時 HTTP 路徑探測——成功不代表串流、登入或 Agent 回合一定可用。失敗是網路/代理提示，不是完整診斷。",
   "settings.netProbeRun": "測試連線",
-  "settings.netProbeRetry": "重試探測",
   "settings.netProbeTesting": "檢測中…",
   "settings.netProbeFailed": "無法連上",
   "settings.netProbe.summaryCounts": "{ok} 可達 · {fail} 失敗",
@@ -1343,18 +1342,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.netProbe.outcome.empty": "無探測目標",
   "settings.netProbe.outcome.error": "探測失敗",
   "settings.netProbe.outcome.unavailable": "僅桌面端",
-  "settings.netProbe.empty.hostOnly": "需要桌面應用程式",
-  "settings.netProbe.empty.hostOnlyHint":
-    "連通性檢測走桌面 Host 的代理路徑。請在桌面應用中探測——瀏覽器/開發殼不會虛構可達結果。",
-  "settings.netProbe.empty.idle": "尚未探測",
-  "settings.netProbe.empty.idleHint":
-    "對目前已儲存的有效代理做一次短時 HTTP 路徑檢測。成功不代表串流或登入一定可用。",
-  "settings.netProbe.empty.noTargets": "未回傳探測目標",
-  "settings.netProbe.empty.noTargetsHint":
-    "Host 回傳了空目標列表。儲存代理設定後可重試——空列表不會被當成全部可達。",
-  "settings.netProbe.empty.error": "探測未能執行",
-  "settings.netProbe.empty.errorHint":
-    "Host 呼叫失敗。可重試，或檢查桌面應用是否為最新版本。這不是完整的網路診斷。",
   "settings.netProbe.target.ok": "可達",
   "settings.netProbe.target.timeout": "逾時",
   "settings.netProbe.target.dns": "DNS",
@@ -1973,24 +1960,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.includePartialMessages": "包含部分串流事件",
   "settings.includePartialMessagesDesc":
     "使用 `--output-format streaming-messages-json` 的無頭路徑會額外傳入 `--include-partial-messages`（CLI 0.2.117+），輸出增量 `stream_event` 文字/思考 delta。關閉 = 僅完整訊息（CLI 預設）。開啟且 CLI 足夠新時，遠端 IM 會升級為 streaming-messages-json；更舊 CLI soft-fail（省略 flag）。",
-  "settings.includePartialMessages.active":
-    "已開啟 — 無頭遠端 IM 會升級為 streaming-messages-json 並傳入 `--include-partial-messages`（CLI {minCli}+），輸出增量 `stream_event` 文字/思考 delta。應用內聊天走 ACP，不受此開關影響。",
-  "settings.includePartialMessages.softOmit":
-    "已開啟，但目前 CLI 低於 {minCli}（或版本未知）— 為避免啟動失敗已 soft-omit `--include-partial-messages`。升級 Grok Build CLI 前仍為完整訊息。",
-  "settings.includePartialMessages.idleOff":
-    "已關閉 — 僅完整訊息（CLI 預設）。不傳 `--include-partial-messages`。",
-  "settings.includePartialMessages.hostOnly":
-    "設定已儲存，但目前路徑不是無頭 streaming-messages-json（例如應用內 ACP 聊天）。部分串流事件僅作用於無頭遠端 IM / 診斷路徑。",
-  "settings.includePartialMessages.err.cliTooOld":
-    "CLI 過舊，不支援部分串流事件（需要 {minCli}+）。已 soft-omit 該 flag。",
-  "settings.includePartialMessages.err.unknownFlag":
-    "CLI 拒絕了 `--include-partial-messages`（未知 flag）。請升級 Grok Build，或關閉此開關。",
-  "settings.includePartialMessages.err.unsupportedFormat":
-    "`--include-partial-messages` 僅與 streaming-messages-json 配對。輸出格式不符 — flag 被忽略。",
-  "settings.includePartialMessages.err.hostOnly":
-    "部分串流生效需要桌面應用宿主（或無頭路徑）。此處不可用。",
-  "settings.includePartialMessages.err.other":
-    "無法套用部分串流設定。",
   "settings.maxAgentTurns": "最大 Agent 輪次",
   "settings.maxAgentTurnsDesc":
     "啟動 Agent 時傳入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 預設。下次啟動 Agent 時生效——變更後請重新連線工作階段。",
@@ -2009,13 +1978,7 @@ export const zhTW: Record<MessageKey, string> = {
   "processBudget.lead":
     "目前熱 Agent 行程佔用（焦點 live、中途 background、閒置 parked）。上限即「最大並發 Agent 數」；觸發 PROCESS_LIMIT 前會先回收閒置 parked。",
   "processBudget.loading": "載入中…",
-  "processBudget.loadingHint":
-    "正在從 Host 讀取熱 Agent 佔用 — 不會把尚未載入的狀態當作空池。",
   "processBudget.unavailable": "無法讀取佔用",
-  "processBudget.unavailableHint":
-    "產生策略未改變。可點重新整理，或在有 Agent 執行後開啟可靠性中心。",
-  "processBudget.emptyPoolHint":
-    "這是誠實的空池（不是 Host 讀取失敗）。上限仍為 {max}；Agent 閒置後仍會依策略回收。",
   "processBudget.refresh": "重新整理",
   "processBudget.counts": "{total} / {max}",
   "processBudget.countsAria":
@@ -2039,27 +2002,9 @@ export const zhTW: Record<MessageKey, string> = {
     "熱行程數（{total}）超過設定上限（{max}）。新連線會優先回收閒置 parked；若持續出現請提高上限。",
   "processBudget.idlePolicy":
     "閒置回收：就緒 Agent 連續 {idleMinutes} 分鐘無活動會被軟結束（歷史保留；下次傳送重連）。",
-  "processBudget.error.hostOnly": "行程預算需在桌面 Host 中檢視",
-  "processBudget.error.hostOnlyHint":
-    "佔用資料僅在 Grok App 桌面殼中可用，一般瀏覽器分頁無法讀取。",
-  "processBudget.error.unavailable": "行程池不可用",
-  "processBudget.error.unavailableHint":
-    "Host 管理器尚未就緒。可在 Agent 啟動後再點重新整理。",
-  "processBudget.error.timeout": "行程預算讀取逾時",
-  "processBudget.error.timeoutHint":
-    "快照耗時過長。可點重新整理；產生策略未改變。",
-  "processBudget.error.permission": "行程預算權限被拒絕",
-  "processBudget.error.permissionHint":
-    "Host 拒絕了佔用快照。請檢查應用程式權限或重新啟動桌面應用。",
-  "processBudget.error.other": "無法載入行程預算",
-  "processBudget.error.otherHint":
-    "可點重新整理。佔用未知 — 我們不會編造忙碌槽位。",
   "processBudget.limit.title": "最近一次行程上限",
   "processBudget.limit.explain":
     "已觸發 PROCESS_LIMIT（上限 {max}）— 閒置 parked 已回收完畢，剩餘槽位均為忙碌回合。請停止執行中的工作階段，或提高「最大並發 Agent 數」。{when}",
-  "processBudget.limit.noneTitle": "近期無行程上限事件",
-  "processBudget.limit.noneBody":
-    "過去 24 小時內未觸發 PROCESS_LIMIT。閒置 parked 會在硬上限前被回收；只有槽位全是忙碌回合時才會阻止新連線。",
   "agent.streamStallBanner":
     "約 {seconds} 秒無串流片段或工具活動。可繼續等待或結束本輪。",
   "agent.streamStallCancel": "結束本輪",
@@ -2683,38 +2628,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.wallpaperSource.gallery": "壁紙畫廊",
   "settings.wallpaperSource.emptyGallery":
     "結果會以瀑布流展示。請先搜尋或生成。",
-  "settings.wallpaperSource.empty.idleHint":
-    "尚未載入任何壁紙。請搜尋 X 或用 Imagine 生成 — 結果僅來自 Host，不會偽造 CDN 佔位圖。",
-  "settings.wallpaperSource.empty.loading": "正在載入畫廊…",
-  "settings.wallpaperSource.empty.loadingHint":
-    "等待真實搜尋或 Imagine 結果；載入過程中不會偽造條目。",
-  "settings.wallpaperSource.empty.noResults": "沒有找到壁紙",
-  "settings.wallpaperSource.empty.noResultsHint":
-    "請換個關鍵字或提示詞。空結果表示 Host 回傳了零筆媒體，不是佔位畫廊。",
-  "settings.wallpaperSource.empty.filterEmpty": "目前篩選無相符項目",
-  "settings.wallpaperSource.empty.filterEmptyHint":
-    "類型晶片或篩選隱藏了全部結果。清除篩選可重新看到 Host 回傳的真實條目。",
-  "settings.wallpaperSource.clearFilters": "清除篩選",
-  "settings.wallpaperSource.filterPlaceholder": "篩選畫廊…",
-  "settings.wallpaperSource.kindLabel": "媒體類型",
-  "settings.wallpaperSource.kind.all": "全部",
-  "settings.wallpaperSource.kind.image": "圖片",
-  "settings.wallpaperSource.kind.video": "影片",
-  "settings.wallpaperSource.errKind.network": "網路",
-  "settings.wallpaperSource.errKind.host": "Host / CLI",
-  "settings.wallpaperSource.errKind.untrusted": "已封鎖網址",
-  "settings.wallpaperSource.errKind.empty": "空結果",
-  "settings.wallpaperSource.errKind.other": "錯誤",
-  "settings.wallpaperSource.errKind.hint.network":
-    "請檢查網路後重試搜尋或下載。",
-  "settings.wallpaperSource.errKind.hint.host":
-    "請安裝或設定 Grok CLI，或使用桌面端應用程式。",
-  "settings.wallpaperSource.errKind.hint.untrusted":
-    "該主機不在壁紙下載允許清單（twimg / filesystem.site）。",
-  "settings.wallpaperSource.errKind.hint.empty":
-    "未回傳媒體 — 請換個查詢或提示詞。",
-  "settings.wallpaperSource.errKind.hint.other":
-    "見上方詳情；必要時請登入或重試。",
   "settings.wallpaperSource.goLogin": "去登入",
   "settings.wallpaperSource.loadingOriginal": "正在載入原圖…",
   "settings.wallpaperSource.openPreview": "開啟大圖預覽",
@@ -3182,30 +3095,6 @@ export const zhTW: Record<MessageKey, string> = {
   "account.quotaRemaining": "剩餘",
   "account.quotaUsed": "已用",
   "account.quotaUnknown": "尚未取得用量",
-  "account.quota.loading": "正在載入 SuperGrok 額度…",
-  "account.quota.loadingHint": "正在從 Host 拉取會員用量。",
-  "account.quota.signedOut": "登入後可檢視 SuperGrok 額度",
-  "account.quota.signedOutHint":
-    "剩餘百分比來自官方 Grok Build 計費介面——離線時不會編造數字。",
-  "account.quota.chip.loading": "載入中…",
-  "account.quota.chip.unknown": "未知",
-  "account.quota.chip.signedOut": "—",
-  "account.quota.chip.err.network": "網路",
-  "account.quota.chip.err.auth": "登入",
-  "account.quota.chip.err.host_only": "桌面端",
-  "account.quota.chip.err.other": "軟失敗",
-  "account.quota.err.network": "無法載入額度",
-  "account.quota.err.networkHint":
-    "網路 soft-fail——對話仍可用。請檢查網路或代理（設定 → 網路）後重新整理。離線時不會編造剩餘百分比。",
-  "account.quota.err.auth": "需重新登入才能檢視額度",
-  "account.quota.err.authHint":
-    "鑑權 soft-fail——憑證可能已過期。請重新登入以重新整理 SuperGrok 剩餘額度；Host 未回應前不顯示百分比。",
-  "account.quota.err.host_only": "僅桌面端可用",
-  "account.quota.err.host_onlyHint":
-    "SuperGrok 額度需桌面 Host。瀏覽器預覽不會編造剩餘百分比。",
-  "account.quota.err.other": "額度載入 soft-fail",
-  "account.quota.err.otherHint":
-    "無法重新整理 SuperGrok 額度（不影響對話）。成功探測前剩餘百分比保持未知。",
   "account.period": "帳期",
   "account.prepaid": "預付",
   "account.onDemand": "隨需",
@@ -3214,35 +3103,14 @@ export const zhTW: Record<MessageKey, string> = {
   "account.products": "產品明細",
   "account.heatmap": "活動熱力圖",
   "account.heatmapHint":
-    "本機 Grok Build 對話活動（約一年）。顏色依 Token 用量；懸停看用量；點某天依對話數篩選下方日誌。不是 SuperGrok 額度。",
+    "本機 Grok Build 對話活動（約一年）。顏色依 Token 用量；懸停看用量；點某天依對話數篩選下方日誌。",
   "account.heatmap.less": "少",
   "account.heatmap.more": "多",
   "account.heatmap.noData": "尚無活動資料",
-  "account.heatmap.noDataHint":
-    "在 ~/.grok/sessions 下未找到該時段的本機對話訊號。這不是 SuperGrok 額度——對話仍可正常使用。",
-  "account.heatmap.loading": "正在載入活動…",
-  "account.heatmap.loadingHint": "正在讀取本機對話訊號。",
-  "account.heatmap.rangeEmpty": "該時段無活動",
-  "account.heatmap.rangeEmptyHint":
-    "所選日或週沒有本機對話。清除選擇可查看完整熱力圖。",
   "account.heatmap.aria": "Token 活動熱力圖",
   "account.heatmap.requests": "對話數",
   "account.heatmap.tokens": "已用 Token",
-  "account.heatmap.totalTokens": "Token {count}",
-  "account.heatmap.activeDays": "活躍天 {count}",
-  "account.heatmap.sessionsCount": "對話 {count}",
-  "account.heatmap.err.host_only": "僅桌面端",
-  "account.heatmap.err.host_onlyHint":
-    "活動熱力圖需要桌面 Host。瀏覽器預覽不會編造本機用量。",
-  "account.heatmap.err.network": "無法重新整理用量",
-  "account.heatmap.err.networkHint":
-    "網路 soft-fail——重連後本機熱力圖仍可能載入。不會編造額度。",
-  "account.heatmap.err.empty": "無用量路徑",
-  "account.heatmap.err.emptyHint":
-    "Host 未找到本機對話訊號。soft-fail——不等於 SuperGrok 額度為 0。",
-  "account.heatmap.err.other": "用量載入 soft-fail",
-  "account.heatmap.err.otherHint":
-    "無法載入本機活動。可重新整理重試；我們不會編造熱力格或額度。",
+  "account.heatmap.totalTokens": "總 Token：{count}",
   "account.callLogs": "近期呼叫日誌",
   "account.callLogsEmpty": "在 ~/.grok/sessions 下未發現本機對話活動。",
   "account.callLogs.dayFilter": "{date} · {count} 個對話",
@@ -3503,18 +3371,12 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.stall.kind.hardEnd": "硬結束停滯",
   "reliability.stall.kind.terminal": "回合結束（停滯）",
   "reliability.stall.kind.endOfTurn": "回合結束（停滯）",
-  "reliability.stall.seconds": "靜默 {duration}",
+  "reliability.stall.seconds": "靜默 {seconds} 秒",
   "reliability.stall.unknownSession": "未知工作階段",
   "reliability.timeline.title": "停滯時間軸",
   "reliability.timeline.count": "{count}",
   "reliability.timeline.empty": "尚無已儲存的停滯歷史。",
-  "reliability.timeline.emptyHint":
-    "軟/硬串流停滯會自動記錄於此。尚未觀察到停滯時不會編造紀錄。",
   "reliability.timeline.emptyFilter": "沒有符合篩選條件的停滯紀錄。",
-  "reliability.timeline.emptyFilterHint":
-    "清除類型篩選或搜尋條件即可再次顯示全部已儲存停滯歷史。",
-  "reliability.timeline.clearFilters": "清除篩選",
-  "reliability.timeline.openSession": "開啟工作階段",
   "reliability.timeline.searchPlaceholder": "搜尋標題、工作階段、原因…",
   "reliability.timeline.filterAria": "依類型篩選停滯歷史",
   "reliability.timeline.filterAll": "全部",
@@ -5189,27 +5051,6 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.maxClientsHint":
     "限制並發 WebSocket 連線（1–16）。超出上限的手機會收到 HTTP 503，直到有空位。",
   "mirror.maxClientsValue": "{n} / {max}",
-  "mirror.cap.line": "{n} / {max} 台手機",
-  "mirror.cap.ok": "仍有空位",
-  "mirror.cap.nearFull": "接近滿載",
-  "mirror.cap.full": "已滿（503）",
-  "mirror.cap.writeOnWarn": "寫入已開",
-  "mirror.cap.fullBanner":
-    "已達連線上限 — 額外手機會軟失敗（HTTP 503），直到有空位或你提高上限。",
-  "mirror.cap.fullHint":
-    "中斷某台手機、提高「最大手機連線數」（最高 16），或在輪換工作階段後重新產生連結。",
-  "mirror.cap.nearFullHint":
-    "只剩少量空位。達到上限後，額外連線會以 HTTP 503 軟失敗。",
-  "mirror.cap.writeOnWarnHint":
-    "目前已允許寫入（預設唯讀）。手機不再需要傳送時請切回唯讀。",
-  "mirror.cap.okHint":
-    "在目前上限下仍可接入更多手機。滿載後額外連線會以 503 軟失敗。",
-  "mirror.cap.emptyStopped": "主機已停止 — 無手機連線",
-  "mirror.cap.emptyStoppedHint":
-    "啟動主機後才會接受手機連線。停止時連線數保持為 0（不會虛構客戶端）。",
-  "mirror.cap.emptyZero": "暫無手機連線",
-  "mirror.cap.emptyZeroHint":
-    "主機已執行，目前 WebSocket 客戶端為 0。用手機掃描 QR 或開啟連結即可連線。",
   "mirror.audit.title": "寫入稽核",
   "mirror.audit.empty": "尚無寫入 ACL 事件。",
   "mirror.audit.clear": "清空紀錄",
@@ -7256,4 +7097,163 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.cliSessions.err.otherHint": "請重新整理後再試。",
   "settings.cliSessionsImportPlan":
     "將匯入 {importable} / {selected}（略過已關聯 {skipped}）",
+  "settings.includePartialMessages.active":
+    "已開啟 — 無頭遠端 IM 會升級為 streaming-messages-json 並傳入 `--include-partial-messages`（CLI {minCli}+），輸出增量 `stream_event` 文字/思考 delta。應用內聊天走 ACP，不受此開關影響。",
+  "settings.includePartialMessages.softOmit":
+    "已開啟，但目前 CLI 低於 {minCli}（或版本未知）— 為避免啟動失敗已 soft-omit `--include-partial-messages`。升級 Grok Build CLI 前仍為完整訊息。",
+  "settings.includePartialMessages.idleOff":
+    "已關閉 — 僅完整訊息（CLI 預設）。不傳 `--include-partial-messages`。",
+  "settings.includePartialMessages.hostOnly":
+    "設定已儲存，但目前路徑不是無頭 streaming-messages-json（例如應用內 ACP 聊天）。部分串流事件僅作用於無頭遠端 IM / 診斷路徑。",
+  "settings.includePartialMessages.err.cliTooOld":
+    "CLI 過舊，不支援部分串流事件（需要 {minCli}+）。已 soft-omit 該 flag。",
+  "settings.includePartialMessages.err.unknownFlag":
+    "CLI 拒絕了 `--include-partial-messages`（未知 flag）。請升級 Grok Build，或關閉此開關。",
+  "settings.includePartialMessages.err.unsupportedFormat":
+    "`--include-partial-messages` 僅與 streaming-messages-json 配對。輸出格式不符 — flag 被忽略。",
+  "settings.includePartialMessages.err.hostOnly":
+    "部分串流生效需要桌面應用宿主（或無頭路徑）。此處不可用。",
+  "settings.includePartialMessages.err.other":
+    "無法套用部分串流設定。",
+  "mirror.cap.line": "{n} / {max} 台手機",
+  "mirror.cap.ok": "仍有空位",
+  "mirror.cap.nearFull": "接近滿載",
+  "mirror.cap.full": "已滿（503）",
+  "mirror.cap.writeOnWarn": "寫入已開",
+  "mirror.cap.fullBanner":
+    "已達連線上限 — 額外手機會軟失敗（HTTP 503），直到有空位或你提高上限。",
+  "mirror.cap.fullHint":
+    "中斷某台手機、提高「最大手機連線數」（最高 16），或在輪換工作階段後重新產生連結。",
+  "mirror.cap.nearFullHint":
+    "只剩少量空位。達到上限後，額外連線會以 HTTP 503 軟失敗。",
+  "mirror.cap.writeOnWarnHint":
+    "目前已允許寫入（預設唯讀）。手機不再需要傳送時請切回唯讀。",
+  "mirror.cap.okHint":
+    "在目前上限下仍可接入更多手機。滿載後額外連線會以 503 軟失敗。",
+  "mirror.cap.emptyStopped": "主機已停止 — 無手機連線",
+  "mirror.cap.emptyStoppedHint":
+    "啟動主機後才會接受手機連線。停止時連線數保持為 0（不會虛構客戶端）。",
+  "mirror.cap.emptyZero": "暫無手機連線",
+  "mirror.cap.emptyZeroHint":
+    "主機已執行，目前 WebSocket 客戶端為 0。用手機掃描 QR 或開啟連結即可連線。",
+  "account.heatmap.noDataHint":
+    "在 ~/.grok/sessions 下未找到該時段的本機對話訊號。這不是 SuperGrok 額度——對話仍可正常使用。",
+  "account.heatmap.loading": "正在載入活動…",
+  "account.heatmap.loadingHint": "正在讀取本機對話訊號。",
+  "account.heatmap.rangeEmpty": "該時段無活動",
+  "account.heatmap.rangeEmptyHint":
+    "所選日或週沒有本機對話。清除選擇可查看完整熱力圖。",
+  "account.heatmap.activeDays": "活躍天 {count}",
+  "account.heatmap.sessionsCount": "對話 {count}",
+  "account.heatmap.err.host_only": "僅桌面端",
+  "account.heatmap.err.host_onlyHint":
+    "活動熱力圖需要桌面 Host。瀏覽器預覽不會編造本機用量。",
+  "account.heatmap.err.network": "無法重新整理用量",
+  "account.heatmap.err.networkHint":
+    "網路 soft-fail——重連後本機熱力圖仍可能載入。不會編造額度。",
+  "account.heatmap.err.empty": "無用量路徑",
+  "account.heatmap.err.emptyHint":
+    "Host 未找到本機對話訊號。soft-fail——不等於 SuperGrok 額度為 0。",
+  "account.heatmap.err.other": "用量載入 soft-fail",
+  "account.heatmap.err.otherHint":
+    "無法載入本機活動。可重新整理重試；我們不會編造熱力格或額度。",
+  "settings.wallpaperSource.empty.idleHint":
+    "尚未載入任何壁紙。請搜尋 X 或用 Imagine 生成 — 結果僅來自 Host，不會偽造 CDN 佔位圖。",
+  "settings.wallpaperSource.empty.loading": "正在載入畫廊…",
+  "settings.wallpaperSource.empty.loadingHint":
+    "等待真實搜尋或 Imagine 結果；載入過程中不會偽造條目。",
+  "settings.wallpaperSource.empty.noResults": "沒有找到壁紙",
+  "settings.wallpaperSource.empty.noResultsHint":
+    "請換個關鍵字或提示詞。空結果表示 Host 回傳了零筆媒體，不是佔位畫廊。",
+  "settings.wallpaperSource.empty.filterEmpty": "目前篩選無相符項目",
+  "settings.wallpaperSource.empty.filterEmptyHint":
+    "類型晶片或篩選隱藏了全部結果。清除篩選可重新看到 Host 回傳的真實條目。",
+  "settings.wallpaperSource.clearFilters": "清除篩選",
+  "settings.wallpaperSource.filterPlaceholder": "篩選畫廊…",
+  "settings.wallpaperSource.kindLabel": "媒體類型",
+  "settings.wallpaperSource.kind.all": "全部",
+  "settings.wallpaperSource.kind.image": "圖片",
+  "settings.wallpaperSource.kind.video": "影片",
+  "settings.wallpaperSource.errKind.network": "網路",
+  "settings.wallpaperSource.errKind.host": "Host / CLI",
+  "settings.wallpaperSource.errKind.untrusted": "已封鎖網址",
+  "settings.wallpaperSource.errKind.empty": "空結果",
+  "settings.wallpaperSource.errKind.other": "錯誤",
+  "settings.wallpaperSource.errKind.hint.network":
+    "請檢查網路後重試搜尋或下載。",
+  "settings.wallpaperSource.errKind.hint.host":
+    "請安裝或設定 Grok CLI，或使用桌面端應用程式。",
+  "settings.wallpaperSource.errKind.hint.untrusted":
+    "該主機不在壁紙下載允許清單（twimg / filesystem.site）。",
+  "settings.wallpaperSource.errKind.hint.empty":
+    "未回傳媒體 — 請換個查詢或提示詞。",
+  "settings.wallpaperSource.errKind.hint.other":
+    "見上方詳情；必要時請登入或重試。",
+  "reliability.timeline.emptyHint":
+    "軟/硬串流停滯會自動記錄於此。尚未觀察到停滯時不會編造紀錄。",
+  "reliability.timeline.emptyFilterHint":
+    "清除類型篩選或搜尋條件即可再次顯示全部已儲存停滯歷史。",
+  "reliability.timeline.clearFilters": "清除篩選",
+  "reliability.timeline.openSession": "開啟工作階段",
+  "processBudget.loadingHint":
+    "正在從 Host 讀取熱 Agent 佔用 — 不會把尚未載入的狀態當作空池。",
+  "processBudget.unavailableHint":
+    "產生策略未改變。可點重新整理，或在有 Agent 執行後開啟可靠性中心。",
+  "processBudget.emptyPoolHint":
+    "這是誠實的空池（不是 Host 讀取失敗）。上限仍為 {max}；Agent 閒置後仍會依策略回收。",
+  "processBudget.error.hostOnly": "行程預算需在桌面 Host 中檢視",
+  "processBudget.error.hostOnlyHint":
+    "佔用資料僅在 Grok App 桌面殼中可用，一般瀏覽器分頁無法讀取。",
+  "processBudget.error.unavailable": "行程池不可用",
+  "processBudget.error.unavailableHint":
+    "Host 管理器尚未就緒。可在 Agent 啟動後再點重新整理。",
+  "processBudget.error.timeout": "行程預算讀取逾時",
+  "processBudget.error.timeoutHint":
+    "快照耗時過長。可點重新整理；產生策略未改變。",
+  "processBudget.error.permission": "行程預算權限被拒絕",
+  "processBudget.error.permissionHint":
+    "Host 拒絕了佔用快照。請檢查應用程式權限或重新啟動桌面應用。",
+  "processBudget.error.other": "無法載入行程預算",
+  "processBudget.error.otherHint":
+    "可點重新整理。佔用未知 — 我們不會編造忙碌槽位。",
+  "processBudget.limit.noneTitle": "近期無行程上限事件",
+  "processBudget.limit.noneBody":
+    "過去 24 小時內未觸發 PROCESS_LIMIT。閒置 parked 會在硬上限前被回收；只有槽位全是忙碌回合時才會阻止新連線。",
+  "account.quota.loading": "正在載入 SuperGrok 額度…",
+  "account.quota.loadingHint": "正在從 Host 拉取會員用量。",
+  "account.quota.signedOut": "登入後可檢視 SuperGrok 額度",
+  "account.quota.signedOutHint":
+    "剩餘百分比來自官方 Grok Build 計費介面——離線時不會編造數字。",
+  "account.quota.chip.loading": "載入中…",
+  "account.quota.chip.unknown": "未知",
+  "account.quota.chip.signedOut": "—",
+  "account.quota.chip.err.network": "網路",
+  "account.quota.chip.err.auth": "登入",
+  "account.quota.chip.err.host_only": "桌面端",
+  "account.quota.chip.err.other": "軟失敗",
+  "account.quota.err.network": "無法載入額度",
+  "account.quota.err.networkHint":
+    "網路 soft-fail——對話仍可用。請檢查網路或代理（設定 → 網路）後重新整理。離線時不會編造剩餘百分比。",
+  "account.quota.err.auth": "需重新登入才能檢視額度",
+  "account.quota.err.authHint":
+    "鑑權 soft-fail——憑證可能已過期。請重新登入以重新整理 SuperGrok 剩餘額度；Host 未回應前不顯示百分比。",
+  "account.quota.err.host_only": "僅桌面端可用",
+  "account.quota.err.host_onlyHint":
+    "SuperGrok 額度需桌面 Host。瀏覽器預覽不會編造剩餘百分比。",
+  "account.quota.err.other": "額度載入 soft-fail",
+  "account.quota.err.otherHint":
+    "無法重新整理 SuperGrok 額度（不影響對話）。成功探測前剩餘百分比保持未知。",
+  "settings.netProbeRetry": "重試探測",
+  "settings.netProbe.empty.hostOnly": "需要桌面應用程式",
+  "settings.netProbe.empty.hostOnlyHint":
+    "連通性檢測走桌面 Host 的代理路徑。請在桌面應用中探測——瀏覽器/開發殼不會虛構可達結果。",
+  "settings.netProbe.empty.idle": "尚未探測",
+  "settings.netProbe.empty.idleHint":
+    "對目前已儲存的有效代理做一次短時 HTTP 路徑檢測。成功不代表串流或登入一定可用。",
+  "settings.netProbe.empty.noTargets": "未回傳探測目標",
+  "settings.netProbe.empty.noTargetsHint":
+    "Host 回傳了空目標列表。儲存代理設定後可重試——空列表不會被當成全部可達。",
+  "settings.netProbe.empty.error": "探測未能執行",
+  "settings.netProbe.empty.errorHint":
+    "Host 呼叫失敗。可重試，或檢查桌面應用是否為最新版本。這不是完整的網路診斷。",
 };

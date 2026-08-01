@@ -159,6 +159,7 @@ export interface AccountPanelProps {
    * never invents activity cells or SuperGrok quota from it).
    */
   heatmapError?: unknown;
+  /**
    * Soft-fail error from account_status / billing probe.
    * Never invents remaining % — surfaces unknown/error chips instead.
    */
