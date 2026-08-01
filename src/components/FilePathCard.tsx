@@ -15,6 +15,10 @@ import {
   normalizePathToken,
 } from "@/lib/pathRefs";
 import {
+  resolveOpenEditorError,
+  resolveRevealError,
+} from "@/lib/openEditorHonesty";
+import {
   IconClose,
   IconCopy,
   IconExternalLink,
@@ -45,6 +49,14 @@ export interface FilePathCardLabels {
   typeFile?: string;
   typeUrl?: string;
   typeDir?: string;
+  /** Soft-fail copy for open/reveal (classified honesty). */
+  errNotFound?: string;
+  errPathDenied?: string;
+  errHostOnly?: string;
+  errNoEditor?: string;
+  errCancelled?: string;
+  errOther?: string;
+  errRevealOther?: string;
 }
 
 export interface FilePathCardProps {
@@ -66,6 +78,8 @@ export interface FilePathCardProps {
     url?: string;
     title?: string;
   }) => void;
+  /** Optional toast / banner when open-external or reveal soft-fails. */
+  onOpenError?: (message: string) => void;
 }
 
 function kindLabel(path: string, kind: FilePathCardKind): string {
@@ -83,6 +97,36 @@ function relativeToken(path: string): string | null {
   return t;
 }
 
+function filePathCardErrLabel(
+  labels: FilePathCardLabels,
+  kind:
+    | "no_editor"
+    | "not_found"
+    | "path_denied"
+    | "host_only"
+    | "cancelled"
+    | "other",
+  forReveal = false,
+): string {
+  switch (kind) {
+    case "no_editor":
+      return labels.errNoEditor || "No code editor available";
+    case "not_found":
+      return labels.errNotFound || "File not found";
+    case "path_denied":
+      return labels.errPathDenied || "Path denied";
+    case "host_only":
+      return labels.errHostOnly || "Desktop app required";
+    case "cancelled":
+      return labels.errCancelled || "";
+    case "other":
+    default:
+      return forReveal
+        ? labels.errRevealOther || labels.errOther || "Could not reveal"
+        : labels.errOther || "Could not open";
+  }
+}
+
 export function FilePathCard({
   path,
   absolutePath,
@@ -91,6 +135,7 @@ export function FilePathCard({
   subtitle: _subtitle,
   labels,
   onOpenInPanel,
+  onOpenError,
 }: FilePathCardProps) {
   void _subtitle; // callers may pass; card no longer shows path/subtitle
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -228,18 +273,26 @@ export function FilePathCard({
       window.open(path, "_blank", "noopener,noreferrer");
       return;
     }
-    if (!api.isTauri()) return;
+    if (!api.isTauri()) {
+      onOpenError?.(filePathCardErrLabel(labels, "host_only"));
+      return;
+    }
     if (busy) return;
     setBusy(true);
     try {
       const abs = resolvedAbs || (await resolveAbsolute());
       if (!abs) {
-        console.error("[FilePathCard] openExternal: file not found", path);
+        setMissing(true);
+        onOpenError?.(filePathCardErrLabel(labels, "not_found"));
         return;
       }
       await api.pathOpen(abs);
     } catch (e) {
-      console.error("[FilePathCard] openExternal failed", e);
+      // path_open shares reveal-like Host phrases; open classifier is a superset.
+      const resolved = resolveOpenEditorError(e);
+      if (resolved.silent) return;
+      // Prefer classified label over raw Error dumps (never String(e)).
+      onOpenError?.(filePathCardErrLabel(labels, resolved.kind));
     } finally {
       setBusy(false);
     }
@@ -247,18 +300,24 @@ export function FilePathCard({
 
   const reveal = async () => {
     if (isUrl) return;
-    if (!api.isTauri()) return;
+    if (!api.isTauri()) {
+      onOpenError?.(filePathCardErrLabel(labels, "host_only"));
+      return;
+    }
     if (busy) return;
     setBusy(true);
     try {
       const abs = resolvedAbs || (await resolveAbsolute());
       if (!abs) {
-        console.error("[FilePathCard] reveal: file not found", path);
+        setMissing(true);
+        onOpenError?.(filePathCardErrLabel(labels, "not_found"));
         return;
       }
       await api.pathReveal(abs);
     } catch (e) {
-      console.error("[FilePathCard] reveal failed", e);
+      const resolved = resolveRevealError(e);
+      if (resolved.silent) return;
+      onOpenError?.(filePathCardErrLabel(labels, resolved.kind, true));
     } finally {
       setBusy(false);
     }

@@ -518,6 +518,22 @@ const en = {
   "resources.openDefault": "Open with system default",
   "resources.revealFolder": "Reveal in file manager",
   "resources.noEditors": "No code editors detected on this machine",
+  "resources.openErr.noEditor":
+    "No code editor available. Install one or choose Finder/Explorer in Settings.",
+  "resources.openErr.notFound":
+    "File not found — it may have been moved or deleted.",
+  "resources.openErr.pathDenied":
+    "This path cannot be opened (permission or allowlist).",
+  "resources.openErr.hostOnly": "Open in editor needs the desktop app.",
+  "resources.openErr.cancelled": "Open cancelled.",
+  "resources.openErr.other": "Could not open in editor.",
+  "resources.revealErr.notFound":
+    "Path not found — nothing to reveal in the file manager.",
+  "resources.revealErr.pathDenied":
+    "This path cannot be revealed (permission or allowlist).",
+  "resources.revealErr.hostOnly": "Reveal needs the desktop app.",
+  "resources.revealErr.cancelled": "Reveal cancelled.",
+  "resources.revealErr.other": "Could not reveal in file manager.",
   "resources.needProject": "Add or select a project to browse files here.",
   "resources.emptyPreview": "No file open",
   "resources.emptyPreviewHint":
@@ -3010,6 +3026,10 @@ const en = {
   "settings.openTargetDesc":
     "Default app when opening a path from the resource pane",
   "settings.openFinder": "Finder / Explorer",
+  "settings.openTargetEmpty":
+    "No code editors detected — Finder/Explorer still works. Install VS Code, Cursor, or another editor to open files there.",
+  "settings.openTargetPreferredMissing":
+    "Preferred editor is not installed or not detected. Finder/Explorer will be used until you pick another.",
 
   "prov.emptyTitle": "No providers yet",
   "prov.detailEmpty": "Select a provider or add a new one.",
@@ -6622,6 +6642,18 @@ const zh: Record<MessageKey, string> = {
   "resources.openDefault": "用系统默认应用打开",
   "resources.revealFolder": "在文件管理器中显示",
   "resources.noEditors": "未检测到本机代码编辑器",
+  "resources.openErr.noEditor":
+    "没有可用的代码编辑器。请安装编辑器，或在设置中选择访达/资源管理器。",
+  "resources.openErr.notFound": "找不到该文件 — 可能已被移动或删除。",
+  "resources.openErr.pathDenied": "无法打开此路径（权限或白名单限制）。",
+  "resources.openErr.hostOnly": "在编辑器中打开需要桌面端应用。",
+  "resources.openErr.cancelled": "已取消打开。",
+  "resources.openErr.other": "无法在编辑器中打开。",
+  "resources.revealErr.notFound": "找不到该路径 — 无法在文件管理器中显示。",
+  "resources.revealErr.pathDenied": "无法显示此路径（权限或白名单限制）。",
+  "resources.revealErr.hostOnly": "在文件管理器中显示需要桌面端应用。",
+  "resources.revealErr.cancelled": "已取消显示。",
+  "resources.revealErr.other": "无法在文件管理器中显示。",
   "resources.needProject": "添加或选择项目后，即可在此浏览文件。",
   "resources.emptyPreview": "尚未打开文件",
   "resources.emptyPreviewHint": "从右侧文件树选择文件进行预览。",
@@ -9021,6 +9053,10 @@ const zh: Record<MessageKey, string> = {
   "settings.openTarget": "打开文件方式",
   "settings.openTargetDesc": "资源面板中打开路径时的默认应用",
   "settings.openFinder": "访达 / 资源管理器",
+  "settings.openTargetEmpty":
+    "未检测到代码编辑器 — 访达/资源管理器仍可用。安装 VS Code、Cursor 等编辑器后即可在此打开文件。",
+  "settings.openTargetPreferredMissing":
+    "首选编辑器未安装或未检测到。在重新选择之前将使用访达/资源管理器。",
 
   "prov.emptyTitle": "暂无提供商",
   "prov.detailEmpty": "选择左侧提供商，或添加新的。",

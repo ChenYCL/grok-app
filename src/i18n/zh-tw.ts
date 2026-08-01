@@ -477,6 +477,18 @@ export const zhTW: Record<MessageKey, string> = {
   "resources.openDefault": "以系統預設應用程式開啟",
   "resources.revealFolder": "在檔案管理員中顯示",
   "resources.noEditors": "未偵測到本機程式碼編輯器",
+  "resources.openErr.noEditor":
+    "沒有可用的程式碼編輯器。請安裝編輯器，或在設定中選擇 Finder／檔案總管。",
+  "resources.openErr.notFound": "找不到該檔案 — 可能已被移動或刪除。",
+  "resources.openErr.pathDenied": "無法開啟此路徑（權限或白名單限制）。",
+  "resources.openErr.hostOnly": "在編輯器中開啟需要桌面端應用程式。",
+  "resources.openErr.cancelled": "已取消開啟。",
+  "resources.openErr.other": "無法在編輯器中開啟。",
+  "resources.revealErr.notFound": "找不到該路徑 — 無法在檔案管理員中顯示。",
+  "resources.revealErr.pathDenied": "無法顯示此路徑（權限或白名單限制）。",
+  "resources.revealErr.hostOnly": "在檔案管理員中顯示需要桌面端應用程式。",
+  "resources.revealErr.cancelled": "已取消顯示。",
+  "resources.revealErr.other": "無法在檔案管理員中顯示。",
   "resources.needProject": "新增或選擇專案後，即可在此瀏覽檔案。",
   "resources.emptyPreview": "尚未開啟檔案",
   "resources.emptyPreviewHint": "從右側檔案樹選擇檔案進行預覽。",
@@ -2876,6 +2888,10 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.openTarget": "開啟檔案方式",
   "settings.openTargetDesc": "資源面板中開啟路徑時的預設應用程式",
   "settings.openFinder": "Finder / 檔案總管",
+  "settings.openTargetEmpty":
+    "未偵測到程式碼編輯器 — Finder／檔案總管仍可用。安裝 VS Code、Cursor 等編輯器後即可在此開啟檔案。",
+  "settings.openTargetPreferredMissing":
+    "偏好的編輯器未安裝或未偵測到。在重新選擇之前將使用 Finder／檔案總管。",
 
   "prov.emptyTitle": "尚無供應商",
   "prov.detailEmpty": "選擇左側供應商，或新增一個。",

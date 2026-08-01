@@ -257,6 +257,10 @@ import {
   type TasksBindCwdResult,
 } from "@/lib/tasksPanelPro";
 import {
+  formatOpenEditorErrorMessage,
+  resolveOpenEditorError,
+} from "@/lib/openEditorHonesty";
+import {
   loadTrayBusyBadgePref,
   saveTrayBusyBadgePref,
 } from "@/lib/trayBusyBadgePref";
@@ -18339,7 +18343,13 @@ export default function App() {
                       path={activeProject.path}
                       target={defaultOpenTarget || "finder"}
                       onTargetChange={persistOpenTarget}
-                      onOpenError={(e) => setLocalError(e)}
+                      onOpenError={(e) => {
+                        const resolved = resolveOpenEditorError(e);
+                        if (resolved.silent) return;
+                        setLocalError(
+                          formatOpenEditorErrorMessage(resolved, tr),
+                        );
+                      }}
                       onCopied={() => {
                         setToast(tr("attach.copyPath") + " ✓");
                         window.setTimeout(() => setToast(null), 1600);

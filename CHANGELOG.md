@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Open-in-editor / reveal soft-fail honesty**: classify Host `open_in_editor` / `path_reveal` / `path_open` failures into stable kinds (`no_editor` · `not_found` · `path_denied` · `host_only` · `cancelled` · `other`) so ResourceViewer, Open Location, and file chips show i18n toasts instead of raw `Error:` dumps; soft preflight `planOpenInEditor`; Settings → Open files with empty / preferred-missing honesty when no editors are detected. Pure `openEditorHonesty` helpers + tests; en/zh/zh-TW. No `window.confirm`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

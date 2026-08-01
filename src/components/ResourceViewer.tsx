@@ -13,13 +13,20 @@ import {
   type ReactNode,
 } from "react";
 import * as api from "@/lib/api";
-import { createT, type Locale } from "@/i18n";
+import { createT, type Locale, type MessageKey } from "@/i18n";
 import { resolvePreviewSrc } from "@/lib/filePreviewSrc";
 import {
   formatMediaLoadErrorMessage,
   mediaLoadErrorLabelMap,
   resolveMediaLoadError,
 } from "@/lib/mediaLoadPro";
+import {
+  formatOpenEditorErrorMessage,
+  formatRevealErrorMessage,
+  planOpenInEditor,
+  resolveOpenEditorError,
+  resolveRevealError,
+} from "@/lib/openEditorHonesty";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
 import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
 import { MarkdownBody } from "@/components/MarkdownBody";
@@ -61,7 +68,6 @@ import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { Tip } from "@/components/ui/tooltip";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { GlassModal } from "@/components/GlassModal";
-import type { MessageKey } from "@/i18n";
 import {
   buildUnifiedDiff,
   changeListKey,
@@ -847,23 +853,46 @@ export function ResourceViewer({
     [projectPath],
   );
 
-  const openChangeInEditor = useCallback(async (path: string) => {
-    if (!path || !api.isTauri()) return;
-    try {
-      await api.openInEditor({ path });
-    } catch (e) {
-      setError(String(e));
-    }
-  }, []);
+  const openChangeInEditor = useCallback(
+    async (path: string) => {
+      const plan = planOpenInEditor({
+        path,
+        isTauri: api.isTauri(),
+      });
+      if (!plan.ok) {
+        if (plan.kind === "cancelled") return;
+        setError(tr(plan.messageKey as MessageKey));
+        return;
+      }
+      try {
+        await api.openInEditor({ path: plan.path });
+      } catch (e) {
+        const resolved = resolveOpenEditorError(e);
+        if (resolved.silent) return;
+        setError(formatOpenEditorErrorMessage(resolved, tr));
+      }
+    },
+    [tr],
+  );
 
-  const revealChangePath = useCallback(async (path: string) => {
-    if (!path || !api.isTauri()) return;
-    try {
-      await api.pathReveal(path);
-    } catch (e) {
-      setError(String(e));
-    }
-  }, []);
+  const revealChangePath = useCallback(
+    async (path: string) => {
+      if (!path) return;
+      if (!api.isTauri()) {
+        const resolved = resolveRevealError({ code: "host_only" });
+        setError(formatRevealErrorMessage(resolved, tr));
+        return;
+      }
+      try {
+        await api.pathReveal(path);
+      } catch (e) {
+        const resolved = resolveRevealError(e);
+        if (resolved.silent) return;
+        setError(formatRevealErrorMessage(resolved, tr));
+      }
+    },
+    [tr],
+  );
 
   const copyChangePath = useCallback(async (path: string) => {
     if (!path) return;
@@ -3441,7 +3470,13 @@ export function ResourceViewer({
                   /* ignore */
                 }
               }}
-              onOpenError={(e) => setError(e)}
+              onOpenError={(e) => {
+                // OpenLocationButton may reveal, system-open, or open-in-editor.
+                // Prefer open-editor classifier (superset); reveal-only phrases map fine.
+                const resolved = resolveOpenEditorError(e);
+                if (resolved.silent) return;
+                setError(formatOpenEditorErrorMessage(resolved, tr));
+              }}
               compact
               platform={detectAppPlatform()}
               labels={{
