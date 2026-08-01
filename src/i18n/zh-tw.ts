@@ -5069,6 +5069,27 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.maxClientsHint":
     "限制並發 WebSocket 連線（1–16）。超出上限的手機會收到 HTTP 503，直到有空位。",
   "mirror.maxClientsValue": "{n} / {max}",
+  "mirror.cap.line": "{n} / {max} 台手機",
+  "mirror.cap.ok": "仍有空位",
+  "mirror.cap.nearFull": "接近滿載",
+  "mirror.cap.full": "已滿（503）",
+  "mirror.cap.writeOnWarn": "寫入已開",
+  "mirror.cap.fullBanner":
+    "已達連線上限 — 額外手機會軟失敗（HTTP 503），直到有空位或你提高上限。",
+  "mirror.cap.fullHint":
+    "中斷某台手機、提高「最大手機連線數」（最高 16），或在輪換工作階段後重新產生連結。",
+  "mirror.cap.nearFullHint":
+    "只剩少量空位。達到上限後，額外連線會以 HTTP 503 軟失敗。",
+  "mirror.cap.writeOnWarnHint":
+    "目前已允許寫入（預設唯讀）。手機不再需要傳送時請切回唯讀。",
+  "mirror.cap.okHint":
+    "在目前上限下仍可接入更多手機。滿載後額外連線會以 503 軟失敗。",
+  "mirror.cap.emptyStopped": "主機已停止 — 無手機連線",
+  "mirror.cap.emptyStoppedHint":
+    "啟動主機後才會接受手機連線。停止時連線數保持為 0（不會虛構客戶端）。",
+  "mirror.cap.emptyZero": "暫無手機連線",
+  "mirror.cap.emptyZeroHint":
+    "主機已執行，目前 WebSocket 客戶端為 0。用手機掃描 QR 或開啟連結即可連線。",
   "mirror.audit.title": "寫入稽核",
   "mirror.audit.empty": "尚無寫入 ACL 事件。",
   "mirror.audit.clear": "清空紀錄",
