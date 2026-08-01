@@ -1946,6 +1946,62 @@ const en = {
   "settings.codebaseSearch.openResources": "Resources",
   "settings.codebaseSearch.refresh": "Refresh",
   "settings.codebaseSearch.clear": "Clear",
+  "settings.codeGraph": "Code graph",
+  "settings.codeGraphDesc":
+    "Unified honesty for codebase indexing (CLI code graph) and App project search (keyword only). Never invents graph or embedding hits.",
+  "settings.codeGraph.modeLabel": "Code graph status",
+  "settings.codeGraph.chip.appKeyword": "App search: keyword",
+  "settings.codeGraph.chip.cliGraph": "CLI code graph: on",
+  "settings.codeGraph.chip.cliGraphDefaultOn": "CLI code graph: default on",
+  "settings.codeGraph.chip.graphUnavailable": "App graph search: unavailable",
+  "settings.codeGraph.chip.keywordOnly": "Code graph: off",
+  "settings.codeGraph.chip.cliOld": "CLI too old for code graph",
+  "settings.codeGraph.chip.noEmbeddings": "Not embeddings",
+  "settings.codeGraph.mode.keywordOnly":
+    "Codebase indexing is off — CLI will not build a code graph. App project search stays keyword (rg/walk).",
+  "settings.codeGraph.mode.graphEnabledUnknown":
+    "Codebase indexing is on and CLI may build a code graph; App cannot confirm graph readiness or return graph hits yet.",
+  "settings.codeGraph.mode.graphUnavailable":
+    "Codebase indexing is on for CLI code-nav, but App project search has no graph API — results stay keyword only.",
+  "settings.codeGraph.mode.cliOld":
+    "CLI older than {min} — `[features].codebase_indexing` may be ignored (soft-fail). App search stays keyword.",
+  "settings.codeGraph.mode.unsetDefaultOn":
+    "Key is unset — CLI default is on. App does not invent a written config value; project search stays keyword.",
+  "settings.codeGraph.appSearchRemainsKeyword":
+    "App project search remains keyword until the host exposes a real graph search API. Enable indexing for CLI graph/code-nav separately.",
+  "settings.codeGraph.openIndexingSettings": "Codebase indexing settings",
+  "settings.codeGraph.openSearchSettings": "Project codebase search",
+  "settings.codeGraph.empty.cliOld": "CLI too old for code graph indexing",
+  "settings.codeGraph.empty.cliOldHint":
+    "Update Grok Build CLI to use `[features].codebase_indexing`. App search is still keyword only.",
+  "settings.codeGraph.empty.unsetDefaultOn":
+    "Codebase indexing key is unset (CLI default on)",
+  "settings.codeGraph.empty.unsetDefaultOnHint":
+    "Toggle once to write an explicit bool. App search does not use the code graph.",
+  "settings.codeGraph.empty.keywordOnly": "Code graph indexing is off",
+  "settings.codeGraph.empty.keywordOnlyHint":
+    "Turn on codebase indexing for CLI code-nav. App project search stays keyword either way.",
+  "settings.codeGraph.empty.graphUnavailable":
+    "CLI code graph may be enabled — App graph search unavailable",
+  "settings.codeGraph.empty.graphUnavailableHint":
+    "Indexing can help CLI agents; this App surface only runs keyword (rg/walk) project search.",
+  "settings.codeGraph.empty.graphEnabledUnknown":
+    "CLI code graph may be enabled — status unknown in App",
+  "settings.codeGraph.empty.graphEnabledUnknownHint":
+    "App does not probe graph health or invent graph hits. Project search is keyword only.",
+  "settings.codeGraph.empty.searchKeywordIdle":
+    "Type a keyword query to search this project",
+  "settings.codeGraph.empty.searchKeywordIdleHint":
+    "Results are path/name or content matches — never invented graph or embedding hits.",
+  "settings.codeGraph.empty.searchNoMatches": "No keyword matches",
+  "settings.codeGraph.empty.searchNoMatchesHint":
+    "No path/name or content hits under the project. This is not code-graph or vector search.",
+  "settings.codeGraph.rebuild.availableNote":
+    "Host can rebuild the code graph index.",
+  "settings.codeGraph.rebuild.unavailableNote":
+    "App has no host rebuild for the code graph.",
+  "settings.codeGraph.rebuild.cliHint":
+    "If the index is stale, rebuild via Grok Build CLI when that command is available — this panel does not invent a rebuild button.",
   "settings.allowUnverifiedCli": "Allow unverified CLI install",
   "settings.allowUnverifiedCliDesc":
     "Official mirrors often omit SHA-256 sidecars; missing checksums are allowed by default (HTTPS allowlist + binary probe). Turn this on to install even when GROK_CLI_REQUIRE_CHECKSUM=1. A mismatched checksum always fails.",
@@ -7980,6 +8036,59 @@ const zh: Record<MessageKey, string> = {
   "settings.codebaseSearch.openResources": "资源",
   "settings.codebaseSearch.refresh": "刷新",
   "settings.codebaseSearch.clear": "清除",
+  "settings.codeGraph": "代码图",
+  "settings.codeGraphDesc":
+    "统一展示代码库索引（CLI 代码图）与应用内项目搜索（仅关键词）的诚实状态。不会虚构代码图或 embedding 命中。",
+  "settings.codeGraph.modeLabel": "代码图状态",
+  "settings.codeGraph.chip.appKeyword": "应用内搜索：关键词",
+  "settings.codeGraph.chip.cliGraph": "CLI 代码图：开",
+  "settings.codeGraph.chip.cliGraphDefaultOn": "CLI 代码图：默认开",
+  "settings.codeGraph.chip.graphUnavailable": "应用内图搜索：不可用",
+  "settings.codeGraph.chip.keywordOnly": "代码图：关",
+  "settings.codeGraph.chip.cliOld": "CLI 过旧，不支持代码图",
+  "settings.codeGraph.chip.noEmbeddings": "非 embedding",
+  "settings.codeGraph.mode.keywordOnly":
+    "代码库索引已关闭 — CLI 不会构建代码图。应用内项目搜索仍为关键词（rg/遍历）。",
+  "settings.codeGraph.mode.graphEnabledUnknown":
+    "代码库索引已开启，CLI 可能构建代码图；应用尚无法确认图就绪状态或返回图命中。",
+  "settings.codeGraph.mode.graphUnavailable":
+    "代码库索引对 CLI code-nav 已开启，但应用内项目搜索没有图 API — 结果仍仅为关键词。",
+  "settings.codeGraph.mode.cliOld":
+    "CLI 低于 {min} — 可能忽略 `[features].codebase_indexing`（soft-fail）。应用内搜索仍为关键词。",
+  "settings.codeGraph.mode.unsetDefaultOn":
+    "键未设置 — CLI 默认开启。应用不会虚构已写入的配置值；项目搜索仍为关键词。",
+  "settings.codeGraph.appSearchRemainsKeyword":
+    "在 Host 提供真正的图搜索 API 之前，应用内项目搜索保持关键词。CLI 图/code-nav 请另行启用索引。",
+  "settings.codeGraph.openIndexingSettings": "代码库索引设置",
+  "settings.codeGraph.openSearchSettings": "项目代码库搜索",
+  "settings.codeGraph.empty.cliOld": "CLI 过旧，不支持代码图索引",
+  "settings.codeGraph.empty.cliOldHint":
+    "请升级 Grok Build CLI 以使用 `[features].codebase_indexing`。应用内搜索仍仅为关键词。",
+  "settings.codeGraph.empty.unsetDefaultOn":
+    "代码库索引键未设置（CLI 默认开启）",
+  "settings.codeGraph.empty.unsetDefaultOnHint":
+    "切换一次可写入明确 bool。应用内搜索不使用代码图。",
+  "settings.codeGraph.empty.keywordOnly": "代码图索引已关闭",
+  "settings.codeGraph.empty.keywordOnlyHint":
+    "开启代码库索引以供 CLI code-nav。应用内项目搜索始终为关键词。",
+  "settings.codeGraph.empty.graphUnavailable":
+    "CLI 代码图可能已启用 — 应用内图搜索不可用",
+  "settings.codeGraph.empty.graphUnavailableHint":
+    "索引可帮助 CLI agent；此应用界面仅运行关键词（rg/遍历）项目搜索。",
+  "settings.codeGraph.empty.graphEnabledUnknown":
+    "CLI 代码图可能已启用 — 应用内状态未知",
+  "settings.codeGraph.empty.graphEnabledUnknownHint":
+    "应用不会探测图健康度，也不会虚构图命中。项目搜索仅为关键词。",
+  "settings.codeGraph.empty.searchKeywordIdle": "输入关键词以搜索此项目",
+  "settings.codeGraph.empty.searchKeywordIdleHint":
+    "结果为路径/名称或内容匹配 — 绝不会虚构代码图或 embedding 命中。",
+  "settings.codeGraph.empty.searchNoMatches": "无关键词匹配",
+  "settings.codeGraph.empty.searchNoMatchesHint":
+    "项目下无路径/名称或内容命中。这不是代码图或向量搜索。",
+  "settings.codeGraph.rebuild.availableNote": "Host 可重建代码图索引。",
+  "settings.codeGraph.rebuild.unavailableNote": "应用没有代码图的 Host 重建接口。",
+  "settings.codeGraph.rebuild.cliHint":
+    "若索引过期，请在 Grok Build CLI 提供相应命令时于 CLI 重建 — 本面板不会虚构重建按钮。",
   "settings.allowUnverifiedCli": "允许未校验的 CLI 安装",
   "settings.allowUnverifiedCliDesc":
     "官方镜像通常不发布 SHA-256 校验文件；缺少校验时默认仍可安装（HTTPS 白名单 + 二进制探测）。开启此项可在设置了 GROK_CLI_REQUIRE_CHECKSUM=1 时仍允许安装。校验和不一致始终拒绝。",

@@ -11,6 +11,11 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+#### Agent / search
+- **Code graph product honesty** (Settings → Agent): unify codebase indexing status + project search mode chips so users see honest **keyword vs graph** states. Pure `codeGraphProduct` helpers (`resolveCodeGraphMode`, `buildCodeGraphStatusChips`, `annotateSearchHits`, `resolveCodeGraphEmptyState`, `planCodeGraphRebuild`) — **never invent graph hits** when only keyword (rg/walk) search exists; rebuild stays CLI-only until a host API lands. Indexing panel status line + soft “App search remains keyword” note; search panel mode chips + link to indexing. en/zh/zh-TW + `settingsCatalog` + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

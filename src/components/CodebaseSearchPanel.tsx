@@ -2,6 +2,8 @@
  * Settings → Agent: project codebase file/name + content search.
  * Host path-scopes under trusted project (`rg` or walk). Keyword only —
  * never invents embeddings or CLI code-graph results.
+ *
+ * Mode chips unify with codebase indexing honesty (`codeGraphProduct`).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
@@ -27,6 +29,20 @@ import {
   type CodebaseSearchHitLike,
   type CodebaseSearchMode,
 } from "@/lib/codebaseSearch";
+import {
+  CODE_GRAPH_INDEXING_ANCHOR,
+  annotateSearchHits,
+  buildCodeGraphStatusChips,
+  codeGraphStatusChipLabelKey,
+  resolveCodeGraphMode,
+  type AnnotatedCodeGraphHit,
+  type CodeGraphMode,
+} from "@/lib/codeGraphProduct";
+import {
+  cliSupportsCodebaseIndexing,
+  codebaseIndexingKind,
+  valuesFromCodebaseIndexingSnapshot,
+} from "@/lib/codebaseIndexing";
 
 function formatMtime(ms: number, locale: Locale): string {
   if (!ms) return "";
@@ -78,7 +94,9 @@ export function CodebaseSearchPanel({
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [mode, setMode] = useState<CodebaseSearchMode>("all");
-  const [hits, setHits] = useState<CodebaseSearchHitLike[]>([]);
+  const [hits, setHits] = useState<AnnotatedCodeGraphHit<CodebaseSearchHitLike>[]>(
+    [],
+  );
   const [searching, setSearching] = useState(false);
   const [truncated, setTruncated] = useState(false);
   const [engine, setEngine] = useState<"rg" | "walk" | "none">("none");
@@ -88,9 +106,72 @@ export function CodebaseSearchPanel({
   const [actionBusyPath, setActionBusyPath] = useState<string | null>(null);
   const [resolvedRoot, setResolvedRoot] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
+  /** Soft-probe indexing for honest mode chips (never invents graph hits). */
+  const [graphMode, setGraphMode] = useState<CodeGraphMode>("unset_default_on");
 
   const cwd = (projectPath || "").trim() || null;
   const isTauri = api.isTauri();
+
+  // Soft-probe codebase indexing so chips match Settings → indexing honesty.
+  useEffect(() => {
+    if (!isTauri) {
+      setGraphMode("unset_default_on");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      let indexingEnabled: boolean | null = null;
+      let indexingKind: string = "unset";
+      let cliOld = false;
+      try {
+        const snap = await api.codebaseIndexingGet();
+        if (cancelled) return;
+        const vals = valuesFromCodebaseIndexingSnapshot({
+          enabled: snap.enabled,
+          customRaw: snap.customRaw,
+          kind: snap.kind,
+        });
+        indexingEnabled = vals.enabled;
+        indexingKind = codebaseIndexingKind({
+          enabled: snap.enabled,
+          customRaw: snap.customRaw,
+          kind: snap.kind,
+        });
+      } catch {
+        // Soft-fail: leave unset default
+      }
+      try {
+        const probe = await api.probeCli();
+        const ver =
+          (probe as { version?: string | null } | null)?.version ?? null;
+        if (cliSupportsCodebaseIndexing(ver) === false) cliOld = true;
+      } catch {
+        // Soft-fail unknown CLI
+      }
+      if (cancelled) return;
+      setGraphMode(
+        resolveCodeGraphMode({
+          indexingEnabled,
+          indexingKind,
+          cliOld,
+          searchKind: "keyword",
+        }),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isTauri]);
+
+  const statusChips = useMemo(
+    () => buildCodeGraphStatusChips(graphMode),
+    [graphMode],
+  );
+
+  const scrollToIndexingSettings = useCallback(() => {
+    const el = document.getElementById(CODE_GRAPH_INDEXING_ANCHOR);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -145,13 +226,14 @@ export function CodebaseSearchPanel({
           limit: clampCodebaseSearchLimit(50),
         });
         if (cancelled) return;
-        setHits(normalizeCodebaseSearchHits(res));
+        // Honesty: never surface non-keyword search kind; annotate never invents graph.
+        void resolveCodebaseSearchKind(res.searchKind);
+        const normalized = normalizeCodebaseSearchHits(res);
+        setHits(annotateSearchHits(normalized, graphMode));
         setTruncated(!!res.truncated);
         setEngine(normalizeCodebaseSearchEngine(res.engine));
         setSoftFail(res.softFail ?? null);
         setResolvedRoot(res.projectPath || cwd);
-        // Honesty: never surface non-keyword search kind.
-        void resolveCodebaseSearchKind(res.searchKind);
       } catch (e) {
         if (cancelled) return;
         setHits([]);
@@ -167,7 +249,7 @@ export function CodebaseSearchPanel({
     return () => {
       cancelled = true;
     };
-  }, [cwd, debouncedQuery, isTauri, mode, refreshToken]);
+  }, [cwd, debouncedQuery, graphMode, isTauri, mode, refreshToken]);
 
   const emptyState = useMemo(
     () =>
@@ -257,10 +339,23 @@ export function CodebaseSearchPanel({
         ) : null}
       </div>
 
-      <div className="settings-codebase-search__badges">
-        <span className="ext-badge ext-badge--muted">
-          {t("settings.codebaseSearch.kind.keyword")}
-        </span>
+      <div
+        className="settings-codebase-search__badges settings-code-graph__chips"
+        role="status"
+        aria-label={t("settings.codeGraph.modeLabel")}
+      >
+        {statusChips.map((chip) => (
+          <span
+            key={chip}
+            className={
+              chip === "cli_graph" || chip === "cli_graph_default_on"
+                ? "ext-badge"
+                : "ext-badge ext-badge--muted"
+            }
+          >
+            {t(codeGraphStatusChipLabelKey(chip))}
+          </span>
+        ))}
         {engine !== "none" && queryActive ? (
           <span className="ext-badge ext-badge--muted">
             {engine === "rg"
@@ -268,10 +363,17 @@ export function CodebaseSearchPanel({
               : t("settings.codebaseSearch.engine.walk")}
           </span>
         ) : null}
-        <span className="ext-field-hint settings-codebase-search__no-embed">
-          {t("settings.codebaseSearch.noEmbeddings")}
-        </span>
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm"
+          onClick={scrollToIndexingSettings}
+        >
+          {t("settings.codeGraph.openIndexingSettings")}
+        </button>
       </div>
+      <p className="ext-field-hint settings-codebase-search__no-embed">
+        {t("settings.codebaseSearch.noEmbeddings")}
+      </p>
 
       <div
         className="settings-codebase-search__chips"

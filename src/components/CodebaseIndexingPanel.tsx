@@ -2,6 +2,8 @@
  * Settings → Agent: Codebase indexing (`[features].codebase_indexing`).
  * Independent agent-home: allowlisted bool read/write. Shared mode: read-only.
  * Code graph only — never invents embeddings / vector search status.
+ *
+ * Status line uses `resolveCodeGraphMode` so search + indexing stay honest.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
@@ -13,6 +15,7 @@ import {
   CODEBASE_INDEXING_MIN_CLI,
   buildCodebaseIndexingPatch,
   cliSupportsCodebaseIndexing,
+  codebaseIndexingKind,
   codebaseIndexingPresence,
   codebaseIndexingToggleChecked,
   describeCodebaseIndexingStatus,
@@ -22,6 +25,15 @@ import {
   valuesFromCodebaseIndexingSnapshot,
   type CodebaseIndexingValues,
 } from "@/lib/codebaseIndexing";
+import {
+  CODE_GRAPH_SEARCH_ANCHOR,
+  buildCodeGraphStatusChips,
+  codeGraphAppSearchRemainsKeywordKey,
+  codeGraphModeStatusKey,
+  codeGraphStatusChipLabelKey,
+  planCodeGraphRebuild,
+  resolveCodeGraphMode,
+} from "@/lib/codeGraphProduct";
 import { IconRefresh } from "@/components/icons";
 
 function Toggle({
@@ -207,6 +219,41 @@ export function CodebaseIndexingPanel({
   // When probe failed, also check prop.
   const supportFromProp = cliSupportsCodebaseIndexing(cliVersion ?? probedCli);
 
+  const graphMode = useMemo(() => {
+    const kind = codebaseIndexingKind({
+      enabled: draft.enabled,
+      customRaw: draft.customRaw,
+      kind:
+        draft.customRaw != null
+          ? "custom"
+          : draft.enabled === true || draft.enabled === false
+            ? "bool"
+            : "unset",
+    });
+    const cliOld =
+      cliSupport === false || supportFromProp === false;
+    return resolveCodeGraphMode({
+      indexingEnabled: draft.enabled,
+      indexingKind: kind,
+      cliOld,
+      searchKind: "keyword",
+    });
+  }, [draft, cliSupport, supportFromProp]);
+
+  const graphChips = useMemo(
+    () => buildCodeGraphStatusChips(graphMode),
+    [graphMode],
+  );
+
+  const rebuildPlan = useMemo(() => planCodeGraphRebuild({ mode: graphMode }), [
+    graphMode,
+  ]);
+
+  const scrollToSearchSettings = useCallback(() => {
+    const el = document.getElementById(CODE_GRAPH_SEARCH_ANCHOR);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   const onToggle = () => {
     if (!toggleable) return;
     setDraft((d) => ({
@@ -325,6 +372,49 @@ export function CodebaseIndexingPanel({
                   {t("settings.codebaseIndexing.cliUnknown")}
                 </span>
               )}
+          </div>
+
+          <div
+            className="settings-code-graph__status"
+            role="status"
+            aria-label={t("settings.codeGraph.modeLabel")}
+            style={{ marginTop: 8 }}
+          >
+            <div className="settings-config-edit__badges settings-code-graph__chips">
+              {graphChips.map((chip) => (
+                <span
+                  key={chip}
+                  className={
+                    chip === "cli_graph" || chip === "cli_graph_default_on"
+                      ? "ext-badge"
+                      : "ext-badge ext-badge--muted"
+                  }
+                >
+                  {t(codeGraphStatusChipLabelKey(chip))}
+                </span>
+              ))}
+            </div>
+            <p className="ext-field-hint" style={{ marginTop: 6 }}>
+              {t(codeGraphModeStatusKey(graphMode), {
+                min: CODEBASE_INDEXING_MIN_CLI,
+              })}
+            </p>
+            <p className="ext-field-hint">
+              {t(codeGraphAppSearchRemainsKeywordKey())}
+            </p>
+            {rebuildPlan.status === "unavailable" ? (
+              <p className="ext-field-hint">
+                {t(rebuildPlan.noteKey)} {t(rebuildPlan.cliHintKey)}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={scrollToSearchSettings}
+              style={{ marginTop: 4 }}
+            >
+              {t("settings.codeGraph.openSearchSettings")}
+            </button>
           </div>
 
           <div
