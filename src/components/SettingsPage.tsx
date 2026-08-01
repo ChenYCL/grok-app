@@ -583,6 +583,11 @@ export interface SettingsPageProps {
   compactionDetail?: string;
   onCompactionDetail?: (v: string) => void;
   /**
+   * Apply-path honesty for compaction mode/detail (soft-respawn / next spawn /
+   * unsupported). Pre-translated string from App.
+   */
+  compactionApplyNote?: string;
+  /**
    * Prefire two-pass compaction (CLI 0.2.117+ config
    * two_pass_compaction_enabled + GROK_TWO_PASS_COMPACTION).
    */
@@ -1350,6 +1355,7 @@ export function SettingsPage({
   onCompactionMode,
   compactionDetail = "verbose",
   onCompactionDetail,
+  compactionApplyNote,
   twoPassCompactionEnabled = false,
   onTwoPassCompactionEnabled,
   subagentsEnabled = true,
@@ -3357,6 +3363,30 @@ export function SettingsPage({
                   />
                   <div className="settings-row__desc" style={{ marginTop: 8 }}>
                     {t("settings.compactionDetail.help")}
+                  </div>
+                </div>
+              ) : null}
+              {onCompactionMode || onCompactionDetail ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-compactionApply")
+                  }
+                  id="settings-anchor-compactionApply"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__desc">
+                      {t("settings.compactionApply.note")}
+                    </div>
+                    {compactionApplyNote ? (
+                      <div
+                        className="settings-row__desc settings-row__desc--honesty"
+                        style={{ marginTop: 8 }}
+                        role="status"
+                      >
+                        {compactionApplyNote}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

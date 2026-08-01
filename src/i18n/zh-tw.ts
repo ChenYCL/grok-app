@@ -1613,6 +1613,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.compactionDetail.verbose": "詳細",
   "settings.compactionDetail.help":
     "僅在壓縮模式為「分段」時生效。CLI 預設為「詳細」。",
+  "settings.compactionApply.softRespawn":
+    "變更模式或細節會 soft-respawn 已連線的 Agent，使下一則訊息重新載入 --compaction-mode / --compaction-detail。",
+  "settings.compactionApply.nextSpawn":
+    "目前無 live Agent — 模式與細節在下次連線 / 啟動時生效。",
+  "settings.compactionApply.unsupported":
+    "此 CLI 版本不接受壓縮相關 flags（需要 0.2.117+）。仍可能設定環境變數；舊版 CLI soft-fail 並忽略未知 flags。",
+  "settings.compactionApply.note":
+    "已連線 Agent 時，變更模式或細節會 soft-respawn，使下一則訊息重新載入 flags。無 live Agent 時設定等待下次連線。舊版 CLI soft-fail（不支援時省略 flags）。手動 /compact 是獨立的 Agent 回合，不會改這些啟動 flags。",
   "settings.twoPassCompaction": "雙遍預熱壓縮",
   "settings.twoPassCompactionDesc":
     "開啟後，Grok Build 可在主壓縮前預熱層次化雙遍 compact（CLI 0.2.117+ 設定 two_pass_compaction_enabled 與 GROK_TWO_PASS_COMPACTION）。預設關閉。獨立模式寫入 agent-home config.toml；共享模式僅保留 App 設定（不改寫 ~/.grok）。變更後 soft-respawn；舊版 CLI soft-fail（省略 env）。",
@@ -3865,6 +3873,24 @@ export const zhTW: Record<MessageKey, string> = {
   "slash.compactAfterUnknown": "用量未知時無法估算",
   "slash.compactEstimateHint":
     "壓縮後估值為所選預設的粗略保留比例（~），非模型精確分詞。應用內聊天紀錄不會被改寫。",
+  "slash.compactApply.nextTurn":
+    "確認後立即以 Agent 回合傳送 /compact。目前行程上的模式/細節會用於此次壓縮。",
+  "slash.compactApply.softRespawn":
+    "模式/細節變更會 soft-respawn Agent — 下一則訊息重新載入壓縮 flags。",
+  "slash.compactApply.unsupported":
+    "此 CLI 可能忽略 --compaction-mode / --compaction-detail（需要 0.2.117+）。已連線時 /compact 仍按 Agent 預設執行。",
+  "slash.compactApply.idle":
+    "尚無 live Agent — 請先連線。壓縮模式/細節等待下次啟動；之後 /compact 作為回合執行。",
+  "slash.compactApply.modeOnly":
+    "此次壓縮使用的模式：{mode}（啟動 flags；變更會 soft-respawn 已連線 Agent）。",
+  "slash.compactApply.modeDetail":
+    "壓縮模式 {mode}，分段細節 {detail}（啟動 flags；變更會 soft-respawn 已連線 Agent）。",
+  "slash.compactApply.savingsKnown":
+    "上次已知壓縮：{before} → {after} tokens（節省 {saved}）。非估算。",
+  "slash.compactApply.savingsUnknown":
+    "在 Agent 回報壓縮前後 token 數之前無法計算節省量。上方「壓縮後（估）」僅為粗略保留比例猜測。",
+  "slash.compactApply.presetNote":
+    "強度預設僅用於填入 /compact 的保留備註模板 — CLI 無 light/standard/aggressive 參數。",
   "compact.bannerAuto": "上下文已自動壓縮",
   "compact.bannerManual": "上下文已壓縮",
   "compact.tokensRange": "{before} → {after} tokens",

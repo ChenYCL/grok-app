@@ -1697,6 +1697,14 @@ const en = {
   "settings.compactionDetail.verbose": "Verbose",
   "settings.compactionDetail.help":
     "Only applies when Compaction mode is Segments. CLI default is Verbose.",
+  "settings.compactionApply.softRespawn":
+    "Changing mode or detail soft-respawns a live agent so the next message reloads --compaction-mode / --compaction-detail.",
+  "settings.compactionApply.nextSpawn":
+    "No live agent — mode and detail apply on the next connect / spawn.",
+  "settings.compactionApply.unsupported":
+    "This CLI version does not take compaction flags (need 0.2.117+). Env may still be set; older CLIs soft-fail and ignore unknown flags.",
+  "settings.compactionApply.note":
+    "When a live agent is attached, changing mode or detail soft-respawns so the next message reloads flags. Without a live agent, prefs wait for the next connect. Older CLIs soft-fail (flags omitted when unsupported). Manual /compact is a separate agent turn — it does not change these spawn flags.",
   "settings.twoPassCompaction": "Two-pass prefire compaction",
   "settings.twoPassCompactionDesc":
     "When on, Grok Build may prefire a hierarchical two-pass compact before the main compact (CLI 0.2.117+ config two_pass_compaction_enabled + GROK_TWO_PASS_COMPACTION). Default off. Independent mode writes agent-home config.toml; shared mode keeps the App setting only (does not rewrite ~/.grok). Soft-respawns after change; older CLIs soft-fail (env omitted).",
@@ -4027,6 +4035,24 @@ const en = {
   "slash.compactAfterUnknown": "Unknown until usage is known",
   "slash.compactEstimateHint":
     "After estimate is a rough keep-ratio guess for the selected preset (~), not the model’s tokenizer. Host chat history is not rewritten.",
+  "slash.compactApply.nextTurn":
+    "Confirm sends /compact as an agent turn now. Mode/detail already on this process apply to that compact.",
+  "slash.compactApply.softRespawn":
+    "Mode/detail change soft-respawns the agent — the next message reloads compaction flags.",
+  "slash.compactApply.unsupported":
+    "This CLI may ignore --compaction-mode / --compaction-detail (need 0.2.117+). /compact still runs with agent defaults when connected.",
+  "slash.compactApply.idle":
+    "No live agent yet — connect first. Compaction mode/detail wait for the next spawn; then /compact runs as a turn.",
+  "slash.compactApply.modeOnly":
+    "Compaction mode for this compact: {mode} (spawn flags; change soft-respawns a live agent).",
+  "slash.compactApply.modeDetail":
+    "Compaction mode {mode}, segments detail {detail} (spawn flags; change soft-respawns a live agent).",
+  "slash.compactApply.savingsKnown":
+    "Last known compact: {before} → {after} tokens (saved {saved}). Not an estimate.",
+  "slash.compactApply.savingsUnknown":
+    "Token savings unknown until the agent reports both before and after counts. After (est.) above is only a rough keep-ratio guess.",
+  "slash.compactApply.presetNote":
+    "Intensity presets only seed the keep-note template for /compact — CLI has no light/standard/aggressive flag.",
   "compact.bannerAuto": "Context auto-compacted",
   "compact.bannerManual": "Context compacted",
   "compact.tokensRange": "{before} → {after} tokens",
@@ -7758,6 +7784,14 @@ const zh: Record<MessageKey, string> = {
   "settings.compactionDetail.verbose": "详细",
   "settings.compactionDetail.help":
     "仅在压缩模式为「分段」时生效。CLI 默认为「详细」。",
+  "settings.compactionApply.softRespawn":
+    "更改模式或细节会 soft-respawn 已连接的 Agent，使下一条消息重新加载 --compaction-mode / --compaction-detail。",
+  "settings.compactionApply.nextSpawn":
+    "当前无 live Agent — 模式与细节在下次连接 / 启动时生效。",
+  "settings.compactionApply.unsupported":
+    "此 CLI 版本不接受压缩相关 flags（需要 0.2.117+）。仍可能设置环境变量；旧版 CLI soft-fail 并忽略未知 flags。",
+  "settings.compactionApply.note":
+    "已连接 Agent 时，更改模式或细节会 soft-respawn，使下一条消息重新加载 flags。无 live Agent 时设置等待下次连接。旧版 CLI soft-fail（不支持时省略 flags）。手动 /compact 是独立的 Agent 回合，不会改这些启动 flags。",
   "settings.twoPassCompaction": "双遍预热压缩",
   "settings.twoPassCompactionDesc":
     "开启后，Grok Build 可在主压缩前预热层次化双遍 compact（CLI 0.2.117+ 配置 two_pass_compaction_enabled 与 GROK_TWO_PASS_COMPACTION）。默认关闭。独立模式写入 agent-home config.toml；共享模式仅保留 App 设置（不改写 ~/.grok）。更改后 soft-respawn；旧版 CLI soft-fail（省略 env）。",
@@ -10009,6 +10043,24 @@ const zh: Record<MessageKey, string> = {
   "slash.compactAfterUnknown": "用量未知时无法估算",
   "slash.compactEstimateHint":
     "压缩后估值为所选预设的粗略保留比例（~），非模型精确分词。应用内聊天记录不会被改写。",
+  "slash.compactApply.nextTurn":
+    "确认后立即以 Agent 回合发送 /compact。当前进程上的模式/细节会用于此次压缩。",
+  "slash.compactApply.softRespawn":
+    "模式/细节变更会 soft-respawn Agent — 下一条消息重新加载压缩 flags。",
+  "slash.compactApply.unsupported":
+    "此 CLI 可能忽略 --compaction-mode / --compaction-detail（需要 0.2.117+）。已连接时 /compact 仍按 Agent 默认运行。",
+  "slash.compactApply.idle":
+    "尚无 live Agent — 请先连接。压缩模式/细节等待下次启动；之后 /compact 作为回合执行。",
+  "slash.compactApply.modeOnly":
+    "此次压缩使用的模式：{mode}（启动 flags；更改会 soft-respawn 已连接 Agent）。",
+  "slash.compactApply.modeDetail":
+    "压缩模式 {mode}，分段细节 {detail}（启动 flags；更改会 soft-respawn 已连接 Agent）。",
+  "slash.compactApply.savingsKnown":
+    "上次已知压缩：{before} → {after} tokens（节省 {saved}）。非估算。",
+  "slash.compactApply.savingsUnknown":
+    "在 Agent 上报压缩前后 token 数之前无法计算节省量。上方「压缩后（估）」仅为粗略保留比例猜测。",
+  "slash.compactApply.presetNote":
+    "强度预设仅用于填充 /compact 的保留备注模板 — CLI 无 light/standard/aggressive 参数。",
   "compact.bannerAuto": "上下文已自动压缩",
   "compact.bannerManual": "上下文已压缩",
   "compact.tokensRange": "{before} → {after} tokens",

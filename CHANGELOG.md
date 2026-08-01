@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Compact apply-path + preset honesty**: dialog footer explains when `/compact` runs (`next_turn` / idle / unsupported flags), that light/standard/aggressive only seed keep-note templates (no CLI intensity flag), and token savings only when both before/after are known — never invents savings from estimates. Settings → Agent compaction section notes soft-respawn vs next spawn for mode/detail. Pure `compactApplyHonesty` helpers + tests; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
