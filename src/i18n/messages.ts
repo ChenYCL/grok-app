@@ -3475,6 +3475,72 @@ const en = {
   "doctor.finding.destructive": "destructive",
   "doctor.finding.noDetail": "No additional detail.",
 
+  // Windows day-use acceptance checklist (Doctor / Reliability)
+  "doctor.windowsDayuse.title": "Windows day-use",
+  "doctor.windowsDayuse.lead":
+    "Acceptance checklist for day-to-day Windows use. App auto-probes some items; others stay manual. SmartScreen / unsigned status is never invented.",
+  "doctor.windowsDayuse.notTarget":
+    "macOS / Linux is not the target of this list — items show N/A. Use a Windows build to exercise install, CLI, project spaces, and mirror day-use.",
+  "doctor.windowsDayuse.summary":
+    "{pass} pass · {fail} fail · {manual} manual · {na} n/a",
+  "doctor.windowsDayuse.copy": "Copy checklist",
+  "doctor.windowsDayuse.copied": "Checklist copied",
+  "doctor.windowsDayuse.copyFail": "Could not copy checklist",
+  "doctor.windowsDayuse.docs": "Acceptance doc",
+  "doctor.windowsDayuse.platform.win": "Windows",
+  "doctor.windowsDayuse.platform.mac": "macOS",
+  "doctor.windowsDayuse.platform.linux": "Linux",
+  "doctor.windowsDayuse.platform.other": "Other",
+  "doctor.windowsDayuse.status.pass": "Pass",
+  "doctor.windowsDayuse.status.fail": "Fail",
+  "doctor.windowsDayuse.status.manual": "Manual",
+  "doctor.windowsDayuse.status.na": "N/A",
+  "doctor.windowsDayuse.item.installPath": "Install path (Release / SmartScreen)",
+  "doctor.windowsDayuse.item.cliFound": "CLI found (Doctor / Setup)",
+  "doctor.windowsDayuse.item.projectSpaces": "Project path with spaces",
+  "doctor.windowsDayuse.item.singleAttachment": "Single attachment paste",
+  "doctor.windowsDayuse.item.appUpdateCheck": "Check for updates (About)",
+  "doctor.windowsDayuse.item.mirrorReadonly": "Phone mirror read-only default",
+  "doctor.windowsDayuse.detail.na": "Not applicable on this platform.",
+  "doctor.windowsDayuse.detail.installPath.manual":
+    "Install from GitHub Release (setup.exe or portable zip). SmartScreen may warn when unsigned — App does not invent that status without a probe.",
+  "doctor.windowsDayuse.detail.installPath.pass":
+    "Install signature probe reports signed / clear.",
+  "doctor.windowsDayuse.detail.installPath.fail":
+    "Install signature probe reports unsigned or blocked.",
+  "doctor.windowsDayuse.detail.cliFound.pass": "Grok Build CLI resolved.",
+  "doctor.windowsDayuse.detail.cliFound.fail":
+    "CLI not found — open Setup or Settings → Runtime to install / set path.",
+  "doctor.windowsDayuse.detail.cliFound.manual":
+    "CLI probe not available yet — re-run Doctor or open Setup.",
+  "doctor.windowsDayuse.detail.projectSpaces.pass":
+    "Trusted project path includes spaces (console flash storm should stay gone).",
+  "doctor.windowsDayuse.detail.projectSpaces.fail":
+    "No trusted project yet — add and trust a folder (spaces OK).",
+  "doctor.windowsDayuse.detail.projectSpaces.manual":
+    "Trusted project present; re-check with a path that contains spaces if you have not already.",
+  "doctor.windowsDayuse.detail.singleAttachment.manual":
+    "Manual: one tool-using chat turn, paste a screenshot once — confirm a single attachment (App cannot auto-prove paste).",
+  "doctor.windowsDayuse.detail.appUpdateCheck.pass":
+    "Update check path available (in-app or GitHub manual).",
+  "doctor.windowsDayuse.detail.appUpdateCheck.fail":
+    "Update check not supported in this build — try Settings → About.",
+  "doctor.windowsDayuse.detail.appUpdateCheck.manual":
+    "Open Settings → About → Check for updates (download installer if newer).",
+  "doctor.windowsDayuse.detail.mirrorReadonly.pass":
+    "Phone mirror is read-only (write off) — default posture.",
+  "doctor.windowsDayuse.detail.mirrorReadonly.fail":
+    "Phone mirror write is enabled — default day-use expects read-only; turn write off in Remote control → Mirror if testing acceptance.",
+  "doctor.windowsDayuse.detail.mirrorReadonly.manual":
+    "Mirror status unknown — open Remote control → Mirror; day-use expects read-only start + regenerate link.",
+  "doctor.windowsDayuse.link.about": "About / updates",
+  "doctor.windowsDayuse.link.mirror": "Mirror",
+  "doctor.windowsDayuse.link.setup": "Setup / CLI",
+  "doctor.windowsDayuse.link.runtime": "Runtime",
+  "settings.runtime.platformTip": "Platform",
+  "settings.runtime.platformTipDesc":
+    "Detected OS for UI labels (file manager, day-use checklist). Windows builds get the day-use acceptance card in Doctor.",
+
   // Reliability / Observability center (long-task signals)
   "reliability.title": "Reliability",
   "reliability.close": "Close reliability center",
@@ -9474,6 +9540,70 @@ const zh: Record<MessageKey, string> = {
   "doctor.finding.fixId": "修复 id",
   "doctor.finding.destructive": "破坏性",
   "doctor.finding.noDetail": "无更多详情。",
+
+  // Windows day-use acceptance checklist (Doctor / Reliability)
+  "doctor.windowsDayuse.title": "Windows 日常验收",
+  "doctor.windowsDayuse.lead":
+    "面向 Windows 日常使用的验收清单。App 可自动探测部分项，其余保持手动。未探测时不会臆造 SmartScreen / 未签名状态。",
+  "doctor.windowsDayuse.notTarget":
+    "macOS / Linux 不是本清单目标平台 — 项显示为 N/A。请在 Windows 构建上验证安装、CLI、带空格路径与镜像日常使用。",
+  "doctor.windowsDayuse.summary":
+    "{pass} 通过 · {fail} 失败 · {manual} 手动 · {na} 不适用",
+  "doctor.windowsDayuse.copy": "复制清单",
+  "doctor.windowsDayuse.copied": "已复制清单",
+  "doctor.windowsDayuse.copyFail": "无法复制清单",
+  "doctor.windowsDayuse.docs": "验收文档",
+  "doctor.windowsDayuse.platform.win": "Windows",
+  "doctor.windowsDayuse.platform.mac": "macOS",
+  "doctor.windowsDayuse.platform.linux": "Linux",
+  "doctor.windowsDayuse.platform.other": "其他",
+  "doctor.windowsDayuse.status.pass": "通过",
+  "doctor.windowsDayuse.status.fail": "失败",
+  "doctor.windowsDayuse.status.manual": "手动",
+  "doctor.windowsDayuse.status.na": "不适用",
+  "doctor.windowsDayuse.item.installPath": "安装路径（Release / SmartScreen）",
+  "doctor.windowsDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
+  "doctor.windowsDayuse.item.projectSpaces": "带空格的项目路径",
+  "doctor.windowsDayuse.item.singleAttachment": "单次粘贴附件",
+  "doctor.windowsDayuse.item.appUpdateCheck": "检查更新（关于）",
+  "doctor.windowsDayuse.item.mirrorReadonly": "手机镜像默认只读",
+  "doctor.windowsDayuse.detail.na": "当前平台不适用。",
+  "doctor.windowsDayuse.detail.installPath.manual":
+    "从 GitHub Release 安装（setup.exe 或便携 zip）。未签名时 SmartScreen 可能提示 — App 在未探测时不会臆造该状态。",
+  "doctor.windowsDayuse.detail.installPath.pass": "安装签名探测为已签名 / 通过。",
+  "doctor.windowsDayuse.detail.installPath.fail": "安装签名探测为未签名或被拦截。",
+  "doctor.windowsDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
+  "doctor.windowsDayuse.detail.cliFound.fail":
+    "未找到 CLI — 打开 Setup 或 设置 → 运行时 安装 / 设置路径。",
+  "doctor.windowsDayuse.detail.cliFound.manual":
+    "CLI 探测尚未就绪 — 重新运行 Doctor 或打开 Setup。",
+  "doctor.windowsDayuse.detail.projectSpaces.pass":
+    "受信任项目路径包含空格（不应再出现控制台闪烁风暴）。",
+  "doctor.windowsDayuse.detail.projectSpaces.fail":
+    "尚无受信任项目 — 请添加并信任一个文件夹（路径可含空格）。",
+  "doctor.windowsDayuse.detail.projectSpaces.manual":
+    "已有受信任项目；若尚未验证，请用含空格路径再测一次。",
+  "doctor.windowsDayuse.detail.singleAttachment.manual":
+    "手动：完成一次工具对话，粘贴一张截图 — 确认只有单个附件（App 无法自动证明粘贴）。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.pass":
+    "可用的更新检查路径（应用内或 GitHub 手动）。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.fail":
+    "此构建不支持更新检查 — 请试 设置 → 关于。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.manual":
+    "打开 设置 → 关于 → 检查更新（有新版本则下载安装包）。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.pass":
+    "手机镜像为只读（写入关闭）— 默认姿态。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.fail":
+    "手机镜像写入已开启 — 日常验收期望只读；可在 远程控制 → 镜像 关闭写入。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.manual":
+    "镜像状态未知 — 打开 远程控制 → 镜像；日常验收期望只读启动 + 可重新生成链接。",
+  "doctor.windowsDayuse.link.about": "关于 / 更新",
+  "doctor.windowsDayuse.link.mirror": "镜像",
+  "doctor.windowsDayuse.link.setup": "Setup / CLI",
+  "doctor.windowsDayuse.link.runtime": "运行时",
+  "settings.runtime.platformTip": "平台",
+  "settings.runtime.platformTipDesc":
+    "用于界面文案的操作系统探测（文件管理器、日常验收清单）。Windows 构建可在 Doctor 中查看 day-use 验收卡片。",
 
   "reliability.title": "可靠性",
   "reliability.close": "关闭可靠性中心",

@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Windows day-use checklist** (Doctor): productizes `docs/验收/windows-dayuse-acceptance.md` as an in-app honesty card — install path, CLI found, project spaces, single attachment, app update check, mirror read-only. Pure `windowsDayuseChecklist` helpers auto-probe what App can know and leave the rest **manual** (never invents SmartScreen / unsigned). Non-Windows shows N/A with “not the target of this list”. Copy summary; deep links to About / Mirror / Runtime. Settings → Runtime platform tip. en/zh/zh-TW + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
