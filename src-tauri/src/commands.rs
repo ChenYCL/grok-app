@@ -7743,6 +7743,29 @@ pub async fn workflows_run(
     .map_err(|e| format!("workflows_run: {e}"))
 }
 
+/// Create a minimal `.rhai` workflow template under user or project scope.
+/// Path-scoped write; refuses overwrite unless `force`. Soft-fail via Result.
+#[tauri::command]
+pub async fn workflows_create(
+    name: String,
+    scope: Option<String>,
+    project_path: Option<String>,
+    force: Option<bool>,
+) -> Result<crate::agent_workflows::WorkflowCreateResult, String> {
+    let scope = scope.unwrap_or_else(|| "user".into());
+    let force = force.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_workflows::create_workflow_template(
+            &name,
+            &scope,
+            project_path.as_deref(),
+            force,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// List agent + persona definition files from user / project / bundled scopes.
 /// Does not require the CLI binary (pure filesystem discovery under `~/.grok`,
 /// active GROK_HOME / agent-home, and optional `{project}/.grok`). Always returns Ok.

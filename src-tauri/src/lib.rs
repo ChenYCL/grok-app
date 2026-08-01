@@ -474,6 +474,7 @@ pub fn run() {
             commands::agents_list,
             commands::workflows_list,
             commands::workflows_run,
+            commands::workflows_create,
             commands::agents_scaffold,
             commands::inspect_mcp,
             commands::project_inspect,

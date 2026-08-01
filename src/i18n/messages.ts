@@ -2440,6 +2440,65 @@ const en = {
   "settings.workflows.run.reason.empty": "empty output",
   "settings.workflows.run.reason.nonzero_exit": "non-zero exit",
   "settings.workflows.run.reason.soft_fail": "soft-fail",
+  "settings.workflows.authorHint":
+    "Author full pipelines with the create-workflow skill (/create-workflow), or edit the .rhai file. This panel only scaffolds a short template and can smoke/run by name — not a visual editor.",
+  "settings.workflows.reveal": "Reveal",
+  "settings.workflows.revealTitle": "Reveal workflow file in folder",
+  "settings.workflows.openEditor": "Open",
+  "settings.workflows.openEditorTitle": "Open workflow in configured editor",
+  "settings.workflows.create": "New from template",
+  "settings.workflows.create.title": "New workflow from template",
+  "settings.workflows.create.hint":
+    "Writes a minimal .rhai scaffold with pure-literal meta. Replace the body with real agent()/parallel() steps (see create-workflow skill).",
+  "settings.workflows.create.name": "Name",
+  "settings.workflows.create.namePlaceholder": "review-changes",
+  "settings.workflows.create.namePreview": "Will save as {name}.rhai",
+  "settings.workflows.create.scope": "Scope",
+  "settings.workflows.create.needProjectHint":
+    "Open a project in the workbench to enable project scope.",
+  "settings.workflows.create.needProject":
+    "Project scope needs an active project path.",
+  "settings.workflows.create.argsNote":
+    "Optional: pass args as an object when launching via the workflow tool (args is () if omitted).",
+  "settings.workflows.create.pathPreview": "Path: {path}",
+  "settings.workflows.create.submit": "Create",
+  "settings.workflows.create.creating": "Creating…",
+  "settings.workflows.create.created": "Created workflow {name}",
+  "settings.workflows.create.overwritten": "Overwrote workflow {name}",
+  "settings.workflows.create.nameInvalid":
+    "Use letters, digits, dashes, or underscores (no path separators).",
+  "settings.workflows.create.error": "Could not create workflow (soft-fail).",
+  "settings.workflows.create.desktopOnly":
+    "Creating workflows requires the desktop app host.",
+  "settings.workflows.create.overwriteTitle": "Overwrite workflow?",
+  "settings.workflows.create.overwriteBody":
+    "A workflow named “{name}” already exists. Overwrite with the template scaffold?",
+  "settings.workflows.create.overwrite": "Overwrite",
+  "settings.workflows.empty.no_workflows":
+    "No .rhai workflows found under ~/.grok/workflows or this project’s .grok/workflows. Create a template or use /create-workflow.",
+  "settings.workflows.empty.scan_soft_fail":
+    "Workflow folders could not be scanned (soft-fail). Paths may still exist on disk.",
+  "settings.workflows.empty.browser_only":
+    "Workflow discovery and create require the desktop app host.",
+  "settings.workflows.empty.history_empty":
+    "No observed smoke/run results yet. History only records Settings Smoke/Run outcomes (local, redacted).",
+  "settings.workflows.history": "Recent runs",
+  "settings.workflows.history.show": "Recent runs ({count})",
+  "settings.workflows.history.hide": "Hide recent runs",
+  "settings.workflows.history.honesty":
+    "Local ring of Settings smoke/run outcomes only (max ~20). Not a live /workflows dashboard; does not invent offline fires.",
+  "settings.workflows.history.filter": "Filter recent runs",
+  "settings.workflows.history.filter.all": "All",
+  "settings.workflows.history.filterEmpty": "No runs match this filter.",
+  "settings.workflows.history.outcome.ok": "ok",
+  "settings.workflows.history.outcome.error": "error",
+  "settings.workflows.history.outcome.softFail": "soft-fail",
+  "settings.workflows.history.clear": "Clear history",
+  "settings.workflows.history.clearTitle": "Clear recent runs?",
+  "settings.workflows.history.clearBody":
+    "Remove {count} local history row(s)? This cannot be undone.",
+  "settings.workflows.history.clearConfirm": "Clear",
+  "settings.workflows.history.cleared": "Workflow run history cleared",
   "settings.useLeader": "Share agent backend (leader)",
   "settings.useLeaderDesc": "Connect with --leader so multiple clients can share one backend process. Off uses --no-leader (default). Soft-respawns after change.",
   "settings.leader.title": "Agent leader / serve",
@@ -8764,6 +8823,60 @@ const zh: Record<MessageKey, string> = {
   "settings.workflows.run.reason.empty": "空输出",
   "settings.workflows.run.reason.nonzero_exit": "非零退出",
   "settings.workflows.run.reason.soft_fail": "soft-fail",
+  "settings.workflows.authorHint":
+    "完整流水线请用 create-workflow 技能（/create-workflow）编写，或直接编辑 .rhai。本面板仅生成简短模板，并按名称 smoke/运行——不是可视化编辑器。",
+  "settings.workflows.reveal": "显示",
+  "settings.workflows.revealTitle": "在文件夹中显示工作流文件",
+  "settings.workflows.openEditor": "打开",
+  "settings.workflows.openEditorTitle": "在已配置的编辑器中打开工作流",
+  "settings.workflows.create": "从模板新建",
+  "settings.workflows.create.title": "从模板新建工作流",
+  "settings.workflows.create.hint":
+    "写入带纯字面量 meta 的最小 .rhai 脚手架。请用真实的 agent()/parallel() 步骤替换正文（见 create-workflow 技能）。",
+  "settings.workflows.create.name": "名称",
+  "settings.workflows.create.namePlaceholder": "review-changes",
+  "settings.workflows.create.namePreview": "将保存为 {name}.rhai",
+  "settings.workflows.create.scope": "作用域",
+  "settings.workflows.create.needProjectHint": "在工作台打开项目后即可使用项目作用域。",
+  "settings.workflows.create.needProject": "项目作用域需要当前项目路径。",
+  "settings.workflows.create.argsNote":
+    "可选：通过 workflow 工具启动时传入 args 对象（未传时 args 为 ()）。",
+  "settings.workflows.create.pathPreview": "路径：{path}",
+  "settings.workflows.create.submit": "创建",
+  "settings.workflows.create.creating": "创建中…",
+  "settings.workflows.create.created": "已创建工作流 {name}",
+  "settings.workflows.create.overwritten": "已覆盖工作流 {name}",
+  "settings.workflows.create.nameInvalid":
+    "请使用字母、数字、连字符或下划线（不要包含路径分隔符）。",
+  "settings.workflows.create.error": "无法创建工作流（soft-fail）。",
+  "settings.workflows.create.desktopOnly": "创建工作流需要桌面应用宿主。",
+  "settings.workflows.create.overwriteTitle": "覆盖工作流？",
+  "settings.workflows.create.overwriteBody":
+    "名为「{name}」的工作流已存在。要用模板脚手架覆盖吗？",
+  "settings.workflows.create.overwrite": "覆盖",
+  "settings.workflows.empty.no_workflows":
+    "在 ~/.grok/workflows 或当前项目的 .grok/workflows 下未找到 .rhai 工作流。可创建模板或使用 /create-workflow。",
+  "settings.workflows.empty.scan_soft_fail":
+    "无法扫描工作流目录（soft-fail）。磁盘上的路径可能仍然存在。",
+  "settings.workflows.empty.browser_only": "发现与创建工作流需要桌面应用宿主。",
+  "settings.workflows.empty.history_empty":
+    "尚无观察到的 smoke/运行结果。历史仅记录设置页 Smoke/运行结果（本地、已脱敏）。",
+  "settings.workflows.history": "最近运行",
+  "settings.workflows.history.show": "最近运行（{count}）",
+  "settings.workflows.history.hide": "隐藏最近运行",
+  "settings.workflows.history.honesty":
+    "仅本地记录设置页 smoke/运行结果（最多约 20 条）。不是实时 /workflows 仪表盘；不会虚构离线触发。",
+  "settings.workflows.history.filter": "筛选最近运行",
+  "settings.workflows.history.filter.all": "全部",
+  "settings.workflows.history.filterEmpty": "没有匹配此筛选的运行。",
+  "settings.workflows.history.outcome.ok": "ok",
+  "settings.workflows.history.outcome.error": "错误",
+  "settings.workflows.history.outcome.softFail": "soft-fail",
+  "settings.workflows.history.clear": "清空历史",
+  "settings.workflows.history.clearTitle": "清空最近运行？",
+  "settings.workflows.history.clearBody": "移除 {count} 条本地历史记录？此操作不可撤销。",
+  "settings.workflows.history.clearConfirm": "清空",
+  "settings.workflows.history.cleared": "已清空工作流运行历史",
   "settings.useLeader": "共享 Agent 后端（leader）",
   "settings.useLeaderDesc": "使用 --leader 让多个客户端共用一个后端进程；关闭则 --no-leader（默认）。更改后 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",
