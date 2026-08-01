@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Partial stream apply-path honesty** (Settings → Runtime → Pool): when **Include partial stream events** is on, a contextual note shows soft-omit on older/unknown CLI vs active headless Remote IM deltas on CLI **0.2.117+** (in-app ACP chat unchanged). Pure `partialStreamHonesty` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

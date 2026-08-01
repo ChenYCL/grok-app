@@ -1978,6 +1978,24 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.includePartialMessages": "包含部分串流事件",
   "settings.includePartialMessagesDesc":
     "使用 `--output-format streaming-messages-json` 的無頭路徑會額外傳入 `--include-partial-messages`（CLI 0.2.117+），輸出增量 `stream_event` 文字/思考 delta。關閉 = 僅完整訊息（CLI 預設）。開啟且 CLI 足夠新時，遠端 IM 會升級為 streaming-messages-json；更舊 CLI soft-fail（省略 flag）。",
+  "settings.includePartialMessages.active":
+    "已開啟 — 無頭遠端 IM 會升級為 streaming-messages-json 並傳入 `--include-partial-messages`（CLI {minCli}+），輸出增量 `stream_event` 文字/思考 delta。應用內聊天走 ACP，不受此開關影響。",
+  "settings.includePartialMessages.softOmit":
+    "已開啟，但目前 CLI 低於 {minCli}（或版本未知）— 為避免啟動失敗已 soft-omit `--include-partial-messages`。升級 Grok Build CLI 前仍為完整訊息。",
+  "settings.includePartialMessages.idleOff":
+    "已關閉 — 僅完整訊息（CLI 預設）。不傳 `--include-partial-messages`。",
+  "settings.includePartialMessages.hostOnly":
+    "設定已儲存，但目前路徑不是無頭 streaming-messages-json（例如應用內 ACP 聊天）。部分串流事件僅作用於無頭遠端 IM / 診斷路徑。",
+  "settings.includePartialMessages.err.cliTooOld":
+    "CLI 過舊，不支援部分串流事件（需要 {minCli}+）。已 soft-omit 該 flag。",
+  "settings.includePartialMessages.err.unknownFlag":
+    "CLI 拒絕了 `--include-partial-messages`（未知 flag）。請升級 Grok Build，或關閉此開關。",
+  "settings.includePartialMessages.err.unsupportedFormat":
+    "`--include-partial-messages` 僅與 streaming-messages-json 配對。輸出格式不符 — flag 被忽略。",
+  "settings.includePartialMessages.err.hostOnly":
+    "部分串流生效需要桌面應用宿主（或無頭路徑）。此處不可用。",
+  "settings.includePartialMessages.err.other":
+    "無法套用部分串流設定。",
   "settings.maxAgentTurns": "最大 Agent 輪次",
   "settings.maxAgentTurnsDesc":
     "啟動 Agent 時傳入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 預設。下次啟動 Agent 時生效——變更後請重新連線工作階段。",

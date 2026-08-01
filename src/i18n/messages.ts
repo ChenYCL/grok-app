@@ -2091,6 +2091,24 @@ const en = {
   "settings.includePartialMessages": "Include partial stream events",
   "settings.includePartialMessagesDesc":
     "Headless paths that use `--output-format streaming-messages-json` also pass `--include-partial-messages` (CLI 0.2.117+) so incremental `stream_event` text/thinking deltas are emitted. Off = whole messages only (CLI default). Remote IM upgrades to streaming-messages-json when this is on and the CLI is new enough; older CLIs soft-fail (flag omitted).",
+  "settings.includePartialMessages.active":
+    "On — headless Remote IM upgrades to streaming-messages-json and passes `--include-partial-messages` (CLI {minCli}+) for incremental `stream_event` text/thinking deltas. In-app chat uses ACP and is unchanged by this toggle.",
+  "settings.includePartialMessages.softOmit":
+    "On, but this CLI is older than {minCli} (or version unknown) — `--include-partial-messages` is soft-omitted so spawn does not fail. Whole messages only until you upgrade Grok Build CLI.",
+  "settings.includePartialMessages.idleOff":
+    "Off — whole messages only (CLI default). No `--include-partial-messages`.",
+  "settings.includePartialMessages.hostOnly":
+    "Setting is saved, but this path is not headless streaming-messages-json (for example in-app ACP chat). Partial stream events apply only on headless Remote IM / diagnostics paths.",
+  "settings.includePartialMessages.err.cliTooOld":
+    "CLI too old for partial stream events (need {minCli}+). Flag was soft-omitted.",
+  "settings.includePartialMessages.err.unknownFlag":
+    "CLI rejected `--include-partial-messages` (unknown flag). Upgrade Grok Build or leave the toggle off.",
+  "settings.includePartialMessages.err.unsupportedFormat":
+    "`--include-partial-messages` only pairs with streaming-messages-json. Wrong output format — flag ignored.",
+  "settings.includePartialMessages.err.hostOnly":
+    "Partial stream apply needs the desktop app host (or a headless path). Not available here.",
+  "settings.includePartialMessages.err.other":
+    "Could not apply partial stream setting.",
   "settings.maxAgentTurns": "Max agent turns",
   "settings.maxAgentTurnsDesc":
     "Pass `grok --max-turns N` when starting the agent (1–200). Leave empty or 0 for the CLI default. Applies on the next agent start — reconnect the session after changing.",
@@ -8216,6 +8234,24 @@ const zh: Record<MessageKey, string> = {
   "settings.includePartialMessages": "包含部分流式事件",
   "settings.includePartialMessagesDesc":
     "使用 `--output-format streaming-messages-json` 的无头路径会额外传入 `--include-partial-messages`（CLI 0.2.117+），输出增量 `stream_event` 文本/思考 delta。关闭 = 仅完整消息（CLI 默认）。开启且 CLI 足够新时，远程 IM 会升级为 streaming-messages-json；更旧 CLI soft-fail（省略 flag）。",
+  "settings.includePartialMessages.active":
+    "已开启 — 无头远程 IM 会升级为 streaming-messages-json 并传入 `--include-partial-messages`（CLI {minCli}+），输出增量 `stream_event` 文本/思考 delta。应用内聊天走 ACP，不受此开关影响。",
+  "settings.includePartialMessages.softOmit":
+    "已开启，但当前 CLI 低于 {minCli}（或版本未知）— 为避免启动失败已 soft-omit `--include-partial-messages`。升级 Grok Build CLI 前仍为完整消息。",
+  "settings.includePartialMessages.idleOff":
+    "已关闭 — 仅完整消息（CLI 默认）。不传 `--include-partial-messages`。",
+  "settings.includePartialMessages.hostOnly":
+    "设置已保存，但当前路径不是无头 streaming-messages-json（例如应用内 ACP 聊天）。部分流式事件仅作用于无头远程 IM / 诊断路径。",
+  "settings.includePartialMessages.err.cliTooOld":
+    "CLI 过旧，不支持部分流式事件（需要 {minCli}+）。已 soft-omit 该 flag。",
+  "settings.includePartialMessages.err.unknownFlag":
+    "CLI 拒绝了 `--include-partial-messages`（未知 flag）。请升级 Grok Build，或关闭此开关。",
+  "settings.includePartialMessages.err.unsupportedFormat":
+    "`--include-partial-messages` 仅与 streaming-messages-json 配对。输出格式不匹配 — flag 被忽略。",
+  "settings.includePartialMessages.err.hostOnly":
+    "部分流式生效需要桌面应用宿主（或无头路径）。此处不可用。",
+  "settings.includePartialMessages.err.other":
+    "无法应用部分流式设置。",
   "settings.maxAgentTurns": "最大 Agent 轮次",
   "settings.maxAgentTurnsDesc":
     "启动 Agent 时传入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 默认。下次启动 Agent 时生效——更改后请重连会话。",

@@ -73,6 +73,7 @@ import {
   toggleAllowedTool,
 } from "@/lib/allowedTools";
 import { detectAppPlatform } from "@/lib/appPlatform";
+import { resolvePartialStreamBanner } from "@/lib/partialStreamHonesty";
 import {
   RECOMMENDED_SANDBOX_PROFILE,
   SANDBOX_MIN_CLI,
@@ -6979,6 +6980,29 @@ export function SettingsPage({
                       <div className="settings-row__desc">
                         {t("settings.includePartialMessagesDesc")}
                       </div>
+                      {(() => {
+                        // Settings note describes the headless Remote IM path.
+                        // ACP in-app chat is a separate streaming path (never
+                        // invent token deltas from this toggle alone).
+                        const banner = resolvePartialStreamBanner({
+                          enabled: includePartialMessages,
+                          cliVersion: cliInfo.version,
+                          isHeadlessPath: true,
+                        });
+                        if (!banner) return null;
+                        return (
+                          <div
+                            className={
+                              "settings-row__hint" +
+                              (banner.severity === "warn" ? " is-danger" : "")
+                            }
+                            style={{ marginTop: 6 }}
+                            role="status"
+                          >
+                            {t(banner.messageKey, banner.vars)}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <UiCheck
                       checked={!!includePartialMessages}
