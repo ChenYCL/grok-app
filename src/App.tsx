@@ -189,6 +189,7 @@ import {
   preferSessionMessages,
   presentErrorBanner,
   snapshotOutgoingMessages,
+  upgradeMessagesFromJournal,
   type ErrorBannerView,
   weaveToolsIntoAssistantSegments,
   truncateBeforeLastUser,
@@ -4192,9 +4193,37 @@ export default function App() {
               ) {
                 setTurnStartedAt((prev) => prev ?? Date.now());
               }
-              // After a turn, resolve `images/N.jpg` short paths into image cards
+              // After a turn, rehydrate any longer journal body (missed stream
+              // tail) and resolve `images/N.jpg` short paths into image cards.
               if (s.state === "ready") {
                 const sid = s.sessionId;
+                if (
+                  isTurnDoneReadyTransition(prevLiveState, s.state) &&
+                  sid
+                ) {
+                  void api
+                    .sessionMessages(sid)
+                    .then((stored) => {
+                      if (
+                        cancelled ||
+                        viewingSessionIdRef.current !== sid
+                      ) {
+                        return;
+                      }
+                      const mapped = mapStoredMessagesToChat(stored);
+                      const woven = weaveToolsIntoAssistantSegments(mapped);
+                      setMessages((prev) => {
+                        const next = upgradeMessagesFromJournal(prev, woven);
+                        if (next !== prev) {
+                          messagesBySessionRef.current.set(sid, next);
+                        }
+                        return next;
+                      });
+                    })
+                    .catch(() => {
+                      /* journal rehydrate is best-effort */
+                    });
+                }
                 setMessages((prev) => {
                   const rels = collectSessionRelativeMediaRefs(prev);
                   if (!rels.length) return prev;
@@ -4270,6 +4299,36 @@ export default function App() {
                 lastError: s.lastError ?? prev.lastError,
                 title: s.title || prev.title,
               }));
+              // Background turn finished while still viewing → heal missed stream tail.
+              if (
+                s.state === "ready" &&
+                isTurnDoneReadyTransition(prevLiveState, s.state)
+              ) {
+                const sid = s.sessionId;
+                void api
+                  .sessionMessages(sid)
+                  .then((stored) => {
+                    if (
+                      cancelled ||
+                      viewingSessionIdRef.current !== sid
+                    ) {
+                      return;
+                    }
+                    const mapped = mapStoredMessagesToChat(stored);
+                    const woven = weaveToolsIntoAssistantSegments(mapped);
+                    setMessages((prev) => {
+                      const cleared = prev.map((m) =>
+                        m.streaming ? { ...m, streaming: false } : m,
+                      );
+                      const next = upgradeMessagesFromJournal(cleared, woven);
+                      messagesBySessionRef.current.set(sid, next);
+                      return next;
+                    });
+                  })
+                  .catch(() => {
+                    /* best-effort */
+                  });
+              }
               if (
                 s.state !== "streaming" &&
                 s.state !== "awaiting_permission"

@@ -87,6 +87,9 @@ pub async fn dispatch(
         "session.messages" => {
             let id = param_string(&params, &["sessionId", "session_id", "id"])
                 .ok_or_else(|| RpcError::bad_params("sessionId required"))?;
+            // Same as desktop `session_messages`: recover missing assistant bodies
+            // and backfill user attachment cards from agent chat_history.
+            let _ = crate::cli_sessions::try_reconcile_linked_session(&id);
             let msgs = store::load_messages(&id);
             Ok(serde_json::to_value(msgs).map_err(|e| RpcError::host(e.to_string()))?)
         }
@@ -244,6 +247,7 @@ pub async fn dispatch(
             let text = param_string(&params, &["text"])
                 .ok_or_else(|| RpcError::bad_params("text required"))?;
             let display_text = param_string(&params, &["displayText", "display_text"]);
+            let attachments = param_attachments(&params);
             // Connect-before-send if client names a session that is not focused.
             let target = param_string(&params, &["sessionId", "session_id"]);
             if let Some(sid) = target.clone() {
@@ -259,9 +263,10 @@ pub async fn dispatch(
                 ));
             }
             // Pass the id through so Host re-focuses if another chat stole the
-            // live slot between connect and send.
+            // live slot between connect and send. Attachments land on the user
+            // journal row so history reloads image/file cards.
             let snap = mgr
-                .send_message(app, text, display_text, None, target)
+                .send_message(app, text, display_text, attachments, target)
                 .await
                 .map_err(RpcError::host)?;
             Ok(serde_json::to_value(snap).map_err(|e| RpcError::host(e.to_string()))?)
@@ -401,6 +406,55 @@ fn param_string(params: &Value, keys: &[&str]) -> Option<String> {
         }
     }
     None
+}
+
+/// Optional file/image cards on `session.send` (camelCase wire shape).
+fn param_attachments(params: &Value) -> Option<Vec<store::MessageAttachmentStored>> {
+    let raw = params
+        .get("attachments")
+        .or_else(|| params.get("Attachments"))?;
+    if raw.is_null() {
+        return None;
+    }
+    let arr = raw.as_array()?;
+    let mut out = Vec::new();
+    for item in arr {
+        let Some(path) = item
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let name = item
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                std::path::Path::new(path)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string())
+            });
+        let is_dir = item
+            .get("isDir")
+            .or_else(|| item.get("is_dir"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        out.push(store::MessageAttachmentStored {
+            path: path.to_string(),
+            name,
+            is_dir,
+        });
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 fn param_u64(params: &Value, keys: &[&str]) -> Option<u64> {

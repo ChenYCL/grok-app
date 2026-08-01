@@ -855,8 +855,10 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   pointer-events: auto;
 }
 
-.tree-l3:hover,
-.tree-l3:focus-within {
+/* Hover chrome only on real pointer hover — not sticky :focus-within after click
+ * (selected row used to look “hovered” because the row keeps keyboard focus).
+ * Keyboard: still reveal when focus is inside the actions cluster. */
+.tree-l3:hover {
   --tree-l3-overlay-tint: var(--bg-hover);
 }
 
@@ -866,27 +868,25 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 .tree-l3--active:hover,
-.tree-l3--active:focus-within,
-.tree-l3--checked:hover,
-.tree-l3--checked:focus-within {
+.tree-l3--checked:hover {
   --tree-l3-overlay-tint: var(--bg-active);
 }
 
 .tree-l3:hover .tree-l3__actions,
-.tree-l3:focus-within .tree-l3__actions {
+.tree-l3:has(.tree-l3__actions:focus-within) .tree-l3__actions {
   opacity: 1;
   /* Container ignores clicks in the fade zone; only icon buttons receive them */
   pointer-events: none;
 }
 
 .tree-l3:hover .tree-l3__actions > *,
-.tree-l3:focus-within .tree-l3__actions > * {
+.tree-l3:has(.tree-l3__actions:focus-within) .tree-l3__actions > * {
   pointer-events: auto;
 }
 
 /* Relative time yields to hover actions (still keeps layout until hidden) */
 .tree-l3:hover .tree-l3__time,
-.tree-l3:focus-within .tree-l3__time {
+.tree-l3:has(.tree-l3__actions:focus-within) .tree-l3__time {
   opacity: 0;
   transition: opacity 100ms ease;
 }
@@ -1159,8 +1159,7 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
   }
 }
 
-.tree-l3:hover .tree-l3__name--scrollable .tree-l3__name-text,
-.tree-l3:focus-within .tree-l3__name--scrollable .tree-l3__name-text {
+.tree-l3:hover .tree-l3__name--scrollable .tree-l3__name-text {
   max-width: none;
   overflow: visible;
   text-overflow: clip;
@@ -1171,16 +1170,14 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
   will-change: transform;
 }
 
-.tree-l3:hover .tree-l3__name--scrollable .tree-l3__name-loop,
-.tree-l3:focus-within .tree-l3__name--scrollable .tree-l3__name-loop {
+.tree-l3:hover .tree-l3__name--scrollable .tree-l3__name-loop {
   display: inline-flex;
   align-items: baseline;
   flex-shrink: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tree-l3:hover .tree-l3__name--scrollable .tree-l3__name-text,
-  .tree-l3:focus-within .tree-l3__name--scrollable .tree-l3__name-text {
+  .tree-l3:hover .tree-l3__name--scrollable .tree-l3__name-text {
     animation: none;
     max-width: 100%;
     overflow: hidden;
@@ -1188,8 +1185,7 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
     display: block;
   }
 
-  .tree-l3:hover .tree-l3__name--scrollable .tree-l3__name-loop,
-  .tree-l3:focus-within .tree-l3__name--scrollable .tree-l3__name-loop {
+  .tree-l3:hover .tree-l3__name--scrollable .tree-l3__name-loop {
     display: none;
   }
 }
@@ -16938,6 +16934,7 @@ textarea::-webkit-scrollbar-thumb:active,
 
 .rp-changes-row {
   display: flex;
+  flex-direction: column;
   align-items: stretch;
   gap: 0;
   border-radius: 8px;
@@ -16957,7 +16954,7 @@ textarea::-webkit-scrollbar-thumb:active,
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 6px 8px 8px;
+  padding: 8px 8px 4px;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -17249,11 +17246,13 @@ textarea::-webkit-scrollbar-thumb:active,
 
 .rp-changes-row__actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 2px;
-  padding: 4px 4px 4px 0;
+  /* Align under file meta (padding 8 + badge 18 + gap 8) */
+  padding: 0 8px 8px 34px;
   opacity: 0.55;
   flex-shrink: 0;
 }

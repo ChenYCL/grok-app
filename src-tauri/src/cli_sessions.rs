@@ -14,7 +14,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::paths::resolve_agent_grok_home;
-use crate::store::{self, ChatMessageStored, SessionMeta};
+use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1098,6 +1098,119 @@ fn extract_user_query(content: &str) -> Option<String> {
     }
 }
 
+/// Split display text + `@/abs/path` (or `@C:\path`) sole-line refs — mirrors FE
+/// `parseAttachmentsFromContent` so history cards can be recovered from agent
+/// chat_history when the App journal only kept the user-facing body.
+pub fn parse_at_path_attachments(content: &str) -> (String, Vec<MessageAttachmentStored>) {
+    if content.is_empty() {
+        return (String::new(), Vec::new());
+    }
+    let mut attachments: Vec<MessageAttachmentStored> = Vec::new();
+    let mut text_lines: Vec<&str> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        // @/path or @C:\path — absolute only (same as FE).
+        let path = trimmed.strip_prefix('@').and_then(|rest| {
+            let rest = rest.trim();
+            if rest.starts_with('/') || looks_like_windows_abs(rest) {
+                Some(rest.to_string())
+            } else {
+                None
+            }
+        });
+        if let Some(path) = path {
+            if seen.insert(path.clone()) {
+                let name = std::path::Path::new(&path)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.clone());
+                attachments.push(MessageAttachmentStored {
+                    path,
+                    name,
+                    is_dir: false,
+                });
+            }
+            continue;
+        }
+        text_lines.push(line);
+    }
+    while text_lines
+        .last()
+        .map(|l| l.trim().is_empty())
+        .unwrap_or(false)
+    {
+        text_lines.pop();
+    }
+    (text_lines.join("\n"), attachments)
+}
+
+fn looks_like_windows_abs(path: &str) -> bool {
+    let b = path.as_bytes();
+    b.len() >= 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && (b[2] == b'\\' || b[2] == b'/')
+}
+
+fn user_body_key(content: &str) -> String {
+    parse_at_path_attachments(content).0.trim().to_string()
+}
+
+fn user_bodies_match(journal_content: &str, agent_body: &str) -> bool {
+    let j = user_body_key(journal_content);
+    let a = user_body_key(agent_body);
+    if j.is_empty() && a.is_empty() {
+        return true;
+    }
+    if j.is_empty() || a.is_empty() {
+        return false;
+    }
+    j == a || a.starts_with(&j) || j.starts_with(&a)
+}
+
+/// Backfill missing structured `attachments` on journal **user** rows from
+/// agent `chat_history` user turns (which still carry `@/abs/path` lines).
+///
+/// Older App builds stored only display text (`attachments: null`), so reopening
+/// history showed bare bubbles. Returns how many rows gained attachments.
+pub fn backfill_user_attachments_from_agent_pairs(
+    journal: &mut [ChatMessageStored],
+    pairs: &[(String, String)],
+) -> u32 {
+    let mut changed = 0u32;
+    let mut used = std::collections::HashSet::new();
+    for m in journal.iter_mut() {
+        if m.role != "user" {
+            continue;
+        }
+        if m.attachments
+            .as_ref()
+            .map(|a| !a.is_empty())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        for (i, (role, content)) in pairs.iter().enumerate() {
+            if role != "user" || used.contains(&i) {
+                continue;
+            }
+            let (_atext, atts) = parse_at_path_attachments(content);
+            if atts.is_empty() {
+                continue;
+            }
+            if !user_bodies_match(&m.content, content) {
+                continue;
+            }
+            m.attachments = Some(atts);
+            used.insert(i);
+            changed += 1;
+            break;
+        }
+    }
+    changed
+}
+
 /// True when journal already covers this agent assistant body.
 ///
 /// - Exact match or journal row contains the body (stream-concat / prefix cases).
@@ -1142,12 +1255,15 @@ enum CoverKind {
     Extend(usize),
 }
 
-/// Merge missing assistant bodies from CLI `chat_history.jsonl` into the App
-/// journal. Host stream can drop the final answer (early turn close / process
-/// ownership loss); reload only reads `messages.json`, so without this the UI
-/// never recovers content the agent already finished.
+/// Merge missing assistant bodies **and** backfill user file/image cards from
+/// CLI `chat_history.jsonl` into the App journal.
 ///
-/// Returns how many journal rows were added or extended.
+/// - Host stream can drop the final answer (early turn close / process
+///   ownership loss); reload only reads `messages.json`.
+/// - Older builds wrote user turns with `attachments: null` while the agent
+///   prompt still had `@/abs/path` lines — recover those for AttachmentCard UI.
+///
+/// Returns how many journal rows were added, extended, or attachment-backfilled.
 pub fn reconcile_journal_from_chat_history(
     app_session_id: &str,
     agent_session_id: &str,
@@ -1172,21 +1288,21 @@ pub fn reconcile_journal_from_chat_history(
     let mut changed = 0u32;
     let now = Utc::now();
 
-    for (role, content) in pairs {
+    for (role, content) in &pairs {
         if role != "assistant" {
             continue;
         }
-        match journal_covers_assistant(&journal, &content) {
+        match journal_covers_assistant(&journal, content) {
             CoverKind::Covered => {}
             CoverKind::Extend(idx) => {
-                journal[idx].content = content;
+                journal[idx].content = content.clone();
                 changed += 1;
             }
             CoverKind::Missing => {
                 journal.push(ChatMessageStored {
                     id: Uuid::new_v4().to_string(),
                     role: "assistant".into(),
-                    content,
+                    content: content.clone(),
                     thought: None,
                     created_at: now + chrono::Duration::milliseconds(changed as i64),
                     is_error: false,
@@ -1197,6 +1313,8 @@ pub fn reconcile_journal_from_chat_history(
             }
         }
     }
+
+    changed += backfill_user_attachments_from_agent_pairs(&mut journal, &pairs);
 
     if changed > 0 {
         store::save_messages(app_session_id, &journal)?;
@@ -1522,6 +1640,57 @@ mod tests {
         assert_eq!(pairs[1].0, "assistant");
         assert_eq!(pairs[1].1, "hi there");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_at_path_attachments_strips_refs() {
+        let raw = "see this\n\n@/Users/me/Desktop/shot.png\n@/tmp/notes.md";
+        let (text, atts) = parse_at_path_attachments(raw);
+        assert_eq!(text, "see this");
+        assert_eq!(atts.len(), 2);
+        assert_eq!(atts[0].path, "/Users/me/Desktop/shot.png");
+        assert_eq!(atts[0].name, "shot.png");
+        assert_eq!(atts[1].path, "/tmp/notes.md");
+    }
+
+    #[test]
+    fn parse_at_path_attachments_keeps_spaces_in_path() {
+        let raw = "docs please\n\n@/Users/me/Downloads/Codex 安装教程文档.md";
+        let (text, atts) = parse_at_path_attachments(raw);
+        assert_eq!(text, "docs please");
+        assert_eq!(atts.len(), 1);
+        assert_eq!(atts[0].path, "/Users/me/Downloads/Codex 安装教程文档.md");
+        assert_eq!(atts[0].name, "Codex 安装教程文档.md");
+    }
+
+    #[test]
+    fn backfill_user_attachments_from_agent_pairs_fills_missing() {
+        let mut journal = vec![ChatMessageStored {
+            id: "u1".into(),
+            role: "user".into(),
+            content: "以参考图形象为准，生成一张精致像素风格的图片".into(),
+            thought: None,
+            created_at: Utc::now(),
+            is_error: false,
+            attachments: None,
+            marker: None,
+        }];
+        let pairs = vec![(
+            "user".into(),
+            "以参考图形象为准，生成一张精致像素风格的图片\n\n@/Users/me/Downloads/ref.png"
+                .into(),
+        )];
+        let n = backfill_user_attachments_from_agent_pairs(&mut journal, &pairs);
+        assert_eq!(n, 1);
+        let atts = journal[0].attachments.as_ref().unwrap();
+        assert_eq!(atts.len(), 1);
+        assert_eq!(atts[0].path, "/Users/me/Downloads/ref.png");
+        assert_eq!(atts[0].name, "ref.png");
+        // Idempotent — already filled rows are skipped.
+        assert_eq!(
+            backfill_user_attachments_from_agent_pairs(&mut journal, &pairs),
+            0
+        );
     }
 
     #[test]

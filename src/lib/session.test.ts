@@ -28,6 +28,7 @@ import {
   preferSessionMessages,
   presentErrorBanner,
   snapshotOutgoingMessages,
+  upgradeMessagesFromJournal,
   mergeSessionMessagesById,
   reconcileOptimisticDuplicates,
   isClientOptimisticId,
@@ -333,6 +334,32 @@ describe("session projection", () => {
     ];
     const done = preferSessionMessages(doneCache, doneStore);
     expect(done.find((m) => m.id === "a1")?.content).toBe("ok full");
+  });
+
+  it("upgradeMessagesFromJournal lifts truncated stream tails from disk", () => {
+    const ui: ChatMessage[] = [
+      { id: "u1", role: "user", content: "see image" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "也对应「铁柱 + 鲸鱼 +",
+        streaming: false,
+      },
+    ];
+    const journal: ChatMessage[] = [
+      { id: "u1", role: "user", content: "see image" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "也对应「铁柱 + 鲸鱼 + 像素」的主题。",
+      },
+    ];
+    const out = upgradeMessagesFromJournal(ui, journal);
+    expect(out.find((m) => m.id === "a1")?.content).toBe(
+      "也对应「铁柱 + 鲸鱼 + 像素」的主题。",
+    );
+    // Idempotent when UI already has full body
+    expect(upgradeMessagesFromJournal(out, journal)).toBe(out);
   });
 
   it("preferSessionMessages merges Remote IM disk rows into cache", () => {

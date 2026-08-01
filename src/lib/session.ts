@@ -1838,6 +1838,81 @@ export function preferSessionMessages(
 }
 
 /**
+ * After a turn ends, lift any longer body/thought/attachments from the journal
+ * into the live UI list (same id).
+ *
+ * Host stream coalesce can leave the bubble short of the journal when the last
+ * IPC batch is dropped on force-end — reopening already recovered via disk;
+ * this heals the open chat without a full remount.
+ */
+export function upgradeMessagesFromJournal(
+  ui: ChatMessage[],
+  journal: ChatMessage[],
+): ChatMessage[] {
+  if (!ui.length || !journal.length) return ui;
+  const jById = new Map(journal.map((m) => [m.id, m] as const));
+  let changed = false;
+  const next = ui.map((m) => {
+    const j = jById.get(m.id);
+    if (!j) return m;
+
+    const uiContent = m.content ?? "";
+    const jContent = j.content ?? "";
+    const uiThought = m.thought ?? "";
+    const jThought = j.thought ?? "";
+    const richerContent = jContent.length > uiContent.length;
+    const richerThought = jThought.length > uiThought.length;
+    const richerAtts =
+      (j.attachments?.length ?? 0) > (m.attachments?.length ?? 0);
+    if (!richerContent && !richerThought && !richerAtts) return m;
+
+    changed = true;
+    let out: ChatMessage = {
+      ...m,
+      content: richerContent ? jContent : uiContent,
+      thought: richerThought ? jThought : m.thought,
+      thoughtPhases: richerThought
+        ? (j.thoughtPhases ?? m.thoughtPhases)
+        : m.thoughtPhases,
+      attachments: richerAtts ? j.attachments : m.attachments,
+      streaming: false,
+    };
+
+    const hasLiveTools = out.segments?.some((s) => s.kind === "tool");
+    if (!hasLiveTools) {
+      out = {
+        ...out,
+        segments: buildSegmentsFromLegacy(
+          out.content,
+          out.thought,
+          out.thoughtPhases,
+        ),
+      };
+    } else if (richerContent) {
+      const segs = (out.segments ?? []).map((s) =>
+        s.kind === "content" || s.kind === "thought" || s.kind === "tool"
+          ? { ...s }
+          : s,
+      ) as MessageSegment[];
+      let found = false;
+      for (let i = segs.length - 1; i >= 0; i--) {
+        if (segs[i]!.kind === "content") {
+          segs[i] = { kind: "content", text: jContent };
+          found = true;
+          break;
+        }
+      }
+      if (!found && jContent) {
+        segs.push({ kind: "content", text: jContent });
+      }
+      out = { ...out, segments: segs };
+    }
+    return out;
+  });
+  return changed ? next : ui;
+}
+
+/**
  * Union of two message lists by `id`. First list wins on conflict; extras from
  * second are appended. Order: **primary array order** (journal order), then
  * second-only rows in their order.

@@ -61,4 +61,38 @@ describe("mapStoredMessages", () => {
     expect(out[0]!.attachments).toHaveLength(1);
     expect(out[1]!.attachments).toBeUndefined();
   });
+
+  it("dual-written @path lines become cards and are stripped from bubble text", () => {
+    const msg = mapStoredMessageToChat({
+      id: "u-3",
+      role: "user",
+      content:
+        "see this screenshot\n\n@/Users/me/Desktop/shot.png\n@/tmp/notes.md",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      attachments: null,
+    });
+    expect(msg.content).toBe("see this screenshot");
+    expect(msg.attachments?.map((a) => a.path)).toEqual([
+      "/Users/me/Desktop/shot.png",
+      "/tmp/notes.md",
+    ]);
+  });
+
+  it("merges structured attachments with dual-written @paths without dupes", () => {
+    const msg = mapStoredMessageToChat({
+      id: "u-4",
+      role: "user",
+      content: "hi\n\n@/Users/me/a.png",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      attachments: [
+        { path: "/Users/me/a.png", name: "a.png", isDir: false },
+        { path: "/Users/me/b.pdf", name: "b.pdf", isDir: false },
+      ],
+    });
+    expect(msg.content).toBe("hi");
+    expect(msg.attachments?.map((a) => a.path).sort()).toEqual([
+      "/Users/me/a.png",
+      "/Users/me/b.pdf",
+    ]);
+  });
 });

@@ -859,6 +859,39 @@ fn attachment_from_path(path: &str) -> MessageAttachmentStored {
     }
 }
 
+/// Append sole-line `@/abs/path` refs for journal dual-write (idempotent).
+fn append_journal_attachment_refs(
+    content: String,
+    atts: &[MessageAttachmentStored],
+) -> String {
+    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+    // Drop trailing blanks so we can rejoin cleanly.
+    while lines.last().map(|l| l.trim().is_empty()).unwrap_or(false) {
+        lines.pop();
+    }
+    let mut existing: std::collections::HashSet<String> = lines
+        .iter()
+        .filter_map(|l| {
+            let t = l.trim();
+            t.strip_prefix('@').map(|p| p.trim().to_string())
+        })
+        .collect();
+    let mut added = false;
+    for a in atts {
+        let path = a.path.trim();
+        if path.is_empty() || !existing.insert(path.to_string()) {
+            continue;
+        }
+        if !added && !lines.is_empty() {
+            lines.push(String::new());
+            added = true;
+        }
+        lines.push(format!("@{path}"));
+        added = true;
+    }
+    lines.join("\n")
+}
+
 pub struct SessionManager {
     /// Currently focused live session (UI-bound for send).
     inner: Mutex<Option<LiveSession>>,
@@ -1083,11 +1116,29 @@ impl SessionManager {
         );
     }
 
+    /// Deliver any coalesced `session://stream` IPC before ending the turn.
+    ///
+    /// Without this, journal can hold the full `stream_buf` while the UI is
+    /// missing the last ~40ms batch still sitting in `pending_stream_emit` —
+    /// answers looked truncated mid-sentence until the session was reopened.
+    /// `app` is `None` only in pure unit tests (no IPC).
+    fn flush_pending_stream_emit_done(s: &mut LiveSession, app: Option<&AppHandle>) {
+        if let Some(app) = app {
+            if let Some(p) = s.pending_stream_emit.as_mut() {
+                p.done = true;
+            }
+            Self::flush_pending_stream_emit(s, app);
+        } else {
+            s.pending_stream_emit = None;
+        }
+    }
+
     /// Finish turn when a deferred `prompt_complete` is safe (#52).
     /// Returns `Some(empty_run)` if finished (`None` inside = finished, not empty);
     /// returns `None` if still deferred.
     fn try_finish_deferred_prompt_complete(
         s: &mut LiveSession,
+        app: Option<&AppHandle>,
     ) -> Option<Option<(String, String, String)>> {
         let Some(stop_reason) = s.deferred_prompt_complete.clone() else {
             return None;
@@ -1112,6 +1163,8 @@ impl SessionManager {
         }
         let empty = Self::empty_run_signal_from_live(s, &stop_reason);
         s.deferred_prompt_complete = None;
+        // UI first (pending IPC), then journal — both must see the full tail.
+        Self::flush_pending_stream_emit_done(s, app);
         // Force-flush assistant turn (I04 end-of-turn path).
         Self::maybe_flush_stream_journal(s, true, false);
         s.stream_buf.clear();
@@ -1202,9 +1255,14 @@ impl SessionManager {
     }
 
     /// Force-end a Streaming turn while preserving journal (silent heal / hard stall).
-    fn force_end_streaming_turn(s: &mut LiveSession, reason: &str) {
-        // Drop any unsent stream IPC so the UI does not get a late partial after Ready.
-        s.pending_stream_emit = None;
+    fn force_end_streaming_turn(
+        s: &mut LiveSession,
+        app: Option<&AppHandle>,
+        reason: &str,
+    ) {
+        // Deliver any buffered stream IPC first — dropping it left the journal
+        // complete while the chat bubble stopped mid-sentence.
+        Self::flush_pending_stream_emit_done(s, app);
         Self::maybe_flush_stream_journal(s, true, false);
         s.stream_buf.clear();
         s.stream_thought.clear();
@@ -1237,7 +1295,11 @@ impl SessionManager {
     }
 
     /// Silent heal before any stall UI. Returns true if the turn was ended.
-    fn heal_stuck_streaming_turn(s: &mut LiveSession, now: Instant) -> bool {
+    fn heal_stuck_streaming_turn(
+        s: &mut LiveSession,
+        app: Option<&AppHandle>,
+        now: Instant,
+    ) -> bool {
         if s.fsm.state() != SessionState::Streaming {
             return false;
         }
@@ -1249,7 +1311,7 @@ impl SessionManager {
         Self::prune_orphan_open_tools(s, now);
 
         // Deferred prompt_complete may finish once tools are cleared.
-        if Self::try_finish_deferred_prompt_complete(s).is_some() {
+        if Self::try_finish_deferred_prompt_complete(s, app).is_some() {
             return true;
         }
 
@@ -1258,7 +1320,7 @@ impl SessionManager {
             && s.open_tool_ids.is_empty()
             && s.deferred_prompt_complete.is_none()
         {
-            Self::force_end_streaming_turn(s, "ready_eligible_silent_heal");
+            Self::force_end_streaming_turn(s, app, "ready_eligible_silent_heal");
             return true;
         }
 
@@ -1717,9 +1779,9 @@ impl SessionManager {
         // Heal live focus slot.
         let live_action = {
             let mut guard = self.inner.lock();
-            guard
-                .as_mut()
-                .and_then(|s| Self::tick_stream_stall_on_session(s, stall_secs, now))
+            guard.as_mut().and_then(|s| {
+                Self::tick_stream_stall_on_session(s, Some(app), stall_secs, now)
+            })
         };
         self.apply_stall_tick_action(app, live_action);
 
@@ -1728,13 +1790,15 @@ impl SessionManager {
             let mut bg = self.background.lock();
             bg.values_mut()
                 .filter_map(|s| {
-                    Self::tick_stream_stall_on_session(s, stall_secs, now).and_then(|a| {
+                    Self::tick_stream_stall_on_session(s, Some(app), stall_secs, now).and_then(
+                        |a| {
                         // Background: heal/hard only — do not steal focus with soft banner.
                         match a {
                             StallTickAction::SoftStall { .. } => None,
                             other => Some(other),
                         }
-                    })
+                        },
+                    )
                 })
                 .collect()
         };
@@ -1746,6 +1810,7 @@ impl SessionManager {
     /// Per-session stall tick decision (mutates session when healing).
     fn tick_stream_stall_on_session(
         s: &mut LiveSession,
+        app: Option<&AppHandle>,
         stall_secs: u32,
         now: Instant,
     ) -> Option<StallTickAction> {
@@ -1765,7 +1830,7 @@ impl SessionManager {
         // never reach the stall path and the UI stays "running" forever.
         // Normal mid-turn tools (journal not terminal, still young) are not pruned.
         if s.deferred_prompt_complete.is_some() {
-            if Self::heal_stuck_streaming_turn(s, now) {
+            if Self::heal_stuck_streaming_turn(s, app, now) {
                 return Some(StallTickAction::Healed {
                     session_id: s.app_session_id.clone(),
                 });
@@ -1777,7 +1842,7 @@ impl SessionManager {
         }
 
         // 1) Silent heal (orphan tools + deferred complete + ready-eligible).
-        if Self::heal_stuck_streaming_turn(s, now) {
+        if Self::heal_stuck_streaming_turn(s, app, now) {
             return Some(StallTickAction::Healed {
                 session_id: s.app_session_id.clone(),
             });
@@ -1808,7 +1873,7 @@ impl SessionManager {
         // UI spins until the 10min hard window. Cancel the hung prompt and Ready.
         if terminal_candidate {
             let sid = s.app_session_id.clone();
-            Self::force_end_streaming_turn(s, "maybe_done_stall_heal");
+            Self::force_end_streaming_turn(s, app, "maybe_done_stall_heal");
             return Some(StallTickAction::HardEnded {
                 session_id: sid,
                 stall_seconds: stall_secs,
@@ -1819,7 +1884,7 @@ impl SessionManager {
         // 3) Hard silence → force end, keep journal.
         if is_hard_stalled(s.last_stream_progress, stall_secs, now) {
             let sid = s.app_session_id.clone();
-            Self::force_end_streaming_turn(s, "hard_stall_timeout");
+            Self::force_end_streaming_turn(s, app, "hard_stall_timeout");
             return Some(StallTickAction::HardEnded {
                 session_id: sid,
                 stall_seconds: hard_stall_seconds(stall_secs),
@@ -3770,7 +3835,7 @@ impl SessionManager {
                         s.deferred_prompt_complete = Some(stop_reason.clone());
                         // #52: do not Ready the UI while tools / permission / ask_user / plan
                         // are still open — agent often fires prompt_complete early.
-                        match Self::try_finish_deferred_prompt_complete(s) {
+                        match Self::try_finish_deferred_prompt_complete(s, Some(&app)) {
                             None => {
                                 tracing::info!(
                                     "acp prompt_complete deferred stop={stop_reason} tools={} perm={} plan={} ask={}",
@@ -3897,7 +3962,7 @@ impl SessionManager {
                                 if s.fsm.state() == SessionState::AwaitingPermission {
                                     let _ = s.fsm.permission_resolved_continue();
                                 }
-                                Self::try_finish_deferred_prompt_complete(s).flatten()
+                                Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten()
                             } else {
                                 None
                             }
@@ -3931,7 +3996,7 @@ impl SessionManager {
                                 if s.fsm.state() == SessionState::AwaitingPermission {
                                     let _ = s.fsm.permission_resolved_continue();
                                 }
-                                Self::try_finish_deferred_prompt_complete(s).flatten()
+                                Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten()
                             } else {
                                 None
                             }
@@ -4054,7 +4119,7 @@ impl SessionManager {
                         };
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         // Tools settled → apply deferred prompt_complete if any (#52).
-                        let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
+                        let empty = Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten();
                         (
                             s.app_session_id.clone(),
                             s.project_path.clone(),
@@ -4206,7 +4271,7 @@ impl SessionManager {
                         Self::release_tool_open_on_session(s, &tool_call_id);
                         // Progress without re-arming a false open tool.
                         Self::touch_stream_progress_locked(s);
-                        Self::try_finish_deferred_prompt_complete(s).flatten()
+                        Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten()
                     } else {
                         None
                     }
@@ -4732,7 +4797,7 @@ impl SessionManager {
                         }
                         s.deferred_prompt_complete = Some(stop_reason.clone());
                         // Keep turn open while tools still running (long find / subagent).
-                        match Self::try_finish_deferred_prompt_complete(s) {
+                        match Self::try_finish_deferred_prompt_complete(s, Some(&app)) {
                             None => {
                                 tracing::info!(
                                     "background prompt_complete deferred sid={} tools={}",
@@ -4963,7 +5028,7 @@ impl SessionManager {
                         };
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         let finished =
-                            matches!(Self::try_finish_deferred_prompt_complete(s), Some(_));
+                            matches!(Self::try_finish_deferred_prompt_complete(s, Some(&app)), Some(_));
                         let st = if status.is_empty() {
                             "in_progress".to_string()
                         } else {
@@ -5087,7 +5152,7 @@ impl SessionManager {
                         }
                         Self::release_tool_open_on_session(s, &tool_call_id);
                         Self::touch_stream_progress_locked(s);
-                        matches!(Self::try_finish_deferred_prompt_complete(s), Some(_))
+                        matches!(Self::try_finish_deferred_prompt_complete(s, Some(&app)), Some(_))
                     } else {
                         false
                     }
@@ -5550,13 +5615,18 @@ impl SessionManager {
             return Err("empty message".into());
         }
         // Journal stores UI form when provided (skill chips); agent still receives `text`.
-        let journal_content = display_text
+        let mut journal_content = display_text
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| text.clone());
-        // User file/image cards — separate from display text so history can re-render
-        // AttachmentCard without requiring @path lines in the bubble body.
+        // User file/image cards — structured field is primary for history cards.
+        // Also dual-write `@/abs/path` sole-lines into content so reload can recover
+        // cards even if an older reader ignores the attachments field (FE strips
+        // those lines via parseAttachmentsFromContent for the bubble body).
         let journal_attachments = attachments.filter(|items| !items.is_empty());
+        if let Some(ref atts) = journal_attachments {
+            journal_content = append_journal_attachment_refs(journal_content, atts);
+        }
         // Note: image @path stripping + Host vision runs on the *final*
         // agent_prompt after history bootstrap (see below). Do not rewrite
         // here only — bootstrap can reintroduce @image paths from the journal.
@@ -5956,11 +6026,14 @@ impl SessionManager {
         if text.is_empty() {
             return Err("empty interjection".into());
         }
-        let journal_content = display_text
+        let mut journal_content = display_text
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| text.clone());
         let attachments = attachments.filter(|items| !items.is_empty());
+        if let Some(ref atts) = attachments {
+            journal_content = append_journal_attachment_refs(journal_content, atts);
+        }
         let target = session_id.as_deref();
 
         let (backend, app_sid, turn_id, acp) = {
@@ -6529,7 +6602,7 @@ impl SessionManager {
                     let _ = s.fsm.permission_resolved_continue();
                 }
                 // Permission cleared — may finish a deferred prompt_complete (#52).
-                let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
+                let empty = Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten();
                 (s.acp.clone(), empty, s.project_path.clone())
             })
             .ok_or("no session")?;
@@ -6597,7 +6670,7 @@ impl SessionManager {
         acp.respond_exit_plan_mode(id, &decision, feedback).await?;
         let empty_run = self
             .with_session_mut(&target, |s| {
-                Self::try_finish_deferred_prompt_complete(s).flatten()
+                Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten()
             })
             .flatten();
         self.emit_for_session(&app, &target);
@@ -6640,7 +6713,7 @@ impl SessionManager {
         acp.respond_ask_user_question(id, outcome).await?;
         let empty_run = self
             .with_session_mut(&target, |s| {
-                Self::try_finish_deferred_prompt_complete(s).flatten()
+                Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten()
             })
             .flatten();
         self.emit_for_session(&app, &target);
@@ -7399,6 +7472,27 @@ mod stall_heal_and_tool_identity_tests {
     use super::*;
     use serde_json::json;
 
+    /// Isolate store writes (`force_end` → journal/meta) from the real app home.
+    /// Without this, stall heal tests once rewrote production `sessions_index.json`.
+    fn with_temp_app_home<R>(f: impl FnOnce() -> R) -> R {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-stall-test-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("tmp home");
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = std::fs::remove_dir_all(&tmp);
+        match out {
+            Ok(v) => v,
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
     fn streaming_session(now: Instant, mut patch: impl FnMut(&mut LiveSession)) -> LiveSession {
         let mut fsm = SessionFsm::new();
         let _ = fsm.start_connect();
@@ -7478,72 +7572,78 @@ mod stall_heal_and_tool_identity_tests {
     fn maybe_done_soft_silence_force_ends_even_when_prompt_in_flight() {
         // Repro: X search tools finished + partial assistant text; model hung
         // on final loop with prompt_in_flight=true. Soft silence must Ready.
-        let t0 = Instant::now();
-        let mut s = streaming_session(t0, |s| {
-            s.saw_model_output = true;
-            s.stream_buf = "搜到了不少最新动态…".into();
-            s.tools_this_turn = 4;
-            s.prompt_in_flight = true;
-            s.last_stream_progress = t0;
+        with_temp_app_home(|| {
+            let t0 = Instant::now();
+            let mut s = streaming_session(t0, |s| {
+                s.saw_model_output = true;
+                s.stream_buf = "搜到了不少最新动态…".into();
+                s.tools_this_turn = 4;
+                s.prompt_in_flight = true;
+                s.last_stream_progress = t0;
+            });
+            let now = t0 + Duration::from_secs(180);
+            let action = SessionManager::tick_stream_stall_on_session(&mut s, None, 180, now);
+            match action {
+                Some(StallTickAction::HardEnded {
+                    reason: "maybe_done_stall_heal",
+                    stall_seconds: 180,
+                    ..
+                }) => {}
+                other => panic!("expected maybe_done hard end, got {other:?}"),
+            }
+            assert_eq!(s.fsm.state(), SessionState::Ready);
+            assert!(!s.prompt_in_flight);
+            assert!(s.streaming_message_id.is_none());
         });
-        let now = t0 + Duration::from_secs(180);
-        let action = SessionManager::tick_stream_stall_on_session(&mut s, 180, now);
-        match action {
-            Some(StallTickAction::HardEnded {
-                reason: "maybe_done_stall_heal",
-                stall_seconds: 180,
-                ..
-            }) => {}
-            other => panic!("expected maybe_done hard end, got {other:?}"),
-        }
-        assert_eq!(s.fsm.state(), SessionState::Ready);
-        assert!(!s.prompt_in_flight);
-        assert!(s.streaming_message_id.is_none());
     }
 
     #[test]
     fn no_auto_end_without_this_turn_body() {
         // Prior tools only — wait for soft banner / hard window, don't assume done.
-        let t0 = Instant::now();
-        let mut s = streaming_session(t0, |s| {
-            s.tools_this_turn = 2;
-            s.prompt_in_flight = true;
-            s.last_stream_progress = t0;
+        with_temp_app_home(|| {
+            let t0 = Instant::now();
+            let mut s = streaming_session(t0, |s| {
+                s.tools_this_turn = 2;
+                s.prompt_in_flight = true;
+                s.last_stream_progress = t0;
+            });
+            let now = t0 + Duration::from_secs(180);
+            let action = SessionManager::tick_stream_stall_on_session(&mut s, None, 180, now);
+            match action {
+                Some(StallTickAction::SoftStall { .. }) => {}
+                other => panic!("expected soft stall without body, got {other:?}"),
+            }
+            assert_eq!(s.fsm.state(), SessionState::Streaming);
+            assert!(s.prompt_in_flight);
         });
-        let now = t0 + Duration::from_secs(180);
-        let action = SessionManager::tick_stream_stall_on_session(&mut s, 180, now);
-        match action {
-            Some(StallTickAction::SoftStall { .. }) => {}
-            other => panic!("expected soft stall without body, got {other:?}"),
-        }
-        assert_eq!(s.fsm.state(), SessionState::Streaming);
-        assert!(s.prompt_in_flight);
     }
 
     #[test]
     fn orphan_open_tools_pruned_then_maybe_done_auto_end() {
         // Leaked open tool ids age out (TOOL_ORPHAN_SECONDS); then maybe-done
         // heal can fire. Matches hung model after tools that never closed cleanly.
-        let t0 = Instant::now();
-        let mut s = streaming_session(t0, |s| {
-            s.saw_model_output = true;
-            s.open_tool_ids.insert("call_1".into());
-            s.open_tool_seen_at.insert("call_1".into(), t0);
-            s.tools_this_turn = 1;
-            s.prompt_in_flight = true;
-            s.last_stream_progress = t0;
+        with_temp_app_home(|| {
+            let t0 = Instant::now();
+            let mut s = streaming_session(t0, |s| {
+                s.saw_model_output = true;
+                s.open_tool_ids.insert("call_1".into());
+                s.open_tool_seen_at.insert("call_1".into(), t0);
+                s.tools_this_turn = 1;
+                s.prompt_in_flight = true;
+                s.last_stream_progress = t0;
+            });
+            let now = t0 + Duration::from_secs(180);
+            let action = SessionManager::tick_stream_stall_on_session(&mut s, None, 180, now);
+            match action {
+                Some(StallTickAction::HardEnded {
+                    reason: "maybe_done_stall_heal",
+                    ..
+                }) => {}
+                other => panic!("expected maybe_done after orphan prune, got {other:?}"),
+            }
+            assert!(s.open_tool_ids.is_empty());
+            assert_eq!(s.fsm.state(), SessionState::Ready);
         });
-        let now = t0 + Duration::from_secs(180);
-        let action = SessionManager::tick_stream_stall_on_session(&mut s, 180, now);
-        match action {
-            Some(StallTickAction::HardEnded {
-                reason: "maybe_done_stall_heal",
-                ..
-            }) => {}
-            other => panic!("expected maybe_done after orphan prune, got {other:?}"),
-        }
-        assert!(s.open_tool_ids.is_empty());
-        assert_eq!(s.fsm.state(), SessionState::Ready);
     }
 
     #[test]
