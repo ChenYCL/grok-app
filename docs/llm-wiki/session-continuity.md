@@ -1,5 +1,21 @@
 # Session continuity & context compact
 
+## Session ID convention (for agents / debug paste)
+
+When the user pastes a **session id** (UUID) into chat or issues for debugging:
+
+| Default | Meaning |
+|---------|---------|
+| **Grok App session id** | UI journal under `{app_data}/sessions/<id>/` (`messages.json`, title, model prefs). This is what **复制会话 ID** / sidebar copy produce. |
+| Agent session id | CLI id under `{GROK_HOME}/sessions/<encoded-cwd>/<agentSessionId>/` (`chat_history.jsonl`, `events.jsonl`). Linked as `agentSessionId` in `sessions_index.json`. |
+
+**Lookup order for pasted UUIDs (unless the user explicitly says “agent session” / CLI id):**
+
+1. `{app_data}/sessions/<uuid>/` + `sessions_index.json` entry  
+2. If missing, optionally resolve as `agentSessionId` via `sessions_index` or scan `agent-home/sessions/**/<uuid>/`
+
+App data root (macOS typical): `~/Library/Application Support/com.grokapp.grok-app/`.
+
 ## Problem
 
 Grok App keeps a **UI journal** (`~/.…/sessions/<appSessionId>/messages.json`) separate from the **Agent session** under `GROK_HOME` (`agent-home/sessions/<encoded-cwd>/<agentSessionId>/`).

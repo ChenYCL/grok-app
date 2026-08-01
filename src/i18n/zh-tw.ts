@@ -3022,9 +3022,11 @@ export const zhTW: Record<MessageKey, string> = {
   "prov.officialDesc": "Grok Build 官方登入 / API Key",
   "prov.officialAuxInject": "注入官方工具能力",
   "prov.officialAuxInjectDesc":
-    "僅自訂主模型（DeepSeek、中繼等）生效：注入 MCP official-aux（web_search、全部 x_*、vision_describe），使用隔離官方憑證。官方 Grok 訂閱不注入，走原生能力。預設只載入 official-aux，避免其它 MCP 拖慢工具就緒。",
+    "僅自訂主模型（DeepSeek、中繼等）生效：注入 MCP official-aux（web_search、全部 x_*、vision_describe、image_gen / image_edit、image_to_video / reference_to_video Imagine），使用隔離官方憑證。預設只載入 official-aux，避免其它 MCP 拖慢工具就緒。",
   "prov.officialAuxInjectDisabled":
     "不可用 — 請先 Grok 官方登入或填寫官方 API Key。",
+  "prov.officialAuxInjectOfficialRoute":
+    "目前為官方 Grok 訂閱：保持原生 Imagine / X / 識圖，不注入 official-aux（避免雙軌污染）。切換到自訂提供商後可開啟。",
   "prov.officialAuxInjectOn": "已開啟",
   "prov.officialAuxInjectOff": "已關閉",
   "prov.officialAuxWithUserMcp": "同時載入擴充 MCP",

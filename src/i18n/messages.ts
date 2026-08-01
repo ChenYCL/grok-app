@@ -3158,9 +3158,11 @@ const en = {
   "prov.officialDesc": "Grok Build official login / API key",
   "prov.officialAuxInject": "Inject official tools",
   "prov.officialAuxInjectDesc":
-    "Custom main only (DeepSeek, relays, …). Injects MCP official-aux: web_search, all x_*, vision_describe via isolated official credentials. Official Grok subscription never injects — uses native tools. Default loads only official-aux so flaky extension MCPs do not block tools.",
+    "Custom main only (DeepSeek, relays, …). Injects MCP official-aux: web_search, all x_*, vision_describe, image_gen / image_edit, image_to_video / reference_to_video (Imagine) via isolated official credentials. Default loads only official-aux so flaky extension MCPs do not block tools.",
   "prov.officialAuxInjectDisabled":
     "Unavailable — sign in with Grok Build or paste an official API key first.",
+  "prov.officialAuxInjectOfficialRoute":
+    "Disabled on official Grok subscription — native Imagine / X / vision stay default. Switch to a custom provider to inject official-aux (avoids duplicate tools).",
   "prov.officialAuxInjectOn": "On",
   "prov.officialAuxInjectOff": "Off",
   "prov.officialAuxWithUserMcp": "Also load extension MCPs",
@@ -9244,9 +9246,11 @@ const zh: Record<MessageKey, string> = {
   "prov.officialDesc": "Grok Build 官方登录 / API Key",
   "prov.officialAuxInject": "注入官方工具能力",
   "prov.officialAuxInjectDesc":
-    "仅自定义主模型（DeepSeek、中转等）生效：注入 MCP official-aux（web_search、全部 x_*、vision_describe），使用隔离官方凭证。官方 Grok 订阅不注入，走原生能力。默认只加载 official-aux，避免其它 MCP 拖慢工具就绪。",
+    "仅自定义主模型（DeepSeek、中转等）生效：注入 MCP official-aux（web_search、全部 x_*、vision_describe、image_gen / image_edit、image_to_video / reference_to_video Imagine），使用隔离官方凭证。默认只加载 official-aux，避免其它 MCP 拖慢工具就绪。",
   "prov.officialAuxInjectDisabled":
     "不可用 — 请先 Grok 官方登录或填写官方 API Key。",
+  "prov.officialAuxInjectOfficialRoute":
+    "当前为官方 Grok 订阅：保持原生 Imagine / X / 识图，不注入 official-aux（避免双轨污染）。切换到自定义提供商后可开启。",
   "prov.officialAuxInjectOn": "已开启",
   "prov.officialAuxInjectOff": "已关闭",
   "prov.officialAuxWithUserMcp": "同时加载扩展 MCP",

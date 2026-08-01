@@ -1124,7 +1124,11 @@ impl AcpClient {
         let disable_web = settings.disable_web_search;
         // Session override wins when set; else global Settings.
         let no_ask_user = resolve_no_ask_user(opts.no_ask_user, settings.no_ask_user);
-        let disallowed_tools = settings.disallowed_tools.clone();
+        // Custom main + official-aux inject: block native Imagine tools so the
+        // model cannot call image_gen/image_edit against the wrong GROK_HOME
+        // (HTTP 400 Incorrect API key). Force official-aux__* instead.
+        let disallowed_tools =
+            crate::official_aux::merge_disallowed_tools_for_main(&settings.disallowed_tools);
         let allowed_tools = settings.allowed_tools.clone();
         let todo_gate_enabled = settings.todo_gate_enabled;
         let todo_gate_max_fires = crate::agent_todo_gate::normalize_todo_gate_max_fires(Some(
@@ -1176,6 +1180,10 @@ impl AcpClient {
                 session_data_mode,
                 two_pass_compaction,
             );
+            // Custom + inject: PreToolUse hook blocks native Imagine (ACP ignores
+            // --disallowed-tools which is headless-only). Official route / inject
+            // off removes the managed hook file.
+            let _ = crate::official_aux::sync_native_media_block_hook_for_current(session_data_mode);
         }
 
         let mut cmd = Command::new(&cli_path);

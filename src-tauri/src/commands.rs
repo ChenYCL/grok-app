@@ -1208,6 +1208,11 @@ pub async fn settings_set(
     let official_aux_inject_flip =
         prev.official_aux_inject != settings.official_aux_inject
             || prev.official_aux_with_user_mcp != settings.official_aux_with_user_mcp;
+    // Keep native-Imagine PreToolUse hook in sync with inject / route (independent home only).
+    if official_aux_inject_flip || session_data_mode_changed {
+        let mode = settings.session_data_mode.clone();
+        let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
+    }
     let no_ask_user_flip = prev.no_ask_user != settings.no_ask_user;
     let disallowed_tools_flip = !crate::acp_client::disallowed_tools_equal(
         &prev.disallowed_tools,
@@ -7227,6 +7232,8 @@ pub async fn providers_remove(
     .map_err(|e| e.to_string())??;
     // Removing a provider (esp. the active one) must not leave warm agents on
     // a deleted route id.
+    let mode = store::load_settings().session_data_mode.clone();
+    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
     mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }
@@ -7269,6 +7276,8 @@ pub async fn providers_set_default(
     .await
     .map_err(|e| e.to_string())??;
 
+    let mode = store::load_settings().session_data_mode.clone();
+    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
     mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }

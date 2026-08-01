@@ -729,8 +729,47 @@ fn is_uuid_str(s: &str) -> bool {
     true
 }
 
+/// First absolute media filesystem path found in free text (MCP / markdown).
+/// Prefer backtick-wrapped paths, then bare absolute paths ending in media ext.
+fn first_media_path_in_text(text: &str) -> Option<String> {
+    // ` /abs/path/to/file.jpg `
+    for part in text.split('`') {
+        let p = part.trim();
+        if p.starts_with('/') && is_media_fs_path(p) {
+            return Some(p.to_string());
+        }
+        // Windows-ish absolute (rare in macOS logs but harmless)
+        if p.len() > 3
+            && p.as_bytes().get(1) == Some(&b':')
+            && is_media_fs_path(p)
+        {
+            return Some(p.to_string());
+        }
+    }
+    // Bare absolute path token (stop at whitespace / quote / paren / markdown)
+    let mut start = None;
+    for (i, ch) in text.char_indices() {
+        if ch == '/' && start.is_none() {
+            start = Some(i);
+            continue;
+        }
+        if let Some(s) = start {
+            let end = matches!(ch, ' ' | '\n' | '\r' | '\t' | '"' | '\'' | ')' | ']' | '`' | '（' | '）');
+            if end || i + ch.len_utf8() >= text.len() {
+                let end_i = if end { i } else { text.len() };
+                let candidate = text[s..end_i].trim_end_matches(['.', ',', ';', '。', '，']);
+                if is_media_fs_path(candidate) {
+                    return Some(candidate.to_string());
+                }
+                start = None;
+            }
+        }
+    }
+    None
+}
+
 /// Pull absolute media path from ACP tool_call / tool_call_update payload
-/// (image_gen, image_edit, image_to_video, reference_to_video, …).
+/// (image_gen, image_edit, image_to_video, reference_to_video, MCP official-aux, …).
 fn extract_generated_media_path(raw: &serde_json::Value) -> Option<String> {
     // ImageGen / ImageEdit / video tools rawOutput
     if let Some(path) = raw
@@ -748,7 +787,21 @@ fn extract_generated_media_path(raw: &serde_json::Value) -> Option<String> {
     {
         return Some(path.to_string());
     }
-    // content[].content.text is often a JSON string with {"path":"..."}
+    // MCP use_tool result: rawOutput.output.OkayOutput | output (string)
+    for key in [
+        "/rawOutput/output/OkayOutput",
+        "/rawOutput/output",
+        "/rawOutput/output/text",
+        "/toolCall/rawOutput/output/OkayOutput",
+        "/toolCall/rawOutput/output",
+    ] {
+        if let Some(t) = raw.pointer(key).and_then(|v| v.as_str()) {
+            if let Some(p) = first_media_path_in_text(t) {
+                return Some(p);
+            }
+        }
+    }
+    // content[].content.text is often a JSON string with {"path":"..."} or markdown path
     if let Some(arr) = raw.get("content").and_then(|v| v.as_array()) {
         for item in arr {
             let text = item
@@ -758,10 +811,13 @@ fn extract_generated_media_path(raw: &serde_json::Value) -> Option<String> {
             if let Some(t) = text {
                 if let Ok(j) = serde_json::from_str::<serde_json::Value>(t) {
                     if let Some(path) = j.get("path").and_then(|v| v.as_str()) {
-                        if !path.is_empty() {
+                        if !path.is_empty() && is_media_fs_path(path) {
                             return Some(path.to_string());
                         }
                     }
+                }
+                if let Some(p) = first_media_path_in_text(t) {
+                    return Some(p);
                 }
             }
         }
@@ -7288,6 +7344,48 @@ mod session_routing_tests {
             Ok(_) => panic!("ready session must reject interjection"),
             Err(err) => assert_eq!(err, "interjection requires a streaming turn"),
         }
+    }
+}
+
+#[cfg(test)]
+mod media_path_extract_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_backtick_path_from_mcp_okay_output() {
+        let raw = json!({
+            "status": "completed",
+            "rawOutput": {
+                "type": "MCP",
+                "tool_name": "image_edit",
+                "server_name": "official-aux",
+                "output": {
+                    "OkayOutput": "已完成 image_edit。\n\n**输出文件路径：**\n\n`/tmp/demo/images/1.jpg`\n\n（会话内相对路径：images/1.jpg）"
+                }
+            }
+        });
+        assert_eq!(
+            extract_generated_media_path(&raw).as_deref(),
+            Some("/tmp/demo/images/1.jpg")
+        );
+    }
+
+    #[test]
+    fn extracts_path_from_content_text_markdown() {
+        let raw = json!({
+            "content": [{
+                "type": "content",
+                "content": {
+                    "type": "text",
+                    "text": "saved to /Users/me/out/pixel.png for you"
+                }
+            }]
+        });
+        assert_eq!(
+            extract_generated_media_path(&raw).as_deref(),
+            Some("/Users/me/out/pixel.png")
+        );
     }
 }
 

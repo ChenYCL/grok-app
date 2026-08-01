@@ -90,14 +90,18 @@ pub fn ensure_official_aux_home() -> Result<PathBuf, String> {
     text = set_table_string(&text, "models", "default", OFFICIAL_CATALOG_MODEL);
 
     // Prefer API key when configured so headless works without OIDC file.
+    // When only SuperGrok OIDC is present (auth.json), do **not** leave a
+    // stale/wrong [model.grok-4.5] api_key — Imagine would prefer a bad key
+    // and return HTTP 400 "Incorrect API key".
     let secrets = store::load_secrets();
-    if let Some(key) = secrets
+    let key = secrets
         .official_api_key
         .as_ref()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-    {
-        let table = format!("model.{OFFICIAL_CATALOG_MODEL}");
+        .map(|s| s.to_string());
+    let table = format!("model.{OFFICIAL_CATALOG_MODEL}");
+    if let Some(ref key) = key {
         text = set_table_string(&text, &table, "model", OFFICIAL_CATALOG_MODEL);
         text = set_table_string(&text, &table, "name", "Grok 4.5");
         text = set_table_string(
@@ -113,14 +117,22 @@ pub fn ensure_official_aux_home() -> Result<PathBuf, String> {
             crate::models_aux::OFFICIAL_GROK_API_BACKEND,
         );
         text = set_table_string(&text, &table, "api_key", key);
+        tracing::info!(
+            target: "official_aux",
+            "official aux home: using Settings official API key for Imagine/X"
+        );
+    } else if dest_auth.is_file() {
+        // OIDC path: strip any leftover api_key line under model.grok-4.5 so
+        // the CLI uses auth.json (subscription) instead of a dead key.
+        text = strip_table_key(&text, &table, "api_key");
+        tracing::info!(
+            target: "official_aux",
+            "official aux home: using OIDC auth.json (no Settings API key)"
+        );
     }
 
     if !cli_auth.is_file()
-        && secrets
-            .official_api_key
-            .as_ref()
-            .map(|s| s.trim().is_empty())
-            .unwrap_or(true)
+        && key.is_none()
         && !secrets::has_official_key_configured(&secrets::load_secrets_disk_only())
     {
         // Still write default so errors are about auth, not missing section.
@@ -129,6 +141,33 @@ pub fn ensure_official_aux_home() -> Result<PathBuf, String> {
 
     fs::write(official_aux_config_toml(), text).map_err(|e| format!("write official aux config: {e}"))?;
     Ok(home)
+}
+
+/// Remove `key = …` under `[table]` (line-oriented; keeps other keys).
+fn strip_table_key(text: &str, table: &str, key: &str) -> String {
+    let header = format!("[{table}]");
+    let mut out: Vec<String> = Vec::new();
+    let mut in_table = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_table = trimmed == header;
+            out.push(line.to_string());
+            continue;
+        }
+        if in_table {
+            let key_part = trimmed.split('=').next().map(str::trim).unwrap_or("");
+            if key_part == key {
+                continue;
+            }
+        }
+        out.push(line.to_string());
+    }
+    let mut joined = out.join("\n");
+    if text.ends_with('\n') && !joined.ends_with('\n') {
+        joined.push('\n');
+    }
+    joined
 }
 
 /// Status for UI / MCP readiness.
@@ -696,6 +735,169 @@ Return the thread as markdown with status URLs. No file edits."#
     run_official_headless(&prompt, 10, Duration::from_secs(150))
 }
 
+/// Imagine `image_gen` — text → image via official credentials.
+pub fn image_gen(prompt: &str, aspect_ratio: Option<&str>) -> Result<String, String> {
+    let p = prompt.trim();
+    if p.is_empty() {
+        return Err("prompt is empty".into());
+    }
+    let ar = aspect_ratio
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("1:1");
+    let agent_prompt = format!(
+        r#"You are an isolated Imagine side-job with official Grok credentials.
+
+Call the built-in tool **image_gen** with:
+- prompt: {p}
+- aspect_ratio: {ar}
+
+Rules:
+1. You MUST call image_gen (not web_search, not vision_describe).
+2. After generation, report each resulting image as an absolute filesystem path.
+3. Do not invent paths that do not exist on disk.
+4. Final answer: short markdown with the path(s) and one-line caption."#
+    );
+    run_official_headless(&agent_prompt, 16, Duration::from_secs(360))
+}
+
+/// Imagine `image_edit` — edit/transform local image(s) via official credentials.
+pub fn image_edit(
+    prompt: &str,
+    images: &[String],
+    aspect_ratio: Option<&str>,
+) -> Result<String, String> {
+    let p = prompt.trim();
+    if p.is_empty() {
+        return Err("prompt is empty".into());
+    }
+    if images.is_empty() {
+        return Err("image path(s) required".into());
+    }
+    let refs = images
+        .iter()
+        .map(|s| format!("@{}", s.trim()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let ar = aspect_ratio
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("- aspect_ratio: {s}\n"))
+        .unwrap_or_default();
+    let agent_prompt = format!(
+        r#"You are an isolated Imagine side-job with official Grok credentials.
+
+Call the built-in tool **image_edit** with the edit request and reference image(s).
+
+Edit prompt: {p}
+
+Reference image(s):
+{refs}
+{ar}
+Rules:
+1. You MUST call image_edit.
+2. Report absolute path(s) of the edited output file(s).
+3. Do not invent paths. Final answer: markdown with path(s)."#
+    );
+    run_official_headless(&agent_prompt, 16, Duration::from_secs(360))
+}
+
+/// Imagine `image_to_video` — animate one local image to short video.
+pub fn image_to_video(
+    image: &str,
+    prompt: Option<&str>,
+    duration: Option<u32>,
+    resolution_name: Option<&str>,
+) -> Result<String, String> {
+    let img = image.trim();
+    if img.is_empty() {
+        return Err("image path is empty".into());
+    }
+    let dur = match duration {
+        Some(10) => 10,
+        _ => 6,
+    };
+    let res = resolution_name
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("480p");
+    let motion = prompt
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("- prompt: {s}\n"))
+        .unwrap_or_default();
+    let agent_prompt = format!(
+        r#"You are an isolated Imagine video side-job with official Grok credentials.
+
+Call the built-in tool **image_to_video** with:
+- image: absolute path below
+- duration: {dur}
+- resolution_name: {res}
+{motion}
+Source image:
+@{img}
+
+Rules:
+1. You MUST call image_to_video (not image_gen).
+2. Report the absolute path of the generated video file.
+3. Do not invent paths. Final answer: markdown with the video path."#
+    );
+    run_official_headless(&agent_prompt, 16, Duration::from_secs(420))
+}
+
+/// Imagine `reference_to_video` — multi-image reference + prompt → video.
+pub fn reference_to_video(
+    prompt: &str,
+    images: &[String],
+    aspect_ratio: Option<&str>,
+    duration: Option<u32>,
+    resolution_name: Option<&str>,
+) -> Result<String, String> {
+    let p = prompt.trim();
+    if p.is_empty() {
+        return Err("prompt is empty".into());
+    }
+    if images.len() < 2 {
+        return Err("reference_to_video needs at least 2 image paths".into());
+    }
+    let ar = aspect_ratio
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("16:9");
+    let dur = match duration {
+        Some(10) => 10,
+        _ => 6,
+    };
+    let res = resolution_name
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("480p");
+    let refs = images
+        .iter()
+        .map(|s| format!("@{}", s.trim()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let agent_prompt = format!(
+        r#"You are an isolated Imagine video side-job with official Grok credentials.
+
+Call the built-in tool **reference_to_video** with:
+- prompt: {p}
+- aspect_ratio: {ar}
+- duration: {dur}
+- resolution_name: {res}
+- images: the reference paths below
+
+Reference images:
+{refs}
+
+Rules:
+1. You MUST call reference_to_video.
+2. Report the absolute path of the generated video file.
+3. Do not invent paths. Final answer: markdown with the video path."#
+    );
+    run_official_headless(&agent_prompt, 16, Duration::from_secs(420))
+}
+
 /// Generic dispatch for MCP / CLI shim: tool name → headless.
 pub fn dispatch_tool(tool: &str, args: &serde_json::Value) -> Result<String, String> {
     let name = tool.trim().to_ascii_lowercase();
@@ -782,6 +984,99 @@ pub fn dispatch_tool(tool: &str, args: &serde_json::Value) -> Result<String, Str
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             x_thread_fetch(id)
+        }
+        "image_gen" | "imagine" | "generate_image" => {
+            let p = args
+                .get("prompt")
+                .or_else(|| args.get("query"))
+                .or_else(|| args.get("q"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let ar = args
+                .get("aspect_ratio")
+                .or_else(|| args.get("aspectRatio"))
+                .and_then(|v| v.as_str());
+            image_gen(p, ar)
+        }
+        "image_edit" | "edit_image" => {
+            let p = args
+                .get("prompt")
+                .or_else(|| args.get("query"))
+                .or_else(|| args.get("q"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let mut imgs: Vec<String> = args
+                .get("images")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if imgs.is_empty() {
+                if let Some(one) = args
+                    .get("image")
+                    .or_else(|| args.get("path"))
+                    .and_then(|v| v.as_str())
+                {
+                    imgs.push(one.to_string());
+                }
+            }
+            let ar = args
+                .get("aspect_ratio")
+                .or_else(|| args.get("aspectRatio"))
+                .and_then(|v| v.as_str());
+            image_edit(p, &imgs, ar)
+        }
+        "image_to_video" | "animate_image" | "img2video" => {
+            let img = args
+                .get("image")
+                .or_else(|| args.get("path"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let prompt = args
+                .get("prompt")
+                .or_else(|| args.get("query"))
+                .and_then(|v| v.as_str());
+            let duration = args
+                .get("duration")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32);
+            let res = args
+                .get("resolution_name")
+                .or_else(|| args.get("resolutionName"))
+                .and_then(|v| v.as_str());
+            image_to_video(img, prompt, duration, res)
+        }
+        "reference_to_video" | "refs_to_video" => {
+            let p = args
+                .get("prompt")
+                .or_else(|| args.get("query"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let imgs: Vec<String> = args
+                .get("images")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let ar = args
+                .get("aspect_ratio")
+                .or_else(|| args.get("aspectRatio"))
+                .and_then(|v| v.as_str());
+            let duration = args
+                .get("duration")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32);
+            let res = args
+                .get("resolution_name")
+                .or_else(|| args.get("resolutionName"))
+                .and_then(|v| v.as_str());
+            reference_to_video(p, &imgs, ar, duration, res)
         }
         other => Err(format!("unknown official aux tool: {other}")),
     }
@@ -894,6 +1189,219 @@ pub fn should_load_user_mcp_with_official_aux() -> bool {
     store::load_settings().official_aux_with_user_mcp
 }
 
+/// Built-in Grok tools that must **not** run on the custom main process.
+///
+/// On custom routes those tools hit xAI with the wrong/missing key (main
+/// agent-home has no official auth). Imagine / X / vision must go through
+/// MCP `official-aux` under `agent-home-official` (OIDC or official API key).
+pub fn native_media_tools_to_disallow_on_custom_main() -> &'static [&'static str] {
+    &[
+        "image_gen",
+        "image_edit",
+        "image_to_video",
+        "reference_to_video",
+    ]
+}
+
+/// Merge settings denylist with official-aux inject denylist (custom main only).
+///
+/// Note: CLI `--disallowed-tools` is **headless-only** (`grok -p`). ACP
+/// `agent stdio` often ignores it, so custom main also installs a PreToolUse
+/// hook via [`sync_native_media_block_hook`].
+pub fn merge_disallowed_tools_for_main(settings_tools: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = settings_tools.to_vec();
+    if should_inject_mcp_for_main() {
+        for t in native_media_tools_to_disallow_on_custom_main() {
+            out.push((*t).to_string());
+        }
+    }
+    out
+}
+
+/// Stable hook filenames under `{GROK_HOME}/hooks/` (agent-home when independent).
+pub const NATIVE_MEDIA_BLOCK_HOOK_FILE: &str = "grok-app-block-native-imagine.json";
+pub const NATIVE_MEDIA_BLOCK_HOOK_SCRIPT: &str = "grok-app-block-native-imagine.sh";
+
+/// Deny reason when native Imagine tools fire on custom main.
+pub fn native_media_block_hook_reason() -> &'static str {
+    "Native Imagine tools (image_gen/image_edit/image_to_video/reference_to_video) are blocked on custom main — agent-home has no official xAI auth. Immediately call use_tool with tool_name official-aux__image_gen (or official-aux__image_edit / official-aux__image_to_video / official-aux__reference_to_video). If needed, search_tool query image_gen or official-aux imagine first. Do NOT fall back to PIL/code art. After a successful official-aux media tool, report the absolute path as plain text — do NOT read_file the image (text-only main models crash on image_url)."
+}
+
+/// Deny reason when read_file targets an image (would inject image_url into DeepSeek etc.).
+pub fn native_media_block_read_image_reason() -> &'static str {
+    "read_file on image files is blocked on custom text-only main: tool results embed image_url and the relay API returns 400 (unknown variant image_url). Report the absolute path as plain text for the user/UI. Vision is already provided via Host vision or official-aux__vision_describe — do not re-open generated PNG/JPG/WebP."
+}
+
+/// Shell script body: inspect PreToolUse stdin; deny native Imagine + image read_file.
+pub fn native_media_block_hook_script_body() -> String {
+    // Reasons embedded as Python triple-quoted constants (no shell env expansion).
+    let reason_imagine = native_media_block_hook_reason().replace('\\', "\\\\");
+    let reason_read = native_media_block_read_image_reason().replace('\\', "\\\\");
+    // Grok pipes PreToolUse event JSON on the hook process stdin.
+    // IMPORTANT: do not use `python3 <<'PY'` alone — that steals stdin for the
+    // script body and the event is lost. Save stdin to a temp file first.
+    // Fail-open (exit 0, empty) if python missing or parse fails.
+    format!(
+        r#"#!/bin/sh
+# Managed by Grok App — do not edit; recreated on spawn when inject is on.
+# Denies: bare image_gen/image_edit/video tools; read_file of image extensions.
+f=$(mktemp 2>/dev/null) || exit 0
+cat >"$f" 2>/dev/null || {{ rm -f "$f"; exit 0; }}
+python3 - "$f" <<'PY'
+import json, os, sys
+
+REASON_IMAGINE = r"""{reason_imagine}"""
+REASON_READ_IMAGE = r"""{reason_read}"""
+
+def deny(reason: str) -> None:
+    print(json.dumps({{"decision": "deny", "reason": reason}}, ensure_ascii=False))
+    sys.exit(0)
+
+def allow() -> None:
+    sys.exit(0)
+
+path = sys.argv[1] if len(sys.argv) > 1 else ""
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        raw = fh.read()
+finally:
+    try:
+        os.remove(path)
+    except Exception:
+        pass
+
+if not raw.strip():
+    allow()
+try:
+    ev = json.loads(raw)
+except Exception:
+    allow()
+
+name = (ev.get("toolName") or ev.get("tool_name") or "").strip()
+name_l = name.lower()
+inp = ev.get("toolInput") or ev.get("tool_input") or {{}}
+if not isinstance(inp, dict):
+    inp = {{}}
+
+native = {{"image_gen", "image_edit", "image_to_video", "reference_to_video"}}
+if name_l in native or name in native:
+    deny(REASON_IMAGINE)
+
+# read_file / Read — block image paths so image_url never hits text-only relays
+if name_l in {{"read_file", "read", "notebookread"}} or name in {{"Read", "NotebookRead"}}:
+    p = (
+        inp.get("target_file")
+        or inp.get("path")
+        or inp.get("file_path")
+        or inp.get("filePath")
+        or ""
+    )
+    if isinstance(p, list) and p:
+        p = p[0]
+    p = str(p).strip()
+    lower = p.lower()
+    if any(lower.endswith(ext) for ext in (
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".heic", ".avif", ".svg"
+    )):
+        deny(REASON_READ_IMAGE)
+
+allow()
+PY
+"#
+    )
+}
+
+/// JSON body for the managed PreToolUse hook that denies native Imagine tools
+/// and read_file of image files (custom text-only main safety).
+///
+/// `command` is relative to the hook JSON file (Grok resolves relative paths).
+/// Matcher is broad; the script decides allow vs deny from stdin toolName/input.
+pub fn native_media_block_hook_json() -> String {
+    let doc = serde_json::json!({
+        "hooks": {
+            "PreToolUse": [{
+                "matcher": "^(image_gen|image_edit|image_to_video|reference_to_video|read_file|Read|NotebookRead)$",
+                "hooks": [{
+                    "type": "command",
+                    "command": NATIVE_MEDIA_BLOCK_HOOK_SCRIPT,
+                    "timeout": 5
+                }]
+            }]
+        }
+    });
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&doc).unwrap_or_else(|_| doc.to_string())
+    )
+}
+
+/// Install or remove the native-Imagine block hook under agent GROK_HOME.
+///
+/// When `enabled` (custom + inject): write `{home}/hooks/grok-app-block-native-imagine.{json,sh}`.
+/// When disabled: remove those managed files only (never touch user hooks).
+pub fn sync_native_media_block_hook(session_data_mode: &str, enabled: bool) -> Result<(), String> {
+    if session_data_mode == "shared" {
+        // Never rewrite shared ~/.grok hooks for this App-only policy.
+        return Ok(());
+    }
+    let home = crate::paths::resolve_agent_grok_home(session_data_mode);
+    let hooks_dir = home.join("hooks");
+    let path = hooks_dir.join(NATIVE_MEDIA_BLOCK_HOOK_FILE);
+    let script_path = hooks_dir.join(NATIVE_MEDIA_BLOCK_HOOK_SCRIPT);
+    if enabled {
+        fs::create_dir_all(&hooks_dir).map_err(|e| format!("create agent hooks dir: {e}"))?;
+        let body = native_media_block_hook_json();
+        let script = native_media_block_hook_script_body();
+        let need_json = match fs::read_to_string(&path) {
+            Ok(existing) => existing != body,
+            Err(_) => true,
+        };
+        let need_script = match fs::read_to_string(&script_path) {
+            Ok(existing) => existing != script,
+            Err(_) => true,
+        };
+        if need_json {
+            fs::write(&path, body).map_err(|e| format!("write native media block hook: {e}"))?;
+        }
+        if need_script {
+            fs::write(&script_path, script)
+                .map_err(|e| format!("write native media block script: {e}"))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755));
+            }
+        }
+        if need_json || need_script {
+            tracing::info!(
+                target: "official_aux",
+                path = %path.display(),
+                "installed PreToolUse hook to block native Imagine on custom main"
+            );
+        }
+    } else {
+        if path.is_file() {
+            let _ = fs::remove_file(&path);
+        }
+        if script_path.is_file() {
+            let _ = fs::remove_file(&script_path);
+        }
+        if !path.exists() {
+            tracing::info!(
+                target: "official_aux",
+                path = %path.display(),
+                "removed native Imagine block hook (inject off / official route)"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Sync hook based on current inject gate (spawn / settings path).
+pub fn sync_native_media_block_hook_for_current(session_data_mode: &str) -> Result<(), String> {
+    sync_native_media_block_hook(session_data_mode, should_inject_mcp_for_main())
+}
+
 /// Session `--rules` block when official-aux is active (DeepSeek etc. need this).
 /// Official Grok main route must not receive this (native tools already exist).
 pub fn inject_session_rules() -> Option<String> {
@@ -903,26 +1411,52 @@ pub fn inject_session_rules() -> Option<String> {
     Some(
         r#"Official-aux MCP (server name: official-aux) is the PRIMARY toolbox for this custom main model.
 
-Exact tools (call via use_tool with these tool_name values):
+Exact tools (call via use_tool with these tool_name values ONLY):
 - official-aux__x_keyword_search  — X/Twitter/推特/推文/x上 关键词搜帖（默认首选）
 - official-aux__x_semantic_search — X 语义/话题搜索
 - official-aux__x_user_search     — X 用户/账号/@handle
 - official-aux__x_thread_fetch    — 帖子线程 URL/status id
 - official-aux__web_search        — 普通网页搜索
 - official-aux__vision_describe   — 识图（若已有 [Host vision] / <image_description> 则禁止再调）
+- official-aux__image_gen         — Imagine 文生图 / 画图 / 生成图片（唯一正确入口）
+- official-aux__image_edit        — Imagine 改图 / 修图（需本地参考图路径）
+- official-aux__image_to_video    — 单图 → 短视频 / 图生视频（唯一正确入口）
+- official-aux__reference_to_video — 多图参考 + 文案 → 视频
+
+CRITICAL — native Imagine is BLOCKED on this process:
+- Do NOT call bare tools image_gen / image_edit / image_to_video / reference_to_video.
+- Those hit agent-home without official auth → HTTP 400 Incorrect API key.
+- A PreToolUse hook will deny them; treat that deny as a redirect to official-aux__*.
+- Do NOT fall back to PIL / matplotlib / code-drawn "pixel art" when the user asked for Imagine.
+- After official-aux returns a path: FINISH the turn with the absolute path in markdown for the user.
+- NEVER call read_file / Read on .png/.jpg/.jpeg/.webp/.gif/.bmp after generation or to "verify" quality.
+  Text-only relays (DeepSeek etc.) crash with: unknown variant `image_url`, expected `text`.
+  The UI shows generated media from the path; you do not need to re-open the file.
 
 When the user asks to search X / Twitter / 推特 / x上 / 推文:
 1. Immediately search_tool query "x_keyword_search" OR "official-aux x" (one call).
 2. Then use_tool official-aux__x_keyword_search with the topic keywords.
 3. Do NOT wait for open-websearch / Playwright / sleep.
 
+When the user asks to 画图 / 生成图片 / imagine / image_gen / 出图:
+1. search_tool query "image_gen" OR "official-aux imagine" once if needed.
+2. use_tool tool_name="official-aux__image_gen" with prompt (+ aspect_ratio).
+3. For reference-anchored edits: use_tool official-aux__image_edit with prompt + image path(s).
+
+When the user asks to 生成视频 / 图生视频 / animate / make a video:
+1. One source image → use_tool official-aux__image_to_video (image path + optional motion prompt).
+2. Multiple reference images → use_tool official-aux__reference_to_video (prompt + images[]).
+3. Prefer these over Playwright screen-record or curl.
+
 Do NOT:
 - bash sleep while MCP connects
 - prefer Playwright browser for X when official-aux x_* exists
 - curl/wget as first choice for X
 - use open-websearch for X posts
+- invent image/video paths that were not returned by official-aux media tools
+- call bare image_gen / image_edit after a deny or API-key error
 
-If search_tool is partial/empty, retry once with query "official-aux" or "x_keyword_search", then use_tool. Never busy-wait."#
+If search_tool is partial/empty, retry once with query "official-aux" or "x_keyword_search" / "image_gen" / "image_to_video", then use_tool. Never busy-wait."#
             .trim()
             .to_string(),
     )
@@ -1714,6 +2248,51 @@ A UI screenshot.
             detect_x_search_intent("在 x 上搜索 @elonmusk"),
             Some(XSearchIntent::User { .. })
         ));
+    }
+
+    #[test]
+    fn merge_disallowed_includes_imagine_tools_when_list_nonempty() {
+        // When inject is off, merge still returns settings tools only (no panic).
+        let base = vec!["Bash".into()];
+        let merged = merge_disallowed_tools_for_main(&base);
+        assert!(merged.iter().any(|t| t == "Bash"));
+        // Imagine denylist entries are only added when should_inject is true
+        // (env-dependent). Always expose the static list for docs/spawn.
+        let natives = native_media_tools_to_disallow_on_custom_main();
+        assert!(natives.contains(&"image_gen"));
+        assert!(natives.contains(&"image_edit"));
+        assert!(natives.contains(&"image_to_video"));
+        assert!(natives.contains(&"reference_to_video"));
+    }
+
+    #[test]
+    fn native_media_block_hook_json_is_valid_and_targets_imagine_tools() {
+        let raw = native_media_block_hook_json();
+        let v: serde_json::Value = serde_json::from_str(&raw).expect("hook json");
+        let matcher = v["hooks"]["PreToolUse"][0]["matcher"].as_str().unwrap_or("");
+        assert!(matcher.contains("image_gen"));
+        assert!(matcher.contains("image_to_video"));
+        assert!(matcher.contains("read_file"));
+        let cmd = v["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap_or("");
+        assert_eq!(cmd, NATIVE_MEDIA_BLOCK_HOOK_SCRIPT);
+        let script = native_media_block_hook_script_body();
+        assert!(script.contains("decision"));
+        assert!(script.contains("deny"));
+        assert!(script.contains("official-aux__image_gen"));
+        assert!(script.contains("read_file"));
+        assert!(native_media_block_hook_reason().contains("blocked"));
+        assert!(native_media_block_read_image_reason().contains("image_url"));
+    }
+
+    #[test]
+    fn strip_table_key_removes_api_key_line() {
+        let t = "[model.grok-4.5]\nmodel = \"grok-4.5\"\napi_key = \"sk-bad\"\nname = \"Grok\"\n";
+        let out = strip_table_key(t, "model.grok-4.5", "api_key");
+        assert!(!out.contains("api_key"));
+        assert!(out.contains("model = \"grok-4.5\""));
+        assert!(out.contains("name = \"Grok\""));
     }
 }
 
