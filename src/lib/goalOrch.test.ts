@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   assembleGoalOrchView,
+  buildGoalControlSummary,
+  canClearGoalBar,
   configHasGoalKeys,
   DEFAULT_GOAL_ORCH_UI_ENABLED,
   filterGoalOrchByPhaseAndRole,
@@ -18,10 +20,13 @@ import {
   parseGoalUpdatedUpdate,
   phasesPresentInEvents,
   pickLatestGoalOrchEvent,
+  planClearGoalOrchEvents,
   prependGoalOrchEvent,
+  resolveGoalControlEmptyState,
   resolveGoalOrchEmptyState,
   resolveGoalOrchSessionIndicator,
   saveGoalOrchUiEnabled,
+  shouldConfirmClearGoalOrch,
   type GoalOrchEvent,
   type GoalOrchUiStorage,
 } from "./goalOrch";
@@ -401,7 +406,88 @@ describe("resolveGoalOrchEmptyState", () => {
   });
 });
 
-describe("formatGoalOrchSummaryText", () => {
+describe("resolveGoalControlEmptyState", () => {
+  it("session_mismatch when ring has events but session slice is empty", () => {
+    const e = resolveGoalControlEmptyState({
+      uiEnabled: true,
+      totalCount: 0,
+      filteredCount: 0,
+      ringCount: 4,
+      sessionId: "sess-other",
+    });
+    expect(e?.kind).toBe("session_mismatch");
+    expect(e?.titleKey).toBe("reliability.goal.emptySessionMismatch");
+    expect(e?.showClearFilters).toBe(false);
+  });
+
+  it("no_events when ring and session are both empty", () => {
+    const e = resolveGoalControlEmptyState({
+      uiEnabled: true,
+      totalCount: 0,
+      filteredCount: 0,
+      ringCount: 0,
+      sessionScoped: true,
+    });
+    expect(e?.kind).toBe("no_events");
+  });
+
+  it("filtered / ui_off / null mirror resolveGoalOrchEmptyState", () => {
+    expect(
+      resolveGoalControlEmptyState({
+        uiEnabled: false,
+        totalCount: 1,
+        filteredCount: 0,
+      })?.kind,
+    ).toBe("ui_off");
+    expect(
+      resolveGoalControlEmptyState({
+        uiEnabled: true,
+        totalCount: 2,
+        filteredCount: 0,
+        phaseFilter: "planner",
+      })?.kind,
+    ).toBe("filtered");
+    expect(
+      resolveGoalControlEmptyState({
+        uiEnabled: true,
+        totalCount: 2,
+        filteredCount: 2,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("planClearGoalOrchEvents / shouldConfirmClearGoalOrch / canClearGoalBar", () => {
+  it("plans a local empty ring and reports cleared count", () => {
+    const events = [
+      sampleEvent({ id: "a", phase: "planner" }),
+      sampleEvent({ id: "b", phase: "worker" }),
+    ];
+    const plan = planClearGoalOrchEvents(events);
+    expect(plan.next).toEqual([]);
+    expect(plan.cleared).toBe(2);
+    expect(planClearGoalOrchEvents([]).cleared).toBe(0);
+    expect(planClearGoalOrchEvents(null).cleared).toBe(0);
+  });
+
+  it("confirms clear when count >= min (default 1)", () => {
+    expect(shouldConfirmClearGoalOrch(0)).toBe(false);
+    expect(shouldConfirmClearGoalOrch(1)).toBe(true);
+    expect(shouldConfirmClearGoalOrch(3)).toBe(true);
+    expect(shouldConfirmClearGoalOrch(2, 3)).toBe(false);
+    expect(shouldConfirmClearGoalOrch(3, 3)).toBe(true);
+    expect(shouldConfirmClearGoalOrch(-1)).toBe(false);
+  });
+
+  it("canClearGoalBar only when goalMode or barShowsGoal", () => {
+    expect(canClearGoalBar({})).toBe(false);
+    expect(canClearGoalBar({ goalMode: false })).toBe(false);
+    expect(canClearGoalBar({ goalMode: true })).toBe(true);
+    expect(canClearGoalBar({ barShowsGoal: true })).toBe(true);
+  });
+});
+
+describe("formatGoalOrchSummaryText / buildGoalControlSummary", () => {
   it("formats redacted summary lines without inventing events", () => {
     const events = [
       sampleEvent({
@@ -430,6 +516,40 @@ describe("formatGoalOrchSummaryText", () => {
   it("honest empty summary when no events", () => {
     const text = formatGoalOrchSummaryText([]);
     expect(text).toContain("events: 0");
+    expect(text).toContain("(no goal_updated events observed)");
+  });
+
+  it("buildGoalControlSummary is a redacted one-pager with phase tallies", () => {
+    const events = [
+      sampleEvent({
+        id: "1",
+        phase: "classifier",
+        label: "goal classifier",
+        detail: "token sk-abcdefghijklmnopqrstuvwxyz",
+        deliverableProgress: "1/3",
+        at: Date.UTC(2026, 0, 2, 12, 0, 0),
+      }),
+      sampleEvent({ id: "2", phase: "planner", at: Date.UTC(2026, 0, 2, 11, 0, 0) }),
+    ];
+    const text = buildGoalControlSummary(events, {
+      title: "Goal control",
+      generatedAt: "2026-01-02T12:00:00.000Z",
+    });
+    expect(text).toContain("Goal control");
+    expect(text).toContain("events: 2");
+    expect(text).toContain("phases:");
+    expect(text).toContain("planner=1");
+    expect(text).toContain("classifier=1");
+    expect(text).toContain("latest:");
+    expect(text).toContain("[REDACTED]");
+    expect(text).not.toContain("sk-abcdefghijklmnopqrstuvwxyz");
+  });
+
+  it("buildGoalControlSummary honest empty one-pager", () => {
+    const text = buildGoalControlSummary([]);
+    expect(text).toContain("events: 0");
+    expect(text).toContain("phases: (none)");
+    expect(text).toContain("latest: (none)");
     expect(text).toContain("(no goal_updated events observed)");
   });
 });

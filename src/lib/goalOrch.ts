@@ -547,8 +547,18 @@ export function phasesPresentInEvents(
   return GOAL_ORCH_PHASE_ORDER.filter((p) => seen.has(p));
 }
 
-/** Empty-state kinds for Reliability Goal section. */
+/** Empty-state kinds for Reliability Goal section (legacy 3-way). */
 export type GoalOrchEmptyKind = "ui_off" | "no_events" | "filtered";
+
+/**
+ * Unified control-panel empty kinds (includes session-scoped mismatch).
+ * Prefer {@link resolveGoalControlEmptyState} for new UI paths.
+ */
+export type GoalControlEmptyKind =
+  | "ui_off"
+  | "no_events"
+  | "filtered"
+  | "session_mismatch";
 
 export type GoalOrchEmptyPresentation = {
   kind: GoalOrchEmptyKind;
@@ -561,6 +571,22 @@ export type GoalOrchEmptyPresentation = {
     | "reliability.goal.lead"
     | "reliability.goal.emptyFilterHint"
     | "reliability.goal.uiOffHint";
+  showClearFilters: boolean;
+};
+
+export type GoalControlEmptyPresentation = {
+  kind: GoalControlEmptyKind;
+  /** i18n key — callers pass through `t()`. */
+  titleKey:
+    | "reliability.goal.empty"
+    | "reliability.goal.emptyFilter"
+    | "reliability.goal.uiOff"
+    | "reliability.goal.emptySessionMismatch";
+  hintKey:
+    | "reliability.goal.lead"
+    | "reliability.goal.emptyFilterHint"
+    | "reliability.goal.uiOffHint"
+    | "reliability.goal.emptySessionMismatchHint";
   showClearFilters: boolean;
 };
 
@@ -578,6 +604,63 @@ export function resolveGoalOrchEmptyState(input: {
   phaseFilter?: GoalOrchPhaseFilter | null;
   role?: string | null;
 }): GoalOrchEmptyPresentation | null {
+  const unified = resolveGoalControlEmptyState({
+    uiEnabled: input.uiEnabled,
+    totalCount: input.totalCount,
+    filteredCount: input.filteredCount,
+    phaseFilter: input.phaseFilter,
+    role: input.role,
+  });
+  if (!unified) return null;
+  // Legacy API never returns session_mismatch (no ring/session inputs).
+  if (unified.kind === "session_mismatch") {
+    return {
+      kind: "no_events",
+      titleKey: "reliability.goal.empty",
+      hintKey: "reliability.goal.lead",
+      showClearFilters: false,
+    };
+  }
+  return {
+    kind: unified.kind,
+    titleKey: unified.titleKey as GoalOrchEmptyPresentation["titleKey"],
+    hintKey: unified.hintKey as GoalOrchEmptyPresentation["hintKey"],
+    showClearFilters: unified.showClearFilters,
+  };
+}
+
+/**
+ * Unified empty-state for Goal control surfaces (Reliability + session chip).
+ * Returns `null` when there are events to list after filters.
+ *
+ * Keys:
+ * - `ui_off` — display pref hides the panel
+ * - `no_events` — ring (or session slice) has zero observed events
+ * - `filtered` — phase/role chips hid every row
+ * - `session_mismatch` — ring has events, but none for the active session
+ *
+ * Never invents progress when the CLI emitted nothing.
+ */
+export function resolveGoalControlEmptyState(input: {
+  uiEnabled: boolean;
+  /**
+   * Count after optional session filter, before phase/role filter.
+   * For session-scoped UIs this is the current-session slice.
+   */
+  totalCount: number;
+  /** Count after phase/role filter. */
+  filteredCount: number;
+  phaseFilter?: GoalOrchPhaseFilter | null;
+  role?: string | null;
+  /**
+   * Full ring length (any session). When set and greater than `totalCount`
+   * with a session scope active, empty session → `session_mismatch`.
+   */
+  ringCount?: number | null;
+  /** When true (or sessionId provided), allow session_mismatch vs no_events. */
+  sessionScoped?: boolean | null;
+  sessionId?: string | null;
+}): GoalControlEmptyPresentation | null {
   if (!input.uiEnabled) {
     return {
       kind: "ui_off",
@@ -587,7 +670,24 @@ export function resolveGoalOrchEmptyState(input: {
     };
   }
   if (input.filteredCount > 0) return null;
+
+  const scoped =
+    input.sessionScoped === true ||
+    (typeof input.sessionId === "string" && input.sessionId.trim().length > 0);
+  const ring =
+    typeof input.ringCount === "number" && Number.isFinite(input.ringCount)
+      ? Math.max(0, Math.floor(input.ringCount))
+      : null;
+
   if (input.totalCount === 0) {
+    if (scoped && ring != null && ring > 0) {
+      return {
+        kind: "session_mismatch",
+        titleKey: "reliability.goal.emptySessionMismatch",
+        hintKey: "reliability.goal.emptySessionMismatchHint",
+        showClearFilters: false,
+      };
+    }
     return {
       kind: "no_events",
       titleKey: "reliability.goal.empty",
@@ -595,7 +695,8 @@ export function resolveGoalOrchEmptyState(input: {
       showClearFilters: false,
     };
   }
-  // Had events, but filters hid them all.
+
+  // Had events for this scope, but phase/role filters hid them all.
   return {
     kind: "filtered",
     titleKey: "reliability.goal.emptyFilter",
@@ -605,6 +706,61 @@ export function resolveGoalOrchEmptyState(input: {
       role: input.role,
     }),
   };
+}
+
+/** Plan result for wiping the in-memory goal orch event ring. */
+export type ClearGoalOrchPlan = {
+  /** Always empty — local clear only (no host RPC). */
+  next: GoalOrchEvent[];
+  /** How many events would be removed. */
+  cleared: number;
+};
+
+/**
+ * Plan clearing the local goal orchestration timeline (pure).
+ * Does **not** call the CLI or host — only wipes the App-side ring.
+ * Composer `/goal` mode (`goalMode` / planBar clear) is independent.
+ */
+export function planClearGoalOrchEvents(
+  events: readonly GoalOrchEvent[] | null | undefined,
+): ClearGoalOrchPlan {
+  const list = Array.isArray(events) ? events : [];
+  return { next: [], cleared: list.length };
+}
+
+/**
+ * Default: confirm clear when there is at least one observed event.
+ * (Threshold is inclusive lower bound: count >= min → confirm.)
+ */
+export const GOAL_ORCH_CLEAR_CONFIRM_MIN = 1;
+
+/**
+ * Whether clearing the local goal timeline should open an in-app confirm
+ * (GlassModal) — never `window.confirm`.
+ */
+export function shouldConfirmClearGoalOrch(
+  count: number,
+  min: number = GOAL_ORCH_CLEAR_CONFIRM_MIN,
+): boolean {
+  if (!Number.isFinite(count) || count <= 0) return false;
+  const threshold =
+    Number.isFinite(min) && min >= 0
+      ? Math.floor(min)
+      : GOAL_ORCH_CLEAR_CONFIRM_MIN;
+  return count >= threshold;
+}
+
+/**
+ * Soft: whether the plan-bar "Clear goal" control should be available.
+ * Host path is local only — toggles composer `goalMode` off (no RPC).
+ * Independent of the goal orch event ring.
+ */
+export function canClearGoalBar(opts: {
+  goalMode?: boolean | null;
+  /** When plan bar model is already in goal chrome. */
+  barShowsGoal?: boolean | null;
+}): boolean {
+  return opts.goalMode === true || opts.barShowsGoal === true;
 }
 
 /**
@@ -655,6 +811,72 @@ export function formatGoalOrchSummaryText(
     }
   }
   return lines.join("\n");
+}
+
+/**
+ * Redacted one-pager for control-panel copy (session chip / Reliability).
+ * Phase tallies + latest line + the same event list as
+ * {@link formatGoalOrchSummaryText}. Never invents progress.
+ */
+export function buildGoalControlSummary(
+  events: readonly GoalOrchEvent[],
+  opts?: {
+    title?: string;
+    maxEvents?: number;
+    generatedAt?: string | null;
+  },
+): string {
+  const title =
+    (opts?.title ?? "Goal orchestration").trim() || "Goal orchestration";
+  const list = Array.isArray(events) ? events : [];
+  const max = Math.max(0, Math.floor(opts?.maxEvents ?? GOAL_ORCH_EVENT_MAX));
+  const slice = list.slice(0, max);
+
+  const phaseCounts = new Map<GoalOrchPhase, number>();
+  for (const e of slice) {
+    phaseCounts.set(e.phase, (phaseCounts.get(e.phase) ?? 0) + 1);
+  }
+  const phaseLine =
+    phaseCounts.size > 0
+      ? GOAL_ORCH_PHASE_ORDER.filter((p) => phaseCounts.has(p))
+          .map((p) => `${p}=${phaseCounts.get(p)}`)
+          .join(" ")
+      : "(none)";
+
+  const latest = slice[0] ?? null;
+  const header: string[] = [
+    title,
+    `events: ${slice.length}` +
+      (list.length > slice.length ? ` (of ${list.length})` : ""),
+    `phases: ${phaseLine}`,
+  ];
+  if (opts?.generatedAt) {
+    header.push(`generated: ${opts.generatedAt}`);
+  }
+  if (latest) {
+    const when = Number.isFinite(latest.at)
+      ? new Date(latest.at).toISOString()
+      : String(latest.at);
+    header.push(
+      `latest: ${when} · ${latest.phase}` +
+        (latest.deliverableProgress
+          ? ` · progress=${latest.deliverableProgress}`
+          : "") +
+        (latest.label ? ` · ${clipDetail(latest.label)}` : ""),
+    );
+  } else {
+    header.push("latest: (none)");
+  }
+  header.push("");
+  // Reuse list body (without re-emitting title/events header).
+  const body = formatGoalOrchSummaryText(list, {
+    title: "_",
+    maxEvents: max,
+  });
+  const bodyLines = body.split("\n");
+  // Drop title + events line + blank from formatGoalOrchSummaryText.
+  const rest = bodyLines.slice(3);
+  return [...header, ...rest].join("\n");
 }
 
 /**

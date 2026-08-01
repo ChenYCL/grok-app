@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Goal orchestration control panel**: Reliability Goal section gains **Clear timeline** (local event ring only — GlassModal confirm with count; never `window.confirm`) alongside phase filter chips and **Copy summary** (redacted one-pager). Session goal chip opens a small menu: open Reliability · copy summary · clear local timeline. Pure helpers `planClearGoalOrchEvents` / `shouldConfirmClearGoalOrch` / `resolveGoalControlEmptyState` (ui_off · no_events · filtered · session_mismatch) / `buildGoalControlSummary` / `canClearGoalBar` (composer `/goal` bar remains independent of the event ring). Honest empty states only — never invents goal progress. en/zh/zh-TW + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

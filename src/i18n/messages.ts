@@ -3541,9 +3541,21 @@ const en = {
   "reliability.goal.copySummary": "Copy summary",
   "reliability.goal.copied": "Goal summary copied",
   "reliability.goal.copyFail": "Could not copy goal summary",
+  "reliability.goal.clearTimeline": "Clear timeline",
+  "reliability.goal.clearConfirmTitle": "Clear goal timeline?",
+  "reliability.goal.clearConfirmMessage":
+    "Remove {count} local goal_updated event(s) from this app ring? This does not stop the CLI goal harness or change composer /goal mode.",
+  "reliability.goal.clearConfirmAction": "Clear timeline",
+  "reliability.goal.clearDone": "Cleared {count} local goal event(s)",
+  "reliability.goal.emptySessionMismatch":
+    "No goal events for this session",
+  "reliability.goal.emptySessionMismatchHint":
+    "Other sessions have observed goal_updated events. Open Reliability to see the full local timeline, or start /goal in this chat.",
+  "reliability.goal.openReliability": "Open Reliability",
+  "reliability.goal.sessionMenuAria": "Goal orchestration actions",
   "reliability.goal.sessionChip": "Goal · {phase}",
   "reliability.goal.sessionChipAria":
-    "Latest goal phase {phase}. Open reliability center.",
+    "Latest goal phase {phase}. Open goal actions menu.",
   "reliability.goal.phase.planner": "Planner",
   "reliability.goal.phase.strategist": "Strategist",
   "reliability.goal.phase.classifier": "Classifier",
@@ -9539,8 +9551,19 @@ const zh: Record<MessageKey, string> = {
   "reliability.goal.copySummary": "复制摘要",
   "reliability.goal.copied": "已复制目标摘要",
   "reliability.goal.copyFail": "无法复制目标摘要",
+  "reliability.goal.clearTimeline": "清空时间线",
+  "reliability.goal.clearConfirmTitle": "清空目标时间线？",
+  "reliability.goal.clearConfirmMessage":
+    "从本应用本地环形缓冲中移除 {count} 条 goal_updated 事件？不会停止 CLI 目标系统，也不会关闭输入框 /goal 模式。",
+  "reliability.goal.clearConfirmAction": "清空时间线",
+  "reliability.goal.clearDone": "已清空 {count} 条本地目标事件",
+  "reliability.goal.emptySessionMismatch": "当前会话没有目标事件",
+  "reliability.goal.emptySessionMismatchHint":
+    "其他会话已观察到 goal_updated。可打开可靠性中心查看完整本地时间线，或在本对话中使用 /goal。",
+  "reliability.goal.openReliability": "打开可靠性中心",
+  "reliability.goal.sessionMenuAria": "目标编排操作",
   "reliability.goal.sessionChip": "目标 · {phase}",
-  "reliability.goal.sessionChipAria": "最近目标阶段 {phase}。打开可靠性中心。",
+  "reliability.goal.sessionChipAria": "最近目标阶段 {phase}。打开目标操作菜单。",
   "reliability.goal.phase.planner": "规划",
   "reliability.goal.phase.strategist": "策略",
   "reliability.goal.phase.classifier": "分类器",
