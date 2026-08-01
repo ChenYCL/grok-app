@@ -3169,6 +3169,30 @@ export const zhTW: Record<MessageKey, string> = {
   "account.quotaRemaining": "剩餘",
   "account.quotaUsed": "已用",
   "account.quotaUnknown": "尚未取得用量",
+  "account.quota.loading": "正在載入 SuperGrok 額度…",
+  "account.quota.loadingHint": "正在從 Host 拉取會員用量。",
+  "account.quota.signedOut": "登入後可檢視 SuperGrok 額度",
+  "account.quota.signedOutHint":
+    "剩餘百分比來自官方 Grok Build 計費介面——離線時不會編造數字。",
+  "account.quota.chip.loading": "載入中…",
+  "account.quota.chip.unknown": "未知",
+  "account.quota.chip.signedOut": "—",
+  "account.quota.chip.err.network": "網路",
+  "account.quota.chip.err.auth": "登入",
+  "account.quota.chip.err.host_only": "桌面端",
+  "account.quota.chip.err.other": "軟失敗",
+  "account.quota.err.network": "無法載入額度",
+  "account.quota.err.networkHint":
+    "網路 soft-fail——對話仍可用。請檢查網路或代理（設定 → 網路）後重新整理。離線時不會編造剩餘百分比。",
+  "account.quota.err.auth": "需重新登入才能檢視額度",
+  "account.quota.err.authHint":
+    "鑑權 soft-fail——憑證可能已過期。請重新登入以重新整理 SuperGrok 剩餘額度；Host 未回應前不顯示百分比。",
+  "account.quota.err.host_only": "僅桌面端可用",
+  "account.quota.err.host_onlyHint":
+    "SuperGrok 額度需桌面 Host。瀏覽器預覽不會編造剩餘百分比。",
+  "account.quota.err.other": "額度載入 soft-fail",
+  "account.quota.err.otherHint":
+    "無法重新整理 SuperGrok 額度（不影響對話）。成功探測前剩餘百分比保持未知。",
   "account.period": "帳期",
   "account.prepaid": "預付",
   "account.onDemand": "隨需",

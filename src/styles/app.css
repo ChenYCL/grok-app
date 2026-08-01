@@ -3158,9 +3158,66 @@ html[data-sidebar-density="compact"] .session-row__meta {
   gap: 8px 14px;
 }
 
+.account-hero__plan-empty.is-soft-fail {
+  align-items: flex-start;
+}
+
+.account-hero__plan-empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.account-hero__plan-empty-title {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-secondary);
+}
+
 .account-hero__plan-meta-text {
   font-size: 12px;
   color: var(--text-tertiary);
+  line-height: 1.45;
+}
+
+/* SuperGrok quota honesty chips (unknown / error — never invent remaining %) */
+.account-quota-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.account-quota-chip--muted {
+  color: var(--text-tertiary);
+}
+
+.account-quota-chip--warn {
+  color: var(--warn, #e6b450);
+  border-color: color-mix(in srgb, var(--warn, #e6b450) 35%, transparent);
+  background: color-mix(in srgb, var(--warn, #e6b450) 12%, transparent);
+}
+
+.account-quota-err-chip {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn, #e6b450);
+  border: 1px solid color-mix(in srgb, var(--warn, #e6b450) 35%, transparent);
+  background: color-mix(in srgb, var(--warn, #e6b450) 12%, transparent);
+  max-width: 100%;
 }
 
 .account-hero__links {

@@ -3289,6 +3289,30 @@ const en = {
   "account.quotaRemaining": "remaining",
   "account.quotaUsed": "used",
   "account.quotaUnknown": "Quota not loaded yet",
+  "account.quota.loading": "Loading SuperGrok quota…",
+  "account.quota.loadingHint": "Fetching membership usage from the host.",
+  "account.quota.signedOut": "Sign in to see SuperGrok quota",
+  "account.quota.signedOutHint":
+    "Remaining percentage comes from official Grok Build billing — never invented offline.",
+  "account.quota.chip.loading": "Loading…",
+  "account.quota.chip.unknown": "Unknown",
+  "account.quota.chip.signedOut": "—",
+  "account.quota.chip.err.network": "Network",
+  "account.quota.chip.err.auth": "Sign-in",
+  "account.quota.chip.err.host_only": "Desktop",
+  "account.quota.chip.err.other": "Soft-fail",
+  "account.quota.err.network": "Could not load quota",
+  "account.quota.err.networkHint":
+    "Network soft-fail — chat still works. Check connection or proxy (Settings → Network), then refresh. Remaining % is not invented while offline.",
+  "account.quota.err.auth": "Sign-in required for quota",
+  "account.quota.err.authHint":
+    "Auth soft-fail — token may be expired. Sign in again to refresh SuperGrok remaining. No percentage is shown until the host responds.",
+  "account.quota.err.host_only": "Desktop only",
+  "account.quota.err.host_onlyHint":
+    "SuperGrok quota needs the desktop app host. Browser preview never invents remaining %.",
+  "account.quota.err.other": "Quota load soft-fail",
+  "account.quota.err.otherHint":
+    "Could not refresh SuperGrok quota. Chat is unaffected; remaining % stays unknown until a successful probe.",
   "account.period": "Billing period",
   "account.prepaid": "Prepaid",
   "account.onDemand": "On-demand",
@@ -10624,6 +10648,30 @@ const zh: Record<MessageKey, string> = {
   "account.quotaRemaining": "剩余",
   "account.quotaUsed": "已用",
   "account.quotaUnknown": "尚未获取用量",
+  "account.quota.loading": "正在加载 SuperGrok 额度…",
+  "account.quota.loadingHint": "正在从 Host 拉取会员用量。",
+  "account.quota.signedOut": "登录后可查看 SuperGrok 额度",
+  "account.quota.signedOutHint":
+    "剩余百分比来自官方 Grok Build 计费接口——离线时不会编造数字。",
+  "account.quota.chip.loading": "加载中…",
+  "account.quota.chip.unknown": "未知",
+  "account.quota.chip.signedOut": "—",
+  "account.quota.chip.err.network": "网络",
+  "account.quota.chip.err.auth": "登录",
+  "account.quota.chip.err.host_only": "桌面端",
+  "account.quota.chip.err.other": "软失败",
+  "account.quota.err.network": "无法加载额度",
+  "account.quota.err.networkHint":
+    "网络 soft-fail——对话仍可用。请检查网络或代理（设置 → 网络）后刷新。离线时不会编造剩余百分比。",
+  "account.quota.err.auth": "需重新登录才能查看额度",
+  "account.quota.err.authHint":
+    "鉴权 soft-fail——凭证可能已过期。请重新登录以刷新 SuperGrok 剩余额度；Host 未响应前不显示百分比。",
+  "account.quota.err.host_only": "仅桌面端可用",
+  "account.quota.err.host_onlyHint":
+    "SuperGrok 额度需桌面 Host。浏览器预览不会编造剩余百分比。",
+  "account.quota.err.other": "额度加载 soft-fail",
+  "account.quota.err.otherHint":
+    "无法刷新 SuperGrok 额度（不影响对话）。成功探测前剩余百分比保持未知。",
   "account.period": "账期",
   "account.prepaid": "预付",
   "account.onDemand": "按需",

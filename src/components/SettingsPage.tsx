@@ -768,6 +768,10 @@ export interface SettingsPageProps {
    * Never invents activity cells or SuperGrok quota.
    */
   accountHeatmapError?: unknown;
+   * Soft-fail error from last account_status / billing probe.
+   * Account panel never invents remaining % when this is set without usage.
+   */
+  accountProbeError?: unknown;
   loginHint?: string | null;
   savedAccounts?: import("@/lib/api").SavedAccount[];
   activeAccountId?: string | null;
@@ -1480,6 +1484,7 @@ export function SettingsPage({
   accountLoading,
   accountBusy,
   accountHeatmapError = null,
+  accountProbeError = null,
   loginHint = null,
   savedAccounts = [],
   activeAccountId = null,
@@ -6459,6 +6464,7 @@ export function SettingsPage({
             status={account}
             loading={accountLoading}
             busy={accountBusy}
+            probeError={accountProbeError}
             locale={locale}
             t={t}
             heatmapError={accountHeatmapError}
@@ -6536,6 +6542,22 @@ export function SettingsPage({
               importChatHint: t("account.importChatHint"),
               importChatBtn: t("account.importChatBtn"),
               close: t("common.close"),
+              quotaLoading: t("account.quota.loading"),
+              quotaLoadingHint: t("account.quota.loadingHint"),
+              quotaChipLoading: t("account.quota.chip.loading"),
+              quotaChipUnknown: t("account.quota.chip.unknown"),
+              quotaChipErrNetwork: t("account.quota.chip.err.network"),
+              quotaChipErrAuth: t("account.quota.chip.err.auth"),
+              quotaChipErrHostOnly: t("account.quota.chip.err.host_only"),
+              quotaChipErrOther: t("account.quota.chip.err.other"),
+              quotaErrNetwork: t("account.quota.err.network"),
+              quotaErrNetworkHint: t("account.quota.err.networkHint"),
+              quotaErrAuth: t("account.quota.err.auth"),
+              quotaErrAuthHint: t("account.quota.err.authHint"),
+              quotaErrHostOnly: t("account.quota.err.host_only"),
+              quotaErrHostOnlyHint: t("account.quota.err.host_onlyHint"),
+              quotaErrOther: t("account.quota.err.other"),
+              quotaErrOtherHint: t("account.quota.err.otherHint"),
             }}
             loginHint={loginHint}
             savedAccounts={savedAccounts}

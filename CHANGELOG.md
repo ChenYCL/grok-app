@@ -66,6 +66,7 @@ See `docs/llm-wiki/release.md`.
 - **Stall timeline open session + empty honesty**: Reliability Stall timeline rows offer **Open session** when the chat is still in the sidebar list (`planOpenStallSession`); empty vs filter-empty copy with clear-filters CTA; human quiet duration via `formatStallDuration`. Pure `stallTimelinePro` helpers + tests; en/zh/zh-TW; no `window.confirm`.
 #### Runtime / process pool
 - **Process budget empty honesty + limit callout** (PROCESS-BUDGET-RECLAIM-PRO): pure `processBudgetPro` helpers — `resolveProcessBudgetEmptyState` (loading · unavailable · error · empty pool), `classifyProcessBudgetError` (host-only · unavailable · timeout · permission · other), `formatOccupancySummary`, `shouldShowProcessLimitCallout` / limit empty state (no recent PROCESS_LIMIT in 24h). Settings + Reliability panel never invents busy occupancy; shows honest empty-pool vs host soft-fail; last limit callout always has empty or active copy. en/zh/zh-TW + tests. Does not change spawn policy.
+- **Account SuperGrok quota honesty**: never invent remaining % when Host is silent — pure `accountQuotaHonesty` helpers (`resolveQuotaEmptyState` · `classifyQuotaError` network|auth|host_only|other · `formatQuotaUnknown` chips); Account panel unknown/empty chips + soft-fail when billing probe fails; en/zh/zh-TW + tests.
 
 ## [0.2.3] - 2026-07-31
 

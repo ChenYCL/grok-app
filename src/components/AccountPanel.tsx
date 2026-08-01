@@ -17,8 +17,14 @@ import {
   formatRelativeTime,
   localDateKeyFromIso,
   tierLabel,
-  usagePercent,
 } from "@/lib/accountUi";
+import {
+  formatQuotaRemainLabel,
+  isQuotaUsageKnown,
+  resolveQuotaEmptyState,
+  resolveQuotaErrorChip,
+  resolveQuotaPercents,
+} from "@/lib/accountQuotaHonesty";
 import {
   Heatmap,
   dateInHeatRange,
@@ -120,6 +126,23 @@ export interface AccountPanelLabels {
   importChatHint: string;
   importChatBtn: string;
   close: string;
+  /** SuperGrok quota honesty — loading / unknown / error chips */
+  quotaLoading: string;
+  quotaLoadingHint: string;
+  quotaChipLoading: string;
+  quotaChipUnknown: string;
+  quotaChipErrNetwork: string;
+  quotaChipErrAuth: string;
+  quotaChipErrHostOnly: string;
+  quotaChipErrOther: string;
+  quotaErrNetwork: string;
+  quotaErrNetworkHint: string;
+  quotaErrAuth: string;
+  quotaErrAuthHint: string;
+  quotaErrHostOnly: string;
+  quotaErrHostOnlyHint: string;
+  quotaErrOther: string;
+  quotaErrOtherHint: string;
 }
 
 export interface AccountPanelProps {
@@ -136,6 +159,10 @@ export interface AccountPanelProps {
    * never invents activity cells or SuperGrok quota from it).
    */
   heatmapError?: unknown;
+   * Soft-fail error from account_status / billing probe.
+   * Never invents remaining % — surfaces unknown/error chips instead.
+   */
+  probeError?: unknown;
   savedAccounts?: SavedAccount[];
   activeAccountId?: string | null;
   onLoginOauth: () => void;
@@ -173,6 +200,7 @@ export function AccountPanel({
   compact = false,
   loginHint = null,
   heatmapError = null,
+  probeError = null,
   savedAccounts = [],
   activeAccountId = null,
   onLoginOauth,
@@ -206,7 +234,9 @@ export function AccountPanel({
   const initials = profile ? accountInitials(profile) : "G";
   const channel = status?.channel ?? "none";
   const billing = status?.billing;
-  const usedPct = billing ? usagePercent(billing) : null;
+  const usageKnown = isQuotaUsageKnown(billing);
+  const { usedPercent: usedPct, remainingPercent: remaining } =
+    resolveQuotaPercents(billing);
   /** Same absolute clock as sidebar UserMenu (`MM-DD HH:mm`). */
   const resetTime = formatQuotaResetTime(billing?.resetsAt);
 
@@ -245,6 +275,21 @@ export function AccountPanel({
     () => listHeatmapGranularityChips(heatGranularity),
     [heatGranularity],
   );
+  /**
+   * SuperGrok quota empty / soft-fail surface.
+   * Never invent remaining % when Host is silent or probe fails.
+   */
+  const quotaEmpty = resolveQuotaEmptyState({
+    loading,
+    membership: signedIn,
+    usageKnown,
+    error: probeError,
+  });
+  const quotaErrChip =
+    usageKnown && probeError != null
+      ? resolveQuotaErrorChip(probeError)
+      : null;
+  const remainLabel = formatQuotaRemainLabel(remaining);
 
   const rangeSessionCount = selectedHeatRange
     ? sumHeatInRange(heatDays, selectedHeatRange).requests
@@ -298,17 +343,72 @@ export function AccountPanel({
     setSelectedHeatRange(null);
   };
 
-  const remaining =
-    billing?.remainingPercent != null
-      ? billing.remainingPercent
-      : usedPct != null
-        ? Math.max(0, 100 - usedPct)
-        : null;
   const products = (billing?.products ?? []).filter(
     (p) => p.usedPercent > 0 || p.productId === 1 || p.productId === 2,
   );
   const plan = billing ? tierLabel(billing, channel) : "—";
-  const hasQuota = signedIn && !!billing?.available && remaining != null;
+  /** Known remaining only — never invent when Host silent. */
+  const hasQuota = signedIn && usageKnown && remainLabel != null;
+
+  const quotaChipText = (() => {
+    if (!quotaEmpty) return null;
+    switch (quotaEmpty.chipKey) {
+      case "account.quota.chip.loading":
+        return labels.quotaChipLoading;
+      case "account.quota.chip.err.network":
+        return labels.quotaChipErrNetwork;
+      case "account.quota.chip.err.auth":
+        return labels.quotaChipErrAuth;
+      case "account.quota.chip.err.host_only":
+        return labels.quotaChipErrHostOnly;
+      case "account.quota.chip.err.other":
+        return labels.quotaChipErrOther;
+      case "account.quota.chip.unknown":
+      default:
+        return labels.quotaChipUnknown;
+    }
+  })();
+
+  const quotaEmptyTitle = (() => {
+    if (!quotaEmpty) return null;
+    if (quotaEmpty.kind === "loading") return labels.quotaLoading;
+    if (quotaEmpty.kind === "error" && quotaEmpty.error) {
+      switch (quotaEmpty.error.kind) {
+        case "network":
+          return labels.quotaErrNetwork;
+        case "auth":
+          return labels.quotaErrAuth;
+        case "host_only":
+          return labels.quotaErrHostOnly;
+        default:
+          return labels.quotaErrOther;
+      }
+    }
+    if (quotaEmpty.kind === "unknown") return labels.quotaUnknown;
+    return labels.quotaUnknown;
+  })();
+
+  const quotaEmptyBody = (() => {
+    if (!quotaEmpty) return null;
+    if (quotaEmpty.kind === "loading") return labels.quotaLoadingHint;
+    if (quotaEmpty.kind === "error" && quotaEmpty.error) {
+      switch (quotaEmpty.error.kind) {
+        case "network":
+          return labels.quotaErrNetworkHint;
+        case "auth":
+          return labels.quotaErrAuthHint;
+        case "host_only":
+          return labels.quotaErrHostOnlyHint;
+        default:
+          return labels.quotaErrOtherHint;
+      }
+    }
+    if (quotaEmpty.kind === "unknown") {
+      // Prefer host message when present; else honest billing-unavailable copy.
+      return billing?.message?.trim() || labels.billingUnavailable;
+    }
+    return null;
+  })();
 
   const canManageAccounts =
     !!onSwitchAccount ||
@@ -564,25 +664,56 @@ export function AccountPanel({
                 <div className="account-hero__plan-head">
                   <span className="account-hero__plan-name">{plan}</span>
                   <span className="account-hero__plan-remain">
-                    {remaining!.toFixed(0)}% {labels.quotaRemaining}
+                    {remainLabel} {labels.quotaRemaining}
                   </span>
                 </div>
+                {quotaErrChip ? (
+                  <span
+                    className="account-quota-err-chip"
+                    title={
+                      quotaErrChip.kind === "network"
+                        ? labels.quotaErrNetworkHint
+                        : quotaErrChip.kind === "auth"
+                          ? labels.quotaErrAuthHint
+                          : quotaErrChip.kind === "host_only"
+                            ? labels.quotaErrHostOnlyHint
+                            : labels.quotaErrOtherHint
+                    }
+                  >
+                    {quotaErrChip.kind === "network"
+                      ? labels.quotaErrNetwork
+                      : quotaErrChip.kind === "auth"
+                        ? labels.quotaErrAuth
+                        : quotaErrChip.kind === "host_only"
+                          ? labels.quotaErrHostOnly
+                          : labels.quotaErrOther}
+                  </span>
+                ) : null}
                 <div className="account-quota-bar" aria-hidden>
                   <div
                     className={
                       "account-quota-bar__fill" +
-                      ((usedPct ?? 0) >= 90
+                      (usedPct != null && usedPct >= 90
                         ? " is-danger"
-                        : (usedPct ?? 0) >= 70
+                        : usedPct != null && usedPct >= 70
                           ? " is-warn"
                           : "")
                     }
-                    style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
+                    style={{
+                      // Only paint fill when used is known — never invent 0%.
+                      width:
+                        usedPct != null
+                          ? `${Math.min(100, usedPct)}%`
+                          : "0%",
+                      opacity: usedPct != null ? 1 : 0.35,
+                    }}
                   />
                 </div>
                 <div className="account-hero__plan-meta">
                   <span>
-                    {labels.quotaUsed} {(usedPct ?? 0).toFixed(0)}%
+                    {usedPct != null
+                      ? `${labels.quotaUsed} ${usedPct.toFixed(0)}%`
+                      : labels.quotaChipUnknown}
                     {resetTime
                       ? ` · ${labels.resetsAt} ${resetTime}`
                       : ""}
@@ -602,11 +733,39 @@ export function AccountPanel({
                 </div>
               </>
             ) : (
-              <div className="account-hero__plan-empty">
+              <div
+                className={
+                  "account-hero__plan-empty" +
+                  (quotaEmpty?.softFail ? " is-soft-fail" : "")
+                }
+                data-testid="account-quota-empty"
+                data-quota-kind={quotaEmpty?.kind ?? "unknown"}
+              >
                 <span className="account-hero__plan-name">{plan}</span>
-                <span className="account-hero__plan-meta-text">
-                  {billing?.message || labels.quotaUnknown}
-                </span>
+                {quotaChipText ? (
+                  <span
+                    className={
+                      "account-quota-chip" +
+                      (quotaEmpty?.softFail
+                        ? " account-quota-chip--warn"
+                        : " account-quota-chip--muted")
+                    }
+                  >
+                    {quotaChipText}
+                  </span>
+                ) : null}
+                <div className="account-hero__plan-empty-copy">
+                  {quotaEmptyTitle ? (
+                    <span className="account-hero__plan-empty-title">
+                      {quotaEmptyTitle}
+                    </span>
+                  ) : null}
+                  {quotaEmptyBody ? (
+                    <span className="account-hero__plan-meta-text">
+                      {quotaEmptyBody}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             )}
           </div>
