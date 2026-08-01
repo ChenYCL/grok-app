@@ -41,7 +41,7 @@
 | WP-B6 | CSS domain split (batch 1) | PENDING | | |
 | WP-C1 | commands/ directory split | PENDING | | |
 | WP-C2 | session_manager/ directory split | PENDING | | |
-| WP-C3 | api/ domain modules | PENDING | | |
+| WP-C3 | api/ domain modules | PASS | (local wp-c3) | 17 modules under src/lib/api/; facade api.ts 26 lines; typecheck clean for api/*; tests 4599 pass |
 | WP-C4 | Further App.tsx shrink to wave-c numbers | PENDING | | |
 | WP-F1 | Final shrink + timer balance + ≥1k file budget | PENDING | | |
 | WP-F2 | Completion handoff doc + smoke matrix | PENDING | | |
@@ -52,6 +52,7 @@
 |------|---------|----------|-----------|---------|----------|-------------|--------|----------------|-----------|
 | baseline | 24843 | 318 | 111 | 30585 | 11622 | 7691 | 4947 | ~180 | ~53 |
 | 2026-08-01 A0 | 24842 | 318 | 111 | 30584 | 11621 | 7690 | 4946 | 204 | 53 |
+| 2026-08-01 C3 | — | — | — | — | — | — | 26 (facade) + 17 modules | — | — |
 
 ## Blockers
 
