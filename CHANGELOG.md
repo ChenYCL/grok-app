@@ -50,6 +50,8 @@ See `docs/llm-wiki/release.md`.
 #### Runtime / privacy
 - **External OTEL dual opt-in honesty** (Settings → Runtime → Privacy): surfaces CLI enterprise OpenTelemetry (`GROK_EXTERNAL_OTEL` + exporters) without inventing off when unset. Status chips (`unknown` · `incomplete` · `ready` · `off` · `host_only`), dual-opt-in checklist, content-free-by-default note, redacted env template copy (no secrets written by App). Soft-parses privacy redacted preview for `[telemetry] otel_*` when present. Pure `externalOtelHonesty` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
 - **Windows day-use checklist** (Doctor): productizes `docs/验收/windows-dayuse-acceptance.md` as an in-app honesty card — install path, CLI found, project spaces, single attachment, app update check, mirror read-only. Pure `windowsDayuseChecklist` helpers auto-probe what App can know and leave the rest **manual** (never invents SmartScreen / unsigned). Non-Windows shows N/A with “not the target of this list”. Copy summary; deep links to About / Mirror / Runtime. Settings → Runtime platform tip. en/zh/zh-TW + tests.
+#### Settings / permissions
+- **Permission rules simulator pro honesty** (Settings → Permissions): sample tool-call chips (`git status` · `rm` · `edit`), deny/ask/allow count chips, list filter with empty honesty (no rules · filter empty + clear), severity-colored simulation result chips, honesty lines (preview-only / falls through to mode), and **Copy match summary** (stable plain-text; no `window.confirm`). Pure `permissionRulesPro` helpers (`resolvePermissionRulesEmptyState` · `countRulesByAction` · `formatSimulationResult` · `suggestSampleToolCalls`) + tests; en/zh/zh-TW.
 
 ## [0.2.3] - 2026-07-31
 

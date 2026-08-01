@@ -10,7 +10,6 @@ import { IconPlus, IconShield, IconTrash } from "@/components/icons";
 import * as api from "@/lib/api";
 import {
   addRule,
-  flattenRules,
   normalizeRules,
   PERMISSION_RULE_ACTIONS,
   removeRule,
@@ -20,6 +19,13 @@ import {
   type PermissionRuleAction,
   type PermissionRulesLike,
 } from "@/lib/permissionRules";
+import {
+  countRulesByAction,
+  flattenFilteredRules,
+  formatSimulationResult,
+  resolvePermissionRulesEmptyState,
+  suggestSampleToolCalls,
+} from "@/lib/permissionRulesPro";
 import type { MessageKey } from "@/i18n";
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
@@ -37,6 +43,8 @@ const emptyRules = (): PermissionRulesLike => ({
   ask: [],
 });
 
+const SAMPLE_TOOL_CALLS = suggestSampleToolCalls();
+
 export function PermissionRulesPanel({
   t,
   onSaved,
@@ -48,8 +56,11 @@ export function PermissionRulesPanel({
   const [configPath, setConfigPath] = useState("");
   const [addAction, setAddAction] = useState<PermissionRuleAction>("allow");
   const [addText, setAddText] = useState("");
+  /** Local list filter only — never written to config. */
+  const [filter, setFilter] = useState("");
   /** Local try-call input only — never written to config. */
   const [simText, setSimText] = useState("");
+  const [copyFlash, setCopyFlash] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<{
     action: PermissionRuleAction;
     rule: string;
@@ -80,11 +91,32 @@ export function PermissionRulesPanel({
     void load();
   }, [load]);
 
-  const flat = useMemo(() => flattenRules(rules), [rules]);
+  const counts = useMemo(() => countRulesByAction(rules), [rules]);
+
+  const flat = useMemo(
+    () => flattenFilteredRules(rules, filter),
+    [rules, filter],
+  );
+
+  const emptyState = useMemo(
+    () =>
+      resolvePermissionRulesEmptyState({
+        allow: rules.allow,
+        deny: rules.deny,
+        ask: rules.ask,
+        filter,
+      }),
+    [rules, filter],
+  );
 
   const simResult = useMemo(
     () => simulatePermissionDecision(rules, simText),
     [rules, simText],
+  );
+
+  const simPresentation = useMemo(
+    () => formatSimulationResult(simResult, simText),
+    [simResult, simText],
   );
 
   const actionLabel = (action: PermissionRuleAction) =>
@@ -98,18 +130,8 @@ export function PermissionRulesPanel({
       )[action],
     );
 
-  const simDecisionLabel = () => {
-    switch (simResult.decision) {
-      case "allow":
-        return t("settings.permissionRulesSimResult.allow");
-      case "deny":
-        return t("settings.permissionRulesSimResult.deny");
-      case "ask":
-        return t("settings.permissionRulesSimResult.ask");
-      default:
-        return t("settings.permissionRulesSimResult.none");
-    }
-  };
+  const simDecisionLabel = () =>
+    t(simPresentation.labelKey as MessageKey);
 
   const persist = async (next: PermissionRulesLike) => {
     setBusy(true);
@@ -151,6 +173,18 @@ export function PermissionRulesPanel({
     await persist(next);
   };
 
+  const onCopyMatchSummary = async () => {
+    const text = simPresentation.matchSummary;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFlash(true);
+      window.setTimeout(() => setCopyFlash(false), 1600);
+    } catch {
+      onError?.(t("settings.permissionRulesSimCopyFailed"));
+    }
+  };
+
   /* Flat section inside parent settings-card — no nested card chrome. */
   return (
     <div className="perm-rules">
@@ -175,10 +209,70 @@ export function PermissionRulesPanel({
         <p className="perm-rules__empty">{t("settings.permissionRulesLoading")}</p>
       ) : (
         <>
-          {flat.length === 0 ? (
-            <p className="perm-rules__empty">
-              {t("settings.permissionRulesEmpty")}
-            </p>
+          {counts.total > 0 ? (
+            <div
+              className="perm-rules__counts"
+              aria-label={t("settings.permissionRulesCountsAria", {
+                deny: counts.deny,
+                ask: counts.ask,
+                allow: counts.allow,
+              })}
+            >
+              <span className="perm-rules__count-chip perm-rules__badge perm-rules__badge--deny">
+                {actionLabel("deny")}{" "}
+                <span className="perm-rules__count-n">{counts.deny}</span>
+              </span>
+              <span className="perm-rules__count-chip perm-rules__badge perm-rules__badge--ask">
+                {actionLabel("ask")}{" "}
+                <span className="perm-rules__count-n">{counts.ask}</span>
+              </span>
+              <span className="perm-rules__count-chip perm-rules__badge perm-rules__badge--allow">
+                {actionLabel("allow")}{" "}
+                <span className="perm-rules__count-n">{counts.allow}</span>
+              </span>
+            </div>
+          ) : null}
+
+          {counts.total > 0 ? (
+            <div className="perm-rules__filter-row">
+              <input
+                className="perm-rules__input perm-rules__filter"
+                type="search"
+                value={filter}
+                placeholder={t("settings.permissionRulesFilterPlaceholder")}
+                onChange={(e) => setFilter(e.target.value)}
+                aria-label={t("settings.permissionRulesFilterPlaceholder")}
+              />
+              {filter.trim() ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setFilter("")}
+                >
+                  {t("settings.permissionRulesFilterClear")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {emptyState ? (
+            <div className="perm-rules__empty-block">
+              <p className="perm-rules__empty">{t(emptyState.titleKey as MessageKey)}</p>
+              {emptyState.hintKey ? (
+                <p className="perm-rules__empty-hint">
+                  {t(emptyState.hintKey as MessageKey)}
+                </p>
+              ) : null}
+              {emptyState.showClearFilter ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setFilter("")}
+                >
+                  {t("settings.permissionRulesFilterClear")}
+                </button>
+              ) : null}
+            </div>
           ) : (
             <ul className="perm-rules__list" role="list">
               {flat.map(({ action, rule }) => (
@@ -262,6 +356,28 @@ export function PermissionRulesPanel({
                 {t("settings.permissionRulesSimDesc")}
               </div>
             </div>
+
+            <div
+              className="perm-rules__samples"
+              role="group"
+              aria-label={t("settings.permissionRulesSimSamples")}
+            >
+              {SAMPLE_TOOL_CALLS.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={
+                    "perm-rules__sample-chip" +
+                    (simText.trim() === s.toolCall ? " is-active" : "")
+                  }
+                  title={s.toolCall}
+                  onClick={() => setSimText(s.toolCall)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
             <div className="perm-rules__sim-row">
               <input
                 className="perm-rules__input"
@@ -271,13 +387,13 @@ export function PermissionRulesPanel({
                 onChange={(e) => setSimText(e.target.value)}
                 aria-label={t("settings.permissionRulesSimPlaceholder")}
               />
-              {simText.trim() ? (
+              {simPresentation.hasInput ? (
                 <span
-                  className={`perm-rules__badge perm-rules__badge--${simResult.decision === "none" ? "none" : simResult.decision}`}
+                  className={`perm-rules__badge perm-rules__badge--${simPresentation.decision === "none" ? "none" : simPresentation.decision} perm-rules__badge--sev-${simPresentation.severity}`}
                   title={
-                    simResult.matchedRule
+                    simPresentation.matchedRule
                       ? t("settings.permissionRulesSimMatched", {
-                          rule: simResult.matchedRule,
+                          rule: simPresentation.matchedRule,
                         })
                       : undefined
                   }
@@ -285,11 +401,28 @@ export function PermissionRulesPanel({
                   {simDecisionLabel()}
                 </span>
               ) : null}
+              {simPresentation.hasInput ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => void onCopyMatchSummary()}
+                  aria-label={t("settings.permissionRulesSimCopy")}
+                >
+                  {copyFlash
+                    ? t("settings.permissionRulesSimCopied")
+                    : t("settings.permissionRulesSimCopy")}
+                </button>
+              ) : null}
             </div>
-            {simText.trim() && simResult.matchedRule ? (
+            {simPresentation.hasInput && simPresentation.honestyKey ? (
+              <div className="perm-rules__sim-honesty">
+                {t(simPresentation.honestyKey as MessageKey)}
+              </div>
+            ) : null}
+            {simPresentation.hasInput && simPresentation.matchedRule ? (
               <div className="perm-rules__sim-match">
                 {t("settings.permissionRulesSimMatched", {
-                  rule: simResult.matchedRule,
+                  rule: simPresentation.matchedRule,
                 })}
               </div>
             ) : null}
