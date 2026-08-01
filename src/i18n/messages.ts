@@ -865,6 +865,29 @@ const en = {
   "dashboard.batchAgents": "Batch agents…",
   "dashboard.batchAgentsTitle":
     "Dispatch the same prompt to multiple projects (sessions or headless)",
+  "dashboard.peek.label": "Session details",
+  "dashboard.peek.expand": "Show details for {title}",
+  "dashboard.peek.collapse": "Hide details for {title}",
+  "dashboard.peek.status": "Status",
+  "dashboard.peek.tool": "Tool",
+  "dashboard.peek.noTool": "No active tool",
+  "dashboard.peek.project": "Project",
+  "dashboard.peek.model": "Model",
+  "dashboard.peek.activity": "Updated",
+  "dashboard.peek.openChat": "Open chat",
+  "dashboard.dispatch.title": "Dispatch new agent",
+  "dashboard.dispatch.projectLabel": "Trusted project",
+  "dashboard.dispatch.promptPlaceholder": "Prompt for a new session…",
+  "dashboard.dispatch.button": "Dispatch",
+  "dashboard.dispatch.buttonTitle":
+    "Open a new chat on the selected project, fill the prompt, and send",
+  "dashboard.dispatch.noTrusted":
+    "No trusted projects yet. Trust a project in the sidebar to dispatch.",
+  "dashboard.dispatch.emptyPrompt": "Enter a prompt to dispatch.",
+  "dashboard.dispatch.noProject": "Pick a trusted project first.",
+  "dashboard.dispatch.untrusted":
+    "That project is not trusted. Trust it before dispatching.",
+  "dashboard.dispatch.started": "Dispatched to {name}",
 
   "batchAgents.title": "Batch agents",
   "batchAgents.hint":
@@ -6956,6 +6979,28 @@ const zh: Record<MessageKey, string> = {
   "dashboard.batchAgents": "批量 Agent…",
   "dashboard.batchAgentsTitle":
     "将同一提示词派发到多个项目（会话或无头摘要）",
+  "dashboard.peek.label": "会话详情",
+  "dashboard.peek.expand": "展开 {title} 的详情",
+  "dashboard.peek.collapse": "收起 {title} 的详情",
+  "dashboard.peek.status": "状态",
+  "dashboard.peek.tool": "工具",
+  "dashboard.peek.noTool": "无运行中的工具",
+  "dashboard.peek.project": "项目",
+  "dashboard.peek.model": "模型",
+  "dashboard.peek.activity": "更新",
+  "dashboard.peek.openChat": "打开对话",
+  "dashboard.dispatch.title": "派发新 Agent",
+  "dashboard.dispatch.projectLabel": "已信任项目",
+  "dashboard.dispatch.promptPlaceholder": "新会话的提示词…",
+  "dashboard.dispatch.button": "派发",
+  "dashboard.dispatch.buttonTitle":
+    "在所选项目新建对话、填入提示词并发送",
+  "dashboard.dispatch.noTrusted":
+    "还没有已信任项目。请先在侧栏信任一个项目后再派发。",
+  "dashboard.dispatch.emptyPrompt": "请输入要派发的提示词。",
+  "dashboard.dispatch.noProject": "请先选择一个已信任项目。",
+  "dashboard.dispatch.untrusted": "该项目尚未信任。请先信任后再派发。",
+  "dashboard.dispatch.started": "已派发到 {name}",
 
   "batchAgents.title": "批量 Agent",
   "batchAgents.hint":

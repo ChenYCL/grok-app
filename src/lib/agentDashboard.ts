@@ -91,6 +91,25 @@ export function isStoppableDashboardStatus(
   );
 }
 
+/**
+ * Sort rank for dashboard rows: permission (needs you) first, then busy,
+ * connecting, error, idle. Lower = higher priority.
+ */
+export function dashboardStatusSortRank(status: AgentDashboardStatus): number {
+  switch (status) {
+    case "permission":
+      return 0;
+    case "busy":
+      return 1;
+    case "connecting":
+      return 2;
+    case "error":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
 function parseUpdatedMs(iso: string | null | undefined): number {
   if (!iso) return 0;
   const t = Date.parse(iso);
@@ -187,15 +206,11 @@ export function collectAgentDashboardRows(opts: {
     });
   }
 
-  // Sort: stoppable/busy first (newest), then error, then idle by activity.
-  const rank = (s: AgentDashboardStatus): number => {
-    if (s === "busy" || s === "permission" || s === "connecting") return 0;
-    if (s === "error") return 1;
-    return 2;
-  };
+  // Sort: permission (needs you) → busy → connecting → error → idle; then
+  // current session, then newest activity.
   rows.sort((a, b) => {
-    const ra = rank(a.status);
-    const rb = rank(b.status);
+    const ra = dashboardStatusSortRank(a.status);
+    const rb = dashboardStatusSortRank(b.status);
     if (ra !== rb) return ra - rb;
     if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
     return b.lastActivityAt - a.lastActivityAt;
@@ -212,6 +227,170 @@ export function collectAgentDashboardRows(opts: {
     out.push(row);
   }
   return out;
+}
+
+/** Status order used by {@link groupDashboardRowsByStatus}. */
+export const AGENT_DASHBOARD_STATUS_GROUP_ORDER: readonly AgentDashboardStatus[] =
+  ["permission", "busy", "connecting", "error", "idle"] as const;
+
+export type DashboardStatusGroup = {
+  status: AgentDashboardStatus;
+  rows: AgentDashboardRow[];
+};
+
+/**
+ * Group rows into status sections (permission → busy → … → idle).
+ * Empty statuses are omitted. Within each group, input order is preserved.
+ */
+export function groupDashboardRowsByStatus(
+  rows: readonly AgentDashboardRow[],
+): DashboardStatusGroup[] {
+  const buckets = new Map<AgentDashboardStatus, AgentDashboardRow[]>();
+  for (const status of AGENT_DASHBOARD_STATUS_GROUP_ORDER) {
+    buckets.set(status, []);
+  }
+  for (const row of rows) {
+    const list = buckets.get(row.status);
+    if (list) list.push(row);
+  }
+  const out: DashboardStatusGroup[] = [];
+  for (const status of AGENT_DASHBOARD_STATUS_GROUP_ORDER) {
+    const groupRows = buckets.get(status) ?? [];
+    if (groupRows.length > 0) out.push({ status, rows: groupRows });
+  }
+  return out;
+}
+
+/** Read-only peek card model for a dashboard row (no I/O). */
+export type DashboardPeekModel = {
+  title: string;
+  status: AgentDashboardStatus;
+  toolTitle: string | null;
+  projectPath: string | null;
+  projectName: string | null;
+  modelId: string | null;
+  effort: string | null;
+  lastActivityAt: number;
+  /** Always true when the row is listed (session can be focused). */
+  canOpen: boolean;
+  canStop: boolean;
+};
+
+/** Build a peek model from a collected row. */
+export function buildDashboardPeekModel(
+  row: AgentDashboardRow,
+): DashboardPeekModel {
+  return {
+    title: row.title,
+    status: row.status,
+    toolTitle: row.liveToolTitle?.trim() || null,
+    projectPath: row.projectPath,
+    projectName: row.projectName,
+    modelId: row.modelId,
+    effort: row.effort,
+    lastActivityAt: row.lastActivityAt,
+    canOpen: !!row.sessionId,
+    canStop: row.stoppable,
+  };
+}
+
+/** Default max length for a dashboard dispatch prompt. */
+export const DASHBOARD_DISPATCH_PROMPT_MAX = 8000;
+
+/**
+ * Trim + clamp a dispatch prompt. Empty / whitespace-only → "".
+ * Does not invent content.
+ */
+export function sanitizeDispatchPrompt(
+  raw: string | null | undefined,
+  max: number = DASHBOARD_DISPATCH_PROMPT_MAX,
+): string {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  const cap = Number.isFinite(max) && max > 0 ? Math.floor(max) : DASHBOARD_DISPATCH_PROMPT_MAX;
+  return s.length <= cap ? s : s.slice(0, cap);
+}
+
+export type DashboardDispatchProject = {
+  id: string;
+  name: string;
+  path: string;
+  /** Trusted projects only may receive agent work. Default true when omitted. */
+  trusted?: boolean;
+};
+
+export type DashboardDispatchFailReason =
+  | "no_project"
+  | "untrusted"
+  | "empty_prompt"
+  | "no_trusted_project";
+
+export type DashboardDispatchPlan =
+  | {
+      ok: true;
+      prompt: string;
+      project: DashboardDispatchProject;
+    }
+  | {
+      ok: false;
+      reason: DashboardDispatchFailReason;
+    };
+
+/**
+ * Plan a single-project dashboard dispatch (no I/O).
+ *
+ * Soft-fails:
+ * - `empty_prompt` — sanitized prompt is empty
+ * - `no_trusted_project` — catalog has no trusted targets (and no projectId)
+ * - `no_project` — missing / unknown projectId
+ * - `untrusted` — project found but not trusted
+ */
+export function planDashboardDispatch(opts: {
+  projectId?: string | null;
+  prompt: string;
+  projects: readonly DashboardDispatchProject[];
+}): DashboardDispatchPlan {
+  const prompt = sanitizeDispatchPrompt(opts.prompt);
+  if (!prompt) return { ok: false, reason: "empty_prompt" };
+
+  const projects = opts.projects ?? [];
+  const trustedProjects = projects.filter((p) => {
+    const id = String(p?.id ?? "").trim();
+    return !!id && p.trusted !== false;
+  });
+
+  const projectId = String(opts.projectId ?? "").trim();
+  if (!projectId) {
+    if (trustedProjects.length === 0) {
+      return { ok: false, reason: "no_trusted_project" };
+    }
+    return { ok: false, reason: "no_project" };
+  }
+
+  const project = projects.find((p) => String(p.id ?? "").trim() === projectId);
+  if (!project) return { ok: false, reason: "no_project" };
+  if (project.trusted === false) return { ok: false, reason: "untrusted" };
+
+  return {
+    ok: true,
+    prompt,
+    project: {
+      id: project.id,
+      name: project.name,
+      path: project.path,
+      trusted: true,
+    },
+  };
+}
+
+/** Trusted-only project list for the dispatch select. */
+export function trustedDashboardDispatchProjects(
+  projects: readonly DashboardDispatchProject[],
+): DashboardDispatchProject[] {
+  return projects.filter((p) => {
+    const id = String(p?.id ?? "").trim();
+    return !!id && p.trusted !== false;
+  });
 }
 
 /** Rows that accept Stop / Stop all. */

@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Agent dashboard peek + dispatch**: permission-first row sort (needs you → busy → connecting → error → idle); row chevron expands a read-only peek card (status, tool, path, model) without focusing the chat; **Open chat** inside peek focuses; top **Dispatch new agent** form (trusted project + prompt) opens a new chat, fills the composer, and soft-sends. Pure helpers `buildDashboardPeekModel` / `planDashboardDispatch` / `sanitizeDispatchPrompt` / `groupDashboardRowsByStatus` + tests; en/zh/zh-TW; no `window.confirm`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
