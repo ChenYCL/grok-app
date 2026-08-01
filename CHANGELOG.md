@@ -11,6 +11,11 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+#### Composer & chat
+- **Parallel task (worktree)**: one flow to create a linked git worktree and open a new chat there (palette `parallel-worktree-task` + worktree menu). Optional first prompt fills the composer; optional “send after open” (default off, trusted only). Pure `worktreeParallel` helpers + tests; en/zh/zh-TW
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

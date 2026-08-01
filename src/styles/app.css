@@ -3393,6 +3393,45 @@ html[data-sidebar-density="compact"] .session-row__meta {
   color: var(--danger, #e35d6a);
 }
 
+.wt-create__prompt {
+  resize: vertical;
+  min-height: 4.5em;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.wt-create__field-hint {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
+.wt-create__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.wt-create__check input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wt-create__check-label {
+  display: block;
+  font-weight: 500;
+}
+
+.wt-create__check .wt-create__field-hint {
+  display: block;
+  margin-top: 2px;
+}
+
 .cpm__worktree-remove {
   flex-shrink: 0;
   display: inline-flex;
