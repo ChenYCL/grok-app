@@ -16575,6 +16575,14 @@ export default function App() {
           phoneLayout={phoneLayout}
           focusAnchorId={settingsFocusAnchor}
           prHubHighlightPr={prHubHighlightPr}
+          onPrReviewDraftToChat={(prompt) => {
+            const text = (prompt ?? "").trim();
+            if (!text) return;
+            setDraft(text);
+            navigateWorkbench();
+            requestComposerFocus();
+            showToast(tr("prHub.draftInsertedToast"), 2800);
+          }}
           onFocusAnchorConsumed={() => setSettingsFocusAnchor(null)}
           labels={settingsLabels}
           locale={locale}

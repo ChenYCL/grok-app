@@ -6011,6 +6011,9 @@ export const zhTW: Record<MessageKey, string> = {
   "prHub.checks.none": "無檢查",
   "prHub.checks.loading": "正在載入檢查…",
   "prHub.checks.failed": "無法載入檢查",
+  "prHub.checks.fixCi": "用 Grok 修復",
+  "prHub.checks.fixCiTitle":
+    "將修復 CI 的草稿插入輸入框（不會自動傳送）",
   "prHub.comments.title": "近期留言",
   "prHub.comments.loading": "正在載入留言…",
   "prHub.comments.failed": "無法載入留言",
@@ -6020,6 +6023,10 @@ export const zhTW: Record<MessageKey, string> = {
   "prHub.comments.open": "開啟留言",
   "prHub.comments.unknownAuthor": "未知",
   "prHub.comments.emptyBody": "（無正文）",
+  "prHub.comments.askGrok": "問 Grok",
+  "prHub.comments.askGrokTitle":
+    "將關於此留言的草稿插入輸入框（不會自動傳送）",
+  "prHub.draftInsertedToast": "草稿已插入輸入框",
   "prHub.review.approved": "已核准",
   "prHub.review.changesRequested": "請求修改",
   "prHub.review.commented": "已留言",

@@ -27188,6 +27188,21 @@ html[data-theme="light"] .rim-sidebar {
   min-width: 0;
 }
 
+.pr-hub__fix-ci,
+.pr-hub__ask-grok {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.pr-hub__comment-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .pr-hub__section-title {
   margin: 0;
   font-size: 11px;

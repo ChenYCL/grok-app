@@ -6236,6 +6236,9 @@ const en = {
   "prHub.checks.none": "No checks",
   "prHub.checks.loading": "Loading checks…",
   "prHub.checks.failed": "Could not load checks",
+  "prHub.checks.fixCi": "Fix with Grok",
+  "prHub.checks.fixCiTitle":
+    "Insert a draft into the composer asking Grok to fix failing CI (does not auto-send)",
   "prHub.comments.title": "Recent comments",
   "prHub.comments.loading": "Loading comments…",
   "prHub.comments.failed": "Could not load comments",
@@ -6245,6 +6248,10 @@ const en = {
   "prHub.comments.open": "Open comment",
   "prHub.comments.unknownAuthor": "Unknown",
   "prHub.comments.emptyBody": "(no body)",
+  "prHub.comments.askGrok": "Ask Grok",
+  "prHub.comments.askGrokTitle":
+    "Insert a draft into the composer about this comment (does not auto-send)",
+  "prHub.draftInsertedToast": "Draft inserted into composer",
   "prHub.review.approved": "Approved",
   "prHub.review.changesRequested": "Changes requested",
   "prHub.review.commented": "Commented",
@@ -12259,6 +12266,9 @@ const zh: Record<MessageKey, string> = {
   "prHub.checks.none": "无检查",
   "prHub.checks.loading": "正在加载检查…",
   "prHub.checks.failed": "无法加载检查",
+  "prHub.checks.fixCi": "用 Grok 修复",
+  "prHub.checks.fixCiTitle":
+    "将修复 CI 的草稿插入输入框（不会自动发送）",
   "prHub.comments.title": "近期评论",
   "prHub.comments.loading": "正在加载评论…",
   "prHub.comments.failed": "无法加载评论",
@@ -12268,6 +12278,10 @@ const zh: Record<MessageKey, string> = {
   "prHub.comments.open": "打开评论",
   "prHub.comments.unknownAuthor": "未知",
   "prHub.comments.emptyBody": "（无正文）",
+  "prHub.comments.askGrok": "问 Grok",
+  "prHub.comments.askGrokTitle":
+    "将关于此评论的草稿插入输入框（不会自动发送）",
+  "prHub.draftInsertedToast": "草稿已插入输入框",
   "prHub.review.approved": "已批准",
   "prHub.review.changesRequested": "请求修改",
   "prHub.review.commented": "已评论",
