@@ -1613,8 +1613,13 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     tab: "app",
     anchorId: "settings-anchor-openTarget",
     labelKey: "settings.openTarget",
-    descKeys: ["settings.openTargetDesc", "settings.openFinder"],
-    keywords: ["open in", "finder", "editor"],
+    descKeys: [
+      "settings.openTargetDesc",
+      "settings.openFinder",
+      "settings.openTargetEmpty",
+      "settings.openTargetPreferredMissing",
+    ],
+    keywords: ["open in", "finder", "editor", "no editors", "preferred editor"],
   },
   // ── appearance · theme ──
   {

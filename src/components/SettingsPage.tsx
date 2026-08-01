@@ -83,6 +83,7 @@ import {
   toggleAllowedTool,
 } from "@/lib/allowedTools";
 import { detectAppPlatform } from "@/lib/appPlatform";
+import { resolveOpenEditorEmptyState } from "@/lib/openEditorHonesty";
 import {
   SANDBOX_MIN_CLI,
   childNetworkRestrictApplies,
@@ -5000,6 +5001,26 @@ export function SettingsPage({
                     <div className="settings-row__desc">
                       {t("settings.openTargetDesc")}
                     </div>
+                    {(() => {
+                      const available = editors.filter((e) => e.available);
+                      const empty = resolveOpenEditorEmptyState({
+                        editorsFound: available.length,
+                        preferred: defaultOpenTarget,
+                        availableIds: available.map((e) => e.id),
+                      });
+                      if (!empty.messageKey) return null;
+                      return (
+                        <div
+                          className={
+                            "settings-row__hint" +
+                            (empty.severity === "warn" ? " is-danger" : "")
+                          }
+                          role="status"
+                        >
+                          {t(empty.messageKey as MessageKey)}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <Select
                     value={defaultOpenTarget}
