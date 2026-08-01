@@ -4,6 +4,9 @@
  *
  * Stream hot path uses external stores so token growth does not force every
  * workbench subscriber to reconcile (Intel Retina multi-turn).
+ *
+ * Full liveMap is NOT subscribed here — use {@link useLiveMapWhen} in panels
+ * that need every session row. Shell only tracks busy membership.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -11,10 +14,7 @@ import {
   createStopLatchState,
   type StopLatchState,
 } from "@/lib/stopLatch";
-import {
-  isSessionLiveStreaming,
-  type ChatMessage,
-} from "@/lib/session";
+import { isSessionLiveStreaming, type ChatMessage } from "@/lib/session";
 import {
   settleStoppedSessionInLiveMap,
   settleStoppedSessionSnapshot,
@@ -29,9 +29,9 @@ import {
   useTranscriptMeta,
 } from "@/hooks/useSessionTranscript";
 import {
-  useLiveMap,
   useLiveMapActions,
   useLiveMapBusyIds,
+  useLiveMapBusyMeta,
 } from "@/hooks/useSessionLiveMap";
 import {
   useFocusedSession,
@@ -39,6 +39,7 @@ import {
   useSessionShellActions,
 } from "@/hooks/useSessionShell";
 import { useSessionRuntimeRefs } from "@/hooks/useSessionRuntimeRefs";
+import { sessionLiveMapStore } from "@/lib/sessionLiveMapStore";
 
 export type { SessionLiveMap };
 
@@ -51,13 +52,11 @@ export function useSessionRuntime(opts?: {
   const liveHost = useLiveHost();
   const { setSession, setLiveHost } = useSessionShellActions();
 
-  const liveMap = useLiveMap();
   const { setLiveMap } = useLiveMapActions();
   const busyIdsFromStore = useLiveMapBusyIds();
-  const { liveMapRef, liveHostRef } = useSessionRuntimeRefs({
-    liveMap,
-    liveHost,
-  });
+  const busyMeta = useLiveMapBusyMeta();
+  // Refs only — no full-map React subscription on the workbench shell.
+  const { liveMapRef, liveHostRef } = useSessionRuntimeRefs({ liveHost });
 
   /** Stop interrupt honesty latch (force unlock after budget). */
   const [stopLatch, setStopLatch] = useState<StopLatchState>(() =>
@@ -100,7 +99,6 @@ export function useSessionRuntime(opts?: {
     return () => sessionTranscriptStore.setViewingIdResolver(null);
   }, [session.sessionId]);
 
-  // Keep viewing id aligned when React session id updates (when not opening).
   useEffect(() => {
     if (viewingSessionIdRef.current == null && session.sessionId) {
       viewingSessionIdRef.current = session.sessionId;
@@ -140,19 +138,35 @@ export function useSessionRuntime(opts?: {
     return set;
   }, [busyIdsFromStore, liveHost.sessionId, liveHost.state]);
 
-  const settleStoppedSessionUi = useCallback((sessionId: string) => {
-    setLiveMap((prev) => {
-      const next = settleStoppedSessionInLiveMap(prev, sessionId);
-      liveMapRef.current = next;
-      return next;
-    });
-    setLiveHost((prev) => {
-      const next = settleStoppedSessionSnapshot(prev, sessionId);
-      liveHostRef.current = next;
-      return next;
-    });
-    setSession((prev) => settleStoppedSessionSnapshot(prev, sessionId));
-  }, [setLiveMap, setLiveHost, setSession, liveMapRef, liveHostRef]);
+  /** Busy session count for tray / chrome (no full-map subscription). */
+  const liveMapBusyCount = useMemo(() => {
+    let n = busyMeta.busyCount;
+    if (
+      liveHost.sessionId &&
+      isSessionLiveStreaming(liveHost.state) &&
+      !busyIdsFromStore.has(liveHost.sessionId)
+    ) {
+      n += 1;
+    }
+    return n;
+  }, [busyMeta.busyCount, busyIdsFromStore, liveHost.sessionId, liveHost.state]);
+
+  const settleStoppedSessionUi = useCallback(
+    (sessionId: string) => {
+      setLiveMap((prev) => {
+        const next = settleStoppedSessionInLiveMap(prev, sessionId);
+        liveMapRef.current = next;
+        return next;
+      });
+      setLiveHost((prev) => {
+        const next = settleStoppedSessionSnapshot(prev, sessionId);
+        liveHostRef.current = next;
+        return next;
+      });
+      setSession((prev) => settleStoppedSessionSnapshot(prev, sessionId));
+    },
+    [setLiveMap, setLiveHost, setSession, liveMapRef, liveHostRef],
+  );
 
   const stopGate = useMemo(
     () =>
@@ -175,15 +189,18 @@ export function useSessionRuntime(opts?: {
     stopLatchRef.current = idle;
   }, []);
 
+  /** Latest full map for event handlers (always fresh; not a React subscription). */
+  const getLiveMap = useCallback(() => sessionLiveMapStore.getMap(), []);
+
   return {
     session,
     setSession,
     liveHost,
     setLiveHost,
     liveHostRef,
-    liveMap,
-    setLiveMap,
+    /** @deprecated Prefer getLiveMap() / useLiveMapWhen — kept as ref for Host events. */
     liveMapRef,
+    setLiveMap,
     stopLatch,
     setStopLatch,
     stopLatchRef,
@@ -198,6 +215,8 @@ export function useSessionRuntime(opts?: {
     bumpViewEpoch,
     patchSessionMessages,
     busyIds,
+    liveMapBusyCount,
+    getLiveMap,
     settleStoppedSessionUi,
     stopGate,
     effectiveCanSend,

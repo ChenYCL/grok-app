@@ -918,6 +918,7 @@ import {
 import type { ContextMenuState } from "@/lib/app/appDialogTypes";
 import { useSessionRuntime } from "@/hooks/useSessionRuntime";
 import { sessionTranscriptStore } from "@/lib/sessionTranscriptStore";
+import { useLiveMapWhen } from "@/hooks/useSessionLiveMap";
 import { useComposerController } from "@/hooks/useComposerController";
 import { useAppDialogs } from "@/hooks/useAppDialogs";
 import { useSessionHostEvents } from "@/hooks/useSessionHostEvents";
@@ -1173,9 +1174,10 @@ export function AppWorkbench() {
     liveHost,
     setLiveHost,
     liveHostRef,
-    liveMap,
     setLiveMap,
     liveMapRef,
+    liveMapBusyCount,
+    getLiveMap,
     stopLatch,
     setStopLatch,
     stopLatchRef,
@@ -2174,6 +2176,14 @@ export function AppWorkbench() {
     sawModelOutput?: boolean;
     sawToolActivity?: boolean;
   } | null>(null);
+
+  // Full multi-session liveMap only while chrome that needs every row is open.
+  const liveMap = useLiveMapWhen(
+    showReliability ||
+      agentDashboardOpen ||
+      tasksPanelOpen ||
+      streamStall != null,
+  );
   /** Queue item currently being steered into the live turn. */
   const [guidingQueueItemId, setGuidingQueueItemId] = useState<string | null>(null);
   /** Queue item open in the edit dialog (`null` when closed). */
@@ -2600,12 +2610,12 @@ export function AppWorkbench() {
   useEffect(() => {
     const resolved = resolveTrayBusyBadgeCount({
       enabled: trayBusyBadge,
-      busyCount: countBusyLiveMapSessions(liveMap),
+      busyCount: liveMapBusyCount,
       isSecondaryWindow,
     });
     if (!resolved.apply) return;
     void api.traySetBusyCount(resolved.count);
-  }, [liveMap, trayBusyBadge, isSecondaryWindow]);
+  }, [liveMapBusyCount, trayBusyBadge, isSecondaryWindow]);
 
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
@@ -3914,7 +3924,7 @@ export function AppWorkbench() {
       return;
     }
     const foreignBusy =
-      Object.entries(liveMap).some(
+      Object.entries(getLiveMap()).some(
         ([id, snap]) =>
           id !== s.id &&
           (snap.state === "streaming" || snap.state === "awaiting_permission"),
@@ -15217,7 +15227,7 @@ export function AppWorkbench() {
             );
           }}
           trayBusyBadge={trayBusyBadge}
-          trayBusyCount={countBusyLiveMapSessions(liveMap)}
+          trayBusyCount={liveMapBusyCount}
           onTrayBusyBadge={(v) => {
             saveTrayBusyBadgePref(v, localStorage);
             setTrayBusyBadge(v);

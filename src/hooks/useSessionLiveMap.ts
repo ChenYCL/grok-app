@@ -22,6 +22,38 @@ export function useLiveMap(): SessionLiveMap {
   );
 }
 
+const EMPTY_LIVE_MAP: SessionLiveMap = Object.freeze({}) as SessionLiveMap;
+
+/**
+ * Subscribe to the full live map only while `enabled` is true.
+ * When panels (dashboard / reliability / stall / tasks) are closed, the
+ * workbench shell does not re-render on every tool-title liveMap tick.
+ */
+export function useLiveMapWhen(enabled: boolean): SessionLiveMap {
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!enabled) return () => {};
+      return sessionLiveMapStore.subscribeMap(onStoreChange);
+    },
+    [enabled],
+  );
+  const getSnapshot = useCallback((): SessionLiveMap => {
+    if (!enabled) return EMPTY_LIVE_MAP;
+    return sessionLiveMapStore.getMapSnapshot();
+  }, [enabled]);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/** Single-session snapshot without forcing a full-map subscription when idle. */
+export function useLiveSessionSnapshotWhen(
+  sessionId: string | null | undefined,
+  enabled: boolean,
+): SessionLiveSnapshot | null {
+  const map = useLiveMapWhen(enabled && !!sessionId);
+  if (!sessionId || !enabled) return null;
+  return map[sessionId] ?? null;
+}
+
 /** Busy membership only — sidebar chrome / tray badge. */
 export function useLiveMapBusyMeta(): LiveMapBusyMeta {
   return useSyncExternalStore(
@@ -42,9 +74,7 @@ export function useLiveMapBusyIds(): Set<string> {
 export function useLiveSessionSnapshot(
   sessionId: string | null | undefined,
 ): SessionLiveSnapshot | null {
-  const map = useLiveMap();
-  if (!sessionId) return null;
-  return map[sessionId] ?? null;
+  return useLiveSessionSnapshotWhen(sessionId, true);
 }
 
 export function useLiveMapActions() {
