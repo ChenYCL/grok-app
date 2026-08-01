@@ -123,6 +123,15 @@ import {
   isResourceTextEditable,
 } from "@/lib/resourceEdit";
 import {
+  closeResourceTab,
+  openResourceTab,
+  resolveResourceTabsEmptyState,
+  resourceTabPathsEqual,
+  setActiveTab,
+  type OpenResourceTabResult,
+  type ResourceTab,
+} from "@/lib/resourceTabs";
+import {
   asideSurfaceFromPreviewKind,
   type AsideLayoutHint,
   type AsideSurface,
@@ -309,6 +318,50 @@ interface FileTab {
   /** true = textarea editor; false = preview (markdown default). */
   editMode?: boolean;
   saving?: boolean;
+}
+
+/** Slim strip model for pure open/close/LRU helpers. */
+function fileTabToResourceTab(t: FileTab): ResourceTab {
+  const path =
+    t.tabKind === "url"
+      ? t.url || t.relativePath
+      : t.absolutePath || t.relativePath;
+  return {
+    id: t.id,
+    path,
+    name: t.name,
+    kind: t.preview?.kind,
+    dirty: isResourceDraftDirty(t.draftText, t.baselineText),
+  };
+}
+
+/** Match a file tab by absolute or relative path (normalized). */
+function fileTabMatchesPath(t: FileTab, path: string): boolean {
+  if (t.tabKind === "url") {
+    return resourceTabPathsEqual(t.url || t.relativePath, path);
+  }
+  if (t.absolutePath && resourceTabPathsEqual(t.absolutePath, path)) return true;
+  if (t.relativePath && resourceTabPathsEqual(t.relativePath, path)) return true;
+  return false;
+}
+
+/**
+ * Apply pure open result onto rich FileTab list (order + LRU drops + optional create).
+ */
+function mergeFileTabsFromOpen(
+  prev: FileTab[],
+  open: OpenResourceTabResult,
+  created?: FileTab,
+): FileTab[] {
+  const byId = new Map(prev.map((t) => [t.id, t]));
+  if (created) byId.set(created.id, created);
+  for (const id of open.droppedIds) byId.delete(id);
+  const out: FileTab[] = [];
+  for (const r of open.tabs) {
+    const f = byId.get(r.id);
+    if (f) out.push(f);
+  }
+  return out;
 }
 
 function formatSize(n: number): string {
@@ -509,6 +562,14 @@ export function ResourceViewer({
   });
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
+  const filesTabsEmpty = useMemo(
+    () =>
+      resolveResourceTabsEmptyState({
+        tabCount: tabs.length,
+        sideMode,
+      }),
+    [tabs.length, sideMode],
+  );
   const changeCount = sessionChanges.length;
   const workspaceCount = workspaceFiles.length;
   const totalChangeBadge = changeCount + workspaceCount;
@@ -2185,18 +2246,28 @@ export function ResourceViewer({
       return;
     }
     const existing = tabs.find(
-      (t) => t.tabKind !== "url" && t.relativePath === relativePath,
+      (t) => t.tabKind !== "url" && fileTabMatchesPath(t, relativePath),
     );
-    if (existing) {
-      setTabs((prev) => {
-        const hit = prev.find((t) => t.id === existing.id);
-        if (!hit) return prev;
-        return [hit, ...prev.filter((t) => t.id !== existing.id)];
-      });
-      setActiveId(existing.id);
+    const keyPath = existing
+      ? fileTabToResourceTab(existing).path
+      : relativePath;
+    const open = openResourceTab(
+      tabs.map(fileTabToResourceTab),
+      keyPath,
+      existing
+        ? {
+            id: existing.id,
+            name: existing.name,
+            kind: existing.preview?.kind,
+          }
+        : { name: baseName(relativePath) },
+    );
+    if (!open.created) {
+      setTabs((prev) => mergeFileTabsFromOpen(prev, open));
+      setActiveId(open.activeId);
       return;
     }
-    const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const id = open.activeId;
     const tab: FileTab = {
       id,
       relativePath,
@@ -2208,8 +2279,7 @@ export function ResourceViewer({
       loading: true,
       tabKind: "file",
     };
-    // Newest tab on the left
-    setTabs((prev) => [tab, ...prev]);
+    setTabs((prev) => mergeFileTabsFromOpen(prev, open, tab));
     setActiveId(id);
     try {
       const r = await api.fsReadFile(projectPath, relativePath);
@@ -2244,21 +2314,27 @@ export function ResourceViewer({
       const norm = absolutePath.trim();
       if (!norm) return;
       const existing = tabs.find(
-        (t) =>
-          t.tabKind !== "url" &&
-          (t.absolutePath === norm || t.relativePath === norm),
+        (t) => t.tabKind !== "url" && fileTabMatchesPath(t, norm),
       );
-      if (existing) {
-        // Move existing to front + activate (Chrome-like focus)
-        setTabs((prev) => {
-          const hit = prev.find((t) => t.id === existing.id);
-          if (!hit) return prev;
-          return [hit, ...prev.filter((t) => t.id !== existing.id)];
-        });
-        setActiveId(existing.id);
+      const keyPath = existing ? fileTabToResourceTab(existing).path : norm;
+      const open = openResourceTab(
+        tabs.map(fileTabToResourceTab),
+        keyPath,
+        existing
+          ? {
+              id: existing.id,
+              name: title || existing.name,
+              kind: existing.preview?.kind,
+            }
+          : { name: title || baseName(norm) },
+      );
+      if (!open.created) {
+        // Move existing to front + activate (Chrome-like focus / MRU)
+        setTabs((prev) => mergeFileTabsFromOpen(prev, open));
+        setActiveId(open.activeId);
         return;
       }
-      const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const id = open.activeId;
       const tab: FileTab = {
         id,
         relativePath: norm,
@@ -2270,7 +2346,7 @@ export function ResourceViewer({
         loading: true,
         tabKind: "file",
       };
-      setTabs((prev) => [tab, ...prev]);
+      setTabs((prev) => mergeFileTabsFromOpen(prev, open, tab));
       setActiveId(id);
       try {
         const r = await api.fsOpenPath(norm, projectPath);
@@ -2315,18 +2391,29 @@ export function ResourceViewer({
     (url: string, title?: string) => {
       const u = url.trim();
       if (!u) return;
-      const existing = tabs.find((t) => t.tabKind === "url" && t.url === u);
-      if (existing) {
-        setActiveId(existing.id);
-        return;
-      }
-      const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const existing = tabs.find(
+        (t) => t.tabKind === "url" && fileTabMatchesPath(t, u),
+      );
       let name = title || u;
       try {
         name = title || new URL(u).hostname || u;
       } catch {
         /* keep */
       }
+      const keyPath = existing ? fileTabToResourceTab(existing).path : u;
+      const open = openResourceTab(
+        tabs.map(fileTabToResourceTab),
+        keyPath,
+        existing
+          ? { id: existing.id, name: title || existing.name, kind: "url" }
+          : { name, kind: "url" },
+      );
+      if (!open.created) {
+        setTabs((prev) => mergeFileTabsFromOpen(prev, open));
+        setActiveId(open.activeId);
+        return;
+      }
+      const id = open.activeId;
       const tab: FileTab = {
         id,
         relativePath: u,
@@ -2339,7 +2426,7 @@ export function ResourceViewer({
         url: u,
         tabKind: "url",
       };
-      setTabs((prev) => [tab, ...prev]);
+      setTabs((prev) => mergeFileTabsFromOpen(prev, open, tab));
       setActiveId(id);
     },
     [tabs],
@@ -2493,19 +2580,20 @@ export function ResourceViewer({
     (id: string) => {
       let remaining = -1;
       setTabs((prev) => {
-        const idx = prev.findIndex((t) => t.id === id);
-        if (idx < 0) {
-          remaining = prev.length;
-          return prev;
-        }
-        const next = prev.filter((t) => t.id !== id);
-        remaining = next.length;
-        if (activeId === id) {
-          // Prefer neighbor on the left (newer), else right
-          const neighbor = next[Math.max(0, idx - 1)] ?? next[0] ?? null;
-          setActiveId(neighbor?.id ?? null);
-        }
-        return next;
+        const closed = closeResourceTab(
+          prev.map(fileTabToResourceTab),
+          activeId,
+          id,
+        );
+        remaining = closed.tabs.length;
+        setActiveId(closed.activeId);
+        if (closed.tabs.length === prev.length) return prev;
+        const keep = new Set(closed.tabs.map((t) => t.id));
+        // Preserve pure-helper order (same relative order minus closed).
+        const byId = new Map(prev.map((t) => [t.id, t]));
+        return closed.tabs
+          .map((r) => byId.get(r.id))
+          .filter((t): t is FileTab => !!t && keep.has(t.id));
       });
       if (remaining === 0) closePaneIfNoTabs(0);
     },
@@ -3432,9 +3520,11 @@ export function ResourceViewer({
       <div className="rp-chrome">
         <div className="rp-tabs" role="tablist" aria-label={tr("resources.files")}>
           <div className="rp-tabs__scroll">
-            {tabs.length === 0 ? (
+            {filesTabsEmpty ? (
               <div className="rp-tabs__placeholder">
-                <span className="rp-tabs__hint">{tr("resources.emptyPreview")}</span>
+                <span className="rp-tabs__hint">
+                  {tr(filesTabsEmpty.titleKey)}
+                </span>
               </div>
             ) : (
               tabs.map((t) => {
@@ -3456,9 +3546,18 @@ export function ResourceViewer({
                       className={
                         "rp-tab" +
                         (active ? " is-active" : " is-inactive") +
-                        (t.tabKind === "url" ? " rp-tab--url" : "")
+                        (t.tabKind === "url" ? " rp-tab--url" : "") +
+                        (isResourceDraftDirty(t.draftText, t.baselineText)
+                          ? " is-dirty"
+                          : "")
                       }
-                      onClick={() => setActiveId(t.id)}
+                      onClick={() => {
+                        const next = setActiveTab(
+                          tabs.map(fileTabToResourceTab),
+                          t.id,
+                        );
+                        setActiveId(next.activeId);
+                      }}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -3800,7 +3899,9 @@ export function ResourceViewer({
                   ? tr("changes.empty")
                   : sideMode === "changes"
                     ? tr("changes.pickTitle")
-                    : tr("resources.emptyPreview")}
+                    : tr(
+                        filesTabsEmpty?.titleKey ?? "resources.emptyPreview",
+                      )}
               </div>
               <div className="rp__empty-desc">
                 {sideMode === "changes" &&
@@ -3809,7 +3910,10 @@ export function ResourceViewer({
                   ? tr("changes.emptyHint")
                   : sideMode === "changes"
                     ? tr("changes.pickHint")
-                    : tr("resources.emptyPreviewHint")}
+                    : tr(
+                        filesTabsEmpty?.hintKey ??
+                          "resources.emptyPreviewHint",
+                      )}
               </div>
               {sideMode === "changes" &&
               (changeCount > 0 || workspaceCount > 0) ? (
