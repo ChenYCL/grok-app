@@ -235,12 +235,20 @@ import {
   COMPACTION_MODES,
   DEFAULT_COMPACTION_DETAIL,
   DEFAULT_COMPACTION_MODE,
+  cliSupportsCompactionFlags,
   compactionDetailApplies,
   normalizeCompactionDetail,
   normalizeCompactionMode,
   type CompactionDetailId,
   type CompactionModeId,
 } from "@/lib/compactionMode";
+import {
+  buildCompactDialogFooter,
+  buildCompactPresetNote,
+  compactSettingsApplyMessageKey,
+  resolveCompactApplyEffect,
+  sessionHasLiveAgent,
+} from "@/lib/compactApplyHonesty";
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import {
@@ -8581,9 +8589,8 @@ export default function App() {
   };
 
   const compactPresetNote = (id: CompactPresetId): string => {
-    if (id === "light") return tr("slash.compactPresetNote.light");
-    if (id === "aggressive") return tr("slash.compactPresetNote.aggressive");
-    return tr("slash.compactPresetNote.standard");
+    const { messageKey } = buildCompactPresetNote(id);
+    return tr(messageKey);
   };
 
   const selectCompactPreset = (id: CompactPresetId) => {
@@ -17710,6 +17717,15 @@ export default function App() {
               api.settingsSet({ ...s, compactionDetail: next }),
             );
           }}
+          compactionApplyNote={tr(
+            compactSettingsApplyMessageKey(
+              resolveCompactApplyEffect({
+                hasLiveAgent: sessionHasLiveAgent(session.state),
+                cliSupportsFlags: cliSupportsCompactionFlags(cliInfo.version),
+                forSettingsChange: true,
+              }),
+            ) as MessageKey,
+          )}
           twoPassCompactionEnabled={twoPassCompactionEnabled}
           onTwoPassCompactionEnabled={(v) => {
             setTwoPassCompactionEnabled(v);
@@ -24859,6 +24875,67 @@ export default function App() {
             <p className="compact-modal__hint">
               {tr("slash.compactEstimateHint")}
             </p>
+            {(() => {
+              const last = contextUsageDisplay.lastCompact;
+              const footer = buildCompactDialogFooter({
+                hasLiveAgent: sessionHasLiveAgent(session.state),
+                cliSupportsFlags: cliSupportsCompactionFlags(cliInfo.version),
+                mode: compactionMode,
+                detail: compactionDetail,
+                tokensBefore: last?.tokensBefore,
+                tokensAfter: last?.tokensAfter,
+              });
+              const modeLabel = tr(footer.dialog.modeLabelKey as MessageKey);
+              const detailLabel = footer.dialog.detailLabelKey
+                ? tr(footer.dialog.detailLabelKey as MessageKey)
+                : "";
+              const savingsVars =
+                footer.dialog.hasKnownSavings &&
+                footer.dialog.tokensBefore != null &&
+                footer.dialog.tokensAfter != null &&
+                footer.dialog.tokensSaved != null
+                  ? {
+                      before: formatTokenCount(
+                        footer.dialog.tokensBefore,
+                        locale,
+                      ),
+                      after: formatTokenCount(
+                        footer.dialog.tokensAfter,
+                        locale,
+                      ),
+                      saved: formatTokenCount(
+                        Math.abs(footer.dialog.tokensSaved),
+                        locale,
+                      ),
+                    }
+                  : {};
+              return (
+                <div
+                  className="compact-modal__honesty"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p className="compact-modal__honesty-line">
+                    {tr(footer.apply.messageKey as MessageKey, footer.apply.vars)}
+                  </p>
+                  <p className="compact-modal__honesty-line">
+                    {tr(footer.mode.messageKey as MessageKey, {
+                      mode: modeLabel,
+                      detail: detailLabel,
+                    })}
+                  </p>
+                  <p className="compact-modal__honesty-line">
+                    {tr("slash.compactApply.presetNote")}
+                  </p>
+                  <p className="compact-modal__honesty-line">
+                    {tr(
+                      footer.savings.messageKey as MessageKey,
+                      savingsVars,
+                    )}
+                  </p>
+                </div>
+              );
+            })()}
             <label className="compact-modal__field-label" htmlFor="compact-note">
               {tr("slash.compactNote")}
             </label>

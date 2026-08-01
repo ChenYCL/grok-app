@@ -22132,6 +22132,24 @@ div.composer__input:empty::before {
   margin-top: -6px;
 }
 
+.compact-modal__honesty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--menu-item-radius, 8px);
+  border: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent);
+  background: color-mix(in srgb, var(--bg-code) 45%, transparent);
+}
+
+.compact-modal__honesty-line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
 .compact-modal__field-label {
   margin: 0 0 -8px;
   font-size: 12px;
