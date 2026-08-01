@@ -58,6 +58,11 @@ import {
   type ReliabilityStallSignal,
   type StallHistoryEntry,
 } from "@/lib/reliabilityCenter";
+import {
+  formatStallDuration,
+  planOpenStallSession,
+  resolveStallTimelineEmptyState,
+} from "@/lib/stallTimelinePro";
 
 export type ReliabilityCenterModalProps = {
   open: boolean;
@@ -65,8 +70,13 @@ export type ReliabilityCenterModalProps = {
   locale: Locale;
   view: ReliabilityCenterView;
   onOpenDoctor: () => void;
-  /** Jump to a busy session (optional). */
+  /** Jump to a busy / stall session (optional). */
   onSelectSession?: (sessionId: string) => void;
+  /**
+   * Session ids currently known (sidebar / list). Enables Open session on
+   * stall timeline rows when the chat still exists.
+   */
+  existingSessionIds?: ReadonlySet<string> | readonly string[];
   /**
    * Display-only: show Goal orchestration section (CLI goal_updated events).
    * Default true when omitted.
@@ -220,18 +230,27 @@ function StallRow({
   signal,
   t,
   locale,
+  onSelect,
+  existingSessionIds,
 }: {
   signal: ReliabilityStallSignal | StallHistoryEntry;
   t: ReturnType<typeof createT>;
   locale: Locale;
+  onSelect?: (sessionId: string) => void;
+  existingSessionIds?: ReadonlySet<string> | readonly string[];
 }) {
   const when = formatWhen(signal.at, locale);
-  const secs =
-    signal.stallSeconds != null
-      ? t("reliability.stall.seconds", {
-          seconds: String(signal.stallSeconds),
-        })
+  const durationLabel = formatStallDuration(signal.stallSeconds);
+  const secs = durationLabel
+    ? t("reliability.stall.seconds", {
+        duration: durationLabel,
+      })
+    : null;
+  const openPlan =
+    onSelect != null
+      ? planOpenStallSession(signal, existingSessionIds)
       : null;
+
   return (
     <li className="reliab-card__row">
       <div className="reliab-card__row-main">
@@ -250,6 +269,19 @@ function StallRow({
           .filter(Boolean)
           .join(" · ")}
       </div>
+      {openPlan?.ok ? (
+        <div className="reliab-card__actions">
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => onSelect?.(openPlan.sessionId)}
+            data-testid="reliab-timeline-open-session"
+            title={t("reliability.timeline.openSession")}
+          >
+            {t("reliability.timeline.openSession")}
+          </button>
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -383,6 +415,7 @@ export function ReliabilityCenterModal({
   view,
   onOpenDoctor,
   onSelectSession,
+  existingSessionIds,
   goalOrchUiEnabled = true,
   goalOrchEvents = [],
   lastProcessLimit = null,
@@ -492,6 +525,17 @@ export function ReliabilityCenterModal({
         kind: historyKind,
       }),
     [stallHistory, historyQuery, historyKind],
+  );
+
+  const timelineEmpty = useMemo(
+    () =>
+      resolveStallTimelineEmptyState({
+        total: stallHistory.length,
+        filtered: filteredHistory.length,
+        query: historyQuery,
+        kind: historyKind,
+      }),
+    [stallHistory.length, filteredHistory.length, historyQuery, historyKind],
   );
 
   const clearHistoryPlan = useMemo(
@@ -1007,7 +1051,14 @@ export function ReliabilityCenterModal({
             {view.hasStalls ? (
               <ul className="reliab-card__list">
                 {view.stalls.signals.map((s) => (
-                  <StallRow key={s.id} signal={s} t={t} locale={locale} />
+                  <StallRow
+                    key={s.id}
+                    signal={s}
+                    t={t}
+                    locale={locale}
+                    onSelect={onSelectSession}
+                    existingSessionIds={existingSessionIds}
+                  />
                 ))}
               </ul>
             ) : (
@@ -1018,6 +1069,7 @@ export function ReliabilityCenterModal({
           <section
             className="reliab-card"
             aria-labelledby="reliab-timeline-title"
+            data-testid="reliab-timeline-section"
           >
             <header className="reliab-card__head">
               <h3 id="reliab-timeline-title" className="reliab-card__title">
@@ -1031,9 +1083,16 @@ export function ReliabilityCenterModal({
             </header>
 
             {stallHistory.length === 0 ? (
-              <p className="reliab-card__empty">
-                {t("reliability.timeline.empty")}
-              </p>
+              <div
+                className="reliab-card__empty"
+                role="status"
+                data-testid="reliab-timeline-empty"
+              >
+                <p>{t("reliability.timeline.empty")}</p>
+                <p className="reliab-card__sub reliab-card__sub--muted">
+                  {t("reliability.timeline.emptyHint")}
+                </p>
+              </div>
             ) : (
               <>
                 <div className="reliab-timeline__toolbar">
@@ -1097,14 +1156,44 @@ export function ReliabilityCenterModal({
                   ))}
                 </div>
 
-                {filteredHistory.length === 0 ? (
-                  <p className="reliab-card__empty">
-                    {t("reliability.timeline.emptyFilter")}
-                  </p>
+                {timelineEmpty ? (
+                  <div
+                    className="reliab-card__empty"
+                    role="status"
+                    data-testid="reliab-timeline-filter-empty"
+                  >
+                    <p>{t(timelineEmpty.titleKey as MessageKey)}</p>
+                    {timelineEmpty.hintKey ? (
+                      <p className="reliab-card__sub reliab-card__sub--muted">
+                        {t(timelineEmpty.hintKey as MessageKey)}
+                      </p>
+                    ) : null}
+                    {timelineEmpty.showClearFilters ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        style={{ marginTop: 8 }}
+                        onClick={() => {
+                          setHistoryQuery("");
+                          setHistoryKind("all");
+                        }}
+                        data-testid="reliab-timeline-clear-filters"
+                      >
+                        {t("reliability.timeline.clearFilters")}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : (
                   <ul className="reliab-card__list">
                     {filteredHistory.map((s) => (
-                      <StallRow key={s.id} signal={s} t={t} locale={locale} />
+                      <StallRow
+                        key={s.id}
+                        signal={s}
+                        t={t}
+                        locale={locale}
+                        onSelect={onSelectSession}
+                        existingSessionIds={existingSessionIds}
+                      />
                     ))}
                   </ul>
                 )}

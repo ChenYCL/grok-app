@@ -20840,6 +20840,7 @@ export default function App() {
         goalOrchUiEnabled={goalOrchUiEnabled}
         goalOrchEvents={goalOrchEvents}
         lastProcessLimit={lastProcessLimit}
+        existingSessionIds={sessions.map((s) => s.id)}
         onOpenDoctor={() => void openDoctor()}
         onSelectSession={(id) => {
           setShowReliability(false);

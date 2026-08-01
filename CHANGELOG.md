@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Stall timeline open session + empty honesty**: Reliability Stall timeline rows offer **Open session** when the chat is still in the sidebar list (`planOpenStallSession`); empty vs filter-empty copy with clear-filters CTA; human quiet duration via `formatStallDuration`. Pure `stallTimelinePro` helpers + tests; en/zh/zh-TW; no `window.confirm`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
