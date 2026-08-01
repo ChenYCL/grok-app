@@ -18,6 +18,16 @@ import { IconCopy, IconDeviceMobile } from "@/components/icons";
 import type { MirrorStatus } from "@/lib/api";
 import * as api from "@/lib/api";
 import {
+  clampMirrorMaxClients,
+  formatMirrorClientCapLine,
+  mirrorClientCapToneClass,
+  resolveMirrorCapEmptyState,
+  resolveMirrorClientCapState,
+  type MirrorCapEmptyState,
+  type MirrorClientCapKind,
+  type MirrorClientCapState,
+} from "@/lib/mirrorClientCapPro";
+import {
   deriveMirrorHostStatus,
   mirrorDiagnosticDisplay,
   mirrorHostPhaseClass,
@@ -40,7 +50,6 @@ import {
   MIRROR_MIN_CLIENTS,
   MIRROR_WRITE_CATEGORIES,
   isBroadMirrorWriteSurface,
-  normalizeMirrorMaxClients,
   type MirrorWriteCategoryId,
 } from "@/lib/mirrorWriteSurface";
 
@@ -109,6 +118,21 @@ export type MirrorConnectLabels = {
   maxClientsLabel: string;
   maxClientsHint: string;
   maxClientsValue: string;
+  /** Live cap bar / chips (MIRROR-CLIENT-CAP-PRO). */
+  capLine: string;
+  capOk: string;
+  capNearFull: string;
+  capFull: string;
+  capWriteOnWarn: string;
+  capFullBanner: string;
+  capFullHint: string;
+  capNearFullHint: string;
+  capWriteOnWarnHint: string;
+  capOkHint: string;
+  capEmptyStopped: string;
+  capEmptyStoppedHint: string;
+  capEmptyZero: string;
+  capEmptyZeroHint: string;
   /** Collapsible local write-ACL audit log. */
   auditTitle: string;
   auditEmpty: string;
@@ -307,6 +331,132 @@ function categoryLabel(
   }
 }
 
+function capKindChipLabel(
+  kind: MirrorClientCapKind,
+  labels: MirrorConnectLabels,
+): string {
+  switch (kind) {
+    case "full":
+      return labels.capFull;
+    case "near_full":
+      return labels.capNearFull;
+    case "write_on_warn":
+      return labels.capWriteOnWarn;
+    case "ok":
+    default:
+      return labels.capOk;
+  }
+}
+
+function capKindHintLabel(
+  kind: MirrorClientCapKind,
+  labels: MirrorConnectLabels,
+): string {
+  switch (kind) {
+    case "full":
+      return labels.capFullHint;
+    case "near_full":
+      return labels.capNearFullHint;
+    case "write_on_warn":
+      return labels.capWriteOnWarnHint;
+    case "ok":
+    default:
+      return labels.capOkHint;
+  }
+}
+
+function MirrorClientCapStrip({
+  labels,
+  cap,
+  empty,
+  running,
+}: {
+  labels: MirrorConnectLabels;
+  cap: MirrorClientCapState;
+  empty: MirrorCapEmptyState | null;
+  running: boolean;
+}) {
+  const toneClass = mirrorClientCapToneClass(cap.tone);
+  const line = formatMirrorClientCapLine(cap, labels.capLine);
+  const chip = capKindChipLabel(cap.kind, labels);
+
+  return (
+    <div
+      className={"mirror-connect__cap" + (toneClass ? ` ${toneClass}` : "")}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="mirror-connect__cap-head">
+        <span className="mirror-connect__cap-line">{line}</span>
+        {running ? (
+          <span
+            className={
+              "mirror-connect__cap-chip" +
+              (cap.kind === "full"
+                ? " mirror-connect__cap-chip--full"
+                : cap.tone === "warn"
+                  ? " mirror-connect__cap-chip--warn"
+                  : cap.tone === "ok"
+                    ? " mirror-connect__cap-chip--ok"
+                    : "")
+            }
+          >
+            {chip}
+          </span>
+        ) : null}
+        {running && cap.showWriteOnWarn && cap.kind !== "write_on_warn" ? (
+          <span className="mirror-connect__cap-chip mirror-connect__cap-chip--warn">
+            {labels.capWriteOnWarn}
+          </span>
+        ) : null}
+      </div>
+
+      {running ? (
+        <div
+          className="mirror-connect__cap-bar"
+          aria-hidden
+          title={line}
+        >
+          <div
+            className="mirror-connect__cap-bar-fill"
+            style={{ width: `${cap.fillPercent}%` }}
+          />
+        </div>
+      ) : null}
+
+      {empty ? (
+        <div className="mirror-connect__cap-empty">
+          <div className="mirror-connect__cap-empty-title">
+            {empty.kind === "host_stopped"
+              ? labels.capEmptyStopped
+              : labels.capEmptyZero}
+          </div>
+          <div className="mirror-connect__cap-empty-hint">
+            {empty.kind === "host_stopped"
+              ? labels.capEmptyStoppedHint
+              : labels.capEmptyZeroHint}
+          </div>
+        </div>
+      ) : null}
+
+      {cap.showFullBanner ? (
+        <div className="mirror-connect__cap-full-banner" role="status">
+          <div className="mirror-connect__cap-full-banner-title">
+            {labels.capFullBanner}
+          </div>
+          <div className="mirror-connect__cap-full-banner-hint">
+            {labels.capFullHint}
+          </div>
+        </div>
+      ) : running && (cap.kind === "near_full" || cap.kind === "write_on_warn") ? (
+        <p className="mirror-connect__cap-hint">
+          {capKindHintLabel(cap.kind, labels)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function formatAuditAt(iso: string): string {
   const d = Date.parse(iso);
   if (!Number.isFinite(d)) return iso || "";
@@ -499,11 +649,23 @@ function MirrorConnectBody({
     (connect.phase === "live" || connect.phase === "local") &&
     !connect.showSoftLocal;
   const writeOn = status.running && status.readOnly === false;
+  const cap = resolveMirrorClientCapState({
+    connected: status.running ? status.clients : 0,
+    max: status.maxClients ?? maxClientsDraft,
+    writeEnabled: writeOn,
+  });
+  const capEmpty = resolveMirrorCapEmptyState({
+    running: status.running,
+    connected: status.running ? status.clients : 0,
+  });
   const linkIsLocalSoft =
     connect.showSoftLocal ||
     connect.phase === "local" ||
     connect.phase === "soft_local" ||
     connect.phase === "tunnel_dead";
+  // Prefer live cap-full honesty over a generic error chip when at limit.
+  const showClientsFullChip =
+    cap.atLimit || connect.errorKind === "clients_full";
   const diagnosticText =
     connect.showDiagnostic || err || status.error
       ? mirrorDiagnosticDisplay({
@@ -529,7 +691,14 @@ function MirrorConnectBody({
             · {labels.clients.replace("{n}", String(status.clients))}
           </span>
         ) : null}
-        {connect.errorKind && connect.tone !== "ok" ? (
+        {showClientsFullChip ? (
+          <span
+            className="mirror-connect__err-chip mirror-connect__err-chip--warn"
+            title={labels.capFullHint}
+          >
+            {labels.errClientsFull}
+          </span>
+        ) : connect.errorKind && connect.tone !== "ok" ? (
           <span
             className={
               "mirror-connect__err-chip" +
@@ -543,6 +712,13 @@ function MirrorConnectBody({
           </span>
         ) : null}
       </div>
+
+      <MirrorClientCapStrip
+        labels={labels}
+        cap={cap}
+        empty={capEmpty}
+        running={status.running}
+      />
 
       {connect.showSoftLocal ? (
         <div
@@ -633,7 +809,7 @@ function MirrorConnectBody({
             disabled={busy}
             value={maxClientsDraft}
             onChange={(e) => {
-              const n = normalizeMirrorMaxClients(e.target.value);
+              const n = clampMirrorMaxClients(e.target.value);
               onMaxClientsChange(n);
             }}
             onBlur={() => onMaxClientsCommit()}
@@ -757,9 +933,7 @@ export function MirrorConnectPanel({
       setErr(st.error);
       if (opts?.syncMaxClients) {
         setMaxClientsDraft(
-          normalizeMirrorMaxClients(
-            st.maxClients ?? MIRROR_DEFAULT_MAX_CLIENTS,
-          ),
+          clampMirrorMaxClients(st.maxClients ?? MIRROR_DEFAULT_MAX_CLIENTS),
         );
       }
     },
@@ -899,9 +1073,9 @@ export function MirrorConnectPanel({
   };
 
   const handleMaxClientsCommit = () => {
-    const next = normalizeMirrorMaxClients(maxClientsDraft);
+    const next = clampMirrorMaxClients(maxClientsDraft);
     setMaxClientsDraft(next);
-    const current = normalizeMirrorMaxClients(
+    const current = clampMirrorMaxClients(
       status.maxClients ?? MIRROR_DEFAULT_MAX_CLIENTS,
     );
     if (next === current) return;

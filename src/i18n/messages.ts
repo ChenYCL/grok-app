@@ -5317,6 +5317,27 @@ const en = {
   "mirror.maxClientsHint":
     "Limit concurrent WebSocket connections (1–16). Extra phones get HTTP 503 until a slot frees.",
   "mirror.maxClientsValue": "{n} / {max}",
+  "mirror.cap.line": "{n} / {max} phones",
+  "mirror.cap.ok": "Slots open",
+  "mirror.cap.nearFull": "Near full",
+  "mirror.cap.full": "Full (503)",
+  "mirror.cap.writeOnWarn": "Write on",
+  "mirror.cap.fullBanner":
+    "Client limit reached — extra phones soft-fail with HTTP 503 until a slot frees or you raise the max.",
+  "mirror.cap.fullHint":
+    "Disconnect a phone, raise Max phone clients (up to 16), or regenerate the link after rotating sessions.",
+  "mirror.cap.nearFullHint":
+    "Only a few slots left. Extra connections will soft-fail with HTTP 503 when the cap is hit.",
+  "mirror.cap.writeOnWarnHint":
+    "Write is enabled (default is read-only). Switch back to read-only when the phone no longer needs to send.",
+  "mirror.cap.okHint":
+    "Room for more phones under the current max. Extra connections soft-fail with 503 when full.",
+  "mirror.cap.emptyStopped": "Host stopped — no phone clients",
+  "mirror.cap.emptyStoppedHint":
+    "Start the host to accept phone connections. The client count stays zero while stopped (never invented).",
+  "mirror.cap.emptyZero": "No phones connected",
+  "mirror.cap.emptyZeroHint":
+    "Host is up with zero WebSocket clients. Scan the QR or open the link on a phone to connect.",
   "mirror.audit.title": "Write audit",
   "mirror.audit.empty": "No write-ACL events yet.",
   "mirror.audit.clear": "Clear log",
@@ -11340,6 +11361,27 @@ const zh: Record<MessageKey, string> = {
   "mirror.maxClientsHint":
     "限制并发 WebSocket 连接（1–16）。超出上限的手机会收到 HTTP 503，直到有空位。",
   "mirror.maxClientsValue": "{n} / {max}",
+  "mirror.cap.line": "{n} / {max} 台手机",
+  "mirror.cap.ok": "仍有空位",
+  "mirror.cap.nearFull": "接近满载",
+  "mirror.cap.full": "已满（503）",
+  "mirror.cap.writeOnWarn": "写入已开",
+  "mirror.cap.fullBanner":
+    "已达连接上限 — 额外手机会软失败（HTTP 503），直到有空位或你提高上限。",
+  "mirror.cap.fullHint":
+    "断开某台手机、提高「最大手机连接数」（最高 16），或在轮换会话后重新生成链接。",
+  "mirror.cap.nearFullHint":
+    "只剩少量空位。达到上限后，额外连接会以 HTTP 503 软失败。",
+  "mirror.cap.writeOnWarnHint":
+    "当前已允许写入（默认只读）。手机不再需要发送时请切回只读。",
+  "mirror.cap.okHint":
+    "在当前上限下仍可接入更多手机。满载后额外连接会以 503 软失败。",
+  "mirror.cap.emptyStopped": "主机已停止 — 无手机连接",
+  "mirror.cap.emptyStoppedHint":
+    "启动主机后才会接受手机连接。停止时连接数保持为 0（不会虚构客户端）。",
+  "mirror.cap.emptyZero": "暂无手机连接",
+  "mirror.cap.emptyZeroHint":
+    "主机已运行，当前 WebSocket 客户端为 0。用手机扫描二维码或打开链接即可连接。",
   "mirror.audit.title": "写入审计",
   "mirror.audit.empty": "尚无写入 ACL 事件。",
   "mirror.audit.clear": "清空日志",

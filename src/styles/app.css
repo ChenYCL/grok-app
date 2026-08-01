@@ -22945,6 +22945,144 @@ div.composer__input:empty::before {
   color: var(--danger, #e55);
 }
 
+/* Live client-cap honesty strip (MIRROR-CLIENT-CAP-PRO) */
+.mirror-connect__cap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg-elevated, rgba(127, 127, 127, 0.06));
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.18));
+}
+
+.mirror-connect__cap--ok {
+  border-color: rgba(62, 207, 142, 0.28);
+}
+
+.mirror-connect__cap--warn {
+  border-color: rgba(230, 162, 60, 0.35);
+  background: rgba(230, 162, 60, 0.06);
+}
+
+.mirror-connect__cap--err {
+  border-color: rgba(220, 60, 60, 0.3);
+  background: rgba(220, 60, 60, 0.06);
+}
+
+.mirror-connect__cap--muted {
+  opacity: 0.92;
+}
+
+.mirror-connect__cap-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.mirror-connect__cap-line {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mirror-connect__cap-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--text-secondary);
+  border: 1px solid rgba(127, 127, 127, 0.22);
+}
+
+.mirror-connect__cap-chip--ok {
+  background: rgba(62, 207, 142, 0.12);
+  border-color: rgba(62, 207, 142, 0.32);
+  color: var(--text-primary);
+}
+
+.mirror-connect__cap-chip--warn {
+  background: rgba(230, 162, 60, 0.14);
+  border-color: rgba(230, 162, 60, 0.35);
+  color: var(--text-primary);
+}
+
+.mirror-connect__cap-chip--full {
+  background: rgba(230, 162, 60, 0.18);
+  border-color: rgba(230, 162, 60, 0.42);
+  color: var(--text-primary);
+}
+
+.mirror-connect__cap-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.14);
+  overflow: hidden;
+}
+
+.mirror-connect__cap-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #3ecf8e;
+  transition: width 0.2s ease;
+}
+
+.mirror-connect__cap--warn .mirror-connect__cap-bar-fill {
+  background: #e6a23c;
+}
+
+.mirror-connect__cap--err .mirror-connect__cap-bar-fill {
+  background: var(--danger, #e55);
+}
+
+.mirror-connect__cap-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mirror-connect__cap-empty-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.mirror-connect__cap-empty-hint,
+.mirror-connect__cap-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.mirror-connect__cap-full-banner {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(230, 162, 60, 0.12);
+  border: 1px solid rgba(230, 162, 60, 0.32);
+}
+
+.mirror-connect__cap-full-banner-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.mirror-connect__cap-full-banner-hint {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 /* Max concurrent phone clients (1–16) */
 .mirror-connect__max-clients {
   display: flex;

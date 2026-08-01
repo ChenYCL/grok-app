@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Mirror client cap honesty** (MIRROR-CLIENT-CAP-PRO): Connect panel live cap bar/chip (`n / max`), soft-fail full banner when at limit (extra phones get HTTP 503), near-full warn, zero-client + host-stopped empty honesty (never invents clients while stopped), write-on reminder alongside the default read-only policy. Pure `mirrorClientCapPro` helpers + tests; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
