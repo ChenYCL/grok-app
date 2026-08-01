@@ -88,6 +88,10 @@ import {
 import { recordCostUsageSample, sampleFromUsageEvent } from "@/lib/costRollup";
 import { mapSessionListRow } from "@/lib/app/sidebarModels";
 import { StreamCoalescer } from "@/lib/streamCoalesce";
+import {
+  chatcutHandoffToResourceOpenTarget,
+  resolveChatcutHandoffFromToolEvent,
+} from "@/lib/chatcutHandoff";
 
 /** Mutable bag of AppWorkbench bindings used by Host event handlers. */
 export type SessionHostEventsCtx = {
@@ -98,6 +102,99 @@ export type SessionHostEventsCtx = {
   ) => void;
   tryApplyAutomationFromSession: (sessionId: string) => void | Promise<void>;
 };
+
+/** Dedup handoff opens within a short window (same URL). */
+const chatcutHandoffRecent = new Map<string, number>();
+const CHATCUT_HANDOFF_DEDUP_MS = 8_000;
+
+function maybeOpenChatcutHandoffFromTool(
+  c: {
+    localeRef?: { current?: string };
+    viewingSessionIdRef?: { current?: string | null };
+    openAsidePaneRef?: { current?: () => void };
+    openAsidePane?: () => void;
+    setResourceOpenTarget?: (t: {
+      type: "url";
+      url: string;
+      title?: string;
+    }) => void;
+    navigateWorkbench?: () => void;
+  },
+  p: {
+    sessionId?: string;
+    title?: string;
+    kind?: string;
+    status?: string;
+    path?: string | null;
+    detail?: string | null;
+  },
+) {
+  const status = (p.status || "").toLowerCase();
+  // Only act on terminal success-ish statuses (or unknown completed payloads).
+  if (
+    status &&
+    status !== "completed" &&
+    status !== "success" &&
+    status !== "done" &&
+    status !== "ok"
+  ) {
+    // Still allow when path/detail clearly carries a handoff URL mid-flight.
+    const hay = `${p.path ?? ""}\n${p.detail ?? ""}`;
+    if (!/browserHandoff|editorUrl|chatcut\.io\/.*editor/i.test(hay)) {
+      return;
+    }
+  }
+  const locale = c.localeRef?.current ?? undefined;
+  const action = resolveChatcutHandoffFromToolEvent(
+    {
+      title: p.title,
+      detail: p.detail,
+      path: p.path,
+      kind: p.kind,
+    },
+    { locale },
+  );
+  if (action.kind === "open_external" && action.reason === "billing") {
+    // Billing stays system browser — Host shell open is handled by link clicks;
+    // do not force external here from tool stream (agent may still show the link).
+    return;
+  }
+  const target = chatcutHandoffToResourceOpenTarget(action);
+  if (!target) return;
+
+  const now = Date.now();
+  const last = chatcutHandoffRecent.get(target.url) ?? 0;
+  if (now - last < CHATCUT_HANDOFF_DEDUP_MS) return;
+  chatcutHandoffRecent.set(target.url, now);
+  // Bound map size
+  if (chatcutHandoffRecent.size > 40) {
+    for (const [k, t] of chatcutHandoffRecent) {
+      if (now - t > CHATCUT_HANDOFF_DEDUP_MS * 2) chatcutHandoffRecent.delete(k);
+    }
+  }
+
+  const sid = p.sessionId || c.viewingSessionIdRef?.current;
+  if (sid && c.viewingSessionIdRef?.current && sid !== c.viewingSessionIdRef.current) {
+    // Background session: skip auto-open so we do not steal focus.
+    return;
+  }
+
+  try {
+    c.navigateWorkbench?.();
+  } catch {
+    /* optional */
+  }
+  try {
+    (c.openAsidePaneRef?.current ?? c.openAsidePane)?.();
+  } catch {
+    /* optional */
+  }
+  try {
+    c.setResourceOpenTarget?.(target);
+  } catch {
+    /* optional */
+  }
+}
 
 export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
   const ctxRef = useRef(ctx);
@@ -703,6 +800,8 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
               // Tool activity counts as progress — clear stall banner (I06).
               c.setStreamStall(null);
             }
+            // ChatCut Codex handoff → Resources EmbeddedBrowser (in-app).
+            maybeOpenChatcutHandoffFromTool(c, p);
           }),
         );
         await track(

@@ -42,6 +42,10 @@ import {
   formatRelativeTime
 } from "@/lib/accountUi";
 import { loadConfirmExternalLinksPref } from "@/lib/externalLinkPref";
+import {
+  chatcutHandoffToResourceOpenTarget,
+  resolveChatcutLinkClick,
+} from "@/lib/chatcutHandoff";
 import { loadStopAllSkipConfirmPref } from "@/lib/stopAllSkipConfirmPref";
 import { detectAppPlatform, revealInOsLabel } from "@/lib/appPlatform";
 import {
@@ -3513,6 +3517,11 @@ export function AppWorkbench() {
     planCompletedRecordedRef,
     openAsidePane,
     openAsidePaneRef,
+    setResourceOpenTarget,
+    navigateWorkbench: () => {
+      setAppView("workbench");
+      setMainPane("chat");
+    },
     pendingAskUserBySessionRef,
     pendingPermBySessionRef,
     pendingCompactBeforeRef,
@@ -4851,6 +4860,18 @@ export function AppWorkbench() {
   /** Open chat markdown http(s) links via desktop shell; optional confirm pref. */
   const openExternalLinkFromChat = useCallback(
     (url: string) => {
+      // ChatCut editor handoff → side Resources browser (Codex parity).
+      // Billing/pricing stays system browser.
+      const action = resolveChatcutLinkClick(url, { locale });
+      if (action.kind === "open_in_app_browser") {
+        const target = chatcutHandoffToResourceOpenTarget(action);
+        if (target) {
+          navigateWorkbench();
+          openAsidePane();
+          setResourceOpenTarget(target);
+          return;
+        }
+      }
       const doOpen = () => {
         if (api.isTauri()) {
           void api.openExternalUrl(url).catch((e) => {
@@ -4878,7 +4899,7 @@ export function AppWorkbench() {
       }
       doOpen();
     },
-    [tr],
+    [tr, locale, navigateWorkbench, openAsidePane],
   );
 
   const renameProject = (proj: Project) => {

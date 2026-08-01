@@ -306,13 +306,16 @@ fn load_mcp_defs_from_configs(session_data_mode: &str) -> Vec<McpServerDef> {
     out
 }
 
-/// Parse `[mcp_servers.<name>]` tables (and nested `.env`) from config.toml text.
-/// Lightweight — no full TOML dependency; covers command/args/url/enabled/env.
-/// Supports multi-line `args = [ ... ]` arrays used by Grok config.
+/// Parse `[mcp_servers.<name>]` tables (and nested `.env` / `.headers`) from
+/// config.toml text. Lightweight — no full TOML dependency; covers
+/// command/args/url/enabled/env/headers. Supports multi-line `args = [ ... ]`
+/// arrays used by Grok config. Nested headers support ChatCut surface header
+/// (`x-chatcut-mcp-surface`) when `grok mcp list --json` is unavailable.
 pub fn parse_mcp_servers_from_toml(text: &str) -> Vec<McpServerDef> {
     let mut by_name: HashMap<String, McpServerDef> = HashMap::new();
     let mut current: Option<String> = None;
     let mut in_env = false;
+    let mut in_headers = false;
     // Accumulator for multi-line `args = [` … `]`
     let mut args_buf: Option<String> = None;
 
@@ -358,9 +361,23 @@ pub fn parse_mcp_servers_from_toml(text: &str) -> Vec<McpServerDef> {
                         ensure_mcp_def(&mut by_name, name);
                         current = Some(name.to_string());
                         in_env = true;
+                        in_headers = false;
                     } else {
                         current = None;
                         in_env = false;
+                        in_headers = false;
+                    }
+                } else if let Some(name) = rest.strip_suffix(".headers") {
+                    let name = name.trim();
+                    if !name.is_empty() {
+                        ensure_mcp_def(&mut by_name, name);
+                        current = Some(name.to_string());
+                        in_env = false;
+                        in_headers = true;
+                    } else {
+                        current = None;
+                        in_env = false;
+                        in_headers = false;
                     }
                 } else {
                     let name = rest.trim();
@@ -368,14 +385,17 @@ pub fn parse_mcp_servers_from_toml(text: &str) -> Vec<McpServerDef> {
                         ensure_mcp_def(&mut by_name, name);
                         current = Some(name.to_string());
                         in_env = false;
+                        in_headers = false;
                     } else {
                         current = None;
                         in_env = false;
+                        in_headers = false;
                     }
                 }
             } else {
                 current = None;
                 in_env = false;
+                in_headers = false;
             }
             continue;
         }
@@ -396,6 +416,14 @@ pub fn parse_mcp_servers_from_toml(text: &str) -> Vec<McpServerDef> {
         if in_env {
             if let Some(v) = parse_toml_string(val_raw) {
                 def.env
+                    .get_or_insert_with(HashMap::new)
+                    .insert(key.to_string(), v);
+            }
+            continue;
+        }
+        if in_headers {
+            if let Some(v) = parse_toml_string(val_raw) {
+                def.headers
                     .get_or_insert_with(HashMap::new)
                     .insert(key.to_string(), v);
             }
@@ -1755,6 +1783,42 @@ args = ["-m", "gamma"]
             alpha.args.as_deref(),
             Some(["server.js".to_string()].as_slice())
         );
+    }
+
+    #[test]
+    fn parse_mcp_servers_from_toml_http_headers_chatcut_surface() {
+        // ChatCut Codex MCP: nested headers table must survive TOML fallback parse.
+        let raw = r#"
+[mcp_servers.chatcut]
+url = "https://api.chatcut.io/api/external-mcp/mcp"
+enabled = true
+
+[mcp_servers.chatcut.headers]
+x-chatcut-mcp-surface = "codex"
+"#;
+        let defs = parse_mcp_servers_from_toml(raw);
+        assert_eq!(defs.len(), 1);
+        let d = &defs[0];
+        assert_eq!(d.name, "chatcut");
+        assert_eq!(
+            d.url.as_deref(),
+            Some("https://api.chatcut.io/api/external-mcp/mcp")
+        );
+        let surface = d
+            .headers
+            .as_ref()
+            .and_then(|h| h.get("x-chatcut-mcp-surface"))
+            .map(|s| s.as_str());
+        assert_eq!(surface, Some("codex"));
+        let prefs = ExtensionsPrefs::default();
+        let arr = build_acp_mcp_servers(&defs, &prefs);
+        let entry = arr.as_array().unwrap().iter().next().unwrap();
+        assert_eq!(entry["type"], "http");
+        assert_eq!(entry["url"], "https://api.chatcut.io/api/external-mcp/mcp");
+        let headers = entry["headers"].as_array().unwrap();
+        assert!(headers.iter().any(|h| {
+            h["name"] == "x-chatcut-mcp-surface" && h["value"] == "codex"
+        }));
     }
 
     #[test]

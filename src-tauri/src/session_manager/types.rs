@@ -320,6 +320,8 @@ pub(super) const TOOL_CONTENT_SNIPPET_MAX: usize = 200_000;
 /// Extract human-visible path + detail from tool_call payload for activity UI.
 /// path includes file paths **and** web_fetch URLs (`rawInput.url`) so reload
 /// can show Grok-style “Browsed host/path” instead of bare “Tool”.
+/// Also surfaces ChatCut `browserHandoff.url` / `editorUrl` from MCP rawOutput
+/// so the UI can open Resources EmbeddedBrowser (Codex internal-browser parity).
 pub(super) fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>, Option<String>) {
     let path = raw
         .pointer("/locations/0/path")
@@ -332,8 +334,18 @@ pub(super) fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>
         .or_else(|| raw.pointer("/rawInput/url"))
         .or_else(|| raw.pointer("/rawInput/uri"))
         .or_else(|| raw.pointer("/rawInput/href"))
+        // ChatCut MCP handoff (prefer internal browser URL over clean editorUrl)
+        .or_else(|| raw.pointer("/rawOutput/browserHandoff/url"))
+        .or_else(|| raw.pointer("/rawOutput/structuredContent/browserHandoff/url"))
+        .or_else(|| raw.pointer("/rawOutput/content/browserHandoff/url"))
+        .or_else(|| raw.pointer("/rawOutput/editorUrl"))
+        .or_else(|| raw.pointer("/rawOutput/structuredContent/editorUrl"))
+        .or_else(|| raw.pointer("/rawOutput/liveProject/url"))
+        .or_else(|| raw.pointer("/content/browserHandoff/url"))
+        .or_else(|| raw.pointer("/content/editorUrl"))
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+        .map(|s| s.to_string())
+        .or_else(|| extract_chatcut_url_from_raw_text(raw));
     let command = raw
         .pointer("/rawInput/command")
         .or_else(|| raw.pointer("/rawInput/cmd"))
@@ -348,7 +360,115 @@ pub(super) fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>
             .and_then(|v| v.as_str())
             .map(|s| s.chars().take(240).collect::<String>())
     });
+    // When ChatCut handoff lives only in structured JSON text, surface a compact
+    // detail snippet so frontend pure helpers can still parse browserHandoff.
+    let detail = detail.or_else(|| extract_chatcut_detail_snippet(raw));
     (detail, path)
+}
+
+/// Scan rawOutput / content string blobs for a ChatCut editor or handoff URL.
+fn extract_chatcut_url_from_raw_text(raw: &serde_json::Value) -> Option<String> {
+    const PTRS: &[&str] = &[
+        "/rawOutput",
+        "/rawOutput/content",
+        "/rawOutput/text",
+        "/content",
+        "/content/text",
+    ];
+    for p in PTRS {
+        if let Some(s) = raw.pointer(p).and_then(|v| {
+            if let Some(t) = v.as_str() {
+                Some(t.to_string())
+            } else {
+                // Serialize small objects that may contain browserHandoff
+                serde_json::to_string(v).ok()
+            }
+        }) {
+            if let Some(url) = find_chatcut_editor_url_in_text(&s) {
+                return Some(url);
+            }
+        }
+    }
+    None
+}
+
+fn extract_chatcut_detail_snippet(raw: &serde_json::Value) -> Option<String> {
+    // Prefer compact JSON with handoff keys when present.
+    for p in [
+        "/rawOutput/browserHandoff",
+        "/rawOutput/structuredContent",
+        "/rawOutput",
+    ] {
+        if let Some(v) = raw.pointer(p) {
+            if v.get("browserHandoff").is_some()
+                || v.get("editorUrl").is_some()
+                || v.get("liveProject").is_some()
+                || p.ends_with("browserHandoff")
+            {
+                if let Ok(s) = serde_json::to_string(v) {
+                    if s.contains("chatcut") || s.contains("browserHandoff") || s.contains("editorUrl")
+                    {
+                        return Some(s.chars().take(1200).collect());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn find_chatcut_editor_url_in_text(text: &str) -> Option<String> {
+    // Prefer browserHandoff.url JSON field when present.
+    if let Some(idx) = text.find("browserHandoff") {
+        let slice = &text[idx..];
+        if let Some(url) = find_https_url_near(slice, "chatcut") {
+            return Some(url);
+        }
+    }
+    if let Some(idx) = text.find("editorUrl") {
+        let slice = &text[idx..];
+        if let Some(url) = find_https_url_near(slice, "chatcut") {
+            return Some(url);
+        }
+    }
+    find_https_url_near(text, "chatcut.io")
+        .filter(|u| u.contains("/editor") || u.contains("dockviewLayout") || u.contains("editor-boot-token"))
+}
+
+fn find_https_url_near(text: &str, must_contain: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i + 8 < bytes.len() {
+        if bytes[i..].starts_with(b"https://") || bytes[i..].starts_with(b"http://") {
+            let start = i;
+            i += 8;
+            while i < bytes.len() {
+                let c = bytes[i];
+                if c.is_ascii_whitespace()
+                    || c == b'"'
+                    || c == b'\''
+                    || c == b'<'
+                    || c == b'>'
+                    || c == b')'
+                    || c == b']'
+                    || c == b'}'
+                    || c == b','
+                {
+                    break;
+                }
+                i += 1;
+            }
+            let url = String::from_utf8_lossy(&bytes[start..i])
+                .trim_end_matches(['.', ';', ':'])
+                .to_string();
+            if url.to_ascii_lowercase().contains(must_contain) {
+                return Some(url);
+            }
+            continue;
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Normalize ACP kind tokens so journal reload classifies correctly.
