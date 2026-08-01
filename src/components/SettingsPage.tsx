@@ -763,6 +763,11 @@ export interface SettingsPageProps {
   focusAnchorId?: string | null;
   /** Optional PR number to highlight in Git PR hub (`?pr=` / ship success). */
   prHubHighlightPr?: number | null;
+  /**
+   * Insert a PR review prompt (Fix CI / comment → Grok) into the workbench
+   * composer. When omitted, GitPrHubPanel hides those action buttons.
+   */
+  onPrReviewDraftToChat?: (prompt: string) => void;
   /** Called once after focusAnchorId is applied (parent can clear). */
   onFocusAnchorConsumed?: () => void;
   /** After skill enable toggle — refresh slash palette in App. */
@@ -1444,6 +1449,7 @@ export function SettingsPage({
   onOpenProjectFileInResources,
   focusAnchorId = null,
   prHubHighlightPr = null,
+  onPrReviewDraftToChat,
   onFocusAnchorConsumed,
   onSkillsPrefsChanged,
   onOpenShortcutsHelp,
@@ -7308,6 +7314,7 @@ export function SettingsPage({
                       projectPath={projectPath}
                       hideHeader
                       highlightPrNumber={prHubHighlightPr}
+                      onDraftToChat={onPrReviewDraftToChat}
                     />
                   </div>
                 </div>
