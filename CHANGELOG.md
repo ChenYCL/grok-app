@@ -11,6 +11,30 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-08-01
+
+> **Highlight:** Architecture-level code-quality remediation (App shell, CSS domains, Host modules, CI gates) plus sticky **Streaming busy** fix after long background-tool turns (#453). Ships the large pro-honesty batch already on main since 0.2.3.
+>
+> **中文 · 亮点：** 架构级代码质量整改（App 壳 / CSS 分域 / Host 模块 / CI 闸门）+ 长工具回合后 **Streaming busy 粘滞** 修复（#453）；并随包发布 0.2.3 之后已合入 main 的 pro 诚实体验批次。
+
+### Fixed
+- **#453 sticky Streaming busy**: after the prompt RPC completes with no permission/plan/ask_user gate, Host force-clears leftover `open_tool_ids` (bg task id mismatch / missing terminal tool updates) so reconnect and new-session send are not blocked (`deferred_prompt_complete_force_clears_open_tools_after_rpc`).
+- **Stream tail flush**: flush coalesced stream IPC on turn end so answers are not truncated mid-sentence until reopen.
+- **CI**: `cargo fmt --check` green; pnpm workspace `packages` field restored so frontend install works; quality gates + ESLint (TypeScript parse) on CI.
+
+### Changed
+- **Code quality remediation** (final gate PASS): thin `App.tsx` + `ThemeProvider`; domain CSS split; `commands/` / `session_manager/` / `api/` modularization; SettingsPage / ResourceViewer / i18n / settingsCatalog domain splits; residual clippy cleanup.
+- **App growth freeze** documented in AGENTS.md / maintain.md (new state must not land in `App.tsx`).
+
+**中文 · 修复**
+- **#453 Streaming busy 粘滞**：prompt RPC 结束后、无权限/计划/Ask 门控时，强制清理残留 `open_tool_ids`，避免 reconnect / 新会话首条被排队
+- **流式尾包刷新**：回合结束刷新合并中的 stream IPC，避免需重开会话才看到完整回复
+- **CI**：fmt 通过；修复 pnpm workspace `packages`；质量闸门与 ESLint（TS 解析）
+
+**中文 · 变更**
+- **代码质量全盘整改**（final 闸门 PASS）：App 壳 / ThemeProvider、CSS 分域、commands·session_manager·api 模块化、Settings/ResourceViewer/i18n 拆分等
+- **App 增胖冻结**写入 AGENTS.md / maintain.md
+
 ### Added
 
 #### Composer & chat
