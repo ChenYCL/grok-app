@@ -1,11 +1,16 @@
 /**
  * Settings model context — collapses SettingsPage prop waterfall (WP-B4).
- * Routing props (section/tab/onBack/…) stay on SettingsPage; values+setters live here.
+ * Routing props stay on SettingsPage; values+setters+shell helpers live here.
+ * Section components under `src/components/settings/*` call useSettingsModel().
  */
 import { createContext, useContext, type ReactNode } from "react";
+import type { SettingsViewModel } from "@/components/settings/types";
 
-// Loose bag during migration; AppWorkbench provides the full settings model object.
-export type SettingsModel = Record<string, unknown>;
+/**
+ * Settings view-model bag. Prefer SettingsViewModel; keep Record fallback for
+ * gradual section typing without forcing AppWorkbench changes.
+ */
+export type SettingsModel = SettingsViewModel & Record<string, unknown>;
 
 const SettingsModelContext = createContext<SettingsModel | null>(null);
 
