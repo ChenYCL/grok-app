@@ -1,6 +1,7 @@
 /**
  * Multi-project batch agent dispatch.
  * Select projects + shared prompt → open/queue sessions or headless soft-fail summary.
+ * Templates + results matrix export (copy / download .txt).
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -12,7 +13,6 @@ import {
   buildBatchDispatchPlan,
   canDispatchBatch,
   filterBatchProjects,
-  formatBatchSummaryText,
   pruneBatchProjectSelection,
   toggleBatchProjectSelection,
   type BatchDispatchItemResult,
@@ -20,6 +20,15 @@ import {
   type BatchDispatchSummary,
   type BatchProjectInput,
 } from "@/lib/batchAgents";
+import {
+  applyBatchTemplate,
+  classifyBatchResultRow,
+  DEFAULT_BATCH_TEMPLATES,
+  planBatchExport,
+  summarizeBatchEligibility,
+  type BatchExportLabels,
+  type BatchTemplateId,
+} from "@/lib/batchAgentsPro";
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
@@ -57,6 +66,22 @@ function statusLabel(status: BatchDispatchItemResult["status"], t: TFn): string 
   }
 }
 
+/** Prefer honesty kinds (ok_empty / partial) over raw status when present. */
+function resultStatusLabel(
+  item: BatchDispatchItemResult,
+  t: TFn,
+): string {
+  const row = classifyBatchResultRow(item);
+  switch (row.kind) {
+    case "ok_empty":
+      return t("batchAgents.status.okEmpty");
+    case "partial":
+      return t("batchAgents.status.partial");
+    default:
+      return statusLabel(item.status, t);
+  }
+}
+
 function statusClass(status: BatchDispatchItemResult["status"]): string {
   switch (status) {
     case "ok":
@@ -71,6 +96,26 @@ function statusClass(status: BatchDispatchItemResult["status"]): string {
       return "batch-agents__status--queued";
     default:
       return "batch-agents__status--pending";
+  }
+}
+
+function statusClassForItem(item: BatchDispatchItemResult): string {
+  const row = classifyBatchResultRow(item);
+  if (row.kind === "ok_empty") return "batch-agents__status--ok-empty";
+  if (row.kind === "partial") return "batch-agents__status--partial";
+  return statusClass(item.status);
+}
+
+function downloadText(filename: string, body: string) {
+  const blob = new Blob([body], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+  } finally {
+    URL.revokeObjectURL(url);
   }
 }
 
@@ -92,6 +137,11 @@ export function BatchAgentsModal({
   );
   const [summary, setSummary] = useState<BatchDispatchSummary | null>(null);
   const [copyDone, setCopyDone] = useState(false);
+  const [downloadDone, setDownloadDone] = useState(false);
+  const [activeTemplateId, setActiveTemplateId] = useState<BatchTemplateId | null>(
+    null,
+  );
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   const liveIds = useMemo(
     () => new Set(projects.filter((p) => !p.system).map((p) => p.id)),
@@ -112,6 +162,9 @@ export function BatchAgentsModal({
       setResultItems(null);
       setSummary(null);
       setCopyDone(false);
+      setDownloadDone(false);
+      setActiveTemplateId(null);
+      setExportNote(null);
     }
   }, [open]);
 
@@ -129,6 +182,16 @@ export function BatchAgentsModal({
         selectedIds,
       }),
     [mode, prompt, projects, selectedIds],
+  );
+
+  const eligibility = useMemo(
+    () =>
+      summarizeBatchEligibility({
+        selectedCount: plan.selected.length,
+        eligibleCount: plan.eligible.length,
+        skipped: plan.skipped.map((s) => ({ reason: s.reason })),
+      }),
+    [plan],
   );
 
   const canGo = canDispatchBatch({
@@ -153,11 +216,28 @@ export function BatchAgentsModal({
   const allVisibleSelected =
     filtered.length > 0 && visibleSelectedCount === filtered.length;
 
+  const exportLabels = useMemo((): BatchExportLabels => {
+    return {
+      modeSessions: tr("batchAgents.mode.sessions"),
+      modeHeadless: tr("batchAgents.mode.headless"),
+      statusOk: tr("batchAgents.status.ok"),
+      statusOkEmpty: tr("batchAgents.status.okEmpty"),
+      statusPartial: tr("batchAgents.status.partial"),
+      statusSoftFail: tr("batchAgents.status.softFail"),
+      statusError: tr("batchAgents.status.error"),
+      statusSkipped: tr("batchAgents.status.skipped"),
+      statusQueued: tr("batchAgents.status.queued"),
+      statusPending: tr("batchAgents.status.pending"),
+      emptyExport: tr("batchAgents.exportEmpty"),
+    };
+  }, [tr]);
+
   const toggleRow = (id: string) => {
     if (running) return;
     setSelectedIds((prev) => toggleBatchProjectSelection(prev, id));
     setResultItems(null);
     setSummary(null);
+    setExportNote(null);
   };
 
   const toggleSelectAllVisible = () => {
@@ -174,6 +254,19 @@ export function BatchAgentsModal({
     });
     setResultItems(null);
     setSummary(null);
+    setExportNote(null);
+  };
+
+  const applyTemplate = (id: BatchTemplateId) => {
+    if (running) return;
+    const tpl = DEFAULT_BATCH_TEMPLATES.find((t) => t.id === id);
+    if (!tpl) return;
+    const body = tr(tpl.bodyKey as MessageKey);
+    setPrompt(applyBatchTemplate(body));
+    setActiveTemplateId(id);
+    setResultItems(null);
+    setSummary(null);
+    setExportNote(null);
   };
 
   const handleDispatch = async () => {
@@ -182,6 +275,8 @@ export function BatchAgentsModal({
     setResultItems(null);
     setSummary(null);
     setCopyDone(false);
+    setDownloadDone(false);
+    setExportNote(null);
     try {
       const sum = await onDispatch({
         mode: plan.mode,
@@ -229,23 +324,34 @@ export function BatchAgentsModal({
   };
 
   const handleCopySummary = async () => {
-    if (!summary) return;
-    const text = formatBatchSummaryText(summary, {
-      modeSessions: tr("batchAgents.mode.sessions"),
-      modeHeadless: tr("batchAgents.mode.headless"),
-      statusOk: tr("batchAgents.status.ok"),
-      statusSoftFail: tr("batchAgents.status.softFail"),
-      statusError: tr("batchAgents.status.error"),
-      statusSkipped: tr("batchAgents.status.skipped"),
-      statusQueued: tr("batchAgents.status.queued"),
-      statusPending: tr("batchAgents.status.pending"),
-    });
+    const planEx = planBatchExport(summary, exportLabels);
+    if (!planEx.ok) {
+      setExportNote(tr("batchAgents.exportEmpty"));
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(planEx.text);
       setCopyDone(true);
+      setExportNote(null);
       window.setTimeout(() => setCopyDone(false), 2000);
     } catch {
-      /* soft-fail clipboard */
+      setExportNote(tr("batchAgents.exportFailed"));
+    }
+  };
+
+  const handleDownloadSummary = () => {
+    const planEx = planBatchExport(summary, exportLabels);
+    if (!planEx.ok) {
+      setExportNote(tr("batchAgents.exportEmpty"));
+      return;
+    }
+    try {
+      downloadText(planEx.filename, planEx.text);
+      setDownloadDone(true);
+      setExportNote(null);
+      window.setTimeout(() => setDownloadDone(false), 2000);
+    } catch {
+      setExportNote(tr("batchAgents.exportFailed"));
     }
   };
 
@@ -267,16 +373,28 @@ export function BatchAgentsModal({
         <div className="batch-agents-modal__footer">
           <div className="batch-agents-modal__footer-actions">
             {summary ? (
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={handleCopySummary}
-                disabled={running}
-              >
-                {copyDone
-                  ? tr("batchAgents.copied")
-                  : tr("batchAgents.copySummary")}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={handleCopySummary}
+                  disabled={running}
+                >
+                  {copyDone
+                    ? tr("batchAgents.copied")
+                    : tr("batchAgents.copySummary")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={handleDownloadSummary}
+                  disabled={running}
+                >
+                  {downloadDone
+                    ? tr("batchAgents.downloaded")
+                    : tr("batchAgents.downloadSummary")}
+                </button>
+              </>
             ) : null}
           </div>
           <button
@@ -350,6 +468,34 @@ export function BatchAgentsModal({
           : tr("batchAgents.mode.sessionsHint")}
       </p>
 
+      <div className="batch-agents__templates">
+        <span className="batch-agents__templates-label" id="batch-agents-tpls">
+          {tr("batchAgents.templatesLabel")}
+        </span>
+        <div
+          className="batch-agents__chips"
+          role="group"
+          aria-labelledby="batch-agents-tpls"
+        >
+          {DEFAULT_BATCH_TEMPLATES.map((tpl) => {
+            const active = activeTemplateId === tpl.id;
+            return (
+              <button
+                key={tpl.id}
+                type="button"
+                className={
+                  "batch-agents__chip" + (active ? " is-active" : "")
+                }
+                onClick={() => applyTemplate(tpl.id)}
+                disabled={running}
+              >
+                {tr(tpl.titleKey as MessageKey)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <label className="batch-agents__label" htmlFor="batch-agents-prompt">
         {tr("batchAgents.promptLabel")}
       </label>
@@ -359,6 +505,7 @@ export function BatchAgentsModal({
         value={prompt}
         onChange={(e) => {
           setPrompt(e.target.value);
+          setActiveTemplateId(null);
           setResultItems(null);
           setSummary(null);
         }}
@@ -387,6 +534,25 @@ export function BatchAgentsModal({
           })}
         </span>
       </div>
+
+      {plan.selected.length > 0 ? (
+        <p
+          className={
+            "batch-agents__eligibility" +
+            (eligibility.eligible === 0
+              ? " batch-agents__eligibility--none"
+              : "")
+          }
+        >
+          {eligibility.eligible === 0
+            ? tr("batchAgents.eligibilityNone")
+            : tr("batchAgents.eligibilitySummary", {
+                ready: eligibility.eligible,
+                skip: eligibility.skipped,
+                selected: eligibility.selected,
+              })}
+        </p>
+      ) : null}
 
       {filtered.length === 0 ? (
         <div className="batch-agents__empty">
@@ -469,6 +635,12 @@ export function BatchAgentsModal({
         </p>
       ) : null}
 
+      {exportNote ? (
+        <p className="batch-agents__export-note" role="status">
+          {exportNote}
+        </p>
+      ) : null}
+
       {resultItems && resultItems.length > 0 ? (
         <div className="batch-agents__results">
           <h3 className="batch-agents__results-title">
@@ -488,9 +660,9 @@ export function BatchAgentsModal({
             {resultItems.map((it) => (
               <li key={it.projectId} className="batch-agents__result-row">
                 <span
-                  className={`batch-agents__status ${statusClass(it.status)}`}
+                  className={`batch-agents__status ${statusClassForItem(it)}`}
                 >
-                  {statusLabel(it.status, (k, v) => tr(k, v))}
+                  {resultStatusLabel(it, (k, v) => tr(k, v))}
                 </span>
                 <span className="batch-agents__result-name">
                   {it.projectName}
@@ -503,6 +675,10 @@ export function BatchAgentsModal({
                 {it.summary ? (
                   <span className="batch-agents__result-summary" title={it.summary}>
                     {it.summary}
+                  </span>
+                ) : classifyBatchResultRow(it).kind === "ok_empty" ? (
+                  <span className="batch-agents__result-summary batch-agents__result-summary--empty">
+                    —
                   </span>
                 ) : null}
               </li>

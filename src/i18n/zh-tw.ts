@@ -913,8 +913,27 @@ export const zhTW: Record<MessageKey, string> = {
   "batchAgents.resultsMeta":
     "成功 {ok} · soft-fail {soft} · 錯誤 {err} · 略過 {skip}",
   "batchAgents.copySummary": "複製摘要",
+  "batchAgents.downloadSummary": "下載 .txt",
   "batchAgents.copied": "已複製",
+  "batchAgents.downloaded": "已下載",
+  "batchAgents.exportEmpty": "尚無批量結果可匯出。",
+  "batchAgents.exportFailed": "無法匯出結果。",
+  "batchAgents.templatesLabel": "提示詞範本",
+  "batchAgents.tpl.codeReview.title": "程式碼審查",
+  "batchAgents.tpl.codeReview.body":
+    "審查本倉庫近期變更。指出風險、缺失測試與未完成工作，並給出具體檔案路徑。對不確定處保持誠實——不要編造發現。",
+  "batchAgents.tpl.fixTests.title": "修復測試",
+  "batchAgents.tpl.fixTests.body":
+    "找出本倉庫失敗或不穩定的測試，用最小改動修復，並回報仍失敗的項目。若未實際跑測試，不要聲稱已通過。",
+  "batchAgents.tpl.summarize.title": "總結倉庫",
+  "batchAgents.tpl.summarize.body":
+    "總結本倉庫用途、目錄結構與當前風險或未完成 TODO。優先依據樹中證據，避免臆測。",
+  "batchAgents.eligibilitySummary":
+    "可執行 {ready} · 不合格 {skip}（已選 {selected}）",
+  "batchAgents.eligibilityNone": "目前選擇中沒有可執行的專案。",
   "batchAgents.status.ok": "成功",
+  "batchAgents.status.okEmpty": "成功（無詳情）",
+  "batchAgents.status.partial": "部分",
   "batchAgents.status.softFail": "Soft-fail",
   "batchAgents.status.error": "錯誤",
   "batchAgents.status.skipped": "略過",
