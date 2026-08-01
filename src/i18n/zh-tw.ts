@@ -364,6 +364,9 @@ export const zhTW: Record<MessageKey, string> = {
   "message.nodes.user": "你",
   "message.nodes.assistant": "Grok",
   "message.nodes.count": "{current} / {total}",
+  "message.copyLink": "複製連結",
+  "message.linkCopied": "連結已複製",
+  "message.deepLinkMissing": "此對話中找不到該訊息",
 
   "main.rightPane": "檔案欄",
   "main.leftPane": "側邊欄",

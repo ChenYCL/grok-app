@@ -110,6 +110,7 @@ import {
   shouldDeferWarmConnectForForeignBusy,
   shouldSkipWarmConnect,
 } from "@/lib/multiWindow";
+import { parseMessageDeepLink } from "@/lib/messageNodeDeepLink";
 import {
   applyChatWidth,
   loadChatWidth,
@@ -1547,6 +1548,22 @@ export default function App() {
     secondaryFocusSessionId,
   );
   secondaryFocusSessionIdRef.current = secondaryFocusSessionId;
+  /**
+   * Pending message-node deep link (`#/session/<id>/m/<mid>`).
+   * Cleared after ConversationThread scrolls (or soft-misses).
+   */
+  const [pendingLocateMessageId, setPendingLocateMessageId] = useState<
+    string | null
+  >(() => {
+    if (typeof window === "undefined") return null;
+    return parseMessageDeepLink(window.location.hash)?.messageId ?? null;
+  });
+  /** Session id the pending locate belongs to (avoid scrolling the wrong chat). */
+  const pendingLocateSessionIdRef = useRef<string | null>(
+    typeof window !== "undefined"
+      ? (parseMessageDeepLink(window.location.hash)?.sessionId ?? null)
+      : null,
+  );
   /** False until desktop window label is resolved (or non-desktop path). */
   const [windowRoleReady, setWindowRoleReady] = useState(
     () => !api.isDesktopHost(),
@@ -5547,6 +5564,7 @@ export default function App() {
   );
 
   // Hash route: #/settings[/section[/tab]][?pr=N] | #/automations | #/workbench
+  // | #/session/<id>[/m/<messageId>]
   // Explicit #/settings/{section}… deep links always win; bare #/settings uses last.
   useEffect(() => {
     const syncFromHash = () => {
@@ -5590,6 +5608,33 @@ export default function App() {
       } else if (raw === "" || raw === "workbench" || raw === "home") {
         setAppView("workbench");
         setMainPane("chat");
+      } else {
+        // Session / message-node deep link (multi-window + in-app jump).
+        const msgLink = parseMessageDeepLink(fullHash);
+        const sessionOnly = parseSessionDeepLinkHash(fullHash);
+        if (msgLink || sessionOnly) {
+          setAppView("workbench");
+          setMainPane("chat");
+          const focusId = msgLink?.sessionId ?? sessionOnly;
+          if (focusId) {
+            setSecondaryFocusSessionId(focusId);
+            secondaryFocusSessionIdRef.current = focusId;
+          }
+          if (msgLink) {
+            pendingLocateSessionIdRef.current = msgLink.sessionId;
+            setPendingLocateMessageId(msgLink.messageId);
+          } else {
+            pendingLocateSessionIdRef.current = null;
+            setPendingLocateMessageId(null);
+          }
+          // Open the session when the list is ready (same path as boot restore).
+          if (focusId && sessionsRef.current.length > 0) {
+            const row = sessionsRef.current.find((s) => s.id === focusId);
+            if (row) {
+              void openSessionRef.current(row);
+            }
+          }
+        }
       }
     };
     syncFromHash();
@@ -10319,6 +10364,22 @@ export default function App() {
       setToast((cur) => (cur === msg ? null : cur));
     }, ms);
   }, []);
+
+  /** Clear pending message deep link after locate (soft-toast when missing). */
+  const onLocateMessageDeepLink = useCallback(
+    (result: {
+      ok: boolean;
+      messageId: string;
+      reason?: "missing" | "empty_id";
+    }) => {
+      setPendingLocateMessageId(null);
+      pendingLocateSessionIdRef.current = null;
+      if (!result.ok) {
+        showToast(tr("message.deepLinkMissing"), 3600);
+      }
+    },
+    [showToast, tr],
+  );
 
   /** Open GlassModal to edit per-session sticky note (local only; never sent to agent). */
   const openSessionNote = useCallback(
@@ -20054,6 +20115,16 @@ export default function App() {
                 : session.state
             }
             sessionKey={session.sessionId ?? `draft-${session.title ?? "new"}`}
+            sessionId={session.sessionId}
+            locateMessageId={
+              pendingLocateMessageId &&
+              session.sessionId &&
+              (!pendingLocateSessionIdRef.current ||
+                session.sessionId === pendingLocateSessionIdRef.current)
+                ? pendingLocateMessageId
+                : null
+            }
+            onLocateMessage={onLocateMessageDeepLink}
             projectPath={effectiveProjectPath}
             suppressEmptyCopy={welcomeSession}
             canEditLastUser={canEditLastUser}
