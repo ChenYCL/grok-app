@@ -7,3 +7,20 @@
 - **Regenerate link** requires in-app confirm (mentions connected client count), rotates the token, disconnects old QR sessions; host logs `token_tail` only.
 - Auth rejection and host start logs **redact** path tokens / public URLs (`/t/<redacted>/…`, `token_tail`).
 - IM allow-from and LINE signature checks ship in 0.1.9+.
+
+## Security ops surface (overview)
+
+Settings → **Remote control** → **IM** → Bridge overview shows a unified **Security ops** checklist (pure helpers in `src/lib/remoteSecurityOps.ts`):
+
+| Check | Honesty |
+|-------|---------|
+| Allow-from ACL | Aggregate open (`*`) / restricted / empty across channel instances; link to edit allow-from |
+| Inbound rate limit | Soft per-chat + global limiter is always-on in-process; rate-hit posture is warn, never silent drop |
+| Bridge health | Listening / degraded / error / stopped from host status |
+| Phone mirror write | Default off (read-only); warn when write is enabled |
+| Remote YOLO | Off by default; enable requires GlassModal confirm |
+| Live claim | Never invent live WS/Gateway without Bridge linked |
+
+- **Copy summary** exports a redacted multi-line report (no tokens/URLs).
+- **Dangerous-write confirms** inventory lists known in-app confirms (mirror write / rotate / stop / audit clear · remote YOLO · channel delete · timeline clear) — all GlassModal / `setAppDialog`, never `window.confirm`.
+- Risk badge: `ok` · `warn` · `danger` (open ACL + write, or write + auth error → danger).

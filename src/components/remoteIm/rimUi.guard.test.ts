@@ -73,6 +73,17 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).not.toMatch(/window\.confirm/);
   });
 
+  it("Overview security ops checklist without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImOverview.tsx"), "utf8");
+    expect(src).toContain("buildRemoteSecurityChecklist");
+    expect(src).toContain("formatRemoteSecuritySummaryText");
+    expect(src).toContain("data-rim-security-risk");
+    expect(src).toContain("yoloConfirm");
+    expect(src).not.toMatch(/window\.confirm/);
+    expect(src).not.toMatch(/window\.alert/);
+    expect(src).not.toMatch(/window\.prompt/);
+  });
+
   it("RimControls exports RimSecretField", () => {
     const src = readFileSync(join(ROOT, "remoteIm/RimControls.tsx"), "utf8");
     expect(src).toContain("export function RimSecretField");

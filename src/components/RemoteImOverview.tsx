@@ -1,8 +1,9 @@
 /**
  * Remote IM Bridge overview — settings-card rows + project chrome controls.
+ * Includes Remote security ops checklist (ACL · rate-limit · bridge · write).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createT, resolveLocale, type MessageKey } from "@/i18n";
 import type {
   BridgeLifecycle,
@@ -22,13 +23,29 @@ import {
   type RimBridgeEvent,
 } from "@/lib/remoteIm";
 import {
+  aggregateAllowFromSummary,
+  allowFromSummaryKey,
+  buildRemoteSecurityChecklist,
+  checklistStatusTone,
+  DANGEROUS_WRITE_CONFIRMS,
+  formatRemoteSecuritySummaryText,
+  remoteSecurityRiskKey,
+  remoteSecurityRiskTone,
+} from "@/lib/remoteSecurityOps";
+import * as api from "@/lib/api";
+import {
   RimBadge,
   RimChoiceRow,
   RimStatusDot,
   RimSwitch,
 } from "@/components/remoteIm/RimControls";
 import { GlassModal } from "@/components/GlassModal";
-import { IconActivity, IconPlug } from "@/components/icons";
+import {
+  IconActivity,
+  IconCopy,
+  IconPlug,
+  IconShieldCheck,
+} from "@/components/icons";
 
 export interface RemoteImOverviewProps {
   locale: string;
@@ -66,6 +83,10 @@ export function RemoteImOverview({
     loadRimEventTimeline(),
   );
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [yoloConfirm, setYoloConfirm] = useState(false);
+  const [mirrorWriteEnabled, setMirrorWriteEnabled] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
+  const [confirmsOpen, setConfirmsOpen] = useState(false);
 
   useEffect(() => {
     const refresh = () => setTimeline(loadRimEventTimeline());
@@ -79,6 +100,27 @@ export function RemoteImOverview({
     return () => {
       window.removeEventListener(RIM_EVENT_TIMELINE_CHANGE_EVENT, onChange);
       window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  // Soft mirror write posture for security checklist (default read-only).
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const st = await api.mirrorStatus();
+        if (!cancelled) {
+          setMirrorWriteEnabled(!!st.running && st.readOnly === false);
+        }
+      } catch {
+        if (!cancelled) setMirrorWriteEnabled(false);
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -102,6 +144,91 @@ export function RemoteImOverview({
       }),
     [bridge],
   );
+
+  const aclAgg = useMemo(
+    () =>
+      aggregateAllowFromSummary(
+        instances.map((i) => ({
+          enabled: i.enabled,
+          hasCredentials: i.hasCredentials,
+          allowFrom: i.acl?.allowFrom,
+        })),
+      ),
+    [instances],
+  );
+
+  const security = useMemo(() => {
+    const statusInput = {
+      allowFromSummary: aclAgg.summary,
+      openAclChannelCount: aclAgg.openCount,
+      emptyAclChannelCount: aclAgg.emptyCount,
+      bridgeEnabled: enabled,
+      bridgeState: state,
+      bridgeLinked: connected.length > 0,
+      rateLimited: !!bridge?.rateLimited,
+      inboundRateLimitActive: true,
+      mirrorWriteEnabled,
+      remoteYoloEnabled: yolo,
+      bridgeErrorKind: bridge?.errorKind,
+      lastError: bridge?.lastError,
+      configuredChannelCount: configured.length,
+      connectedChannelCount: connected.length,
+    };
+    const checklist = buildRemoteSecurityChecklist(statusInput);
+    return {
+      checklist,
+      statusInput,
+      summaryText: formatRemoteSecuritySummaryText({
+        ...statusInput,
+        checklist,
+        locale,
+      }),
+    };
+  }, [
+    aclAgg,
+    enabled,
+    state,
+    connected.length,
+    bridge?.rateLimited,
+    bridge?.errorKind,
+    bridge?.lastError,
+    mirrorWriteEnabled,
+    yolo,
+    configured.length,
+    locale,
+  ]);
+
+  const openAclInstance = useMemo(() => {
+    return (
+      instances.find((i) => {
+        if (!i.enabled && !i.hasCredentials) return false;
+        const raw = String(i.acl?.allowFrom ?? "").trim();
+        return !raw || raw === "*";
+      }) ??
+      instances.find((i) => i.hasCredentials) ??
+      instances[0] ??
+      null
+    );
+  }, [instances]);
+
+  const copySecuritySummary = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(security.summaryText);
+      setCopyState("ok");
+      window.setTimeout(() => setCopyState("idle"), 2000);
+    } catch {
+      setCopyState("fail");
+      window.setTimeout(() => setCopyState("idle"), 2500);
+    }
+  }, [security.summaryText]);
+
+  const onYoloToggle = (v: boolean) => {
+    if (v && !yolo) {
+      setYoloConfirm(true);
+      return;
+    }
+    void onAllowYolo(v);
+  };
 
   const stateLabel =
     state === "running" || state === "listening"
@@ -210,7 +337,7 @@ export function RemoteImOverview({
             checked={yolo}
             disabled={!!busy}
             label={t("settings.remoteIm.bridge.allowYolo")}
-            onChange={(v) => void onAllowYolo(v)}
+            onChange={onYoloToggle}
           />
         </div>
 
@@ -357,6 +484,107 @@ export function RemoteImOverview({
           <p>{t("settings.remoteIm.bridge.remoteBridgeMissing")}</p>
         </div>
       ) : null}
+
+      <h3 className="settings-page__h2">
+        <IconShieldCheck size={14} />
+        {t("settings.remoteIm.security.title")}
+      </h3>
+      <div className="settings-card rim-security" data-rim-security-risk={security.checklist.risk}>
+        <div className="settings-row settings-row--stack">
+          <div className="rim-security__head">
+            <div className="settings-row__text">
+              <div className="settings-row__label">
+                {t("settings.remoteIm.security.subtitle")}
+              </div>
+              <div className="settings-row__desc">
+                {t("settings.remoteIm.security.lead")}
+              </div>
+            </div>
+            <RimBadge tone={remoteSecurityRiskTone(security.checklist.risk)}>
+              {t(remoteSecurityRiskKey(security.checklist.risk))}
+            </RimBadge>
+          </div>
+          <div className="rim-security__chips">
+            <span className="rim-security__chip">
+              {t("settings.remoteIm.security.aclLabel")}:{" "}
+              {t(allowFromSummaryKey(aclAgg.summary))}
+              {aclAgg.openCount > 0
+                ? ` · ${t("settings.remoteIm.security.openCount", {
+                    n: aclAgg.openCount,
+                  })}`
+                : ""}
+            </span>
+          </div>
+          <ul
+            className="rim-security__list"
+            aria-label={t("settings.remoteIm.security.checklistAria")}
+          >
+            {security.checklist.items.map((item) => (
+              <li key={item.id} className="rim-security__item">
+                <RimBadge tone={checklistStatusTone(item.status)}>
+                  {t(`settings.remoteIm.security.status.${item.status}`)}
+                </RimBadge>
+                <span className="rim-security__item-text">
+                  <span className="rim-security__item-label">
+                    {t(item.labelKey)}
+                  </span>
+                  {item.detailKey ? (
+                    <span className="rim-security__item-detail">
+                      {t(item.detailKey)}
+                    </span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="rim-btn-row">
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => void copySecuritySummary()}
+            >
+              <IconCopy size={14} />
+              {copyState === "ok"
+                ? t("settings.remoteIm.security.copied")
+                : copyState === "fail"
+                  ? t("settings.remoteIm.security.copyFail")
+                  : t("settings.remoteIm.security.copySummary")}
+            </button>
+            {openAclInstance ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => onOpenChannel(openAclInstance.channel)}
+              >
+                {t("settings.remoteIm.security.openAllowFrom")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              aria-expanded={confirmsOpen}
+              onClick={() => setConfirmsOpen((v) => !v)}
+            >
+              {t("settings.remoteIm.security.confirmsToggle")}
+            </button>
+          </div>
+          {confirmsOpen ? (
+            <div className="rim-security__confirms">
+              <p className="settings-row__desc" style={{ margin: 0 }}>
+                {t("settings.remoteIm.security.confirmsLead")}
+              </p>
+              <ul className="rim-help-list">
+                {DANGEROUS_WRITE_CONFIRMS.map((c) => (
+                  <li key={c.id}>{t(c.labelKey)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <p className="settings-row__desc" style={{ margin: 0 }}>
+            {t("settings.remoteIm.security.honesty")}
+          </p>
+        </div>
+      </div>
 
       <h3 className="settings-page__h2">
         {t("settings.remoteIm.timeline.title")}
@@ -511,6 +739,39 @@ export function RemoteImOverview({
       >
         <p className="rim-modal__body">
           {t("settings.remoteIm.timeline.clearBody")}
+        </p>
+      </GlassModal>
+
+      <GlassModal
+        open={yoloConfirm}
+        onClose={() => setYoloConfirm(false)}
+        title={t("settings.remoteIm.security.yoloConfirmTitle")}
+        wrapBody
+        footer={
+          <div className="rim-modal__actions">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setYoloConfirm(false)}
+            >
+              {t("settings.remoteIm.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={!!busy}
+              onClick={() => {
+                setYoloConfirm(false);
+                void onAllowYolo(true);
+              }}
+            >
+              {t("settings.remoteIm.security.yoloConfirmOk")}
+            </button>
+          </div>
+        }
+      >
+        <p className="rim-modal__body">
+          {t("settings.remoteIm.security.yoloConfirmBody")}
         </p>
       </GlassModal>
     </div>
