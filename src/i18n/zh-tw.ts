@@ -823,6 +823,28 @@ export const zhTW: Record<MessageKey, string> = {
   "dashboard.batchAgents": "批量 Agent…",
   "dashboard.batchAgentsTitle":
     "將同一提示詞派發到多個專案（工作階段或無頭摘要）",
+  "dashboard.peek.label": "工作階段詳情",
+  "dashboard.peek.expand": "展開 {title} 的詳情",
+  "dashboard.peek.collapse": "收起 {title} 的詳情",
+  "dashboard.peek.status": "狀態",
+  "dashboard.peek.tool": "工具",
+  "dashboard.peek.noTool": "無執行中的工具",
+  "dashboard.peek.project": "專案",
+  "dashboard.peek.model": "模型",
+  "dashboard.peek.activity": "更新",
+  "dashboard.peek.openChat": "開啟對話",
+  "dashboard.dispatch.title": "派發新 Agent",
+  "dashboard.dispatch.projectLabel": "已信任專案",
+  "dashboard.dispatch.promptPlaceholder": "新工作階段的提示詞…",
+  "dashboard.dispatch.button": "派發",
+  "dashboard.dispatch.buttonTitle":
+    "在所選專案新建對話、填入提示詞並送出",
+  "dashboard.dispatch.noTrusted":
+    "尚無已信任專案。請先在側欄信任一個專案後再派發。",
+  "dashboard.dispatch.emptyPrompt": "請輸入要派發的提示詞。",
+  "dashboard.dispatch.noProject": "請先選擇一個已信任專案。",
+  "dashboard.dispatch.untrusted": "該專案尚未信任。請先信任後再派發。",
+  "dashboard.dispatch.started": "已派發到 {name}",
 
   "batchAgents.title": "批量 Agent",
   "batchAgents.hint":

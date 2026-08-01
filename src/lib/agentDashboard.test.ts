@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   AGENT_DASHBOARD_STATUS_FILTERS,
+  buildDashboardPeekModel,
   collectAgentDashboardRows,
   countBusyDashboardRows,
   countDashboardRowsByStatus,
   dashboardStatusFromSessionState,
+  dashboardStatusSortRank,
   filterAgentDashboardRows,
   filterStoppableAmongSelection,
+  groupDashboardRowsByStatus,
   isStoppableDashboardStatus,
   mapDashboardStatus,
   matchAgentDashboardProject,
+  planDashboardDispatch,
+  sanitizeDispatchPrompt,
   stoppableDashboardRows,
   stoppableSelectedSessionIds,
+  trustedDashboardDispatchProjects,
   type AgentDashboardRow,
 } from "./agentDashboard";
 import { emptyLiveSnapshot, type SessionLiveMap } from "./sessionLiveStore";
@@ -126,19 +132,20 @@ describe("collectAgentDashboardRows", () => {
       unboundProjectLabel: "Other chats",
     });
 
-    // Busy first (a, b), then idle by last activity (c newer than d).
-    expect(rows.map((r) => r.sessionId)).toEqual(["a", "b", "c", "d"]);
-    expect(rows[0]!.isCurrent).toBe(true);
-    expect(rows[0]!.status).toBe("busy");
-    expect(rows[0]!.liveToolTitle).toBe("bash");
-    expect(rows[0]!.modelId).toBe("grok-4");
-    expect(rows[0]!.effort).toBe("high");
-    expect(rows[0]!.projectName).toBe("grok-app");
-    expect(rows[0]!.projectPath).toBe("/Users/me/Code/grok-app");
+    // Permission (needs you) before busy; then idle by last activity (c newer than d).
+    expect(rows.map((r) => r.sessionId)).toEqual(["b", "a", "c", "d"]);
+    expect(rows[0]!.status).toBe("permission");
     expect(rows[0]!.stoppable).toBe(true);
 
-    expect(rows[1]!.status).toBe("permission");
-    expect(rows[1]!.stoppable).toBe(true);
+    const busyA = rows.find((r) => r.sessionId === "a")!;
+    expect(busyA.isCurrent).toBe(true);
+    expect(busyA.status).toBe("busy");
+    expect(busyA.liveToolTitle).toBe("bash");
+    expect(busyA.modelId).toBe("grok-4");
+    expect(busyA.effort).toBe("high");
+    expect(busyA.projectName).toBe("grok-app");
+    expect(busyA.projectPath).toBe("/Users/me/Code/grok-app");
+    expect(busyA.stoppable).toBe(true);
 
     const idleC = rows.find((r) => r.sessionId === "c")!;
     expect(idleC.status).toBe("idle");
@@ -150,9 +157,46 @@ describe("collectAgentDashboardRows", () => {
 
     expect(countBusyDashboardRows(rows)).toBe(2);
     expect(stoppableDashboardRows(rows).map((r) => r.sessionId)).toEqual([
-      "a",
       "b",
+      "a",
     ]);
+  });
+
+  it("ranks permission above busy above connecting", () => {
+    const liveMap: SessionLiveMap = {
+      perm: {
+        ...emptyLiveSnapshot("perm", 1),
+        state: "awaiting_permission",
+        awaitingPermission: true,
+        updatedAt: 10,
+      },
+      busy: {
+        ...emptyLiveSnapshot("busy", 2),
+        state: "streaming",
+        updatedAt: 99,
+      },
+      conn: {
+        ...emptyLiveSnapshot("conn", 3),
+        state: "connecting",
+        updatedAt: 50,
+      },
+    };
+    const rows = collectAgentDashboardRows({
+      sessions: [
+        { id: "busy", title: "Busy", updatedAt: "2026-07-30T12:00:00.000Z" },
+        { id: "perm", title: "Perm", updatedAt: "2026-07-30T11:00:00.000Z" },
+        { id: "conn", title: "Conn", updatedAt: "2026-07-30T10:00:00.000Z" },
+      ],
+      projects: [],
+      liveMap,
+    });
+    expect(rows.map((r) => r.sessionId)).toEqual(["perm", "busy", "conn"]);
+    expect(dashboardStatusSortRank("permission")).toBeLessThan(
+      dashboardStatusSortRank("busy"),
+    );
+    expect(dashboardStatusSortRank("busy")).toBeLessThan(
+      dashboardStatusSortRank("connecting"),
+    );
   });
 
   it("includes live-busy sessions missing from the sidebar list", () => {
@@ -607,3 +651,203 @@ describe("filterStoppableAmongSelection", () => {
     ).toEqual(["busy-1", "perm-1"]);
   });
 });
+
+describe("groupDashboardRowsByStatus", () => {
+  it("groups in permission → busy → connecting → error → idle order", () => {
+    const rows: AgentDashboardRow[] = [
+      {
+        sessionId: "i",
+        title: "Idle",
+        projectId: null,
+        projectName: null,
+        projectPath: null,
+        modelId: null,
+        effort: null,
+        status: "idle",
+        liveToolTitle: null,
+        isCurrent: false,
+        lastActivityAt: 1,
+        updatedAtIso: null,
+        stoppable: false,
+      },
+      {
+        sessionId: "b",
+        title: "Busy",
+        projectId: null,
+        projectName: null,
+        projectPath: null,
+        modelId: null,
+        effort: null,
+        status: "busy",
+        liveToolTitle: "bash",
+        isCurrent: false,
+        lastActivityAt: 2,
+        updatedAtIso: null,
+        stoppable: true,
+      },
+      {
+        sessionId: "p",
+        title: "Perm",
+        projectId: null,
+        projectName: null,
+        projectPath: null,
+        modelId: null,
+        effort: null,
+        status: "permission",
+        liveToolTitle: null,
+        isCurrent: false,
+        lastActivityAt: 3,
+        updatedAtIso: null,
+        stoppable: true,
+      },
+      {
+        sessionId: "e",
+        title: "Err",
+        projectId: null,
+        projectName: null,
+        projectPath: null,
+        modelId: null,
+        effort: null,
+        status: "error",
+        liveToolTitle: null,
+        isCurrent: false,
+        lastActivityAt: 0,
+        updatedAtIso: null,
+        stoppable: false,
+      },
+    ];
+    const groups = groupDashboardRowsByStatus(rows);
+    expect(groups.map((g) => g.status)).toEqual([
+      "permission",
+      "busy",
+      "error",
+      "idle",
+    ]);
+    expect(groups[0]!.rows.map((r) => r.sessionId)).toEqual(["p"]);
+    expect(groups[1]!.rows.map((r) => r.sessionId)).toEqual(["b"]);
+  });
+});
+
+describe("buildDashboardPeekModel", () => {
+  it("projects row fields into a read-only peek card", () => {
+    const row: AgentDashboardRow = {
+      sessionId: "s1",
+      title: "Fix CI",
+      projectId: "p1",
+      projectName: "grok-app",
+      projectPath: "/code/grok-app",
+      modelId: "grok-4",
+      effort: "high",
+      status: "busy",
+      liveToolTitle: "  bash  ",
+      isCurrent: true,
+      lastActivityAt: 123,
+      updatedAtIso: null,
+      stoppable: true,
+    };
+    expect(buildDashboardPeekModel(row)).toEqual({
+      title: "Fix CI",
+      status: "busy",
+      toolTitle: "bash",
+      projectPath: "/code/grok-app",
+      projectName: "grok-app",
+      modelId: "grok-4",
+      effort: "high",
+      lastActivityAt: 123,
+      canOpen: true,
+      canStop: true,
+    });
+  });
+});
+
+describe("sanitizeDispatchPrompt", () => {
+  it("trims, clamps, and never invents content", () => {
+    expect(sanitizeDispatchPrompt("  hello  ")).toBe("hello");
+    expect(sanitizeDispatchPrompt("   ")).toBe("");
+    expect(sanitizeDispatchPrompt(null)).toBe("");
+    expect(sanitizeDispatchPrompt(undefined)).toBe("");
+    const long = "x".repeat(9000);
+    expect(sanitizeDispatchPrompt(long)).toHaveLength(8000);
+    expect(sanitizeDispatchPrompt("abcdef", 3)).toBe("abc");
+  });
+});
+
+describe("planDashboardDispatch", () => {
+  const projects = [
+    {
+      id: "p1",
+      name: "trusted",
+      path: "/code/t",
+      trusted: true,
+    },
+    {
+      id: "p2",
+      name: "untrusted",
+      path: "/code/u",
+      trusted: false,
+    },
+  ];
+
+  it("returns ok plan with sanitized prompt + project", () => {
+    const plan = planDashboardDispatch({
+      projectId: "p1",
+      prompt: "  do the thing  ",
+      projects,
+    });
+    expect(plan).toEqual({
+      ok: true,
+      prompt: "do the thing",
+      project: {
+        id: "p1",
+        name: "trusted",
+        path: "/code/t",
+        trusted: true,
+      },
+    });
+  });
+
+  it("soft-fails empty prompt / missing / untrusted / no trusted catalog", () => {
+    expect(
+      planDashboardDispatch({
+        projectId: "p1",
+        prompt: "   ",
+        projects,
+      }),
+    ).toEqual({ ok: false, reason: "empty_prompt" });
+    expect(
+      planDashboardDispatch({
+        projectId: null,
+        prompt: "hi",
+        projects,
+      }),
+    ).toEqual({ ok: false, reason: "no_project" });
+    expect(
+      planDashboardDispatch({
+        projectId: "missing",
+        prompt: "hi",
+        projects,
+      }),
+    ).toEqual({ ok: false, reason: "no_project" });
+    expect(
+      planDashboardDispatch({
+        projectId: "p2",
+        prompt: "hi",
+        projects,
+      }),
+    ).toEqual({ ok: false, reason: "untrusted" });
+    expect(
+      planDashboardDispatch({
+        projectId: null,
+        prompt: "hi",
+        projects: [{ id: "x", name: "x", path: "/x", trusted: false }],
+      }),
+    ).toEqual({ ok: false, reason: "no_trusted_project" });
+  });
+
+  it("lists trusted projects for the select", () => {
+    expect(trustedDashboardDispatchProjects(projects).map((p) => p.id)).toEqual(
+      ["p1"],
+    );
+  });
+});
+

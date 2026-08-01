@@ -10,15 +10,20 @@ import { GlassModal } from "@/components/GlassModal";
 import { xEvidenceStats, type XEvidenceStats } from "@/lib/api";
 import {
   AGENT_DASHBOARD_STATUS_FILTERS,
+  buildDashboardPeekModel,
   countBusyDashboardRows,
   countDashboardRowsByStatus,
   filterAgentDashboardRows,
   filterStoppableAmongSelection,
+  planDashboardDispatch,
   stoppableDashboardRows,
   stoppableSelectedSessionIds,
+  trustedDashboardDispatchProjects,
   type AgentDashboardRow,
   type AgentDashboardStatus,
   type AgentDashboardStatusFilter,
+  type DashboardDispatchProject,
+  type DashboardPeekModel,
 } from "@/lib/agentDashboard";
 import { formatRelativeTime } from "@/lib/accountUi";
 import { pruneSelectedIds, toggleIdInSet } from "@/lib/sessionSelect";
@@ -77,19 +82,109 @@ function statusBadgeClass(status: AgentDashboardStatus): string {
   }
 }
 
+function PeekCard({
+  peek,
+  t,
+  locale,
+  onOpen,
+}: {
+  peek: DashboardPeekModel;
+  t: TFn;
+  locale: Locale;
+  onOpen?: () => void;
+}) {
+  const activity =
+    peek.lastActivityAt > 0
+      ? formatRelativeTime(new Date(peek.lastActivityAt).toISOString(), locale)
+      : null;
+
+  return (
+    <div className="agent-dash__peek" role="region" aria-label={t("dashboard.peek.label")}>
+      <div className="agent-dash__peek-grid">
+        <div className="agent-dash__peek-row">
+          <span className="agent-dash__peek-k">{t("dashboard.peek.status")}</span>
+          <span className="agent-dash__peek-v">
+            <span
+              className={
+                "agent-dash__status-badge " + statusBadgeClass(peek.status)
+              }
+            >
+              {statusLabel(peek.status, t)}
+            </span>
+          </span>
+        </div>
+        <div className="agent-dash__peek-row">
+          <span className="agent-dash__peek-k">{t("dashboard.peek.tool")}</span>
+          <span className="agent-dash__peek-v" title={peek.toolTitle || undefined}>
+            {peek.toolTitle || t("dashboard.peek.noTool")}
+          </span>
+        </div>
+        {peek.projectName || peek.projectPath ? (
+          <div className="agent-dash__peek-row">
+            <span className="agent-dash__peek-k">
+              {t("dashboard.peek.project")}
+            </span>
+            <span
+              className="agent-dash__peek-v"
+              title={peek.projectPath || peek.projectName || undefined}
+            >
+              {peek.projectName || peek.projectPath}
+              {peek.projectName && peek.projectPath ? (
+                <span className="agent-dash__peek-path">{peek.projectPath}</span>
+              ) : null}
+            </span>
+          </div>
+        ) : null}
+        {peek.modelId ? (
+          <div className="agent-dash__peek-row">
+            <span className="agent-dash__peek-k">{t("dashboard.peek.model")}</span>
+            <span className="agent-dash__peek-v">
+              {peek.modelId}
+              {peek.effort ? ` · ${peek.effort}` : ""}
+            </span>
+          </div>
+        ) : null}
+        {activity ? (
+          <div className="agent-dash__peek-row">
+            <span className="agent-dash__peek-k">
+              {t("dashboard.peek.activity")}
+            </span>
+            <span className="agent-dash__peek-v">{activity}</span>
+          </div>
+        ) : null}
+      </div>
+      {peek.canOpen && onOpen ? (
+        <div className="agent-dash__peek-actions">
+          <button
+            type="button"
+            className="btn btn--solid btn--sm"
+            onClick={onOpen}
+          >
+            {t("dashboard.peek.openChat")}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DashboardRow({
   row,
   t,
   locale,
   selected,
+  expanded,
   onToggleSelect,
+  onTogglePeek,
   onSelect,
 }: {
   row: AgentDashboardRow;
   t: TFn;
   locale: Locale;
   selected: boolean;
+  expanded: boolean;
   onToggleSelect: (sessionId: string) => void;
+  onTogglePeek: (sessionId: string) => void;
   onSelect?: (sessionId: string) => void;
 }) {
   const metaParts: string[] = [];
@@ -105,6 +200,7 @@ function DashboardRow({
 
   const cwd = row.projectPath || null;
   const toolTitle = row.liveToolTitle?.trim() || null;
+  const peek = expanded ? buildDashboardPeekModel(row) : null;
 
   return (
     <li
@@ -113,6 +209,7 @@ function DashboardRow({
         (row.isCurrent ? " is-current" : "") +
         (row.stoppable ? " is-busy" : "") +
         (selected ? " is-selected" : "") +
+        (expanded ? " is-expanded" : "") +
         (row.status === "permission" ? " is-permission" : "")
       }
     >
@@ -191,7 +288,44 @@ function DashboardRow({
             ) : null}
           </span>
         </button>
+        <button
+          type="button"
+          className={
+            "agent-dash__peek-toggle" + (expanded ? " is-open" : "")
+          }
+          aria-expanded={expanded}
+          aria-label={
+            expanded
+              ? t("dashboard.peek.collapse", { title: row.title })
+              : t("dashboard.peek.expand", { title: row.title })
+          }
+          title={
+            expanded
+              ? t("dashboard.peek.collapse", { title: row.title })
+              : t("dashboard.peek.expand", { title: row.title })
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            onTogglePeek(row.sessionId);
+          }}
+        >
+          <span className="agent-dash__peek-chevron" aria-hidden>
+            {expanded ? "▾" : "▸"}
+          </span>
+        </button>
       </div>
+      {peek ? (
+        <PeekCard
+          peek={peek}
+          t={t}
+          locale={locale}
+          onOpen={
+            peek.canOpen
+              ? () => onSelect?.(row.sessionId)
+              : undefined
+          }
+        />
+      ) : null}
     </li>
   );
 }
@@ -200,6 +334,8 @@ export type AgentDashboardModalProps = {
   open: boolean;
   locale: Locale;
   rows: AgentDashboardRow[];
+  /** Trusted-project catalog for single dispatch (optional). */
+  projects?: readonly DashboardDispatchProject[];
   onClose: () => void;
   onSelectSession?: (sessionId: string) => void;
   /**
@@ -214,17 +350,24 @@ export type AgentDashboardModalProps = {
   onStopSessions?: (sessionIds: string[]) => void;
   /** Open multi-project batch agents dispatch. */
   onOpenBatchAgents?: () => void;
+  /**
+   * Single-project dispatch: App creates/opens a chat and fills the composer.
+   * Soft-fail toasts live in App.
+   */
+  onDispatchAgent?: (opts: { projectId: string; prompt: string }) => void;
 };
 
 export function AgentDashboardModal({
   open,
   locale,
   rows,
+  projects = [],
   onClose,
   onSelectSession,
   onStopAllBusy,
   onStopSessions,
   onOpenBatchAgents,
+  onDispatchAgent,
 }: AgentDashboardModalProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [query, setQuery] = useState("");
@@ -232,6 +375,10 @@ export function AgentDashboardModal({
   const [statusFilter, setStatusFilter] =
     useState<AgentDashboardStatusFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [peekedId, setPeekedId] = useState<string | null>(null);
+  const [dispatchProjectId, setDispatchProjectId] = useState("");
+  const [dispatchPrompt, setDispatchPrompt] = useState("");
+  const [dispatchHint, setDispatchHint] = useState<MessageKey | null>(null);
   // X Evidence Rail counters (today's new evidence / this week's quote packs).
   // Absent backend (mock mode) or empty store → hide the block silently.
   const [evidence, setEvidence] = useState<XEvidenceStats | null>(null);
@@ -249,6 +396,21 @@ export function AgentDashboardModal({
       cancelled = true;
     };
   }, [open]);
+
+  const trustedProjects = useMemo(
+    () => trustedDashboardDispatchProjects(projects),
+    [projects],
+  );
+
+  // Default dispatch project to first trusted when catalog changes / opens.
+  useEffect(() => {
+    if (!open) return;
+    setDispatchProjectId((prev) => {
+      if (prev && trustedProjects.some((p) => p.id === prev)) return prev;
+      return trustedProjects[0]?.id ?? "";
+    });
+  }, [open, trustedProjects]);
+
   const filtered = useMemo(
     () =>
       filterAgentDashboardRows(rows, {
@@ -273,11 +435,17 @@ export function AgentDashboardModal({
   useEffect(() => {
     const live = new Set(rows.map((r) => r.sessionId));
     setSelectedIds((prev) => pruneSelectedIds(prev, live));
+    setPeekedId((prev) => (prev && live.has(prev) ? prev : null));
   }, [rows]);
 
-  // Clear multi-select when the modal closes so the next open is fresh.
+  // Clear multi-select / peek / dispatch draft when the modal closes.
   useEffect(() => {
-    if (!open) setSelectedIds(new Set());
+    if (!open) {
+      setSelectedIds(new Set());
+      setPeekedId(null);
+      setDispatchPrompt("");
+      setDispatchHint(null);
+    }
   }, [open]);
 
   const selectedStoppable = useMemo(
@@ -312,6 +480,10 @@ export function AgentDashboardModal({
     setSelectedIds((prev) => toggleIdInSet(prev, sessionId));
   };
 
+  const togglePeek = (sessionId: string) => {
+    setPeekedId((prev) => (prev === sessionId ? null : sessionId));
+  };
+
   const toggleSelectAllVisible = () => {
     setSelectedIds((prev) => {
       if (allVisibleSelected) {
@@ -334,6 +506,32 @@ export function AgentDashboardModal({
     // Clear selection after dispatch so the footer doesn't stale-count.
     setSelectedIds(new Set());
   };
+
+  const handleDispatch = () => {
+    if (!onDispatchAgent) return;
+    const plan = planDashboardDispatch({
+      projectId: dispatchProjectId,
+      prompt: dispatchPrompt,
+      projects,
+    });
+    if (!plan.ok) {
+      const key: MessageKey =
+        plan.reason === "empty_prompt"
+          ? "dashboard.dispatch.emptyPrompt"
+          : plan.reason === "untrusted"
+            ? "dashboard.dispatch.untrusted"
+            : plan.reason === "no_trusted_project"
+              ? "dashboard.dispatch.noTrusted"
+              : "dashboard.dispatch.noProject";
+      setDispatchHint(key);
+      return;
+    }
+    setDispatchHint(null);
+    onDispatchAgent({ projectId: plan.project.id, prompt: plan.prompt });
+    setDispatchPrompt("");
+  };
+
+  const showDispatch = !!onDispatchAgent;
 
   return (
     <GlassModal
@@ -389,6 +587,72 @@ export function AgentDashboardModal({
       }
     >
       <p className="agent-dash__hint">{tr("dashboard.hint")}</p>
+      {showDispatch ? (
+        <div className="agent-dash__dispatch" aria-label={tr("dashboard.dispatch.title")}>
+          <div className="agent-dash__dispatch-head">
+            <span className="agent-dash__dispatch-title">
+              {tr("dashboard.dispatch.title")}
+            </span>
+          </div>
+          {trustedProjects.length === 0 ? (
+            <p className="agent-dash__dispatch-empty">
+              {tr("dashboard.dispatch.noTrusted")}
+            </p>
+          ) : (
+            <>
+              <div className="agent-dash__dispatch-row">
+                <label className="agent-dash__dispatch-label" htmlFor="agent-dash-dispatch-project">
+                  {tr("dashboard.dispatch.projectLabel")}
+                </label>
+                <select
+                  id="agent-dash-dispatch-project"
+                  className="settings-input agent-dash__dispatch-select"
+                  value={dispatchProjectId}
+                  onChange={(e) => {
+                    setDispatchProjectId(e.target.value);
+                    setDispatchHint(null);
+                  }}
+                  aria-label={tr("dashboard.dispatch.projectLabel")}
+                >
+                  {trustedProjects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name || p.path || p.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <textarea
+                className="settings-input agent-dash__dispatch-prompt"
+                value={dispatchPrompt}
+                onChange={(e) => {
+                  setDispatchPrompt(e.target.value);
+                  setDispatchHint(null);
+                }}
+                placeholder={tr("dashboard.dispatch.promptPlaceholder")}
+                rows={2}
+                spellCheck={false}
+                aria-label={tr("dashboard.dispatch.promptPlaceholder")}
+              />
+              <div className="agent-dash__dispatch-actions">
+                <button
+                  type="button"
+                  className="btn btn--solid btn--sm"
+                  onClick={handleDispatch}
+                  disabled={!dispatchPrompt.trim()}
+                  title={tr("dashboard.dispatch.buttonTitle")}
+                >
+                  {tr("dashboard.dispatch.button")}
+                </button>
+                {dispatchHint ? (
+                  <span className="agent-dash__dispatch-hint" role="status">
+                    {tr(dispatchHint)}
+                  </span>
+                ) : null}
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
       {evidence && evidence.total > 0 ? (
         <div
           className="agent-dash__evidence"
@@ -539,7 +803,9 @@ export function AgentDashboardModal({
                 t={(k, vars) => tr(k, vars)}
                 locale={locale}
                 selected={selectedIds.has(row.sessionId)}
+                expanded={peekedId === row.sessionId}
                 onToggleSelect={toggleRow}
+                onTogglePeek={togglePeek}
                 onSelect={(id) => {
                   onSelectSession?.(id);
                   onClose();

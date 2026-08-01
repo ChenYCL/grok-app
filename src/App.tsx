@@ -264,6 +264,7 @@ import { resolveTrayBusyBadgeCount } from "@/lib/trayNotifyPro";
 import {
   collectAgentDashboardRows,
   countBusyDashboardRows,
+  planDashboardDispatch,
 } from "@/lib/agentDashboard";
 import {
   BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
@@ -21556,6 +21557,12 @@ export default function App() {
         open={agentDashboardOpen}
         locale={locale}
         rows={agentDashboardRows}
+        projects={projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          path: p.path,
+          trusted: p.trusted,
+        }))}
         onClose={() => setAgentDashboardOpen(false)}
         onSelectSession={(id) => {
           const row = sessions.find((s) => s.id === id);
@@ -21575,6 +21582,53 @@ export default function App() {
         onOpenBatchAgents={() => {
           setAgentDashboardOpen(false);
           openBatchAgents();
+        }}
+        onDispatchAgent={({ projectId, prompt }) => {
+          const plan = planDashboardDispatch({
+            projectId,
+            prompt,
+            projects: projects.map((p) => ({
+              id: p.id,
+              name: p.name,
+              path: p.path,
+              trusted: p.trusted,
+            })),
+          });
+          if (!plan.ok) {
+            const key =
+              plan.reason === "empty_prompt"
+                ? "dashboard.dispatch.emptyPrompt"
+                : plan.reason === "untrusted"
+                  ? "dashboard.dispatch.untrusted"
+                  : plan.reason === "no_trusted_project"
+                    ? "dashboard.dispatch.noTrusted"
+                    : "dashboard.dispatch.noProject";
+            showToast(tr(key), 2800);
+            return;
+          }
+          const proj = projects.find((p) => p.id === plan.project.id) ?? null;
+          if (!proj || !proj.trusted) {
+            showToast(tr("dashboard.dispatch.untrusted"), 2800);
+            return;
+          }
+          // New chat on project with prompt filled; soft-send after paint.
+          void (async () => {
+            await newChat(proj, {
+              seedDraft: plan.prompt,
+              switchToChat: true,
+            });
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                void sendRef.current?.();
+              });
+            });
+            showToast(
+              tr("dashboard.dispatch.started", {
+                name: proj.name || proj.path || proj.id,
+              }),
+              2200,
+            );
+          })();
         }}
       />
       <BatchAgentsModal
