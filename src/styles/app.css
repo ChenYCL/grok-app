@@ -14995,8 +14995,9 @@ textarea::-webkit-scrollbar-thumb:active,
   flex-shrink: 0;
 }
 
-/* Amux: follows theme ink (black in light, white in dark) */
-.provider-brand-icon--amux {
+/* Amux / OpenCode Go: follows theme ink (black in light, white in dark) */
+.provider-brand-icon--amux,
+.provider-brand-icon--opencode-go {
   color: var(--text-primary);
 }
 

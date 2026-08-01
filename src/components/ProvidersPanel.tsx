@@ -208,10 +208,6 @@ export function ProvidersPanel({
   const [officialKeyDraft, setOfficialKeyDraft] = useState("");
   const [showOfficialKey, setShowOfficialKey] = useState(false);
   const [officialKeyBusy, setOfficialKeyBusy] = useState(false);
-  /** Inject official-aux MCP (only meaningful on custom main route). */
-  const [officialAuxInject, setOfficialAuxInject] = useState(true);
-  const [officialAuxWithUserMcp, setOfficialAuxWithUserMcp] = useState(false);
-  const [officialAuxBusy, setOfficialAuxBusy] = useState(false);
 
   /** CC Switch import dialog */
   const [ccImportOpen, setCcImportOpen] = useState(false);
@@ -249,63 +245,18 @@ export function ProvidersPanel({
         setHasOfficialKey(false);
         return;
       }
-      const [r, masked, settings] = await Promise.all([
+      const [r, masked] = await Promise.all([
         api.providersList(),
         api.secretsGetMasked().catch(() => null),
-        api.settingsGet().catch(() => null),
       ]);
       setList(r);
       setHasOfficialKey(!!masked?.hasOfficialKey);
-      if (settings) {
-        setOfficialAuxInject(settings.officialAuxInject !== false);
-        setOfficialAuxWithUserMcp(!!settings.officialAuxWithUserMcp);
-      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
   }, []);
-
-  const officialCredsOk = !!(officialAvailable || hasOfficialKey);
-  /** Host only injects on custom main; official subscription uses native tools. */
-  const injectAllowed =
-    officialCredsOk && (list?.activeSource ?? "official") !== "official";
-
-  const setOfficialAuxInjectPref = async (on: boolean) => {
-    if (!api.isTauri() || !injectAllowed) return;
-    setOfficialAuxBusy(true);
-    try {
-      const cur = await api.settingsGet();
-      await api.settingsSet({ ...cur, officialAuxInject: on });
-      setOfficialAuxInject(on);
-      onToast?.(
-        on ? tr("prov.officialAuxInjectOn") : tr("prov.officialAuxInjectOff"),
-        2800,
-      );
-      // Soft-respawn is done in Host settings_set; refresh provider chrome.
-      onProviderActivated?.();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setOfficialAuxBusy(false);
-    }
-  };
-
-  const setOfficialAuxWithUserMcpPref = async (on: boolean) => {
-    if (!api.isTauri() || !injectAllowed || !officialAuxInject) return;
-    setOfficialAuxBusy(true);
-    try {
-      const cur = await api.settingsGet();
-      await api.settingsSet({ ...cur, officialAuxWithUserMcp: on });
-      setOfficialAuxWithUserMcp(on);
-      onProviderActivated?.();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setOfficialAuxBusy(false);
-    }
-  };
 
   useEffect(() => {
     void reload();
@@ -815,72 +766,6 @@ export function ProvidersPanel({
           </button>
         </div>
       )}
-
-      <div
-        className={
-          "prov-official-aux" + (!injectAllowed ? " is-disabled" : "")
-        }
-        id="settings-anchor-official-aux-inject"
-      >
-        <div className="prov-official-aux__text">
-          <div className="prov-official-aux__title">
-            {tr("prov.officialAuxInject")}
-          </div>
-          <p className="prov-official-aux__desc">
-            {!officialCredsOk
-              ? tr("prov.officialAuxInjectDisabled")
-              : officialActive
-                ? tr("prov.officialAuxInjectOfficialRoute")
-                : tr("prov.officialAuxInjectDesc")}
-          </p>
-        </div>
-        <label className="prov-official-aux__switch">
-          <input
-            type="checkbox"
-            checked={injectAllowed && officialAuxInject}
-            disabled={!injectAllowed || officialAuxBusy || busy}
-            onChange={(e) => void setOfficialAuxInjectPref(e.target.checked)}
-            aria-label={tr("prov.officialAuxInject")}
-          />
-          <span>
-            {injectAllowed && officialAuxInject
-              ? tr("prov.officialAuxInjectOn")
-              : tr("prov.officialAuxInjectOff")}
-          </span>
-        </label>
-      </div>
-
-      {injectAllowed && officialAuxInject ? (
-        <div
-          className="prov-official-aux prov-official-aux--sub"
-          id="settings-anchor-official-aux-user-mcp"
-        >
-          <div className="prov-official-aux__text">
-            <div className="prov-official-aux__title">
-              {tr("prov.officialAuxWithUserMcp")}
-            </div>
-            <p className="prov-official-aux__desc">
-              {tr("prov.officialAuxWithUserMcpDesc")}
-            </p>
-          </div>
-          <label className="prov-official-aux__switch">
-            <input
-              type="checkbox"
-              checked={officialAuxWithUserMcp}
-              disabled={officialAuxBusy || busy}
-              onChange={(e) =>
-                void setOfficialAuxWithUserMcpPref(e.target.checked)
-              }
-              aria-label={tr("prov.officialAuxWithUserMcp")}
-            />
-            <span>
-              {officialAuxWithUserMcp
-                ? tr("prov.officialAuxInjectOn")
-                : tr("prov.officialAuxInjectOff")}
-            </span>
-          </label>
-        </div>
-      ) : null}
 
       <div className="prov-split">
         {/* ── Left: list ───────────────────────────────────────────── */}

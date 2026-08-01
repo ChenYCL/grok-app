@@ -11,7 +11,7 @@ X / web **不做 Host 关键词预跑**；由 agent 通过 tools 调用 `officia
 
 ## 产品入口
 
-**设置 → 账户 → 自定义提供商** 顶部：
+**设置 → 账户 → 拓展**：
 
 | 控件 | 行为 |
 |------|------|
@@ -20,7 +20,7 @@ X / web **不做 Host 关键词预跑**；由 agent 通过 tools 调用 `officia
 | 官方 Grok 订阅主路由 | 注入开关 **置灰、显示为关**；不注入（原生 Imagine / X / vision） |
 | 无官方凭证 | **置灰**不可用 |
 
-深链：`#/settings/account/providers` · anchor `settings-anchor-official-aux-inject`。
+深链：`#/settings/account/extras` · anchor `settings-anchor-official-aux-inject`。
 
 ## 官方侧信道（custom only）
 

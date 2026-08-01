@@ -3003,10 +3003,13 @@ const en = {
     "Independent keeps chats in the app data dir. Shared uses the CLI home so App and terminal see the same sessions. CLI session import works in both modes; independent mode scans agent-home (not always ~/.grok).",
   "settings.tabOfficial": "Official account",
   "settings.tabProviders": "Custom providers",
+  "settings.tabExtras": "Extras",
   "settings.tabOfficialHint":
     "Sign in with Grok Build for SuperGrok quota, heatmap, and official models.",
   "settings.tabProvidersHint":
-    "Add OpenAI-compatible relays (CPA, sub2api, self-hosted). Keys stay on this device. Toggle official tool injection when signed in.",
+    "Add OpenAI-compatible relays (CPA, sub2api, self-hosted). Keys stay on this device.",
+  "settings.tabExtrasHint":
+    "When the main route is a custom provider: inject official tools (MCP official-aux) and optionally load your other MCPs.",
 
   "modelAux.title": "Auxiliary model routing",
   "modelAux.desc":
@@ -9094,10 +9097,13 @@ const zh: Record<MessageKey, string> = {
     "独立模式会话存在应用目录；共享模式使用 CLI 主目录，与终端共用会话。两种模式均可导入 CLI 会话；独立模式扫描的是 agent-home（不一定是 ~/.grok）。",
   "settings.tabOfficial": "官方账户",
   "settings.tabProviders": "自定义提供商",
+  "settings.tabExtras": "拓展",
   "settings.tabOfficialHint":
     "使用 Grok Build 官方登录，查看 SuperGrok 额度、热力图与官方模型。",
   "settings.tabProvidersHint":
-    "添加 OpenAI 兼容中转（CPA、sub2api、自建等）。密钥仅保存在本机。已登录官方时可开启「注入官方工具」。",
+    "添加 OpenAI 兼容中转（CPA、sub2api、自建等）。密钥仅保存在本机。",
+  "settings.tabExtrasHint":
+    "自定义主模型下的官方工具注入（MCP official-aux），以及是否同时加载其它扩展 MCP。",
 
   "modelAux.title": "辅助模型路由",
   "modelAux.desc":

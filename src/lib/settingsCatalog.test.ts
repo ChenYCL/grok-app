@@ -149,9 +149,35 @@ describe("settingsCatalog", () => {
     );
   });
 
+  it("account has official · providers · extras tabs", () => {
+    expect(defaultTabFor("account")).toBe("official");
+    expect(resolveTab("account", "providers")).toBe("providers");
+    expect(resolveTab("account", "extras")).toBe("extras");
+    expect(resolveTab("account", "nope")).toBe("official");
+    expect(parseSettingsHash("settings/account/extras")).toEqual({
+      section: "account",
+      tab: "extras",
+    });
+    expect(buildSettingsHash({ section: "account", tab: "extras" })).toBe(
+      "#/settings/account/extras",
+    );
+    const aux = SETTINGS_ENTRIES.find((e) => e.id === "account.officialAuxInject");
+    expect(aux?.tab).toBe("extras");
+  });
+
   it("search finds mcp / wallpaper / thinking / chat font / actions / cli path", () => {
     const tZh = createT("zh");
     const tEn = createT("en");
+    const inject = searchSettingsEntries("注入官方工具", tZh, tEn);
+    expect(
+      inject.some(
+        (h) =>
+          h.entry.id === "account.officialAuxInject" &&
+          h.entry.tab === "extras",
+      ),
+    ).toBe(true);
+    const extras = searchSettingsEntries("拓展", tZh, tEn);
+    expect(extras.some((h) => h.entry.id === "account.extras")).toBe(true);
     const mcp = searchSettingsEntries("mcp", tZh, tEn);
     expect(mcp.some((h) => h.entry.id === "ext.mcp")).toBe(true);
     const wallpaper = searchSettingsEntries("壁纸", tZh, tEn);

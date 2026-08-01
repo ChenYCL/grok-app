@@ -23,7 +23,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 |---------|------|
 | general | `composer` · `permissions` · `agent`（含 experimental memory、memory browser、**memory embedding 0.2.117**） · `app` |
 | appearance | `theme`（主题：浅深色 / 皮肤 / 背景）· `interface`（界面：聊天展示） |
-| account | `official` · `providers`（含「注入官方工具」开关） |
+| account | `official` · `providers` · `extras`（「拓展」：官方工具注入开关） |
 | extensions | `plugins` · `skills` · `mcp` · `hooks` · `market` |
 | runtime | `cli` · `connection` · `network` · `pool` · `tools` · `privacy` |
 | remote_im（远程控制） | `im`（IM 通信）· `mirror`（手机镜像） |
@@ -39,7 +39,8 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 #/settings/runtime/tools            → CLI · 诊断
 #/settings/runtime/tools?pr=42      → 诊断 · PR hub（可选高亮 PR #42；ship 成功「在 PR 中心打开」）
 #/settings/runtime/privacy          → CLI · 隐私中心
-#/settings/account/providers        → 自定义提供商（含官方工具注入）
+#/settings/account/providers        → 自定义提供商
+#/settings/account/extras           → 拓展（官方工具注入 / 扩展 MCP）
 #/settings/remote_im                → 远程控制 · IM 通信
 #/settings/remote_im/mirror         → 远程控制 · 手机镜像
 #/settings/appearance               → appearance/theme

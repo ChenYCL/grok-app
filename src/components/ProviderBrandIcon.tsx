@@ -1,6 +1,7 @@
 /**
- * Brand marks for known custom-provider presets (DeepSeek, Amux, …).
- * Amux uses currentColor so it follows light/dark theme; DeepSeek keeps brand blue.
+ * Brand marks for known custom-provider presets (DeepSeek, Amux, OpenCode Go, …).
+ * Amux / OpenCode Go use currentColor so they follow light/dark theme;
+ * DeepSeek keeps brand blue.
  */
 
 import { memo } from "react";
@@ -44,6 +45,44 @@ function AmuxMark({
       {/* currentColor → follows theme (light/dark) */}
       <path
         d="M4 96 C4 96, 24 12, 64 12 C104 12, 124 96, 124 96 Q124 102, 118 102 C94 102, 92 64, 64 64 C36 64, 34 102, 10 102 Q4 102, 4 96 Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+/** OpenCode rectangular frame mark (from docs/svg/opencode go.svg). */
+function OpenCodeGoMark({
+  className = "",
+  title,
+  size = 20,
+}: {
+  className?: string;
+  title?: string;
+  size?: number;
+}) {
+  // Source art is 24×30; keep height = size and width proportional so the
+  // tall frame does not look squashed in square avatars.
+  const height = size;
+  const width = Math.round((size * 24) / 30);
+  return (
+    <svg
+      className={`provider-brand-icon provider-brand-icon--opencode-go ${className}`.trim()}
+      width={width}
+      height={height}
+      viewBox="0 0 24 30"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      role={title ? "img" : "presentation"}
+      aria-hidden={title ? undefined : true}
+      aria-label={title}
+    >
+      {title ? <title>{title}</title> : null}
+      {/* currentColor → follows theme (light/dark); evenodd cuts the inner hole */}
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M18 6H6V24H18V6ZM24 30H0V0H24V30Z"
         fill="currentColor"
       />
     </svg>
@@ -96,6 +135,9 @@ export const ProviderBrandIcon = memo(function ProviderBrandIcon({
   }
   if (id === "deepseek") {
     return <DeepSeekMark className={className} title={title} size={size} />;
+  }
+  if (id === "opencode-go") {
+    return <OpenCodeGoMark className={className} title={title} size={size} />;
   }
   return null;
 });

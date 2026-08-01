@@ -89,7 +89,7 @@ Each card has **Use** to activate that route (`providers_activate`). Clicking a 
 
 ## Official tool injection
 
-Settings → Account → **Custom providers** → toggle **Inject official tools** (`official_aux_inject`).
+Settings → Account → **Extras** → toggle **Inject official tools** (`official_aux_inject`).
 
 **Only while the active main route is a custom provider.** Official Grok subscription sessions never inject `official-aux` (native tools only).
 

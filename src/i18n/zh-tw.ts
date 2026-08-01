@@ -2870,10 +2870,13 @@ export const zhTW: Record<MessageKey, string> = {
     "獨立模式會話存在應用目錄；共用模式使用 CLI 主目錄，與終端機共用會話。兩種模式均可匯入 CLI 工作階段；獨立模式掃描的是 agent-home（不一定是 ~/.grok）。",
   "settings.tabOfficial": "官方帳戶",
   "settings.tabProviders": "自訂供應商",
+  "settings.tabExtras": "拓展",
   "settings.tabOfficialHint":
     "使用 Grok Build 官方登入，檢視 SuperGrok 額度、熱力圖與官方模型。",
   "settings.tabProvidersHint":
-    "新增 OpenAI 相容中轉（CPA、sub2api、自建等）。金鑰僅保存在本機。已登入官方時可開啟「注入官方工具」。",
+    "新增 OpenAI 相容中轉（CPA、sub2api、自建等）。金鑰僅保存在本機。",
+  "settings.tabExtrasHint":
+    "自訂主模型下的官方工具注入（MCP official-aux），以及是否同時載入其它擴充 MCP。",
 
   "modelAux.title": "輔助模型路由",
   "modelAux.desc":

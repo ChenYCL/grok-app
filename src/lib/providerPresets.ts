@@ -7,7 +7,7 @@ import type { ProviderEffortEntry, ProviderModelEntry } from "@/lib/api";
 import { GROK_BUILD_EFFORTS } from "@/lib/grokCatalog";
 
 /** Known brand marks with dedicated logos (see ProviderBrandIcon). */
-export type ProviderBrandId = "deepseek" | "amux";
+export type ProviderBrandId = "deepseek" | "amux" | "opencode-go";
 
 export type ProviderPreset = {
   id: string;
@@ -118,6 +118,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     efforts: DEEPSEEK_EFFORTS.map((e) => ({ ...e })),
     blurbKey: "prov.preset.opencodeGo.blurb",
     apiKeyUrl: "https://opencode.ai/",
+    brandId: "opencode-go",
   },
 ];
 
