@@ -806,6 +806,17 @@ import {
   shipOutcomeSummary,
 } from "@/lib/wtShipFlow";
 import {
+  COMPARE_ENTRY_DISPLAY_CAP,
+  capCompareEntries,
+  formatCompareSummaryLine,
+  joinWorktreeRelPath,
+  nameStatusLetter,
+  parseNameStatus,
+  planWorktreeCompare,
+  summarizeCompareEntries,
+  type NameStatusEntry,
+} from "@/lib/worktreeCompare";
+import {
   PR_HUB_ANCHOR_ID,
   buildPrHubDeepLink,
   parseGithubPrNumber,
@@ -2640,6 +2651,25 @@ export default function App() {
   const [worktreeGcError, setWorktreeGcError] = useState<string | null>(null);
   const [worktreeGcPreview, setWorktreeGcPreview] =
     useState<api.GitWorktreeGcResult | null>(null);
+  /** Compare linked worktree vs main (diff list only; no merge/apply). */
+  const [worktreeCompareOpen, setWorktreeCompareOpen] = useState(false);
+  const [worktreeCompareBusy, setWorktreeCompareBusy] = useState(false);
+  const [worktreeCompareError, setWorktreeCompareError] = useState<
+    string | null
+  >(null);
+  const [worktreeCompareEntries, setWorktreeCompareEntries] = useState<
+    NameStatusEntry[]
+  >([]);
+  const [worktreeCompareMeta, setWorktreeCompareMeta] = useState<{
+    base: string;
+    other: string;
+    baseRef?: string | null;
+    otherRef?: string | null;
+    baseBranch?: string | null;
+    otherBranch?: string | null;
+    truncated?: boolean;
+    hostTotal?: number;
+  } | null>(null);
   /** Worktree ship flow (push + Open PR) dialog. */
   const [shipOpen, setShipOpen] = useState(false);
   const [shipTitle, setShipTitle] = useState("");
@@ -12867,6 +12897,141 @@ export default function App() {
     setWorktreeGcOpen(true);
   }, []);
 
+  /**
+   * Open Compare with main… for the active linked worktree.
+   * Soft-fails when on main / same path / not git. Diff list only — no merge.
+   */
+  const openWorktreeCompare = useCallback(() => {
+    if (!api.isTauri() || !activeProject?.path) {
+      showToast(tr("composer.worktreeCompareNeedProject"), 3500);
+      return;
+    }
+    const otherPath = activeProject.path;
+    const other =
+      gitWorktrees.find((w) => pathsEqual(w.path, otherPath)) ?? null;
+    if (other?.isMain) {
+      showToast(tr("composer.worktreeCompareOnMain"), 3500);
+      return;
+    }
+    const basePath =
+      mainWorktreePath(gitWorktrees) ||
+      gitWorktrees.find((w) => w.isMain)?.path ||
+      "";
+    const mainWt =
+      gitWorktrees.find((w) => w.isMain) ??
+      gitWorktrees.find((w) => pathsEqual(w.path, basePath)) ??
+      null;
+    const plan = planWorktreeCompare({
+      basePath,
+      otherPath,
+      baseBranch: mainWt?.branch ?? null,
+      otherBranch: other?.branch ?? null,
+      baseAvailable: gitWorktreesAvailable,
+      otherAvailable: gitWorktreesAvailable,
+    });
+    if (!plan.ok) {
+      const reasonKey =
+        plan.reason === "same_path"
+          ? "composer.worktreeCompareSamePath"
+          : plan.reason === "not_git"
+            ? "composer.worktreeCompareNotGit"
+            : "composer.worktreeCompareMissingPath";
+      showToast(tr(reasonKey), 4000);
+      return;
+    }
+    setWorktreeCompareMeta({
+      base: plan.basePath,
+      other: plan.otherPath,
+      baseBranch: plan.baseBranch,
+      otherBranch: plan.otherBranch,
+    });
+    setWorktreeCompareEntries([]);
+    setWorktreeCompareError(null);
+    setWorktreeCompareBusy(true);
+    setWorktreeCompareOpen(true);
+  }, [
+    activeProject?.path,
+    gitWorktrees,
+    gitWorktreesAvailable,
+    showToast,
+    tr,
+  ]);
+
+  /** Load name-status when compare modal opens. */
+  const refreshWorktreeCompare = useCallback(async () => {
+    if (!api.isTauri() || !worktreeCompareOpen || !worktreeCompareMeta) return;
+    setWorktreeCompareBusy(true);
+    setWorktreeCompareError(null);
+    try {
+      const res = await api.gitWorktreeCompare({
+        basePath: worktreeCompareMeta.base,
+        otherPath: worktreeCompareMeta.other,
+        baseBranch: worktreeCompareMeta.baseBranch,
+        otherBranch: worktreeCompareMeta.otherBranch,
+      });
+      if (!res.available) {
+        setWorktreeCompareEntries([]);
+        setWorktreeCompareError(
+          (res.reason || "").trim() || tr("composer.worktreeCompareFailed"),
+        );
+        setWorktreeCompareMeta((prev) =>
+          prev
+            ? {
+                ...prev,
+                baseRef: res.baseRef,
+                otherRef: res.otherRef,
+                truncated: res.truncated,
+                hostTotal: res.total,
+              }
+            : prev,
+        );
+        return;
+      }
+      // Prefer pure client parse of raw for honesty; fall back to host entries.
+      const fromRaw = res.raw ? parseNameStatus(res.raw) : [];
+      const entries: NameStatusEntry[] =
+        fromRaw.length > 0
+          ? fromRaw
+          : (res.entries ?? []).map((e) => ({
+              status: e.status,
+              path: e.path,
+              oldPath: e.oldPath ?? undefined,
+            }));
+      setWorktreeCompareEntries(entries);
+      setWorktreeCompareMeta((prev) =>
+        prev
+          ? {
+              ...prev,
+              baseRef: res.baseRef,
+              otherRef: res.otherRef,
+              truncated: res.truncated,
+              hostTotal: res.total ?? entries.length,
+            }
+          : prev,
+      );
+    } catch (e) {
+      setWorktreeCompareEntries([]);
+      setWorktreeCompareError(String(e));
+    } finally {
+      setWorktreeCompareBusy(false);
+    }
+  }, [tr, worktreeCompareMeta, worktreeCompareOpen]);
+
+  useEffect(() => {
+    if (!worktreeCompareOpen || !worktreeCompareMeta) return;
+    void refreshWorktreeCompare();
+    // Only re-run when the modal opens with a meta snapshot (not on every meta field tweak).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional open trigger
+  }, [worktreeCompareOpen, worktreeCompareMeta?.base, worktreeCompareMeta?.other]);
+
+  const closeWorktreeCompare = useCallback(() => {
+    if (worktreeCompareBusy) return;
+    setWorktreeCompareOpen(false);
+    setWorktreeCompareError(null);
+    setWorktreeCompareEntries([]);
+    setWorktreeCompareMeta(null);
+  }, [worktreeCompareBusy]);
+
   /** Open Ship… dialog for the active project / worktree cwd. */
   const openShipFlow = useCallback(() => {
     if (!api.isTauri() || !activeProject?.path) {
@@ -16716,6 +16881,7 @@ export default function App() {
         resumeRestoreConfirm ||
         worktreeCreateOpen ||
         worktreeGcOpen ||
+        worktreeCompareOpen ||
         shipOpen ||
         projectRulesTarget ||
         agentDashboardOpen ||
@@ -19806,6 +19972,8 @@ export default function App() {
                       worktreeGc: tr("composer.worktreeGc"),
                       worktreeShip: tr("composer.worktreeShip"),
                       worktreeShipTip: tr("composer.worktreeShipTip"),
+                      worktreeCompare: tr("composer.worktreeCompare"),
+                      worktreeCompareTip: tr("composer.worktreeCompareTip"),
                       worktreeRemove: tr("composer.worktreeRemove"),
                       worktreeRemoveTip: tr("composer.worktreeRemoveTip"),
                       cliWorktrees: tr("composer.cliWorktrees"),
@@ -19833,6 +20001,7 @@ export default function App() {
                     }
                     onGc={openWorktreeGc}
                     onShip={openShipFlow}
+                    onCompare={openWorktreeCompare}
                     onRemove={confirmRemoveWorktree}
                     onOpen={() => {
                       void refreshGitWorktrees();
@@ -21685,6 +21854,224 @@ export default function App() {
             </p>
           ) : null}
         </div>
+      </GlassModal>
+      <GlassModal
+        open={worktreeCompareOpen}
+        onClose={closeWorktreeCompare}
+        title={tr("composer.worktreeCompareTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!worktreeCompareBusy}
+        showClose={!worktreeCompareBusy}
+        wrapBody
+        footer={
+          <button
+            type="button"
+            className="btn btn--solid"
+            disabled={worktreeCompareBusy}
+            onClick={closeWorktreeCompare}
+            data-testid="worktree-compare-close"
+          >
+            {tr("common.close")}
+          </button>
+        }
+      >
+        {(() => {
+          const summary = summarizeCompareEntries(worktreeCompareEntries);
+          const capped = capCompareEntries(
+            worktreeCompareEntries,
+            COMPARE_ENTRY_DISPLAY_CAP,
+          );
+          const hostOverflow =
+            worktreeCompareMeta?.truncated &&
+            typeof worktreeCompareMeta.hostTotal === "number"
+              ? Math.max(
+                  0,
+                  worktreeCompareMeta.hostTotal - worktreeCompareEntries.length,
+                )
+              : 0;
+          const overflow = capped.overflow + hostOverflow;
+          const otherRoot = worktreeCompareMeta?.other ?? "";
+          const baseLabel =
+            worktreeCompareMeta?.baseBranch ||
+            worktreeCompareMeta?.baseRef?.slice(0, 7) ||
+            "main";
+          const otherLabel =
+            worktreeCompareMeta?.otherBranch ||
+            worktreeCompareMeta?.otherRef?.slice(0, 7) ||
+            "HEAD";
+          return (
+            <div className="wt-compare" data-testid="worktree-compare">
+              <p className="wt-compare__hint">
+                {tr("composer.worktreeCompareHint")}
+              </p>
+              <p className="wt-compare__range" title={`${baseLabel}...${otherLabel}`}>
+                {tr("composer.worktreeCompareRange", {
+                  base: baseLabel,
+                  other: otherLabel,
+                })}
+              </p>
+              {worktreeCompareBusy ? (
+                <p className="wt-compare__status">
+                  {tr("composer.worktreeCompareLoading")}
+                </p>
+              ) : worktreeCompareError ? (
+                <p className="wt-compare__error" role="alert">
+                  {worktreeCompareError}
+                </p>
+              ) : summary.total === 0 ? (
+                <p className="wt-compare__empty">
+                  {tr("composer.worktreeCompareEmpty")}
+                </p>
+              ) : (
+                <>
+                  <div
+                    className="wt-compare__chips"
+                    aria-label={formatCompareSummaryLine(summary)}
+                  >
+                    {summary.added > 0 ? (
+                      <span className="wt-compare__chip wt-compare__chip--a">
+                        {tr("composer.worktreeCompareChipAdded", {
+                          n: String(summary.added),
+                        })}
+                      </span>
+                    ) : null}
+                    {summary.modified > 0 ? (
+                      <span className="wt-compare__chip wt-compare__chip--m">
+                        {tr("composer.worktreeCompareChipModified", {
+                          n: String(summary.modified),
+                        })}
+                      </span>
+                    ) : null}
+                    {summary.deleted > 0 ? (
+                      <span className="wt-compare__chip wt-compare__chip--d">
+                        {tr("composer.worktreeCompareChipDeleted", {
+                          n: String(summary.deleted),
+                        })}
+                      </span>
+                    ) : null}
+                    {summary.renamed > 0 ? (
+                      <span className="wt-compare__chip wt-compare__chip--r">
+                        {tr("composer.worktreeCompareChipRenamed", {
+                          n: String(summary.renamed),
+                        })}
+                      </span>
+                    ) : null}
+                    {summary.other > 0 ? (
+                      <span className="wt-compare__chip">
+                        {tr("composer.worktreeCompareChipOther", {
+                          n: String(summary.other),
+                        })}
+                      </span>
+                    ) : null}
+                    <span className="wt-compare__chip wt-compare__chip--total">
+                      {tr("composer.worktreeCompareChipTotal", {
+                        n: String(summary.total),
+                      })}
+                    </span>
+                  </div>
+                  <ul className="wt-compare__list" role="list">
+                    {capped.shown.map((entry, idx) => {
+                      const letter = nameStatusLetter(entry.status);
+                      const abs = joinWorktreeRelPath(otherRoot, entry.path);
+                      const showOld =
+                        entry.oldPath &&
+                        entry.oldPath !== entry.path
+                          ? entry.oldPath
+                          : null;
+                      return (
+                        <li
+                          key={`${entry.status}:${entry.path}:${idx}`}
+                          className="wt-compare__row"
+                        >
+                          <span
+                            className={
+                              "wt-compare__badge wt-compare__badge--" +
+                              letter.toLowerCase()
+                            }
+                            title={entry.status}
+                            aria-label={entry.status}
+                          >
+                            {letter}
+                          </span>
+                          <span className="wt-compare__path" title={entry.path}>
+                            {showOld ? (
+                              <>
+                                <span className="wt-compare__old">
+                                  {showOld}
+                                </span>
+                                <span className="wt-compare__arrow" aria-hidden>
+                                  →
+                                </span>
+                              </>
+                            ) : null}
+                            {entry.path}
+                          </span>
+                          <span className="wt-compare__row-actions">
+                            <button
+                              type="button"
+                              className="wt-compare__icon-btn"
+                              title={tr("composer.worktreeCompareCopyPath")}
+                              aria-label={tr(
+                                "composer.worktreeCompareCopyPath",
+                              )}
+                              onClick={() => {
+                                const text = abs || entry.path;
+                                void (async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(text);
+                                    showToast(
+                                      tr("composer.worktreeComparePathCopied"),
+                                      2000,
+                                    );
+                                  } catch {
+                                    showToast(text, 4000);
+                                  }
+                                })();
+                              }}
+                            >
+                              <IconCopy size={14} aria-hidden />
+                            </button>
+                            {abs ? (
+                              <button
+                                type="button"
+                                className="wt-compare__icon-btn"
+                                title={tr("composer.worktreeCompareReveal")}
+                                aria-label={tr(
+                                  "composer.worktreeCompareReveal",
+                                )}
+                                onClick={() => {
+                                  void api
+                                    .pathReveal(abs)
+                                    .catch((e) =>
+                                      showToast(String(e), 3500),
+                                    );
+                                }}
+                              >
+                                <IconFolder size={14} aria-hidden />
+                              </button>
+                            ) : null}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {overflow > 0 ? (
+                    <p className="wt-compare__overflow">
+                      {tr("composer.worktreeCompareOverflow", {
+                        n: String(overflow),
+                        shown: String(capped.shown.length),
+                        total: String(
+                          summary.total + hostOverflow,
+                        ),
+                      })}
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </div>
+          );
+        })()}
       </GlassModal>
       <GlassModal
         open={shipOpen}

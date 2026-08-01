@@ -26,6 +26,7 @@ See `docs/llm-wiki/release.md`.
 #### Sessions & sidebar
 - **Session task board**: cross-session board view of local sessions by status columns (needs you · running · error · idle · done/archived). Pure `sessionTaskBoard` helpers from sessions + liveMap only — no invented CI/cloud state; include-archived chip, title/project search, honest empty / filter-empty states. Open from Agent dashboard **Board view**, command palette `open-task-board`, or App state. en/zh/zh-TW + tests.
 - **Agents & Personas console** (Settings → General → Agent): list built-in + user + project agent definitions and discovered personas (CLI `/config-agents` roots via host `agents_list`); filter, source badges, open/reveal when path known, folder browse, preferred-agent honesty when missing from catalog — never invents personas. Pure `agentsPersonasConsole` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
+- **Worktree compare vs main**: branch menu **Compare with main…** (linked worktrees only) opens a GlassModal with short stats chips + scrollable `git diff --name-status` file list (A/M/D/R badges). Soft-fail when same path / missing / not git; overflow count honesty (display cap 500). Per-row **Copy path** / **Reveal**. No merge or selective apply (out of scope). Pure `worktreeCompare` helpers + host `git_worktree_compare`; en/zh/zh-TW.
 
 ## [0.2.3] - 2026-07-31
 

@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
   IconCheck,
+  IconFileDiff,
   IconFolder,
   IconGitBranch,
   IconPlus,
@@ -44,6 +45,9 @@ export type ComposerWorktreeMenuLabels = {
   /** Push branch + open PR (worktree ship flow). */
   worktreeShip?: string;
   worktreeShipTip?: string;
+  /** Compare current linked worktree vs main (diff list only). */
+  worktreeCompare?: string;
+  worktreeCompareTip?: string;
   /** Per-row remove control (non-main only). */
   worktreeRemove?: string;
   worktreeRemoveTip?: string;
@@ -88,6 +92,11 @@ type Props = {
   onGc: () => void;
   /** Push current branch + open GitHub PR (in-app Ship dialog). */
   onShip?: () => void;
+  /**
+   * Compare active linked worktree against main (file list + stats).
+   * Parent opens GlassModal; no merge/apply.
+   */
+  onCompare?: () => void;
   /** Remove a live linked worktree (never main). Parent confirms + calls host. */
   onRemove?: (wt: GitWorktreeEntry) => void;
   onOpen?: () => void;
@@ -122,6 +131,7 @@ export function ComposerWorktreeMenu({
   onCreateAndChat,
   onGc,
   onShip,
+  onCompare,
   onRemove,
   onOpen,
   onCliRefresh,
@@ -156,11 +166,18 @@ export function ComposerWorktreeMenu({
     ? Math.max(cliWorktrees.length, 1)
     : 0;
   const showShip = !!onShip && !!(labels.worktreeShip || labels.worktreeShipTip);
+  // Compare only when not on main (linked worktree / sibling).
+  const showCompare =
+    !!onCompare &&
+    !!(labels.worktreeCompare || labels.worktreeCompareTip) &&
+    !!current &&
+    !current.isMain;
+  const actionCount = 3 + (showShip ? 1 : 0) + (showCompare ? 1 : 0);
   const estHeight = Math.min(
     560,
     44 +
       Math.min(LIST_MAX_H, listCount * 36 + 8) +
-      (3 + (showShip ? 1 : 0)) * 36 +
+      actionCount * 36 +
       16 +
       (showCliSection
         ? 28 + Math.min(CLI_LIST_MAX_H, cliCount * 36 + 8) + 28
@@ -375,6 +392,23 @@ export function ComposerWorktreeMenu({
                 <IconTrash size={14} aria-hidden />
                 <span>{labels.worktreeGc}</span>
               </button>
+              {showCompare ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="cwm__action"
+                  title={
+                    labels.worktreeCompareTip || labels.worktreeCompare
+                  }
+                  onClick={() => {
+                    setOpen(false);
+                    onCompare?.();
+                  }}
+                >
+                  <IconFileDiff size={14} aria-hidden />
+                  <span>{labels.worktreeCompare || "Compare with main…"}</span>
+                </button>
+              ) : null}
               {showShip ? (
                 <button
                   type="button"

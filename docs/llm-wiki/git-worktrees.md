@@ -76,6 +76,15 @@ Per-row trash icon on linked (non-main) entries in the branch menu:
 
 Menu action **Clean stale worktrees…** → GlassModal dry-run preview (`git worktree prune -v --dry-run`), then apply. Optional force → `--expire now`. Does **not** delete live worktrees. Host: `git_worktree_gc`.
 
+### Compare with main
+
+From a **linked** (non-main) worktree, the branch menu offers **Compare with main…**:
+
+1. GlassModal loads `git diff --name-status <main>...<other>` (host `git_worktree_compare`, cwd = main root). Soft-fail when same path, missing dirs, not git, or different repos.
+2. Summary chips (added / modified / deleted / renamed) + scrollable file list with A/M/D/R badges. Display cap 500 with honest overflow count.
+3. Per-row **Copy path** and **Reveal** (path under the other worktree). **Close** only — no merge / selective apply (out of scope).
+4. Pure helpers: `src/lib/worktreeCompare.ts` (`planWorktreeCompare`, `parseNameStatus`, `summarizeCompareEntries`, `capCompareEntries`).
+
 ### Ship / Open PR
 
 From a worktree-bound session or the branch menu / Changes → Workspace:

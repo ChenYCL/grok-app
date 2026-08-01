@@ -3786,6 +3786,196 @@ html[data-sidebar-density="compact"] .session-row__meta {
   color: var(--danger, #e35d6a);
 }
 
+/* Worktree compare vs main (diff list only) */
+.wt-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 4px 0;
+  min-width: 0;
+}
+
+.wt-compare__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.wt-compare__range {
+  margin: 0;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-tertiary);
+  word-break: break-all;
+}
+
+.wt-compare__status,
+.wt-compare__empty {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.wt-compare__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--danger, #e35d6a);
+}
+
+.wt-compare__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wt-compare__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  background: var(--surface-2, rgba(127, 127, 127, 0.1));
+  color: var(--text-secondary);
+}
+
+.wt-compare__chip--a {
+  color: var(--success, #3d9a6a);
+}
+
+.wt-compare__chip--m {
+  color: var(--warning, #c48a2a);
+}
+
+.wt-compare__chip--d {
+  color: var(--danger, #e35d6a);
+}
+
+.wt-compare__chip--r {
+  color: var(--accent, #6b8cff);
+}
+
+.wt-compare__chip--total {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wt-compare__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.06));
+}
+
+.wt-compare__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.12));
+}
+
+.wt-compare__row:last-child {
+  border-bottom: none;
+}
+
+.wt-compare__badge {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  background: var(--surface-3, rgba(127, 127, 127, 0.12));
+  color: var(--text-secondary);
+}
+
+.wt-compare__badge--a {
+  color: var(--success, #3d9a6a);
+}
+
+.wt-compare__badge--m,
+.wt-compare__badge--t {
+  color: var(--warning, #c48a2a);
+}
+
+.wt-compare__badge--d {
+  color: var(--danger, #e35d6a);
+}
+
+.wt-compare__badge--r,
+.wt-compare__badge--c {
+  color: var(--accent, #6b8cff);
+}
+
+.wt-compare__path {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wt-compare__old {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  margin-right: 4px;
+}
+
+.wt-compare__arrow {
+  color: var(--text-tertiary);
+  margin-right: 4px;
+}
+
+.wt-compare__row-actions {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.wt-compare__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.wt-compare__icon-btn:hover {
+  background: var(--surface-3, rgba(127, 127, 127, 0.14));
+  color: var(--text-primary);
+}
+
+.wt-compare__overflow {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
 /* Worktree ship flow (push + open PR) */
 .wt-ship {
   display: flex;
