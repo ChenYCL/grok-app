@@ -1072,6 +1072,21 @@ const en = {
   "composer.queueEditEmpty": "Message cannot be empty",
   "composer.queueEmptyPreview": "(attachment)",
   "composer.queueFilesCount": "{n} files",
+  // Send-intent honesty (steer vs queue vs concurrent — pure classification)
+  "composer.intent.enqueue":
+    "Send queues a follow-up for after this turn (this chat). Use Steer on a queued item to interject mid-turn.",
+  "composer.intent.enqueueShort": "Queue follow-up",
+  "composer.intent.steer":
+    "Steer injects mid-turn guidance into the live task (not a queued follow-up).",
+  "composer.intent.foreignConcurrent":
+    "Send starts concurrent work here — another chat is still running. Open a new chat to keep drafts separate.",
+  "composer.intent.foreignShort": "Send (concurrent)",
+  "composer.intent.blockedPermission": "Resolve the permission prompt first",
+  "composer.intent.openAsNewChat": "Open as new chat",
+  "composer.intent.stripEnqueue": "Follow-ups — send after this turn",
+  "composer.intent.stripHold": "Auto-send paused",
+  "composer.intent.stripSteerHint":
+    "Follow-ups after this turn · Steer injects mid-turn",
   "composer.stop": "Stop",
   "composer.noProject": "General",
   "composer.noProjectWriteHint":
@@ -7148,6 +7163,20 @@ const zh: Record<MessageKey, string> = {
   "composer.queueEditEmpty": "消息不能为空",
   "composer.queueEmptyPreview": "（附件）",
   "composer.queueFilesCount": "{n} 个文件",
+  // Send-intent honesty (steer vs queue vs concurrent — pure classification)
+  "composer.intent.enqueue":
+    "发送会将跟进排入本会话队列，本轮结束后自动发送。要对进行中的任务插话，请对队列项使用「引导」。",
+  "composer.intent.enqueueShort": "排队跟进",
+  "composer.intent.steer":
+    "「引导」会向当前进行中的任务插入中途指示（不是排队跟进）。",
+  "composer.intent.foreignConcurrent":
+    "发送会在此开始并发工作 — 另一会话仍在运行。可用新对话分开草稿。",
+  "composer.intent.foreignShort": "发送（并发）",
+  "composer.intent.blockedPermission": "请先处理权限请求",
+  "composer.intent.openAsNewChat": "作为新对话打开",
+  "composer.intent.stripEnqueue": "跟进 — 本轮结束后发送",
+  "composer.intent.stripHold": "自动发送已暂停",
+  "composer.intent.stripSteerHint": "本轮结束后发送跟进 · 引导可中途插话",
   "composer.stop": "停止",
   "composer.noProject": "通用",
   "composer.noProjectWriteHint":

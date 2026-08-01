@@ -11,6 +11,11 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+#### Composer & chat
+- **Send-intent honesty** (steer / queue / concurrent): pure `resolveSendIntent` classifies what Send will do — enqueue follow-up on same-session busy, foreign concurrent when another chat is live, blocked on permission/empty — without changing enqueue rules. Composer shows a pre-send banner + optional **Open as new chat** CTA; queue strip labels stay consistent (follow-up vs hold vs steer hint). en/zh/zh-TW + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

@@ -713,6 +713,12 @@ import {
   type QueuedSend,
 } from "@/lib/sendQueue";
 import {
+  planOpenAsNewSessionInstead,
+  resolveSendControlLabelKey,
+  resolveSendIntent,
+  resolveSendQueueStripIntentLabel,
+} from "@/lib/sendIntent";
+import {
   useSendQueue,
   type ExecuteSendFromQueue,
 } from "@/hooks/useSendQueue";
@@ -10655,6 +10661,43 @@ export default function App() {
       ? liveHost.state === "streaming"
       : session.state === "streaming");
 
+  /** Pure send-intent honesty (enqueue vs foreign concurrent vs blocked). */
+  const composerHasBody =
+    !isDraftEmpty(parseStoredContent(draft)) || attachments.length > 0;
+  const sendIntent = useMemo(
+    () =>
+      resolveSendIntent({
+        viewedState: session.state,
+        connecting,
+        liveSessionId: liveHost.sessionId,
+        liveState: liveHost.state,
+        viewedSessionId: session.sessionId,
+        hasBody: composerHasBody,
+        queueLength: sendQueue.activeQueue.length,
+      }),
+    [
+      session.state,
+      session.sessionId,
+      connecting,
+      liveHost.sessionId,
+      liveHost.state,
+      composerHasBody,
+      sendQueue.activeQueue.length,
+    ],
+  );
+  const openAsNewChatPlan = useMemo(
+    () =>
+      planOpenAsNewSessionInstead({
+        kind: sendIntent.kind,
+        queueLength: sendQueue.activeQueue.length,
+      }),
+    [sendIntent.kind, sendQueue.activeQueue.length],
+  );
+  const sendControlLabelKey = useMemo(
+    () => resolveSendControlLabelKey(sendIntent.kind),
+    [sendIntent.kind],
+  );
+
   const closeQueueEdit = useCallback(() => {
     setQueueEditItemId(null);
     setQueueEditText("");
@@ -10683,6 +10726,16 @@ export default function App() {
         flushHold: sendQueue.flushHold,
       }),
     [sendQueue.activeQueue, sendQueue.flushHold],
+  );
+
+  const sendQueueStripIntentLabel = useMemo(
+    () =>
+      resolveSendQueueStripIntentLabel({
+        visible: sendQueueStrip.visible,
+        showHold: sendQueueStrip.showHold,
+        canSteer: canGuideQueuedMessage,
+      }),
+    [sendQueueStrip.visible, sendQueueStrip.showHold, canGuideQueuedMessage],
   );
 
   const sendQueueClearPlan = useMemo(
@@ -19405,6 +19458,39 @@ export default function App() {
                 (dragZone === "main" ? " composer--drop-ready" : "")
               }
             >
+              {sendIntent.bannerKey && composerHasBody ? (
+                <div
+                  className={
+                    "composer__intent" +
+                    (sendIntent.kind === "foreign_concurrent"
+                      ? " composer__intent--foreign"
+                      : "") +
+                    (sendIntent.kind === "blocked_permission"
+                      ? " composer__intent--blocked"
+                      : "") +
+                    (sendIntent.kind === "enqueue"
+                      ? " composer__intent--enqueue"
+                      : "")
+                  }
+                  role="status"
+                  data-testid="composer-send-intent"
+                  data-intent={sendIntent.kind}
+                >
+                  <span className="composer__intent-text">
+                    {tr(sendIntent.bannerKey)}
+                  </span>
+                  {openAsNewChatPlan.show ? (
+                    <button
+                      type="button"
+                      className="composer__intent-cta"
+                      data-testid="composer-intent-open-new"
+                      onClick={() => void newChat(activeProject)}
+                    >
+                      {tr(openAsNewChatPlan.ctaKey)}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {sendQueueStrip.visible && (
                 <div
                   className="composer__queue"
@@ -19418,6 +19504,12 @@ export default function App() {
                       {tr("composer.queueCount", {
                         n: String(sendQueueStrip.count),
                       })}
+                      {sendQueueStripIntentLabel ? (
+                        <span className="composer__queue-intent-label">
+                          {" · "}
+                          {tr(sendQueueStripIntentLabel.labelKey)}
+                        </span>
+                      ) : null}
                     </span>
                     <button
                       type="button"
@@ -20313,15 +20405,24 @@ export default function App() {
                     {sendQueue.canShowQueueButton(
                       session.state,
                       connecting,
-                      !isDraftEmpty(parseStoredContent(draft)) ||
-                        attachments.length > 0,
+                      composerHasBody,
                     ) && (
-                      <Tip label={tr("composer.queue")}>
+                      <Tip
+                        label={
+                          sendIntent.kind === "enqueue"
+                            ? tr(sendControlLabelKey)
+                            : tr("composer.queue")
+                        }
+                      >
                         <button
                           type="button"
                           className="icon-btn icon-btn--primary"
                           onClick={() => void send()}
-                          aria-label={tr("composer.queue")}
+                          aria-label={
+                            sendIntent.kind === "enqueue"
+                              ? tr(sendControlLabelKey)
+                              : tr("composer.queue")
+                          }
                         >
                           <IconQueue size={16} />
                         </button>
@@ -20339,19 +20440,18 @@ export default function App() {
                     </Tip>
                   </>
                 ) : (
-                  <Tip label={tr("composer.send")}>
+                  <Tip label={tr(sendControlLabelKey)}>
                     <button
                       type="button"
                       className="icon-btn icon-btn--primary"
                       disabled={
                         (!effectiveCanSend &&
                           !shouldEnqueueSend(session.state, connecting)) ||
-                        (isDraftEmpty(parseStoredContent(draft)) &&
-                          attachments.length === 0) ||
+                        !composerHasBody ||
                         session.state === "awaiting_permission"
                       }
                       onClick={() => void send()}
-                      aria-label={tr("composer.send")}
+                      aria-label={tr(sendControlLabelKey)}
                     >
                       <IconSend size={16} />
                     </button>

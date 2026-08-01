@@ -9881,6 +9881,57 @@ button.composer__context-item {
   background: var(--bg-hover);
 }
 
+.composer__intent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 4px 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.composer__intent--enqueue {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.composer__intent--foreign {
+  background: color-mix(in srgb, var(--warning, #d97706) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warning, #d97706) 30%, transparent);
+}
+
+.composer__intent--blocked {
+  background: color-mix(in srgb, var(--danger, #dc2626) 10%, transparent);
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 28%, transparent);
+}
+
+.composer__intent-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.composer__intent-cta {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.composer__intent-cta:hover {
+  background: var(--bg-hover);
+}
+
 .composer__queue {
   display: flex;
   flex-direction: column;
@@ -9902,6 +9953,11 @@ button.composer__context-item {
   flex: 1;
   min-width: 0;
   font-weight: 500;
+}
+
+.composer__queue-intent-label {
+  font-weight: 400;
+  opacity: 0.85;
 }
 
 .composer__queue-clear {

@@ -1044,6 +1044,20 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.queueEditEmpty": "訊息不能為空",
   "composer.queueEmptyPreview": "（附件）",
   "composer.queueFilesCount": "{n} 個檔案",
+  // Send-intent honesty (steer vs queue vs concurrent — pure classification)
+  "composer.intent.enqueue":
+    "傳送會將後續排入此對話佇列，本輪結束後自動傳送。若要對進行中的任務插話，請對佇列項目使用「引導」。",
+  "composer.intent.enqueueShort": "排隊後續",
+  "composer.intent.steer":
+    "「引導」會向目前進行中的任務插入中途指示（不是排隊後續）。",
+  "composer.intent.foreignConcurrent":
+    "傳送會在此開始並行工作 — 另一對話仍在執行。可用新對話分開草稿。",
+  "composer.intent.foreignShort": "傳送（並行）",
+  "composer.intent.blockedPermission": "請先處理權限請求",
+  "composer.intent.openAsNewChat": "以新對話開啟",
+  "composer.intent.stripEnqueue": "後續 — 本輪結束後傳送",
+  "composer.intent.stripHold": "自動傳送已暫停",
+  "composer.intent.stripSteerHint": "本輪結束後傳送後續 · 引導可中途插話",
   "composer.stop": "停止",
   "composer.noProject": "通用",
   "composer.noProjectWriteHint":
