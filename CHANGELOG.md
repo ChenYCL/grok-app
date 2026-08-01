@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Workflows author experience** (Settings → Runtime → Tools): **New from template** GlassModal (name + user/project scope) writes a minimal pure-literal-meta `.rhai` scaffold via host `workflows_create` (path-scoped; refuse overwrite unless force); row **Reveal** / **Open** / Smoke / Run; collapsible **Recent runs** localStorage ring (max ~20, redacted log snippet, outcome/mode filters, GlassModal clear — no `window.confirm`); honest create-workflow skill hint (no visual graph editor). Pure `workflowsAuthor` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

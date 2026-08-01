@@ -27094,3 +27094,50 @@ html[data-theme="light"] .rim-sidebar {
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.2));
 }
+
+.settings-workflows-history {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-workflows-history__toggle {
+  align-self: flex-start;
+}
+
+.settings-workflows-history__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-workflows-history__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.settings-workflows-history__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-workflows-history__item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.2));
+  background: var(--bg-elevated, rgba(127, 127, 127, 0.04));
+  min-width: 0;
+}
+
+.settings-workflows-history__item-title {
+  font-size: 12px;
+  color: var(--text-primary);
+}

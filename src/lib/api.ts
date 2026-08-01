@@ -3450,6 +3450,33 @@ export async function workflowsRun(opts: {
   });
 }
 
+/** Result of host `workflows_create` (template `.rhai` write). */
+export type WorkflowsCreateResult = {
+  name: string;
+  path: string;
+  scope: string;
+  created: boolean;
+  overwritten: boolean;
+};
+
+/**
+ * Create a minimal `.rhai` workflow template under user (`~/.grok/workflows`)
+ * or project (`.grok/workflows`). Refuses overwrite unless `force`.
+ */
+export async function workflowsCreate(opts: {
+  name: string;
+  scope?: "user" | "project" | string;
+  projectPath?: string | null;
+  force?: boolean;
+}) {
+  return invoke<WorkflowsCreateResult>("workflows_create", {
+    name: opts.name,
+    scope: opts.scope ?? "user",
+    projectPath: opts.projectPath ?? null,
+    force: opts.force ?? false,
+  });
+}
+
 export type AgentsScaffoldResult = {
   name: string;
   path: string;
