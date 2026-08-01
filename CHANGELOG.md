@@ -62,6 +62,7 @@ See `docs/llm-wiki/release.md`.
 - **Partial stream apply-path honesty** (Settings → Runtime → Pool): when **Include partial stream events** is on, a contextual note shows soft-omit on older/unknown CLI vs active headless Remote IM deltas on CLI **0.2.117+** (in-app ACP chat unchanged). Pure `partialStreamHonesty` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
 - **Mirror client cap honesty** (MIRROR-CLIENT-CAP-PRO): Connect panel live cap bar/chip (`n / max`), soft-fail full banner when at limit (extra phones get HTTP 503), near-full warn, zero-client + host-stopped empty honesty (never invents clients while stopped), write-on reminder alongside the default read-only policy. Pure `mirrorClientCapPro` helpers + tests; en/zh/zh-TW.
 - **Account heatmap empty honesty** (HEATMAP-USAGE-PRO): soft-fail when local session signals are missing (never invent activity cells or SuperGrok quota); day/week range chips + active-days / tokens / sessions summary chips; classified Host errors (`host_only` · `network` · `empty` · `other`). Pure `heatmapUsagePro` / `heatmapRange` helpers + tests; en/zh/zh-TW.
+- **Wallpaper gallery pro** (Settings → Appearance → wallpaper source modal): honest empty states (idle · loading · no results · filter empty · classified error), kind filter chips (All · Images · Videos) with counts, client-side gallery filter, and soft-fail error chips (network · host · untrusted · empty · other). Never invents CDN gallery tiles — only real Host/search items. Pure `wallpaperGalleryPro` helpers + tests; en/zh/zh-TW.
 
 ## [0.2.3] - 2026-07-31
 

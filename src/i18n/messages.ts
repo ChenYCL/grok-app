@@ -2755,6 +2755,38 @@ const en = {
   "settings.wallpaperSource.gallery": "Wallpaper gallery",
   "settings.wallpaperSource.emptyGallery":
     "Results will appear here as a gallery. Search or generate to begin.",
+  "settings.wallpaperSource.empty.idleHint":
+    "No wallpapers are loaded yet. Search X or generate with Imagine — results come from the Host only (never invented CDN tiles).",
+  "settings.wallpaperSource.empty.loading": "Loading gallery…",
+  "settings.wallpaperSource.empty.loadingHint":
+    "Waiting for real search or Imagine results. Nothing is fabricated while loading.",
+  "settings.wallpaperSource.empty.noResults": "No wallpapers found",
+  "settings.wallpaperSource.empty.noResultsHint":
+    "Try different keywords or another prompt. Empty means the Host returned zero media — not a placeholder gallery.",
+  "settings.wallpaperSource.empty.filterEmpty": "No matches in this gallery",
+  "settings.wallpaperSource.empty.filterEmptyHint":
+    "Kind chips or the filter hid every result. Clear filters to see the real Host items again.",
+  "settings.wallpaperSource.clearFilters": "Clear filters",
+  "settings.wallpaperSource.filterPlaceholder": "Filter gallery…",
+  "settings.wallpaperSource.kindLabel": "Media kind",
+  "settings.wallpaperSource.kind.all": "All",
+  "settings.wallpaperSource.kind.image": "Images",
+  "settings.wallpaperSource.kind.video": "Videos",
+  "settings.wallpaperSource.errKind.network": "Network",
+  "settings.wallpaperSource.errKind.host": "Host / CLI",
+  "settings.wallpaperSource.errKind.untrusted": "Blocked URL",
+  "settings.wallpaperSource.errKind.empty": "Empty",
+  "settings.wallpaperSource.errKind.other": "Error",
+  "settings.wallpaperSource.errKind.hint.network":
+    "Check the connection and retry search or download.",
+  "settings.wallpaperSource.errKind.hint.host":
+    "Install or path the Grok CLI, or open the desktop app.",
+  "settings.wallpaperSource.errKind.hint.untrusted":
+    "That host is outside the wallpaper allowlist (twimg / filesystem.site).",
+  "settings.wallpaperSource.errKind.hint.empty":
+    "No media returned — try another query or prompt.",
+  "settings.wallpaperSource.errKind.hint.other":
+    "See the detail above; sign in or retry if needed.",
   "settings.wallpaperSource.goLogin": "Sign in",
   "settings.wallpaperSource.loadingOriginal": "Loading full image…",
   "settings.wallpaperSource.openPreview": "Open full-size preview",
@@ -10039,6 +10071,38 @@ const zh: Record<MessageKey, string> = {
   "settings.wallpaperSource.gallery": "壁纸画廊",
   "settings.wallpaperSource.emptyGallery":
     "结果会以瀑布流展示。请先搜索或生成。",
+  "settings.wallpaperSource.empty.idleHint":
+    "尚未加载任何壁纸。请搜索 X 或用 Imagine 生成 — 结果仅来自 Host，不会伪造 CDN 占位图。",
+  "settings.wallpaperSource.empty.loading": "正在加载画廊…",
+  "settings.wallpaperSource.empty.loadingHint":
+    "等待真实搜索或 Imagine 结果；加载过程中不会伪造条目。",
+  "settings.wallpaperSource.empty.noResults": "没有找到壁纸",
+  "settings.wallpaperSource.empty.noResultsHint":
+    "请换个关键词或提示词。空结果表示 Host 返回了零条媒体，不是占位画廊。",
+  "settings.wallpaperSource.empty.filterEmpty": "当前筛选无匹配",
+  "settings.wallpaperSource.empty.filterEmptyHint":
+    "类型芯片或筛选隐藏了全部结果。清除筛选可重新看到 Host 返回的真实条目。",
+  "settings.wallpaperSource.clearFilters": "清除筛选",
+  "settings.wallpaperSource.filterPlaceholder": "筛选画廊…",
+  "settings.wallpaperSource.kindLabel": "媒体类型",
+  "settings.wallpaperSource.kind.all": "全部",
+  "settings.wallpaperSource.kind.image": "图片",
+  "settings.wallpaperSource.kind.video": "视频",
+  "settings.wallpaperSource.errKind.network": "网络",
+  "settings.wallpaperSource.errKind.host": "Host / CLI",
+  "settings.wallpaperSource.errKind.untrusted": "已拦截网址",
+  "settings.wallpaperSource.errKind.empty": "空结果",
+  "settings.wallpaperSource.errKind.other": "错误",
+  "settings.wallpaperSource.errKind.hint.network":
+    "请检查网络后重试搜索或下载。",
+  "settings.wallpaperSource.errKind.hint.host":
+    "请安装或配置 Grok CLI，或使用桌面端应用。",
+  "settings.wallpaperSource.errKind.hint.untrusted":
+    "该主机不在壁纸下载允许列表（twimg / filesystem.site）。",
+  "settings.wallpaperSource.errKind.hint.empty":
+    "未返回媒体 — 请换个查询或提示词。",
+  "settings.wallpaperSource.errKind.hint.other":
+    "见上方详情；必要时请登录或重试。",
   "settings.wallpaperSource.goLogin": "去登录",
   "settings.wallpaperSource.loadingOriginal": "正在加载原图…",
   "settings.wallpaperSource.openPreview": "打开大图预览",
