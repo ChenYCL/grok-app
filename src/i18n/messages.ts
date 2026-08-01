@@ -402,6 +402,9 @@ const en = {
   "message.nodes.user": "You",
   "message.nodes.assistant": "Grok",
   "message.nodes.count": "{current} / {total}",
+  "message.copyLink": "Copy link",
+  "message.linkCopied": "Link copied",
+  "message.deepLinkMissing": "Message not found in this conversation",
 
   // Main
   "main.rightPane": "Files pane",
@@ -6508,6 +6511,9 @@ const zh: Record<MessageKey, string> = {
   "message.nodes.user": "你",
   "message.nodes.assistant": "Grok",
   "message.nodes.count": "{current} / {total}",
+  "message.copyLink": "复制链接",
+  "message.linkCopied": "链接已复制",
+  "message.deepLinkMissing": "此对话中未找到该消息",
 
   "main.rightPane": "文件栏",
   "main.leftPane": "侧栏",

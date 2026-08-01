@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Message node deep links**: open a session and scroll to a message via `#/session/<id>/m/<messageId>` (or `?m=` / `?message=` / `?messageId=`). Reuses MessageNodeRail + virtualizer locate path; soft toast when the message is missing. Message action **Copy link** copies the app-relative hash. Multi-window secondary `#/session/<id>` still works (parser extended). Pure `messageNodeDeepLink` helpers + tests; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
