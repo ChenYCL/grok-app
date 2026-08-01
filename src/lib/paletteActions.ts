@@ -195,6 +195,23 @@ export function defaultPaletteActions(): PaletteActionDef[] {
       group: "session",
     },
     {
+      id: "parallel-worktree-task",
+      labelKey: "composer.parallelTask",
+      keywords: [
+        "parallel",
+        "parallel task",
+        "worktree",
+        "new worktree",
+        "worktree chat",
+        "isolate",
+        "branch task",
+        "git worktree",
+        "side task",
+        "parallel chat",
+      ],
+      group: "create",
+    },
+    {
       id: "settings-general",
       labelKey: "settings.nav.general",
       keywords: ["settings", "general", "preferences", "prefs", "composer"],

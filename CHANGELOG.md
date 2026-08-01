@@ -17,6 +17,7 @@ See `docs/llm-wiki/release.md`.
 - **Diff hunk comment → chat**: Changes panel per-hunk **Comment** opens a GlassModal for a review note, then inserts a structured prompt (file + hunk snippet + note) into the composer without auto-send; pure `diffComment` helpers + tests; en/zh/zh-TW
 - **PR review workbench** (Settings → Runtime → Tools → Pull requests): when CI overall fails, **Fix with Grok** builds a composer draft from observed failed checks; each comment/review row gets **Ask Grok** for a comment-address draft. Inserts into the workbench composer + soft toast (never auto-sends; no invented `gh` data). Pure `prReviewWorkbench` helpers + tests; en/zh/zh-TW.
 - **Agent dashboard peek + dispatch**: permission-first row sort (needs you → busy → connecting → error → idle); row chevron expands a read-only peek card (status, tool, path, model) without focusing the chat; **Open chat** inside peek focuses; top **Dispatch new agent** form (trusted project + prompt) opens a new chat, fills the composer, and soft-sends. Pure helpers `buildDashboardPeekModel` / `planDashboardDispatch` / `sanitizeDispatchPrompt` / `groupDashboardRowsByStatus` + tests; en/zh/zh-TW; no `window.confirm`.
+- **Parallel task (worktree)**: one flow to create a linked git worktree and open a new chat there (palette `parallel-worktree-task` + worktree menu). Optional first prompt fills the composer; optional “send after open” (default off, trusted only). Pure `worktreeParallel` helpers + tests; en/zh/zh-TW
 
 ## [0.2.3] - 2026-07-31
 

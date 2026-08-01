@@ -460,6 +460,13 @@ import {
   type ContinueCwdSoftFailKind,
 } from "@/lib/continueCwd";
 import {
+  buildParallelTaskComposerText,
+  evaluateParallelTaskPreflight,
+  parallelTaskPreflightMessageKey,
+  planParallelTask,
+  suggestParallelWorktreeName,
+} from "@/lib/worktreeParallel";
+import {
   sessionExportMimeType,
   sessionToHtml,
   sessionToJson,
@@ -766,7 +773,6 @@ import {
   normalizeWorktreeLayout,
   pathsEqual,
   resolveSessionWorktreeBadge,
-  sanitizeWorktreeName,
   sanitizeWorktreeRef,
   sessionWorktreeTooltip,
   worktreeEntryForPath,
@@ -1031,6 +1037,8 @@ function paletteActionIcon(id: string) {
       return <IconCopy size={size} />;
     case "continue-cwd":
       return <IconHistory size={size} />;
+    case "parallel-worktree-task":
+      return <IconSquarePen size={size} />;
     case "resume-with-code-restore":
       return <IconRewind size={size} />;
     case "settings-appearance":
@@ -2584,6 +2592,11 @@ export default function App() {
   );
   /** When true, after create bind cwd and open a draft chat on that path. */
   const [worktreeCreateStartChat, setWorktreeCreateStartChat] = useState(false);
+  /** Optional first composer prompt for parallel-task / new-chat create. */
+  const [worktreeCreateFirstPrompt, setWorktreeCreateFirstPrompt] =
+    useState("");
+  /** When true + trusted, send first prompt once after open (default off). */
+  const [worktreeCreateAutoSend, setWorktreeCreateAutoSend] = useState(false);
   /** Absolute `~/.grok` from host list (CLI path preview + badge detection). */
   const [cliGrokHome, setCliGrokHome] = useState<string | null>(null);
   /** CLI-tracked worktrees from `grok worktree list` (soft-fail). */
@@ -13167,15 +13180,25 @@ export default function App() {
     [activeProject?.path, executeWorktreeRemove, tr],
   );
 
-  const openWorktreeCreate = useCallback((opts?: { startNewChat?: boolean }) => {
-    setWorktreeCreateName("");
-    setWorktreeCreateRef("");
-    setWorktreeCreateLayout("cli");
-    setWorktreeCreateError(null);
-    setWorktreeCreateBusy(false);
-    setWorktreeCreateStartChat(!!opts?.startNewChat);
-    setWorktreeCreateOpen(true);
-  }, []);
+  const openWorktreeCreate = useCallback(
+    (opts?: {
+      startNewChat?: boolean;
+      suggestedName?: string;
+      firstPrompt?: string;
+      autoSend?: boolean;
+    }) => {
+      setWorktreeCreateName((opts?.suggestedName ?? "").trim());
+      setWorktreeCreateRef("");
+      setWorktreeCreateLayout("cli");
+      setWorktreeCreateError(null);
+      setWorktreeCreateBusy(false);
+      setWorktreeCreateStartChat(!!opts?.startNewChat);
+      setWorktreeCreateFirstPrompt(opts?.firstPrompt ?? "");
+      setWorktreeCreateAutoSend(!!opts?.autoSend);
+      setWorktreeCreateOpen(true);
+    },
+    [],
+  );
 
   const worktreeCreatePreviewPath = (() => {
     try {
@@ -13254,6 +13277,7 @@ export default function App() {
    * Create worktree → refresh list → add as project (trust inherited) →
    * either bind current session or start a draft chat on that path.
    * Worktree+chat creates a real session immediately so meta can be persisted.
+   * Optional first prompt fills the composer; auto-send is best-effort when trusted.
    */
   const submitWorktreeCreate = useCallback(async () => {
     if (!api.isTauri() || !activeProject?.path) return;
@@ -13262,13 +13286,18 @@ export default function App() {
       setWorktreeCreateError(tr("composer.worktreeNameRequired"));
       return;
     }
-    let safeName: string;
+    let plan: ReturnType<typeof planParallelTask>;
     try {
-      safeName = sanitizeWorktreeName(rawName);
+      plan = planParallelTask({
+        name: rawName,
+        firstPrompt: worktreeCreateFirstPrompt,
+        autoSend: worktreeCreateAutoSend,
+      });
     } catch {
       setWorktreeCreateError(tr("composer.worktreeNameInvalid"));
       return;
     }
+    const safeName = plan.name;
     let start: string | null;
     try {
       start = sanitizeWorktreeRef(worktreeCreateRef);
@@ -13320,9 +13349,11 @@ export default function App() {
 
       if (startChat) {
         // Materialize session now so worktree meta survives before first send.
+        const sessionTitle =
+          plan.sessionTitle?.trim() || tr("session.new");
         const meta = (await api.sessionCreate(
           target.id,
-          tr("session.new"),
+          sessionTitle,
         )) as SessionRow & { id: string; title?: string };
         await markSessionWorktree(meta.id, path, branch);
         const row = normalizeSessionRow({
@@ -13334,6 +13365,26 @@ export default function App() {
         });
         setExpandedProjects((e) => ({ ...e, [target!.id]: true }));
         await openSession(row, target);
+        // openSession clears the composer — seed optional first prompt after.
+        if (plan.firstPrompt) {
+          const seed = buildParallelTaskComposerText(plan.firstPrompt, {
+            branch,
+            path,
+          });
+          if (seed) {
+            suppressProjectDraftPersistRef.current = true;
+            setDraft(seed);
+            requestAnimationFrame(() => {
+              suppressProjectDraftPersistRef.current = false;
+            });
+            // Best-effort auto-send (same pattern as voice dictation).
+            if (plan.autoSend) {
+              window.setTimeout(() => {
+                void sendRef.current?.();
+              }, 0);
+            }
+          }
+        }
         showToast(
           tr("composer.worktreeCreatedChat", {
             name: created.name,
@@ -13374,6 +13425,8 @@ export default function App() {
     session.sessionId,
     showToast,
     tr,
+    worktreeCreateAutoSend,
+    worktreeCreateFirstPrompt,
     worktreeCreateLayout,
     worktreeCreateName,
     worktreeCreateRef,
@@ -13791,6 +13844,32 @@ export default function App() {
           break;
         }
         void continueLastAgentForProject(proj);
+        break;
+      }
+      case "parallel-worktree-task": {
+        const pre = evaluateParallelTaskPreflight({
+          isTauri: api.isTauri(),
+          projectPath: activeProject?.path,
+          trusted: activeProject?.trusted,
+          gitAvailable: gitWorktreesAvailable,
+        });
+        if (!pre.ok) {
+          showToast(
+            tr(parallelTaskPreflightMessageKey(pre.reason) as MessageKey),
+            3500,
+          );
+          break;
+        }
+        const existingNames = gitWorktrees
+          .map((w) => (w.branch || worktreeLabel(w) || "").trim())
+          .filter(Boolean);
+        const suggested = suggestParallelWorktreeName({
+          existingNames,
+        });
+        openWorktreeCreate({
+          startNewChat: true,
+          suggestedName: suggested,
+        });
         break;
       }
       case "settings-general":
@@ -21098,6 +21177,45 @@ export default function App() {
               disabled={worktreeCreateBusy}
               spellCheck={false}
             />
+          </label>
+          <label className="wt-create__field">
+            <span className="wt-create__label">
+              {tr("composer.worktreeFirstPrompt")}
+            </span>
+            <textarea
+              className="settings-input wt-create__prompt"
+              value={worktreeCreateFirstPrompt}
+              onChange={(e) => {
+                setWorktreeCreateFirstPrompt(e.target.value);
+              }}
+              placeholder={tr("composer.worktreeFirstPromptPlaceholder")}
+              rows={3}
+              disabled={worktreeCreateBusy}
+              spellCheck
+            />
+            <span className="wt-create__field-hint">
+              {tr("composer.worktreeFirstPromptHint")}
+            </span>
+          </label>
+          <label className="wt-create__check">
+            <input
+              type="checkbox"
+              checked={worktreeCreateAutoSend}
+              onChange={(e) => {
+                setWorktreeCreateAutoSend(e.target.checked);
+              }}
+              disabled={
+                worktreeCreateBusy || !worktreeCreateFirstPrompt.trim()
+              }
+            />
+            <span>
+              <span className="wt-create__check-label">
+                {tr("composer.worktreeAutoSend")}
+              </span>
+              <span className="wt-create__field-hint">
+                {tr("composer.worktreeAutoSendHint")}
+              </span>
+            </span>
           </label>
           {worktreeCreatePreviewPath ? (
             <p className="wt-create__preview">

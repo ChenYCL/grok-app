@@ -25,6 +25,7 @@ describe("defaultPaletteActions", () => {
       "copy-conversation-md",
       "resume-with-code-restore",
       "continue-cwd",
+      "parallel-worktree-task",
       "settings-general",
       "settings-appearance",
       "settings-account",
@@ -98,6 +99,12 @@ describe("filterPaletteActions", () => {
     expect(
       filterPaletteActions("--continue", catalog).map((h) => h.id),
     ).toContain("continue-cwd");
+
+    const parallel = filterPaletteActions("parallel task", catalog);
+    expect(parallel.map((h) => h.id)).toContain("parallel-worktree-task");
+    expect(
+      filterPaletteActions("git worktree", catalog).map((h) => h.id),
+    ).toContain("parallel-worktree-task");
   });
 
   it("matches translated label when t is provided", () => {

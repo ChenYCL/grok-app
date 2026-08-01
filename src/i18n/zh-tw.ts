@@ -930,13 +930,13 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeTip": "切換 Git worktree / 分支",
   "composer.worktreeSwitched": "已切換到 worktree {name}（{branch}）",
   "composer.worktreeNew": "新建 worktree",
-  "composer.worktreeNewChat": "新建 worktree 並開聊",
+  "composer.worktreeNewChat": "並行任務（worktree）",
   "composer.worktreeNewTitle": "新建 Git worktree",
-  "composer.worktreeNewChatTitle": "新建 worktree 並開聊",
+  "composer.worktreeNewChatTitle": "並行任務（worktree）",
   "composer.worktreeNewHint":
     "建立關聯 git worktree（預設 CLI 佈局 ~/.grok/worktrees），並檢出新分支。對齊 grok --worktree=name。",
   "composer.worktreeNewChatHint":
-    "建立關聯 worktree，並以該目錄為專案 cwd 開啟新對話（寫入對話 meta，側欄顯示 CLI/WT 標記）。",
+    "建立關聯 worktree，並以該目錄為專案 cwd 開啟新對話（寫入對話 meta，側欄顯示 CLI/WT 標記）。主檢出不受影響，適合並行工作。",
   "composer.worktreeName": "名稱",
   "composer.worktreeNamePlaceholder": "feat-login",
   "composer.worktreeLayout": "位置",
@@ -949,6 +949,14 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeRefInvalid":
     "起始點不能以 '-' 開頭，也不能包含換行",
   "composer.worktreePathPreview": "路徑：{path}",
+  "composer.worktreeFirstPrompt": "首條提示（可選）",
+  "composer.worktreeFirstPromptHint":
+    "開啟新對話時使用 — 建立後填入輸入框。",
+  "composer.worktreeFirstPromptPlaceholder":
+    "希望 Agent 在這個 worktree 裡做什麼？",
+  "composer.worktreeAutoSend": "開啟後傳送",
+  "composer.worktreeAutoSendHint":
+    "勾選後，新對話開啟時自動傳送首條提示（僅已信任專案）。預設關閉。",
   "composer.worktreeCreate": "建立",
   "composer.worktreeCreateChat": "建立並開聊",
   "composer.worktreeCreating": "正在建立…",
@@ -958,6 +966,13 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeNameRequired": "請輸入 worktree 名稱",
   "composer.worktreeNameInvalid":
     "僅允許字母、數字、'.'、'_'、'-'（不能含空格或斜線）",
+  "composer.parallelTask": "並行任務（worktree）",
+  "composer.parallelTaskHostOnly": "並行任務需要在桌面應用視窗中操作。",
+  "composer.parallelTaskNoProject": "請先選擇一個專案。",
+  "composer.parallelTaskUntrusted":
+    "請先信任該專案，再啟動並行 worktree 任務。",
+  "composer.parallelTaskNotGit":
+    "目前資料夾不是 git 倉庫（或 git 不可用）。",
   "composer.addFiles": "上傳檔案",
   "composer.planMode": "計劃模式",
   "composer.planModeHint": "開啟計劃模式",

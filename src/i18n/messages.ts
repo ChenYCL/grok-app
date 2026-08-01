@@ -1123,13 +1123,13 @@ const en = {
   "composer.worktreeTip": "Switch git worktree / branch",
   "composer.worktreeSwitched": "Using worktree {name} ({branch})",
   "composer.worktreeNew": "New worktree",
-  "composer.worktreeNewChat": "New worktree & chat",
+  "composer.worktreeNewChat": "Parallel task (worktree)",
   "composer.worktreeNewTitle": "New git worktree",
-  "composer.worktreeNewChatTitle": "New worktree & chat",
+  "composer.worktreeNewChatTitle": "Parallel task (worktree)",
   "composer.worktreeNewHint":
     "Creates a linked git worktree (default: CLI layout under ~/.grok/worktrees) and checks out a new branch. Same idea as grok --worktree=name.",
   "composer.worktreeNewChatHint":
-    "Creates a linked worktree, then starts a new chat with that folder as the project cwd (session meta bound for the CLI/WT badge).",
+    "Creates a linked worktree, then starts a new chat with that folder as the project cwd (session meta bound for the CLI/WT badge). Parallel work without touching the main checkout.",
   "composer.worktreeName": "Name",
   "composer.worktreeNamePlaceholder": "feat-login",
   "composer.worktreeLayout": "Location",
@@ -1142,6 +1142,14 @@ const en = {
   "composer.worktreeRefInvalid":
     "Start point must not start with '-' or contain line breaks",
   "composer.worktreePathPreview": "Path: {path}",
+  "composer.worktreeFirstPrompt": "First prompt (optional)",
+  "composer.worktreeFirstPromptHint":
+    "Used when opening a new chat — filled into the composer after create.",
+  "composer.worktreeFirstPromptPlaceholder":
+    "What should the agent work on in this worktree?",
+  "composer.worktreeAutoSend": "Send after open",
+  "composer.worktreeAutoSendHint":
+    "When checked, send the first prompt once the new chat opens (trusted projects only). Default off.",
   "composer.worktreeCreate": "Create",
   "composer.worktreeCreateChat": "Create & open chat",
   "composer.worktreeCreating": "Creating…",
@@ -1151,6 +1159,14 @@ const en = {
   "composer.worktreeNameRequired": "Enter a worktree name",
   "composer.worktreeNameInvalid":
     "Use letters, digits, '.', '_' or '-' (no spaces or slashes)",
+  "composer.parallelTask": "Parallel task (worktree)",
+  "composer.parallelTaskHostOnly":
+    "Parallel task needs the desktop app window.",
+  "composer.parallelTaskNoProject": "Select a project first.",
+  "composer.parallelTaskUntrusted":
+    "Trust this project before starting a parallel worktree task.",
+  "composer.parallelTaskNotGit":
+    "This folder is not a git repository (or git is unavailable).",
   "composer.clearProject": "General workspace",
   "composer.projectUntrusted": "Not trusted yet",
   "composer.projectBound": "Session bound to “{name}”",
@@ -7331,13 +7347,13 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeTip": "切换 Git worktree / 分支",
   "composer.worktreeSwitched": "已切换到 worktree {name}（{branch}）",
   "composer.worktreeNew": "新建 worktree",
-  "composer.worktreeNewChat": "新建 worktree 并开聊",
+  "composer.worktreeNewChat": "并行任务（worktree）",
   "composer.worktreeNewTitle": "新建 Git worktree",
-  "composer.worktreeNewChatTitle": "新建 worktree 并开聊",
+  "composer.worktreeNewChatTitle": "并行任务（worktree）",
   "composer.worktreeNewHint":
     "创建关联 git worktree（默认 CLI 布局 ~/.grok/worktrees），并检出新分支。对齐 grok --worktree=name。",
   "composer.worktreeNewChatHint":
-    "创建关联 worktree，并以该目录为项目 cwd 开启新对话（写入会话 meta，侧栏显示 CLI/WT 标记）。",
+    "创建关联 worktree，并以该目录为项目 cwd 开启新对话（写入会话 meta，侧栏显示 CLI/WT 标记）。主检出不受影响，适合并行工作。",
   "composer.worktreeName": "名称",
   "composer.worktreeNamePlaceholder": "feat-login",
   "composer.worktreeLayout": "位置",
@@ -7350,6 +7366,14 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeRefInvalid":
     "起始点不能以 '-' 开头，也不能包含换行",
   "composer.worktreePathPreview": "路径：{path}",
+  "composer.worktreeFirstPrompt": "首条提示（可选）",
+  "composer.worktreeFirstPromptHint":
+    "开启新对话时使用 — 创建后填入输入框。",
+  "composer.worktreeFirstPromptPlaceholder":
+    "希望 Agent 在这个 worktree 里做什么？",
+  "composer.worktreeAutoSend": "打开后发送",
+  "composer.worktreeAutoSendHint":
+    "勾选后，新对话打开时自动发送首条提示（仅已信任项目）。默认关闭。",
   "composer.worktreeCreate": "创建",
   "composer.worktreeCreateChat": "创建并开聊",
   "composer.worktreeCreating": "正在创建…",
@@ -7359,6 +7383,13 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeNameRequired": "请输入 worktree 名称",
   "composer.worktreeNameInvalid":
     "仅允许字母、数字、'.'、'_'、'-'（不能含空格或斜杠）",
+  "composer.parallelTask": "并行任务（worktree）",
+  "composer.parallelTaskHostOnly": "并行任务需要在桌面应用窗口中操作。",
+  "composer.parallelTaskNoProject": "请先选择一个项目。",
+  "composer.parallelTaskUntrusted":
+    "请先信任该项目，再启动并行 worktree 任务。",
+  "composer.parallelTaskNotGit":
+    "当前文件夹不是 git 仓库（或 git 不可用）。",
   "composer.clearProject": "通用工作区",
   "composer.projectUntrusted": "尚未信任",
   "composer.projectBound": "会话已绑定到「{name}」",
