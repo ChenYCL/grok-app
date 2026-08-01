@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Memory operations center** (Settings → Agent): unify memory browser + embedding honesty + clear scopes — mode chips (`app_keyword` · `cli_hybrid` · `hybrid_unavailable` · `memory_off`), dream/watcher **config presence** only (never invents running status or embeddings), clear workspace/all via host `grok memory clear` with GlassModal confirm, session scope soft-unavailable. Pure `memoryOpsCenter` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

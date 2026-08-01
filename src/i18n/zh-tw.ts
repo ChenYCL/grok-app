@@ -1691,6 +1691,57 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.memoryBrowser.searchEmptyHintHybridUnavailable":
     "沒有關鍵字相符。Agent 已設定 embedding，但應用內瀏覽器混合檢索不可用（無 host CLI 路徑）。不會在用戶端偽造 embedding。",
   "settings.memoryBrowser.openEmbedSettings": "記憶 embedding 設定",
+  "settings.memoryOps": "記憶操作中心",
+  "settings.memoryOpsDesc":
+    "統一記憶瀏覽器、embedding 誠實狀態與清除範圍。應用內搜尋僅為關鍵字 — 不會偽造 embedding。CLI 混合檢索需設定 embedding 模型；無 host 搜尋路徑時瀏覽器混合檢索不可用。",
+  "settings.memoryOps.modeLabel": "記憶搜尋模式",
+  "settings.memoryOps.mode.appKeyword": "應用：關鍵字",
+  "settings.memoryOps.mode.cliHybrid": "CLI agent：混合",
+  "settings.memoryOps.mode.hybridUnavailable": "瀏覽器混合：不可用",
+  "settings.memoryOps.mode.memoryOff": "記憶：關閉",
+  "settings.memoryOps.hybridUnavailableHint":
+    "已為 agent 工具設定 embedding 模型，但應用內瀏覽器沒有 host 混合檢索 CLI（grok memory search）— 僅關鍵字掃描。不會偽造 embedding。",
+  "settings.memoryOps.openEmbed": "Embedding 設定",
+  "settings.memoryOps.presenceLabel": "Dream / Watcher 設定存在性",
+  "settings.memoryOps.dream": "Dream",
+  "settings.memoryOps.watcher": "Watcher",
+  "settings.memoryOps.presenceNote": "僅表示設定鍵是否設定 — 不是行程執行狀態。",
+  "settings.memoryOps.clearLabel": "清除記憶範圍",
+  "settings.memoryOps.clear.workspace": "清除工作區",
+  "settings.memoryOps.clear.session": "清除工作階段",
+  "settings.memoryOps.clear.all": "全部清除",
+  "settings.memoryOps.clear.busy": "清除中…",
+  "settings.memoryOps.clear.confirmTitle.workspace": "清除工作區記憶？",
+  "settings.memoryOps.clear.confirmTitle.session": "清除工作階段記憶？",
+  "settings.memoryOps.clear.confirmTitle.all": "清除全部記憶？",
+  "settings.memoryOps.clear.confirmMsg.workspace":
+    "對目前專案執行 grok memory clear --workspace（MEMORY.md、工作階段摘要、索引）。不會刪除應用程式內聊天紀錄。此操作無法復原。",
+  "settings.memoryOps.clear.confirmMsg.session":
+    "應用 host 尚不支援僅清除工作階段範圍（CLI 無 session 作用域）。",
+  "settings.memoryOps.clear.confirmMsg.all":
+    "在目前 GROK_HOME 下執行 grok memory clear --all，將刪除全域與工作區記憶檔案。不會刪除應用程式內聊天紀錄。此操作無法復原。",
+  "settings.memoryOps.clear.done.workspace": "已清除工作區記憶",
+  "settings.memoryOps.clear.done.session": "已清除工作階段記憶",
+  "settings.memoryOps.clear.done.all": "已清除全部記憶",
+  "settings.memoryOps.clear.unavailable.session":
+    "host CLI 尚不支援僅清除工作階段範圍。",
+  "settings.memoryOps.clear.unavailable.memoryOff":
+    "請先開啟上方的「跨工作階段記憶」再清除。",
+  "settings.memoryOps.clear.unavailable.noCwd":
+    "請先開啟專案以清除工作區記憶。",
+  "settings.memoryOps.clear.unavailable.host":
+    "應用 host 暫不支援此清除範圍。",
+  "settings.memoryOps.empty.memoryOff": "記憶已關閉",
+  "settings.memoryOps.empty.memoryOffHint":
+    "請先開啟上方的「跨工作階段記憶」以瀏覽檔案與清除範圍。",
+  "settings.memoryOps.empty.noProject": "未選擇專案",
+  "settings.memoryOps.empty.noProjectHint":
+    "開啟專案以匹配工作區記憶。全域 MEMORY.md 仍可能顯示。",
+  "settings.memoryOps.empty.catalog": "尚無記憶檔案",
+  "settings.memoryOps.empty.catalogHint":
+    "agent 寫入 MEMORY.md、工作階段日誌或索引後會出現檔案。",
+  "settings.memoryOps.empty.hybridUnavailable":
+    "尚無記憶檔案 · 瀏覽器混合檢索不可用",
   "settings.memoryEmbed": "記憶 embedding（CLI 0.2.117）",
   "settings.memoryEmbedDesc":
     "從目前 GROK_HOME 的 config.toml 讀取白名單 `[memory.*]` 鍵（embedding、search、MMR、dream、watcher）。缺失鍵保持未設定。獨立 agent-home 可寫入安全鍵並 soft-respawn；共用模式唯讀。應用內瀏覽器搜尋始終為關鍵字，不會在用戶端發明 embedding。",
