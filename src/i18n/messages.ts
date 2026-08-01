@@ -5510,6 +5510,26 @@ const en = {
   "voice.sendTranscriptNeedSpeech":
     "Need user or assistant speech from the host before sending.",
   "voice.transcriptSent": "Transcript sent to the active session",
+  "voice.center.toolIdle": "No Build tool running",
+  "voice.center.chipDelegated": "Voice",
+  "voice.center.keepAgentsOn":
+    "Keep coding sessions: on — ending Live Voice leaves delegated agents running.",
+  "voice.center.keepAgentsOff":
+    "Keep coding sessions: off — ending Live Voice may stop sessions started from voice.",
+  "voice.center.endNote.keepAgents":
+    "Stop ends voice and cancels in-flight host tools. Coding sessions stay.",
+  "voice.center.endNote.keepRunning":
+    "Stop ends voice. Running delegated coding sessions stay open.",
+  "voice.center.endNote.cancelDelegates":
+    "Stop ends voice, cancels in-flight tools, and stops delegated coding sessions.",
+  "voice.center.endNote.stopOnly":
+    "Stop ends voice and cancels in-flight host tools.",
+  "voice.center.empty.noAuth":
+    "Live Voice needs Grok auth (CLI login or official API key). No speech transcript yet.",
+  "voice.center.empty.noMic":
+    "Microphone unavailable. Transcript stays empty until the host sends text — nothing is invented.",
+  "voice.center.empty.transcriptWithDelegates":
+    "No speech transcript yet (host only). Delegated coding sessions are listed above.",
   "settings.preferredAgent.default": "Default (CLI)",
   "settings.preferredAgent.source.bundled": "Bundled",
   "settings.preferredAgent.source.builtin": "Built-in",
@@ -11435,6 +11455,26 @@ const zh: Record<MessageKey, string> = {
   "voice.sendTranscriptNeedSpeech":
     "需要主机提供的用户或助手发言后才能发送。",
   "voice.transcriptSent": "转写已发送到当前会话",
+  "voice.center.toolIdle": "当前没有 Build 工具在运行",
+  "voice.center.chipDelegated": "语音",
+  "voice.center.keepAgentsOn":
+    "结束后保留编码会话：开 — 结束实时语音不会停止已委派的 Agent。",
+  "voice.center.keepAgentsOff":
+    "结束后保留编码会话：关 — 结束实时语音可能会停止由语音拉起的会话。",
+  "voice.center.endNote.keepAgents":
+    "停止会结束语音并取消进行中的主机工具；编码会话会保留。",
+  "voice.center.endNote.keepRunning":
+    "停止会结束语音；正在运行的委派编码会话会继续保留。",
+  "voice.center.endNote.cancelDelegates":
+    "停止会结束语音、取消进行中的工具，并停止委派的编码会话。",
+  "voice.center.endNote.stopOnly":
+    "停止会结束语音并取消进行中的主机工具。",
+  "voice.center.empty.noAuth":
+    "实时语音需要 Grok 鉴权（CLI 登录或官方 API key）。尚无语音转写。",
+  "voice.center.empty.noMic":
+    "麦克风不可用。在主机推送文本之前转写保持为空 — 不会伪造 STT。",
+  "voice.center.empty.transcriptWithDelegates":
+    "尚无语音转写（仅主机推送）。上方已列出委派的编码会话。",
   "settings.preferredAgent.default": "default",
   "settings.preferredAgent.source.bundled": "bundled",
   "settings.preferredAgent.source.builtin": "Built-in",

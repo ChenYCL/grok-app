@@ -21215,6 +21215,11 @@ export default function App() {
         voiceId={voiceId}
         keepAgentsOnEnd={voiceKeepAgentsOnEnd}
         hasActiveSession={Boolean(session.sessionId)}
+        sessions={sessions.map((s) => ({
+          id: s.id,
+          title: s.title || tr("session.untitled"),
+          status: liveMap[s.id]?.state ?? "idle",
+        }))}
         onClose={() => setLiveVoiceOpen(false)}
         onSendTranscriptAsPrompt={
           session.sessionId
@@ -21231,7 +21236,7 @@ export default function App() {
               }
             : undefined
         }
-        onOpenSession={(id) => {
+        onFocusSession={(id) => {
           setLiveVoiceOpen(false);
           void (async () => {
             await refreshSessions();

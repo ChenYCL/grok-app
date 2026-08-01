@@ -5291,6 +5291,26 @@ export const zhTW: Record<MessageKey, string> = {
   "voice.sendTranscriptNeedSpeech":
     "需要主機提供的使用者或助手發言後才能傳送。",
   "voice.transcriptSent": "轉寫已傳送到目前工作階段",
+  "voice.center.toolIdle": "目前沒有 Build 工具在執行",
+  "voice.center.chipDelegated": "語音",
+  "voice.center.keepAgentsOn":
+    "結束後保留編碼工作階段：開 — 結束即時語音不會停止已委派的 Agent。",
+  "voice.center.keepAgentsOff":
+    "結束後保留編碼工作階段：關 — 結束即時語音可能會停止由語音拉起的工作階段。",
+  "voice.center.endNote.keepAgents":
+    "停止會結束語音並取消進行中的主機工具；編碼工作階段會保留。",
+  "voice.center.endNote.keepRunning":
+    "停止會結束語音；正在執行的委派編碼工作階段會繼續保留。",
+  "voice.center.endNote.cancelDelegates":
+    "停止會結束語音、取消進行中的工具，並停止委派的編碼工作階段。",
+  "voice.center.endNote.stopOnly":
+    "停止會結束語音並取消進行中的主機工具。",
+  "voice.center.empty.noAuth":
+    "即時語音需要 Grok 驗證（CLI 登入或官方 API key）。尚無語音轉寫。",
+  "voice.center.empty.noMic":
+    "麥克風不可用。在主機推送文字之前轉寫保持為空 — 不會偽造 STT。",
+  "voice.center.empty.transcriptWithDelegates":
+    "尚無語音轉寫（僅主機推送）。上方已列出委派的編碼工作階段。",
   "settings.preferredAgent.default": "Default (CLI)",
   "settings.preferredAgent.source.bundled": "Bundled",
   "settings.preferredAgent.source.builtin": "Built-in",

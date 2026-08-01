@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Live Voice command center**: delegated session chips with title/status (click focuses session), dedicated tool + permission status region, footer honesty for Keep coding sessions on/off and end-session plan (keep vs cancel delegates). Pure `voiceCommandCenter` helpers + tests; empty transcript honesty (no invented STT); en/zh/zh-TW. No `window.confirm`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
