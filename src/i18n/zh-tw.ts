@@ -5,12 +5,10 @@ export const zhTW: Record<MessageKey, string> = {
   "app.name": "Grok",
   "app.tagline": "MIT · 非 xAI 官方 · 姊妹專案 grok-go",
   "app.versionFooter": "Grok v0.2.3 · MIT · 非 xAI 官方 · 姊妹專案 grok-go",
-
   "window.minimize": "最小化",
   "window.maximize": "最大化",
   "window.restore": "還原",
   "window.close": "關閉",
-
   "sidebar.expand": "展開側邊欄",
   "sidebar.collapse": "收合側邊欄",
   "sidebar.resize": "調整側邊欄寬度",
@@ -72,7 +70,6 @@ export const zhTW: Record<MessageKey, string> = {
   "user.theme": "主題",
   "user.themeLight": "切換為淺色",
   "user.themeDark": "切換為深色",
-
   "project.pin": "置頂專案",
   "project.unpin": "取消置頂",
   "project.reveal": "在 Finder 中顯示",
@@ -132,7 +129,6 @@ export const zhTW: Record<MessageKey, string> = {
   "project.continueCwdHostOnly": "繼續最近的 Agent 需要在桌面應用視窗中操作。",
   "project.continueCwdImportFailed":
     "找到了 Agent 工作階段，但無法匯入到應用中。",
-
   "session.pin": "置頂對話",
   "session.unpin": "取消置頂",
   "session.pinned": "已置頂",
@@ -364,10 +360,6 @@ export const zhTW: Record<MessageKey, string> = {
   "message.nodes.user": "你",
   "message.nodes.assistant": "Grok",
   "message.nodes.count": "{current} / {total}",
-  "message.copyLink": "複製連結",
-  "message.linkCopied": "連結已複製",
-  "message.deepLinkMissing": "此對話中找不到該訊息",
-
   "main.rightPane": "檔案欄",
   "main.leftPane": "側邊欄",
   "main.leftPaneShow": "顯示側邊欄",
@@ -481,33 +473,11 @@ export const zhTW: Record<MessageKey, string> = {
   "resources.openDefault": "以系統預設應用程式開啟",
   "resources.revealFolder": "在檔案管理員中顯示",
   "resources.noEditors": "未偵測到本機程式碼編輯器",
-  "resources.openErr.noEditor":
-    "沒有可用的程式碼編輯器。請安裝編輯器，或在設定中選擇 Finder／檔案總管。",
-  "resources.openErr.notFound": "找不到該檔案 — 可能已被移動或刪除。",
-  "resources.openErr.pathDenied": "無法開啟此路徑（權限或白名單限制）。",
-  "resources.openErr.hostOnly": "在編輯器中開啟需要桌面端應用程式。",
-  "resources.openErr.cancelled": "已取消開啟。",
-  "resources.openErr.other": "無法在編輯器中開啟。",
-  "resources.revealErr.notFound": "找不到該路徑 — 無法在檔案管理員中顯示。",
-  "resources.revealErr.pathDenied": "無法顯示此路徑（權限或白名單限制）。",
-  "resources.revealErr.hostOnly": "在檔案管理員中顯示需要桌面端應用程式。",
-  "resources.revealErr.cancelled": "已取消顯示。",
-  "resources.revealErr.other": "無法在檔案管理員中顯示。",
   "resources.needProject": "新增或選擇專案後，即可在此瀏覽檔案。",
   "resources.emptyPreview": "尚未開啟檔案",
   "resources.emptyPreviewHint": "從右側檔案樹選擇檔案進行預覽。",
   "resources.plan": "計劃",
   "resources.planEmpty": "目前對話沒有待審閱的計劃。",
-  "resources.agents": "Agents",
-  "resources.agentsShow": "顯示 Agents 側欄",
-  "resources.agentsHide": "隱藏 Agents 側欄",
-  "agentsRail.noTasks": "本輪尚無 Agent 任務",
-  "agentsRail.busyHint":
-    "對話正在工作 — 工具步驟與巢狀子代理會在啟動後出現在這裡。",
-  "agentsRail.idleHint":
-    "當本對話執行工具或啟動子代理時，任務樹會顯示在這裡，無需開啟浮動任務面板。",
-  "agentsRail.filterEmpty": "沒有符合篩選條件的任務",
-  "agentsRail.filterEmptyHint": "清除搜尋或換一個狀態篩選以查看更多任務。",
   "resources.copyPathShort": "路徑",
   "resources.tabClose": "關閉分頁",
   "resources.tabCloseOthers": "關閉其他分頁",
@@ -653,17 +623,6 @@ export const zhTW: Record<MessageKey, string> = {
     "撤銷「{name}」中的 {n} 個 hunk，將寫入不含這些區塊的內容。",
   "changes.batchHunksAcceptDone": "已接受 {n} 個區塊",
   "changes.batchHunksRejectDone": "已拒絕 {n} 個區塊",
-  "changes.comment": "評論",
-  "changes.commentTip": "針對此變更區塊寫審閱備註，並插入到對話輸入框",
-  "changes.commentModalTitle": "評論變更區塊",
-  "changes.commentModalDesc": "「{name}」· 第 {n} 塊。會把結構化提示寫入輸入框，不會自動傳送。",
-  "changes.commentPlaceholder": "希望代理如何修改或解釋此變更？",
-  "changes.commentInsert": "插入到對話",
-  "changes.commentInsertedToast": "審閱備註已寫入輸入框",
-  "changes.commentErrorEmpty": "請先填寫簡短審閱備註",
-  "changes.commentErrorTooLong": "備註過長（最多約 4000 字元）",
-  "changes.commentErrorGeneric": "無法產生對話提示",
-
   "rules.title": "規則",
   "rules.modalTitleNamed": "專案規則 · {name}",
   "rules.empty": "找不到專案規則檔案",
@@ -848,55 +807,6 @@ export const zhTW: Record<MessageKey, string> = {
   "dashboard.batchAgents": "批量 Agent…",
   "dashboard.batchAgentsTitle":
     "將同一提示詞派發到多個專案（工作階段或無頭摘要）",
-  "dashboard.peek.label": "工作階段詳情",
-  "dashboard.peek.expand": "展開 {title} 的詳情",
-  "dashboard.peek.collapse": "收起 {title} 的詳情",
-  "dashboard.peek.status": "狀態",
-  "dashboard.peek.tool": "工具",
-  "dashboard.peek.noTool": "無執行中的工具",
-  "dashboard.peek.project": "專案",
-  "dashboard.peek.model": "模型",
-  "dashboard.peek.activity": "更新",
-  "dashboard.peek.openChat": "開啟對話",
-  "dashboard.dispatch.title": "派發新 Agent",
-  "dashboard.dispatch.projectLabel": "已信任專案",
-  "dashboard.dispatch.promptPlaceholder": "新工作階段的提示詞…",
-  "dashboard.dispatch.button": "派發",
-  "dashboard.dispatch.buttonTitle":
-    "在所選專案新建對話、填入提示詞並送出",
-  "dashboard.dispatch.noTrusted":
-    "尚無已信任專案。請先在側欄信任一個專案後再派發。",
-  "dashboard.dispatch.emptyPrompt": "請輸入要派發的提示詞。",
-  "dashboard.dispatch.noProject": "請先選擇一個已信任專案。",
-  "dashboard.dispatch.untrusted": "該專案尚未信任。請先信任後再派發。",
-  "dashboard.dispatch.started": "已派發到 {name}",
-  "dashboard.openBoard": "看板檢視",
-  "dashboard.openBoardTitle":
-    "依狀態分欄檢視工作階段（需你處理 / 執行中 / 閒置 / 完成）",
-
-  "taskBoard.title": "工作階段任務看板",
-  "taskBoard.hint":
-    "依應用程式內工作階段與本地 live 狀態分欄 — 非 CI/雲端。點擊卡片開啟該對話。",
-  "taskBoard.open": "工作階段任務看板",
-  "taskBoard.searchPlaceholder": "篩選工作階段…",
-  "taskBoard.projectSearchPlaceholder": "依專案篩選…",
-  "taskBoard.includeArchived": "含已封存",
-  "taskBoard.includeArchivedTitle": "在「完成」欄顯示已封存的閒置工作階段",
-  "taskBoard.columnsLabel": "工作階段狀態欄",
-  "taskBoard.column.needsYou": "需你處理",
-  "taskBoard.column.running": "執行中",
-  "taskBoard.column.idle": "閒置",
-  "taskBoard.column.done": "完成",
-  "taskBoard.column.error": "異常",
-  "taskBoard.columnEmpty": "尚無工作階段",
-  "taskBoard.empty": "尚無工作階段",
-  "taskBoard.emptyHint":
-    "開始對話或等待 Agent 回合 — 工作階段會依狀態出現在這裡。",
-  "taskBoard.filterEmpty": "沒有符合篩選條件的工作階段",
-  "taskBoard.filterEmptyHint": "清空搜尋或勾選「含已封存」以查看更多工作階段。",
-  "taskBoard.clearFilters": "清除篩選",
-  "taskBoard.totalCount": "{n} 個工作階段",
-
   "batchAgents.title": "批量 Agent",
   "batchAgents.hint":
     "勾選已信任專案、填寫同一提示詞，然後為每個專案開啟工作階段，或跑無頭一輪並彙總 soft-fail 結果。單專案失敗不會清空其它工作。",
@@ -925,27 +835,8 @@ export const zhTW: Record<MessageKey, string> = {
   "batchAgents.resultsMeta":
     "成功 {ok} · soft-fail {soft} · 錯誤 {err} · 略過 {skip}",
   "batchAgents.copySummary": "複製摘要",
-  "batchAgents.downloadSummary": "下載 .txt",
   "batchAgents.copied": "已複製",
-  "batchAgents.downloaded": "已下載",
-  "batchAgents.exportEmpty": "尚無批量結果可匯出。",
-  "batchAgents.exportFailed": "無法匯出結果。",
-  "batchAgents.templatesLabel": "提示詞範本",
-  "batchAgents.tpl.codeReview.title": "程式碼審查",
-  "batchAgents.tpl.codeReview.body":
-    "審查本倉庫近期變更。指出風險、缺失測試與未完成工作，並給出具體檔案路徑。對不確定處保持誠實——不要編造發現。",
-  "batchAgents.tpl.fixTests.title": "修復測試",
-  "batchAgents.tpl.fixTests.body":
-    "找出本倉庫失敗或不穩定的測試，用最小改動修復，並回報仍失敗的項目。若未實際跑測試，不要聲稱已通過。",
-  "batchAgents.tpl.summarize.title": "總結倉庫",
-  "batchAgents.tpl.summarize.body":
-    "總結本倉庫用途、目錄結構與當前風險或未完成 TODO。優先依據樹中證據，避免臆測。",
-  "batchAgents.eligibilitySummary":
-    "可執行 {ready} · 不合格 {skip}（已選 {selected}）",
-  "batchAgents.eligibilityNone": "目前選擇中沒有可執行的專案。",
   "batchAgents.status.ok": "成功",
-  "batchAgents.status.okEmpty": "成功（無詳情）",
-  "batchAgents.status.partial": "部分",
   "batchAgents.status.softFail": "Soft-fail",
   "batchAgents.status.error": "錯誤",
   "batchAgents.status.skipped": "略過",
@@ -963,7 +854,6 @@ export const zhTW: Record<MessageKey, string> = {
   "batchAgents.openFromSettings": "開啟批量 Agent…",
   "batchAgents.toastDone":
     "批量完成：成功 {ok} · soft-fail {soft} · 錯誤 {err} · 略過 {skip}",
-
   "media.loadError": "應用程式內無法載入此媒體。",
   "media.openExternal": "以系統播放器開啟",
   "media.loading": "正在載入媒體…",
@@ -975,7 +865,6 @@ export const zhTW: Record<MessageKey, string> = {
   "media.err.unsupportedType": "此媒體類型尚無應用程式內預覽。",
   "media.err.mediaServerUnavailable": "本機媒體服務無法使用 — 請稍後再試。",
   "media.err.other": "應用程式內無法載入此媒體。",
-
   "office.loading": "正在轉譯文件…",
   "office.renderFailed": "無法在應用程式內轉譯此文件",
   "office.openExternal": "以外部應用程式開啟",
@@ -985,7 +874,6 @@ export const zhTW: Record<MessageKey, string> = {
   "office.prevPage": "上一頁",
   "office.nextPage": "下一頁",
   "office.pageOf": "{page} / {total}",
-
   "composer.placeholder": "隨心輸入",
   "composer.add": "新增",
   "composer.addProject": "新增專案",
@@ -1000,13 +888,13 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeTip": "切換 Git worktree / 分支",
   "composer.worktreeSwitched": "已切換到 worktree {name}（{branch}）",
   "composer.worktreeNew": "新建 worktree",
-  "composer.worktreeNewChat": "並行任務（worktree）",
+  "composer.worktreeNewChat": "新建 worktree 並開聊",
   "composer.worktreeNewTitle": "新建 Git worktree",
-  "composer.worktreeNewChatTitle": "並行任務（worktree）",
+  "composer.worktreeNewChatTitle": "新建 worktree 並開聊",
   "composer.worktreeNewHint":
     "建立關聯 git worktree（預設 CLI 佈局 ~/.grok/worktrees），並檢出新分支。對齊 grok --worktree=name。",
   "composer.worktreeNewChatHint":
-    "建立關聯 worktree，並以該目錄為專案 cwd 開啟新對話（寫入對話 meta，側欄顯示 CLI/WT 標記）。主檢出不受影響，適合並行工作。",
+    "建立關聯 worktree，並以該目錄為專案 cwd 開啟新對話（寫入對話 meta，側欄顯示 CLI/WT 標記）。",
   "composer.worktreeName": "名稱",
   "composer.worktreeNamePlaceholder": "feat-login",
   "composer.worktreeLayout": "位置",
@@ -1019,14 +907,6 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeRefInvalid":
     "起始點不能以 '-' 開頭，也不能包含換行",
   "composer.worktreePathPreview": "路徑：{path}",
-  "composer.worktreeFirstPrompt": "首條提示（可選）",
-  "composer.worktreeFirstPromptHint":
-    "開啟新對話時使用 — 建立後填入輸入框。",
-  "composer.worktreeFirstPromptPlaceholder":
-    "希望 Agent 在這個 worktree 裡做什麼？",
-  "composer.worktreeAutoSend": "開啟後傳送",
-  "composer.worktreeAutoSendHint":
-    "勾選後，新對話開啟時自動傳送首條提示（僅已信任專案）。預設關閉。",
   "composer.worktreeCreate": "建立",
   "composer.worktreeCreateChat": "建立並開聊",
   "composer.worktreeCreating": "正在建立…",
@@ -1036,37 +916,15 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeNameRequired": "請輸入 worktree 名稱",
   "composer.worktreeNameInvalid":
     "僅允許字母、數字、'.'、'_'、'-'（不能含空格或斜線）",
-  "composer.parallelTask": "並行任務（worktree）",
-  "composer.parallelTaskHostOnly": "並行任務需要在桌面應用視窗中操作。",
-  "composer.parallelTaskNoProject": "請先選擇一個專案。",
-  "composer.parallelTaskUntrusted":
-    "請先信任該專案，再啟動並行 worktree 任務。",
-  "composer.parallelTaskNotGit":
-    "目前資料夾不是 git 倉庫（或 git 不可用）。",
   "composer.addFiles": "上傳檔案",
   "composer.planMode": "計劃模式",
   "composer.planModeHint": "開啟計劃模式",
   "composer.skills": "技能",
-  "composer.skillsPicker": "技能",
   "composer.skillsEmpty": "未發現可呼叫的技能",
   "composer.skillsEmptyHint":
     "可在「擴充 → 插件市集」安裝，或在「擴充 → 技能」中啟用。",
   "composer.skillsLoadError": "無法載入技能",
   "composer.skillsLoading": "正在載入技能…",
-  "skillsPicker.aria": "為本則提示選擇技能",
-  "skillsPicker.placeholder": "搜尋技能…",
-  "skillsPicker.recent": "最近",
-  "skillsPicker.all": "全部技能",
-  "skillsPicker.loading": "正在載入技能…",
-  "skillsPicker.empty": "未安裝可呼叫的技能",
-  "skillsPicker.emptyHint":
-    "可在「擴充 → 插件市集」安裝，或在「擴充 → 技能」中啟用。",
-  "skillsPicker.filterEmpty": "沒有相符的技能",
-  "skillsPicker.filterEmptyHint": "試試其他關鍵字，或清除篩選。",
-  "skillsPicker.hostOnly": "無法載入技能",
-  "skillsPicker.hostOnlyHint":
-    "技能需要桌面宿主與 Grok Build CLI。請檢查「設定 → CLI / 執行階段」。",
-  "skillsPicker.clearFilter": "清除篩選",
   "composer.goal": "目標",
   "composer.goalHint": "設定要持續追求的目標",
   "composer.goalPlaceholder": "描述你的目標，定義可衡量的成果，以獲得最佳效果",
@@ -1177,20 +1035,6 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.queueEditEmpty": "訊息不能為空",
   "composer.queueEmptyPreview": "（附件）",
   "composer.queueFilesCount": "{n} 個檔案",
-  // Send-intent honesty (steer vs queue vs concurrent — pure classification)
-  "composer.intent.enqueue":
-    "傳送會將後續排入此對話佇列，本輪結束後自動傳送。若要對進行中的任務插話，請對佇列項目使用「引導」。",
-  "composer.intent.enqueueShort": "排隊後續",
-  "composer.intent.steer":
-    "「引導」會向目前進行中的任務插入中途指示（不是排隊後續）。",
-  "composer.intent.foreignConcurrent":
-    "傳送會在此開始並行工作 — 另一對話仍在執行。可用新對話分開草稿。",
-  "composer.intent.foreignShort": "傳送（並行）",
-  "composer.intent.blockedPermission": "請先處理權限請求",
-  "composer.intent.openAsNewChat": "以新對話開啟",
-  "composer.intent.stripEnqueue": "後續 — 本輪結束後傳送",
-  "composer.intent.stripHold": "自動傳送已暫停",
-  "composer.intent.stripSteerHint": "本輪結束後傳送後續 · 引導可中途插話",
   "composer.stop": "停止",
   "composer.noProject": "通用",
   "composer.noProjectWriteHint":
@@ -1206,23 +1050,6 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.modelSearchPlaceholder": "搜尋模型…",
   "composer.modelSearchEmpty": "沒有符合的模型",
   "composer.effort": "推理強度",
-  // Model / effort mid-session apply honesty (toast + menu footer)
-  "composer.apply.model.immediate": "模型已在目前 Agent 上生效（session/set_model）。",
-  "composer.apply.model.softRespawn": "模型將在重新連線後的下一則訊息生效。",
-  "composer.apply.model.nextMessage": "模型已儲存 — 下一則訊息生效。",
-  "composer.apply.model.unsupported": "此模型變更無法在工作階段中途套用。",
-  "composer.apply.effort.immediate": "推理強度已立即生效。",
-  "composer.apply.effort.softRespawn":
-    "推理強度將在重新連線後的下一則訊息生效（無 mid-session set_effort）。",
-  "composer.apply.effort.nextMessage": "推理強度已儲存 — 下一則訊息生效。",
-  "composer.apply.effort.unsupported": "此推理強度變更無法在工作階段中途套用。",
-  "composer.apply.error.setModelFailed": "無法在目前 Agent 上切換模型",
-  "composer.apply.error.softRespawnFailed": "無法依新設定重載 Agent",
-  "composer.apply.error.invalidModel": "無效模型",
-  "composer.apply.error.invalidEffort": "無效推理強度",
-  "composer.apply.error.disconnected": "Agent 未連線",
-  "composer.apply.error.busy": "Agent 回合進行中 — 本輪結束後生效",
-  "composer.apply.error.other": "無法套用模型或推理強度變更",
   "composer.mode": "模式",
   "composer.permission": "授權",
   "composer.access": "存取",
@@ -1284,7 +1111,6 @@ export const zhTW: Record<MessageKey, string> = {
   "resources.browserReload": "重新整理",
   "resources.browserFailed": "內建瀏覽器無法載入此頁面。",
   "resources.browserIframeHint": "部分網站禁止 iframe 嵌入。請用「以系統應用程式開啟」，或在桌面端用原生 WebView 瀏覽。",
-
   "effort.high": "高",
   "effort.medium": "中",
   "effort.low": "低",
@@ -1324,7 +1150,6 @@ export const zhTW: Record<MessageKey, string> = {
   "cliPermission.dontAsk": "dontAsk — 不彈窗直接拒絕",
   "cliPermission.bypassPermissions": "bypassPermissions — YOLO 完全存取",
   "cliPermission.plan": "plan — 產品「計劃」模式（輸入區切換）",
-
   "search.title": "搜尋",
   "search.placeholder": "搜尋對話、專案、操作或訊息內容…",
   "search.projects": "專案",
@@ -1368,7 +1193,6 @@ export const zhTW: Record<MessageKey, string> = {
     "命令面板排序：關鍵字（子字串）或混合（關鍵字 + 標題/摘要本機詞元重疊）。非雲端嵌入，無 embedding API。範圍芯片（全部/標題/內容）與「包含已封存」會在本瀏覽器記住。",
   "settings.sessionSearchRank.keyword": "關鍵字",
   "settings.sessionSearchRank.hybrid": "混合（本機詞元）",
-
   "chatFind.placeholder": "在對話中尋找…",
   "chatFind.prev": "上一個相符",
   "chatFind.next": "下一個相符",
@@ -1376,12 +1200,10 @@ export const zhTW: Record<MessageKey, string> = {
   "chatFind.count": "{current} / {total}",
   "chatFind.noMatches": "無相符",
   "chatFind.aria": "在對話中尋找",
-
   "plan.waiting": "等待計劃",
   "plan.ready": "計劃待審閱",
   "plan.context": "上下文",
   "plan.empty": "（空 plan）",
-  /** PLAN-MODE-PRO — Resources → Plan 空狀態 */
   "plan.emptyDisabledTitle": "計劃模式已關閉",
   "plan.emptyDisabledHint":
     "請在 設定 → Agent 中開啟「允許計劃模式」，Agent 才能起草計劃。仍可從歷史查看已封存的計劃。",
@@ -1405,20 +1227,6 @@ export const zhTW: Record<MessageKey, string> = {
   "plan.reviseNoteDesc": "可填寫給 Agent 的說明；留空則請求一般性修訂。",
   "plan.reviseNotePlaceholder": "希望改什麼？（可選）",
   "plan.reviseNoteSubmit": "傳送修改請求",
-  /** Editable plan canvas (Resources → Plan before approve) */
-  "plan.edit": "編輯計劃",
-  "plan.cancelEdit": "取消編輯",
-  "plan.requestWithDraft": "用草稿請求修改",
-  "plan.approveDirtyHint":
-    "你有未提交的計劃修改。請先用草稿請求修改，或丟棄後再核准 Agent 的原計劃。",
-  "plan.draftPlaceholder": "編輯計劃 Markdown…",
-  "plan.draftAria": "計劃草稿 Markdown",
-  "plan.discardTitle": "丟棄計劃修改？",
-  "plan.discardMessage":
-    "本機修改將遺失。在請求修改或核准之前，仍以 Agent 原計劃為準。",
-  "plan.discardConfirm": "丟棄修改",
-  "plan.draftEmpty": "計劃草稿不能為空。",
-  "plan.draftTooLong": "計劃草稿過長（上限約 20 萬字元）。",
   "plan.phaseLabel": "思考 {n}",
   "plan.steps": "步驟",
   "plan.openInResources": "在資源中開啟",
@@ -1447,8 +1255,6 @@ export const zhTW: Record<MessageKey, string> = {
   "plan.historyDecisionApproved": "已核准",
   "plan.historyDecisionAbandoned": "已放棄",
   "plan.historyDecisionCompleted": "已完成",
-
-  // Sticky plan/goal bar
   "planBar.aria": "計劃與目標狀態",
   "planBar.goal": "目標進行中",
   "planBar.planMode": "計劃模式",
@@ -1459,7 +1265,6 @@ export const zhTW: Record<MessageKey, string> = {
   "planBar.current": "目前",
   "planBar.expand": "在資源中開啟",
   "planBar.clearGoal": "關閉目標",
-
   "settings.title": "設定",
   "settings.backToApp": "返回應用程式",
   "settings.backToIndex": "返回設定列表",
@@ -1634,45 +1439,6 @@ export const zhTW: Record<MessageKey, string> = {
     "儲存會寫入白名單鍵並 soft-respawn agent，使下一輪重新載入 config.toml。",
   "settings.privacy.apply.independentOnly":
     "僅在獨立 agent-home 模式下可寫。共用模式是對 ~/.grok 的唯讀探測。",
-  "settings.privacy.externalOtel": "外部 OpenTelemetry（企業）",
-  "settings.privacy.externalOtelDesc":
-    "CLI 雙重 opt-in：將用量匯出到客戶自有 OTLP 收集器（GROK_EXTERNAL_OTEL + exporter）。與產品遙測、/privacy 編碼資料無關；預設無內容（content-free）。未設定時本應用不會虛構為「關閉」，也從不寫入收集器密鑰。",
-  "settings.privacy.externalOtel.dualOptIn": "雙重 opt-in",
-  "settings.privacy.externalOtel.status.off":
-    "外部 OTEL 已關閉（主開關明確為關）",
-  "settings.privacy.externalOtel.status.incomplete":
-    "雙重 opt-in 不完整（僅有主開關或僅有 exporter）",
-  "settings.privacy.externalOtel.status.ready":
-    "外部 OTEL 就緒（主開關 + exporter）",
-  "settings.privacy.externalOtel.status.unknown":
-    "外部 OTEL 未設定 — 不宣稱已關閉",
-  "settings.privacy.externalOtel.status.hostOnly":
-    "外部 OTEL 狀態需要桌面應用程式",
-  "settings.privacy.externalOtel.unknownNotOff":
-    "「未設定」不等於「關閉」。缺失的 GROK_EXTERNAL_OTEL / exporter 保持未知——本應用不會把外部 OTEL 虛構為已停用。",
-  "settings.privacy.externalOtel.incompleteHint":
-    "雙重 opt-in 需要主開關（GROK_EXTERNAL_OTEL / otel_enabled）以及至少一個 exporter（otlp 或 console）。任一半單獨啟用都不會生效。",
-  "settings.privacy.externalOtel.check.master":
-    "主開關 — GROK_EXTERNAL_OTEL=1 或 [telemetry] otel_enabled = true",
-  "settings.privacy.externalOtel.check.exporter":
-    "Exporter — OTEL_METRICS_EXPORTER 或 OTEL_LOGS_EXPORTER = otlp | console",
-  "settings.privacy.externalOtel.check.contentFree":
-    "預設無內容 — 除非開啟內容門控，否則不匯出提示詞、程式碼、路徑或工具參數",
-  "settings.privacy.externalOtel.check.noAppSecrets":
-    "本應用從不寫入 OTEL 密鑰 — 收集器鑑權僅用 OTEL_EXPORTER_OTLP_HEADERS（不進 config.toml）",
-  "settings.privacy.externalOtel.check.independent":
-    "獨立資料流 — 非產品遙測、非 /privacy 編碼資料、不攜帶 SpaceXAI 憑證",
-  "settings.privacy.externalOtel.step.done": "已滿足",
-  "settings.privacy.externalOtel.step.missing": "缺失",
-  "settings.privacy.externalOtel.step.unknown": "未知 / 未設定",
-  "settings.privacy.externalOtel.contentFree":
-    "CLI 預設匯出無內容用量 schema。可選 OTEL_LOG_USER_PROMPTS / OTEL_LOG_TOOL_DETAILS 開啟有限內容。",
-  "settings.privacy.externalOtel.noSecrets":
-    "本應用不寫入 OTEL headers 或權杖。請僅在行程環境中設定收集器鑑權。",
-  "settings.privacy.externalOtel.sharedNote":
-    "共用模式下 App 隱私鍵為唯讀。外部 OTEL 由 CLI 行程透過環境變數 / [telemetry] otel_* 設定——本應用不會寫入。",
-  "settings.privacy.externalOtel.copyEnv": "複製環境變數範本",
-  "settings.privacy.externalOtel.copied": "已複製",
   "settings.tab.remoteIm": "IM 通訊",
   "settings.tab.phoneMirror": "手機鏡像",
   "settings.searchResults": "相符的設定",
@@ -1784,52 +1550,20 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.cliSessionsImportedN": "已匯入 {n} 個工作階段",
   "settings.cliSessionsLoading": "正在尋找 CLI 工作階段…",
   "settings.cliSessionsEmpty": "在目前 home 下找不到 CLI 工作階段。",
-  "settings.cliSessionsEmptyHint":
-    "在此 home 下執行 Grok Build，或若預期是終端機 CLI 工作階段，請切換對話資料模式。",
-  "settings.cliSessionsEmptyCliMissing":
-    "找不到 Grok Build CLI — 暫無 CLI 工作階段可列出。",
-  "settings.cliSessionsEmptyCliMissingHint":
-    "請在「設定 → 執行階段」安裝或定位 CLI。安裝後重新整理可顯示本機磁碟工作階段。",
-  "settings.cliSessionsEmptyError": "無法載入 CLI 工作階段。",
-  "settings.cliSessionsEmptyErrorHint":
-    "請檢查 GROK_HOME 路徑與 CLI 安裝，然後重新整理。",
   "settings.cliSessionsMsgs": "{n} 則訊息",
   "settings.cliSessionsLinked": "已關聯",
   "settings.cliSessionsAgentId": "id {id}",
   "settings.cliSessionsCopyId": "複製 id",
   "settings.cliSessionsCopied": "已複製",
   "settings.cliSessionsFilterPlaceholder": "搜尋摘要與首則提示…",
-  "settings.cliSessions.filterAll": "全部",
-  "settings.cliSessions.filterLinked": "已關聯",
-  "settings.cliSessions.filterUnlinked": "未關聯",
   "settings.cliSessionsFilterEmpty": "沒有符合篩選條件的工作階段。",
-  "settings.cliSessionsFilterEmptyHint": "嘗試其他關聯篩選，或清除篩選。",
   "settings.cliSessionsSearching": "正在搜尋 CLI 工作階段…",
   "settings.cliSessionsSearchEmpty": "沒有符合搜尋條件的 CLI 工作階段。",
-  "settings.cliSessionsSearchEmptyHint": "換個關鍵字，或清除搜尋。",
-  "settings.cliSessions.clearFilters": "清除篩選",
   "settings.cliSessionsSearchViaCli":
     "來自 grok sessions search（摘要 + 首則提示）",
   "settings.cliSessionsSearchViaLocal":
     "本機磁碟搜尋（標題、id、路徑、首則提示）",
   "settings.cliSessionsSearchFallback": "CLI 搜尋不可用 — 正在篩選本機列表",
-  "settings.cliSessions.err.cli_missing": "CLI 缺失",
-  "settings.cliSessions.err.cli_missingHint":
-    "請安裝 Grok Build CLI，然後重新整理列表。",
-  "settings.cliSessions.err.cli_unsupported": "CLI 不支援搜尋",
-  "settings.cliSessions.err.cli_unsupportedHint":
-    "目前 CLI 可能沒有 sessions search — 已改為篩選本機列表。",
-  "settings.cliSessions.err.timeout": "搜尋逾時",
-  "settings.cliSessions.err.timeoutHint": "請縮小關鍵字或重新整理本機列表。",
-  "settings.cliSessions.err.host_only": "需要桌面應用程式",
-  "settings.cliSessions.err.host_onlyHint":
-    "CLI 工作階段探索僅在桌面應用程式中可用。",
-  "settings.cliSessions.err.permission": "權限不足",
-  "settings.cliSessions.err.permissionHint": "請檢查 GROK_HOME 下的檔案權限。",
-  "settings.cliSessions.err.other": "搜尋失敗",
-  "settings.cliSessions.err.otherHint": "請重新整理後再試。",
-  "settings.cliSessionsImportPlan":
-    "將匯入 {importable} / {selected}（略過已關聯 {skipped}）",
   "settings.cliSessionsDeleteRemoteOnly":
     "此結果在 GROK_HOME 下沒有本機目錄（僅遠端）",
   "settings.cliSessionsSource": "掃描路徑 {path}",
@@ -1873,14 +1607,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.compactionDetail.verbose": "詳細",
   "settings.compactionDetail.help":
     "僅在壓縮模式為「分段」時生效。CLI 預設為「詳細」。",
-  "settings.compactionApply.softRespawn":
-    "變更模式或細節會 soft-respawn 已連線的 Agent，使下一則訊息重新載入 --compaction-mode / --compaction-detail。",
-  "settings.compactionApply.nextSpawn":
-    "目前無 live Agent — 模式與細節在下次連線 / 啟動時生效。",
-  "settings.compactionApply.unsupported":
-    "此 CLI 版本不接受壓縮相關 flags（需要 0.2.117+）。仍可能設定環境變數；舊版 CLI soft-fail 並忽略未知 flags。",
-  "settings.compactionApply.note":
-    "已連線 Agent 時，變更模式或細節會 soft-respawn，使下一則訊息重新載入 flags。無 live Agent 時設定等待下次連線。舊版 CLI soft-fail（不支援時省略 flags）。手動 /compact 是獨立的 Agent 回合，不會改這些啟動 flags。",
   "settings.twoPassCompaction": "雙遍預熱壓縮",
   "settings.twoPassCompactionDesc":
     "開啟後，Grok Build 可在主壓縮前預熱層次化雙遍 compact（CLI 0.2.117+ 設定 two_pass_compaction_enabled 與 GROK_TWO_PASS_COMPACTION）。預設關閉。獨立模式寫入 agent-home config.toml；共享模式僅保留 App 設定（不改寫 ~/.grok）。變更後 soft-respawn；舊版 CLI soft-fail（省略 env）。",
@@ -1959,57 +1685,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.memoryBrowser.searchEmptyHintHybridUnavailable":
     "沒有關鍵字相符。Agent 已設定 embedding，但應用內瀏覽器混合檢索不可用（無 host CLI 路徑）。不會在用戶端偽造 embedding。",
   "settings.memoryBrowser.openEmbedSettings": "記憶 embedding 設定",
-  "settings.memoryOps": "記憶操作中心",
-  "settings.memoryOpsDesc":
-    "統一記憶瀏覽器、embedding 誠實狀態與清除範圍。應用內搜尋僅為關鍵字 — 不會偽造 embedding。CLI 混合檢索需設定 embedding 模型；無 host 搜尋路徑時瀏覽器混合檢索不可用。",
-  "settings.memoryOps.modeLabel": "記憶搜尋模式",
-  "settings.memoryOps.mode.appKeyword": "應用：關鍵字",
-  "settings.memoryOps.mode.cliHybrid": "CLI agent：混合",
-  "settings.memoryOps.mode.hybridUnavailable": "瀏覽器混合：不可用",
-  "settings.memoryOps.mode.memoryOff": "記憶：關閉",
-  "settings.memoryOps.hybridUnavailableHint":
-    "已為 agent 工具設定 embedding 模型，但應用內瀏覽器沒有 host 混合檢索 CLI（grok memory search）— 僅關鍵字掃描。不會偽造 embedding。",
-  "settings.memoryOps.openEmbed": "Embedding 設定",
-  "settings.memoryOps.presenceLabel": "Dream / Watcher 設定存在性",
-  "settings.memoryOps.dream": "Dream",
-  "settings.memoryOps.watcher": "Watcher",
-  "settings.memoryOps.presenceNote": "僅表示設定鍵是否設定 — 不是行程執行狀態。",
-  "settings.memoryOps.clearLabel": "清除記憶範圍",
-  "settings.memoryOps.clear.workspace": "清除工作區",
-  "settings.memoryOps.clear.session": "清除工作階段",
-  "settings.memoryOps.clear.all": "全部清除",
-  "settings.memoryOps.clear.busy": "清除中…",
-  "settings.memoryOps.clear.confirmTitle.workspace": "清除工作區記憶？",
-  "settings.memoryOps.clear.confirmTitle.session": "清除工作階段記憶？",
-  "settings.memoryOps.clear.confirmTitle.all": "清除全部記憶？",
-  "settings.memoryOps.clear.confirmMsg.workspace":
-    "對目前專案執行 grok memory clear --workspace（MEMORY.md、工作階段摘要、索引）。不會刪除應用程式內聊天紀錄。此操作無法復原。",
-  "settings.memoryOps.clear.confirmMsg.session":
-    "應用 host 尚不支援僅清除工作階段範圍（CLI 無 session 作用域）。",
-  "settings.memoryOps.clear.confirmMsg.all":
-    "在目前 GROK_HOME 下執行 grok memory clear --all，將刪除全域與工作區記憶檔案。不會刪除應用程式內聊天紀錄。此操作無法復原。",
-  "settings.memoryOps.clear.done.workspace": "已清除工作區記憶",
-  "settings.memoryOps.clear.done.session": "已清除工作階段記憶",
-  "settings.memoryOps.clear.done.all": "已清除全部記憶",
-  "settings.memoryOps.clear.unavailable.session":
-    "host CLI 尚不支援僅清除工作階段範圍。",
-  "settings.memoryOps.clear.unavailable.memoryOff":
-    "請先開啟上方的「跨工作階段記憶」再清除。",
-  "settings.memoryOps.clear.unavailable.noCwd":
-    "請先開啟專案以清除工作區記憶。",
-  "settings.memoryOps.clear.unavailable.host":
-    "應用 host 暫不支援此清除範圍。",
-  "settings.memoryOps.empty.memoryOff": "記憶已關閉",
-  "settings.memoryOps.empty.memoryOffHint":
-    "請先開啟上方的「跨工作階段記憶」以瀏覽檔案與清除範圍。",
-  "settings.memoryOps.empty.noProject": "未選擇專案",
-  "settings.memoryOps.empty.noProjectHint":
-    "開啟專案以匹配工作區記憶。全域 MEMORY.md 仍可能顯示。",
-  "settings.memoryOps.empty.catalog": "尚無記憶檔案",
-  "settings.memoryOps.empty.catalogHint":
-    "agent 寫入 MEMORY.md、工作階段日誌或索引後會出現檔案。",
-  "settings.memoryOps.empty.hybridUnavailable":
-    "尚無記憶檔案 · 瀏覽器混合檢索不可用",
   "settings.memoryEmbed": "記憶 embedding（CLI 0.2.117）",
   "settings.memoryEmbedDesc":
     "從目前 GROK_HOME 的 config.toml 讀取白名單 `[memory.*]` 鍵（embedding、search、MMR、dream、watcher）。缺失鍵保持未設定。獨立 agent-home 可寫入安全鍵並 soft-respawn；共用模式唯讀。應用內瀏覽器搜尋始終為關鍵字，不會在用戶端發明 embedding。",
@@ -2113,87 +1788,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.codebaseIndexing.save": "儲存程式碼庫索引",
   "settings.codebaseIndexing.saving": "儲存中…",
   "settings.codebaseIndexing.needTauri": "程式碼庫索引設定需要桌面應用程式。",
-  "settings.lspTools": "LSP 工具",
-  "settings.lspToolsDesc":
-    "如實展示目前 GROK_HOME config.toml 中的 Grok Build `[features].lsp_tools`。開啟後向 CLI agent 暴露 lsp 工具——應用本身不執行語言伺服器，也不顯示即時診斷。獨立 agent-home 可寫入 bool 並 soft-respawn；共用模式唯讀。已知舊版 CLI 時 soft-fail。",
-  "settings.lspTools.path": "設定：{path}",
-  "settings.lspTools.loading": "正在載入 LSP 工具設定…",
-  "settings.lspTools.error": "無法載入或更新 LSP 工具設定",
-  "settings.lspTools.saved": "LSP 工具設定已儲存（agent 已 soft-respawn）",
-  "settings.lspTools.sharedWarning":
-    "共用模式顯示 ~/.grok/config.toml（唯讀探測）。切換到獨立工作階段資料模式後，才能將 `[features].lsp_tools` 寫入 App agent-home。",
-  "settings.lspTools.mode.independent": "獨立（agent-home）",
-  "settings.lspTools.mode.shared": "共用（~/.grok）",
-  "settings.lspTools.missing": "檔案尚不存在",
-  "settings.lspTools.writable": "可編輯",
-  "settings.lspTools.readOnly": "唯讀",
-  "settings.lspTools.presence.unset": "未設定",
-  "settings.lspTools.presence.on": "開",
-  "settings.lspTools.presence.off": "關",
-  "settings.lspTools.status.off": "關 — agent 無 lsp 工具",
-  "settings.lspTools.status.on": "開 — 僅 CLI agent 工具",
-  "settings.lspTools.status.unset": "未設定 — CLI 預設關閉",
-  "settings.lspTools.status.sharedReadonly": "共用唯讀",
-  "settings.lspTools.status.cliOld": "CLI 低於 {min}（soft-fail）",
-  "settings.lspTools.status.hostOnly": "需要桌面主機",
-  "settings.lspTools.chip.off": "關",
-  "settings.lspTools.chip.on": "開",
-  "settings.lspTools.chip.unset": "未設定",
-  "settings.lspTools.chip.sharedReadonly": "共用唯讀",
-  "settings.lspTools.chip.cliOld": "CLI < {min}",
-  "settings.lspTools.chip.hostOnly": "僅主機",
-  "settings.lspTools.chip.cliDefaultOff": "CLI 預設關",
-  "settings.lspTools.chip.noAppLsp": "應用：無 LSP 用戶端",
-  "settings.lspTools.chip.noDiagnostics": "無即時診斷",
-  "settings.lspTools.cliUnknown": "CLI 版本未知（soft-fail）",
-  "settings.lspTools.enable": "啟用 LSP 工具",
-  "settings.lspTools.enableDesc":
-    "開啟後，若 agent 設定中已設定語言伺服器，CLI agent 可使用 lsp 工具。關閉或未設定（CLI 預設）時 agent 無 lsp 工具。應用不會在此顯示診斷列表。",
-  "settings.lspTools.unsetDefaultHint":
-    "鍵未設定 — CLI 預設關閉。切換一次即可將明確 bool 寫入 config.toml。",
-  "settings.lspTools.empty.off": "關閉時，agent 無 lsp 工具。",
-  "settings.lspTools.empty.offHint":
-    "在獨立 agent-home 中啟用該旗標，soft-respawn 後即可向 CLI agent 暴露 lsp 工具。",
-  "settings.lspTools.empty.on": "已開啟：若已設定伺服器，CLI agent 可使用 lsp 工具。",
-  "settings.lspTools.empty.onHint":
-    "應用尚未顯示即時診斷——工具僅在 CLI agent 中執行。",
-  "settings.lspTools.empty.unset": "鍵未設定 — CLI 預設關閉（agent 無 lsp 工具）。",
-  "settings.lspTools.empty.unsetHint":
-    "切換一次即可寫入明確的 `[features].lsp_tools` bool。",
-  "settings.lspTools.empty.sharedReadonly": "共用模式對此旗標唯讀。",
-  "settings.lspTools.empty.sharedReadonlyHint":
-    "切換到獨立工作階段資料模式後才能編輯 agent-home config.toml。",
-  "settings.lspTools.empty.cliOld":
-    "CLI 可能低於 {min}；可能忽略 lsp_tools（soft-fail）。",
-  "settings.lspTools.empty.cliOldHint":
-    "升級 Grok Build CLI 以獲得文件化能力。仍可寫入設定。",
-  "settings.lspTools.empty.hostOnly": "LSP 工具設定需要桌面應用程式。",
-  "settings.lspTools.empty.hostOnlyHint":
-    "開啟 Tauri 桌面主機以讀取或寫入 agent-home 設定。",
-  "settings.lspTools.empty.noDiagnostics":
-    "應用內無即時診斷 — 僅在啟用時提供 CLI agent 工具。",
-  "settings.lspTools.empty.noDiagnosticsHint":
-    "開啟後，若已設定伺服器，CLI agent 可使用 lsp 工具。此工作台不會虛構診斷列表。",
-  "settings.lspTools.banner.sharedReadonly":
-    "共用模式唯讀 — 切換到獨立模式後才能寫入 lsp_tools。",
-  "settings.lspTools.banner.cliOld":
-    "CLI 低於 {min} — 可能忽略該鍵（soft-fail）。",
-  "settings.lspTools.banner.hostOnly": "需要桌面主機。",
-  "settings.lspTools.banner.softRespawn":
-    "儲存會寫入 config.toml 並 soft-respawn agent，以便生效該旗標。",
-  "settings.lspTools.banner.noAppLsp": "Grok App 本身不執行語言伺服器。",
-  "settings.lspTools.banner.agentToolsOnly":
-    "僅在啟用且已設定伺服器時提供 CLI agent 工具。",
-  "settings.lspTools.banner.noDiagnostics": "應用尚未顯示即時診斷。",
-  "settings.lspTools.refresh": "重新整理",
-  "settings.lspTools.reset": "重設",
-  "settings.lspTools.save": "儲存 LSP 工具",
-  "settings.lspTools.saving": "儲存中…",
-  "settings.lspTools.needTauri": "LSP 工具設定需要桌面應用程式。",
-  "settings.lspTools.openConfigSection": "開啟 agent 設定分區",
-  "settings.lspTools.copySummary": "複製狀態摘要",
-  "settings.lspTools.copied": "已複製",
-  "settings.lspTools.copyFailed": "無法複製摘要到剪貼簿",
   "settings.codebaseSearch": "專案程式碼庫搜尋",
   "settings.codebaseSearchDesc":
     "依路徑/檔名與/或檔案內容搜尋目前專案。Host 優先使用 ripgrep，否則有上限地走訪。範圍限於已信任專案——僅關鍵字，不會虛構 embedding 或 CLI 程式碼圖結果。",
@@ -2235,78 +1829,11 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.codebaseSearch.openResources": "資源",
   "settings.codebaseSearch.refresh": "重新整理",
   "settings.codebaseSearch.clear": "清除",
-  "settings.codeGraph": "程式碼圖",
-  "settings.codeGraphDesc":
-    "統一展示程式碼庫索引（CLI 程式碼圖）與應用內專案搜尋（僅關鍵字）的誠實狀態。不會虛構程式碼圖或 embedding 命中。",
-  "settings.codeGraph.modeLabel": "程式碼圖狀態",
-  "settings.codeGraph.chip.appKeyword": "應用內搜尋：關鍵字",
-  "settings.codeGraph.chip.cliGraph": "CLI 程式碼圖：開",
-  "settings.codeGraph.chip.cliGraphDefaultOn": "CLI 程式碼圖：預設開",
-  "settings.codeGraph.chip.graphUnavailable": "應用內圖搜尋：不可用",
-  "settings.codeGraph.chip.keywordOnly": "程式碼圖：關",
-  "settings.codeGraph.chip.cliOld": "CLI 過舊，不支援程式碼圖",
-  "settings.codeGraph.chip.noEmbeddings": "非 embedding",
-  "settings.codeGraph.mode.keywordOnly":
-    "程式碼庫索引已關閉 — CLI 不會建置程式碼圖。應用內專案搜尋仍為關鍵字（rg/走訪）。",
-  "settings.codeGraph.mode.graphEnabledUnknown":
-    "程式碼庫索引已開啟，CLI 可能建置程式碼圖；應用尚無法確認圖就緒狀態或回傳圖命中。",
-  "settings.codeGraph.mode.graphUnavailable":
-    "程式碼庫索引對 CLI code-nav 已開啟，但應用內專案搜尋沒有圖 API — 結果仍僅為關鍵字。",
-  "settings.codeGraph.mode.cliOld":
-    "CLI 低於 {min} — 可能忽略 `[features].codebase_indexing`（soft-fail）。應用內搜尋仍為關鍵字。",
-  "settings.codeGraph.mode.unsetDefaultOn":
-    "鍵未設定 — CLI 預設開啟。應用不會虛構已寫入的設定值；專案搜尋仍為關鍵字。",
-  "settings.codeGraph.appSearchRemainsKeyword":
-    "在 Host 提供真正的圖搜尋 API 之前，應用內專案搜尋保持關鍵字。CLI 圖/code-nav 請另行啟用索引。",
-  "settings.codeGraph.openIndexingSettings": "程式碼庫索引設定",
-  "settings.codeGraph.openSearchSettings": "專案程式碼庫搜尋",
-  "settings.codeGraph.empty.cliOld": "CLI 過舊，不支援程式碼圖索引",
-  "settings.codeGraph.empty.cliOldHint":
-    "請升級 Grok Build CLI 以使用 `[features].codebase_indexing`。應用內搜尋仍僅為關鍵字。",
-  "settings.codeGraph.empty.unsetDefaultOn":
-    "程式碼庫索引鍵未設定（CLI 預設開啟）",
-  "settings.codeGraph.empty.unsetDefaultOnHint":
-    "切換一次可寫入明確 bool。應用內搜尋不使用程式碼圖。",
-  "settings.codeGraph.empty.keywordOnly": "程式碼圖索引已關閉",
-  "settings.codeGraph.empty.keywordOnlyHint":
-    "開啟程式碼庫索引以供 CLI code-nav。應用內專案搜尋始終為關鍵字。",
-  "settings.codeGraph.empty.graphUnavailable":
-    "CLI 程式碼圖可能已啟用 — 應用內圖搜尋不可用",
-  "settings.codeGraph.empty.graphUnavailableHint":
-    "索引可協助 CLI agent；此應用介面僅執行關鍵字（rg/走訪）專案搜尋。",
-  "settings.codeGraph.empty.graphEnabledUnknown":
-    "CLI 程式碼圖可能已啟用 — 應用內狀態未知",
-  "settings.codeGraph.empty.graphEnabledUnknownHint":
-    "應用不會探測圖健康度，也不會虛構圖命中。專案搜尋僅為關鍵字。",
-  "settings.codeGraph.empty.searchKeywordIdle": "輸入關鍵字以搜尋此專案",
-  "settings.codeGraph.empty.searchKeywordIdleHint":
-    "結果為路徑/名稱或內容相符 — 絕不會虛構程式碼圖或 embedding 命中。",
-  "settings.codeGraph.empty.searchNoMatches": "無關鍵字相符",
-  "settings.codeGraph.empty.searchNoMatchesHint":
-    "專案下無路徑/名稱或內容命中。這不是程式碼圖或向量搜尋。",
-  "settings.codeGraph.rebuild.availableNote": "Host 可重建程式碼圖索引。",
-  "settings.codeGraph.rebuild.unavailableNote":
-    "應用沒有程式碼圖的 Host 重建介面。",
-  "settings.codeGraph.rebuild.cliHint":
-    "若索引過期，請在 Grok Build CLI 提供相應命令時於 CLI 重建 — 本面板不會虛構重建按鈕。",
   "settings.allowUnverifiedCli": "允許未校驗的 CLI 安裝",
   "settings.allowUnverifiedCliDesc":
-    "官方鏡像通常不發佈 SHA-256 校驗檔——缺少校驗為警告級風險（HTTPS 白名單 + 二進位探測），預設仍可安裝。僅在設定了 GROK_CLI_REQUIRE_CHECKSUM=1 時需要開啟此項以繼續安裝。已發佈校驗和不匹配時一律拒絕，且不可強制略過。",
+    "官方鏡像通常不發佈 SHA-256 校驗檔；缺少校驗時預設仍可安裝（HTTPS 白名單 + 二進位探測）。開啟此項可在設定了 GROK_CLI_REQUIRE_CHECKSUM=1 時仍允許安裝。校驗和不一致一律拒絕。",
   "settings.cliChecksumVerified": "上次安裝校驗通過",
   "settings.cliChecksumUnverified": "上次安裝未校驗",
-  "cliTrust.grade.verified": "校驗已通過",
-  "cliTrust.grade.missingSidecar": "無校驗檔",
-  "cliTrust.grade.mismatch": "校驗和不匹配",
-  "cliTrust.grade.unverifiedAllowed": "已允許未校驗安裝",
-  "cliTrust.grade.unknown": "校驗狀態未知",
-  "cliTrust.hint.missingSidecar":
-    "官方鏡像目前未發佈 SHA-256 校驗檔。安裝依賴 HTTPS 白名單 + 二進位探測，未經密碼學校驗。",
-  "cliTrust.hint.mismatch":
-    "已發佈校驗和與下載內容不一致，安裝已拒絕——校驗失敗時不可強制略過。",
-  "cliTrust.hint.unverifiedAllowed":
-    "在無已發佈校驗檔的情況下完成安裝（逃生開關或預設「缺校驗可裝」策略）。",
-  "cliTrust.hint.unknown":
-    "尚無 App 託管安裝的校驗記錄。手動或外部安裝不評級。",
   "settings.cliPath": "CLI 路徑",
   "settings.cliPathDesc": "Grok Build CLI 可執行檔路徑",
   "settings.cliNotFound": "（未找到）",
@@ -2442,7 +1969,7 @@ export const zhTW: Record<MessageKey, string> = {
   "agent.capacityRecycledToast":
     "已回收一個閒置的常駐 Agent 以騰出槽位 — 該工作階段下次傳送時會重新連線。",
   "agent.dataModeRecycledToast":
-    "對話資料模式切換後已回收 Agent — 歷史不會靜默合併；下次傳送將在新目錄下重連。",
+    "資料模式切換後已重啟 Agent — 下次傳送將在新目錄下重連。",
   "agent.softRespawnToast":
     "已依新設定重載 Agent — 下次傳送將重新連線。",
   "agent.processLimitToast":
@@ -2511,42 +2038,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.askUserTimeout.60": "1 分鐘",
   "settings.askUserTimeout.120": "2 分鐘",
   "settings.askUserTimeout.300": "5 分鐘",
-  // Ask-user 示範路徑（設定 → 權限）— 僅準備設定；不編造 Agent 回合
-  "settings.askDemo.title": "Ask-user 示範路徑",
-  "settings.askDemo.desc":
-    "建議步驟：無需四處尋找設定，即可對比 Ask 與 YOLO。應用只準備權限與範例提示詞——真實問卷仍取決於模型與 CLI。",
-  "settings.askDemo.honesty":
-    "誠實說明：真正的 `ask_user_question` 取決於模型與 Grok Build CLI。應用不會自動傳送提示詞，也不會聲稱 Agent 一定會提問。",
-  "settings.askDemo.step.policyAsk": "將權限策略設為 Ask",
-  "settings.askDemo.step.policyAskHint": "使用產品 Ask，以便工具與提問可以彈出確認。",
-  "settings.askDemo.step.notYolo": "確保 YOLO / 一律核准已關閉",
-  "settings.askDemo.step.notYoloHint": "YOLO 會略過確認，不適合作為 Ask 對比基線。",
-  "settings.askDemo.step.askUserEnabled": "保持向使用者提問已啟用",
-  "settings.askDemo.step.askUserEnabledHint":
-    "關閉「停用向使用者提問」（Agent 分頁 / --no-ask-user），以允許問卷。",
-  "settings.askDemo.step.samplePrompt": "在對話中貼上範例提示詞（可選）",
-  "settings.askDemo.step.samplePromptHint":
-    "僅為建議措辭——請自行複製並傳送。不保證 Agent 會提問。",
-  "settings.askDemo.chip.pass": "就緒",
-  "settings.askDemo.chip.fail": "需設定",
-  "settings.askDemo.chip.next": "建議",
-  "settings.askDemo.blocker.policy": "權限策略不是 Ask。",
-  "settings.askDemo.blocker.yolo": "YOLO / 一律核准已開啟。",
-  "settings.askDemo.blocker.noAskUser": "向使用者提問已停用（--no-ask-user）。",
-  "settings.askDemo.apply": "套用建議的 Ask 策略",
-  "settings.askDemo.applied": "已套用 Ask 策略並重新啟用向使用者提問。",
-  "settings.askDemo.appliedPolicyOnly": "已套用 Ask 策略。",
-  "settings.askDemo.copyPrompt": "複製範例提示詞",
-  "settings.askDemo.copied": "範例提示詞已複製——請自行貼到對話中。",
-  "settings.askDemo.copyFailed": "無法複製到剪貼簿。",
-  "settings.askDemo.preview": "預覽範例問卷",
-  "settings.askDemo.previewTitle": "示範問卷（非來自 Agent）",
-  "settings.askDemo.previewBanner":
-    "僅預覽——此問卷由應用內建用於示範，並非即時 Agent 回合發出。",
-  "settings.askDemo.openDocs": "Ask-user 文件",
-  "settings.askDemo.openDocsFailed": "無法在瀏覽器中開啟文件。",
-  "settings.askDemo.ready": "設定看起來已適合 Ask 路徑示範。需要時再貼上範例提示詞。",
-  "settings.askDemo.blocked": "請先處理紅色清單項目，或點擊「套用建議的 Ask 策略」。",
   "settings.sandboxProfile": "沙箱設定檔",
   "settings.sandboxProfileDesc":
     "對 Agent 行程施加作業系統級檔案系統/網路隔離（Linux Landlock / macOS Seatbelt）。在新啟動 Agent 時生效——變更後請重新連線工作階段。可在專案選單中為單一專案覆寫。",
@@ -2580,36 +2071,6 @@ export const zhTW: Record<MessageKey, string> = {
     "此設定檔的子行程網路攔截僅在 Linux 生效；macOS 為 no-op（行程內工具仍可連網）。",
   "settings.sandbox.recommendedNote":
     "提示：日常使用推薦「工作區」設定檔。",
-  "settings.sandbox.openGuide": "開啟沙箱指南",
-  "settings.sandbox.recommendedDaily": "日常使用推薦",
-  // Sandbox profile wizard (trust offer + Settings guide)
-  "sandboxWizard.title.trust": "選擇沙箱設定檔",
-  "sandboxWizard.title.info": "沙箱設定檔指南",
-  "sandboxWizard.progress": "第 {n} / {total} 步 · {step}",
-  "sandboxWizard.step.intro": "為何使用沙箱",
-  "sandboxWizard.step.pick": "選擇設定檔",
-  "sandboxWizard.step.confirm": "確認",
-  "sandboxWizard.next": "繼續",
-  "sandboxWizard.back": "上一步",
-  "sandboxWizard.skip": "暫不設定",
-  "sandboxWizard.apply": "套用設定檔",
-  "sandboxWizard.intro.trust":
-    "你已信任此專案。可選為 Agent 行程設定作業系統級沙箱，使寫入範圍限制在工作區（及暫存目錄）。",
-  "sandboxWizard.intro.info":
-    "OS 沙箱設定檔限制 Agent 行程的寫入能力。請依你對本機的使用方式選擇設定檔。",
-  "sandboxWizard.reason.workspace":
-    "日常程式設計推薦：工作區 — 可讀任意路徑；寫入限制為工作階段工作目錄、~/.grok/ 與系統暫存目錄。網路允許。",
-  "sandboxWizard.honesty.platform":
-    "目前平台未文件化核心級 OS 沙箱強制（僅 macOS Seatbelt / Linux Landlock）。CLI 可能接受設定但 soft-fail 且無強制執行 — 請勿當作硬性安全邊界。",
-  "sandboxWizard.honesty.cliUnsupported":
-    "目前 CLI 過舊，不支援 --sandbox（需要 ≥ {min}）。設定可儲存，但會 soft-fail（省略 flag）直至升級 Grok Build。",
-  "sandboxWizard.pick.lead":
-    "選擇沙箱設定檔。日常使用推薦「工作區」。",
-  "sandboxWizard.recommendedBadge": "推薦",
-  "sandboxWizard.confirm.lead": "將「{profile}」套用為應用程式級沙箱設定檔？",
-  "sandboxWizard.confirm.respawnHint":
-    "在新啟動 Agent 時生效——變更後請重新連線工作階段。仍可在專案選單中為單一專案覆寫。",
-  "sandboxWizard.dontOfferAgain": "信任專案後不再提示",
   "settings.disableWebSearch": "停用網頁搜尋與抓取",
   "settings.disableWebSearchDesc":
     "啟動 Agent 時加上 --disable-web-search，移除 web_search / web_fetch 工具。變更後會 soft-respawn 已連線的 Agent。",
@@ -2728,60 +2189,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.workflows.run.reason.empty": "空輸出",
   "settings.workflows.run.reason.nonzero_exit": "非零結束",
   "settings.workflows.run.reason.soft_fail": "soft-fail",
-  "settings.workflows.authorHint":
-    "完整流水線請用 create-workflow 技能（/create-workflow）編寫，或直接編輯 .rhai。本面板僅產生簡短範本，並依名稱 smoke/執行——不是視覺化編輯器。",
-  "settings.workflows.reveal": "顯示",
-  "settings.workflows.revealTitle": "在資料夾中顯示工作流程檔案",
-  "settings.workflows.openEditor": "開啟",
-  "settings.workflows.openEditorTitle": "在已設定的編輯器中開啟工作流程",
-  "settings.workflows.create": "從範本新建",
-  "settings.workflows.create.title": "從範本新建工作流程",
-  "settings.workflows.create.hint":
-    "寫入帶純字面量 meta 的最小 .rhai 腳手架。請用真實的 agent()/parallel() 步驟取代正文（見 create-workflow 技能）。",
-  "settings.workflows.create.name": "名稱",
-  "settings.workflows.create.namePlaceholder": "review-changes",
-  "settings.workflows.create.namePreview": "將儲存為 {name}.rhai",
-  "settings.workflows.create.scope": "範圍",
-  "settings.workflows.create.needProjectHint": "在工作台開啟專案後即可使用專案範圍。",
-  "settings.workflows.create.needProject": "專案範圍需要目前專案路徑。",
-  "settings.workflows.create.argsNote":
-    "可選：透過 workflow 工具啟動時傳入 args 物件（未傳時 args 為 ()）。",
-  "settings.workflows.create.pathPreview": "路徑：{path}",
-  "settings.workflows.create.submit": "建立",
-  "settings.workflows.create.creating": "建立中…",
-  "settings.workflows.create.created": "已建立工作流程 {name}",
-  "settings.workflows.create.overwritten": "已覆寫工作流程 {name}",
-  "settings.workflows.create.nameInvalid":
-    "請使用字母、數字、連字號或底線（不要包含路徑分隔符）。",
-  "settings.workflows.create.error": "無法建立工作流程（soft-fail）。",
-  "settings.workflows.create.desktopOnly": "建立工作流程需要桌面應用宿主。",
-  "settings.workflows.create.overwriteTitle": "覆寫工作流程？",
-  "settings.workflows.create.overwriteBody":
-    "名為「{name}」的工作流程已存在。要用範本腳手架覆寫嗎？",
-  "settings.workflows.create.overwrite": "覆寫",
-  "settings.workflows.empty.no_workflows":
-    "在 ~/.grok/workflows 或目前專案的 .grok/workflows 下找不到 .rhai 工作流程。可建立範本或使用 /create-workflow。",
-  "settings.workflows.empty.scan_soft_fail":
-    "無法掃描工作流程資料夾（soft-fail）。磁碟上的路徑可能仍然存在。",
-  "settings.workflows.empty.browser_only": "探索與建立工作流程需要桌面應用宿主。",
-  "settings.workflows.empty.history_empty":
-    "尚無觀察到的 smoke/執行結果。歷史僅記錄設定頁 Smoke/執行結果（本機、已去敏）。",
-  "settings.workflows.history": "最近執行",
-  "settings.workflows.history.show": "最近執行（{count}）",
-  "settings.workflows.history.hide": "隱藏最近執行",
-  "settings.workflows.history.honesty":
-    "僅本機記錄設定頁 smoke/執行結果（最多約 20 筆）。不是即時 /workflows 儀表板；不會虛構離線觸發。",
-  "settings.workflows.history.filter": "篩選最近執行",
-  "settings.workflows.history.filter.all": "全部",
-  "settings.workflows.history.filterEmpty": "沒有符合此篩選的執行。",
-  "settings.workflows.history.outcome.ok": "ok",
-  "settings.workflows.history.outcome.error": "錯誤",
-  "settings.workflows.history.outcome.softFail": "soft-fail",
-  "settings.workflows.history.clear": "清空歷史",
-  "settings.workflows.history.clearTitle": "清空最近執行？",
-  "settings.workflows.history.clearBody": "移除 {count} 筆本機歷史記錄？此操作無法復原。",
-  "settings.workflows.history.clearConfirm": "清空",
-  "settings.workflows.history.cleared": "已清空工作流程執行歷史",
   "settings.useLeader": "共用 Agent 後端（leader）",
   "settings.useLeaderDesc": "使用 --leader 讓多個用戶端共用一個後端行程；關閉則 --no-leader（預設）。變更後 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",
@@ -3333,8 +2740,6 @@ export const zhTW: Record<MessageKey, string> = {
   "inspect.permissions.loaded": "已載入 {n}",
   "inspect.permissions.sources": "{n} 個來源",
   "inspect.permissions.managed": "託管設定已啟用",
-
-  // Managed configuration (`grok setup`)
   "managedSetup.title": "託管設定安裝",
   "managedSetup.desc":
     "擷取並安裝組織託管設定（`grok setup`）。步驟：CLI → 團隊鑑權 → 可選預覽 → 安裝 → 校驗本機簽名產物。CLI 或 inspect 不可用時 soft-fail。",
@@ -3426,7 +2831,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.aboutApp": "關於 Grok App",
   "settings.checkUpdate": "檢查更新",
   "settings.checkUpdateDesc":
-    "已簽名的正式版可在應用程式內下載並安裝更新。本機或未簽名建置會改為開啟 GitHub 發佈頁。智慧體、語音、遠端 IM 與鏡像在安裝成功前會繼續執行。",
+    "已簽名的正式版可在應用程式內下載並安裝更新。本機或未簽名建置會改為開啟 GitHub 發佈頁。",
   "settings.checkUpdateChecking": "檢查中…",
   "settings.checkUpdateLatest": "已是最新版本（{version}）。",
   "settings.checkUpdateAvailable":
@@ -3434,7 +2839,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.checkUpdateOpen": "開啟發佈頁",
   "settings.checkUpdateDownload": "下載安裝包",
   "settings.checkUpdateFailed": "檢查失敗：{error}",
-  "settings.autoUpdateIdle": "需要時再檢查 — 尚無更新狀態。",
   "settings.autoUpdateChecking": "正在檢查更新…",
   "settings.autoUpdateUpToDate": "已是最新版本。",
   "settings.autoUpdateAvailable": "有新版本 {version}。",
@@ -3445,37 +2849,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.autoUpdateManualRequired":
     "有新版本 {version}。目前安裝方式不支援應用程式內更新 — 請到發佈頁下載。",
   "settings.autoUpdateError": "更新失敗：{error}",
-  "settings.autoUpdateBody.checking":
-    "正在連線已簽名更新端點或 GitHub Releases…",
-  "settings.autoUpdateBody.downloading":
-    "正在下載已簽名安裝包。安裝成功前智慧體繼續執行。",
-  "settings.autoUpdateBody.installing":
-    "正在暫存更新。智慧體、語音、遠端 IM 與鏡像僅在安裝準備成功後才會停止。",
-  "settings.autoUpdateBody.ready":
-    "準備好後可安裝並重新啟動。安裝失敗不會停止智慧體。",
-  "settings.autoUpdateBody.manual":
-    "請開啟發佈頁或下載本平台安裝包。此建置不支援應用程式內靜默安裝。",
-  "settings.autoUpdateBody.agentsNote":
-    "智慧體、語音、遠端 IM 與鏡像繼續執行；僅在安裝準備成功後才會停止。",
-  "settings.autoUpdateError.network":
-    "無法連線更新伺服器。請檢查網路或代理後重試。",
-  "settings.autoUpdateError.signature":
-    "更新包簽名校驗失敗。請使用已簽名正式版，或從 GitHub Releases 下載。",
-  "settings.autoUpdateError.pluginMissing":
-    "此建置未啟用應用程式內更新（未簽名或本機版）。請點「檢查更新」開啟 GitHub Releases。",
-  "settings.autoUpdateError.notReady":
-    "更新尚未就緒。請等待下載完成後再點「安裝並重新啟動」。",
-  "settings.autoUpdateError.hostOnly":
-    "應用更新僅在桌面端可用，瀏覽器預覽中不可用。",
-  "settings.autoUpdateError.other":
-    "更新失敗。你仍可開啟發佈頁並手動安裝。",
   "settings.autoUpdateChannelSilent": "更新通道：應用內（已簽名正式版）",
   "settings.autoUpdateChannelManual":
     "更新通道：GitHub 下載（未簽名 / 本地建置）",
-  "settings.autoUpdateChannelUnsupported":
-    "更新通道：手動安裝（此安裝包類型不支援自動更新）",
-  "settings.autoUpdateChannelHostOnly":
-    "更新通道：僅桌面端（此處不可用）",
   "settings.close": "關閉",
   "settings.sharedConfirm":
     "切換到共用 ~/.grok？資料不會靜默合併，請確認。",
@@ -3483,31 +2859,6 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.modeShared": "共用（~/.grok）",
   "settings.sessionModeHelp":
     "獨立模式會話存在應用目錄；共用模式使用 CLI 主目錄，與終端機共用會話。兩種模式均可匯入 CLI 工作階段；獨立模式掃描的是 agent-home（不一定是 ~/.grok）。",
-  "settings.sessionDataMode.status": "目前：{modeLabel} · Agent 主目錄 {path}",
-  "settings.sessionDataMode.independentNote":
-    "獨立模式使用 {path}。可寫入 agent 設定的應用程式設定作用於此目錄；不會改寫 CLI 的 ~/.grok。",
-  "settings.sessionDataMode.confirm.intro":
-    "將對話資料主目錄從 {fromHome} 切換到 {toHome}？\n歷史不會合併。線上 Agent 將被回收。",
-  "settings.sessionDataMode.risk.homesDiffer":
-    "Agent 主目錄會變更 — 重連只使用新目錄",
-  "settings.sessionDataMode.risk.noSilentMerge":
-    "不會靜默合併：獨立與共用兩套歷史保持分離",
-  "settings.sessionDataMode.risk.recycleAgents":
-    "將立即回收全部 live / background / parked Agent 行程",
-  "settings.sessionDataMode.risk.sharedWithCli":
-    "共用模式使用 ~/.grok — 與終端機 Grok Build CLI 同一工作階段列表",
-  "settings.sessionDataMode.risk.noConfigRewrite":
-    "應用程式不會在共用模式下改寫 CLI 的密鑰 / config.toml（隱私、供應商等）",
-  "settings.sessionDataMode.risk.conflictPossible":
-    "App 與 CLI 同時寫入時可能衝突；若報錯請鎖定或重試",
-  "settings.sessionDataMode.risk.leaveShared":
-    "離開共用：應用回到獨立 agent-home；終端機 CLI 的 ~/.grok 保持不變",
-  "settings.sessionDataMode.banner.sharedWithCli":
-    "與 CLI 共用：Agent 主目錄為 ~/.grok（與終端機 Grok Build 同一工作階段列表）。",
-  "settings.sessionDataMode.banner.noRewriteSecrets":
-    "共用模式下應用拒絕改寫 agent 密鑰 / config.toml — 需要應用代寫設定時請改用獨立模式。",
-  "settings.sessionDataMode.banner.conflictPossible":
-    "App 與 CLI 同時寫同一工作階段索引可能衝突 — 跨模式不會靜默合併歷史。",
   "settings.tabOfficial": "官方帳戶",
   "settings.tabProviders": "自訂供應商",
   "settings.tabExtras": "拓展",
@@ -3517,7 +2868,6 @@ export const zhTW: Record<MessageKey, string> = {
     "新增 OpenAI 相容中轉（CPA、sub2api、自建等）。金鑰僅保存在本機。",
   "settings.tabExtrasHint":
     "自訂主模型下的官方工具注入（MCP official-aux），以及是否同時載入其它擴充 MCP。",
-
   "modelAux.title": "輔助模型路由",
   "modelAux.desc":
     "主模型負責對話與工具決策；側任務可指到更強的多模態模型（類似 Hermes 的 auxiliary 槽）。只寫入 [models] 任務鍵，絕不改主路由。",
@@ -3578,17 +2928,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.openTarget": "開啟檔案方式",
   "settings.openTargetDesc": "資源面板中開啟路徑時的預設應用程式",
   "settings.openFinder": "Finder / 檔案總管",
-  "settings.openTargetEmpty":
-    "未偵測到程式碼編輯器 — Finder／檔案總管仍可用。安裝 VS Code、Cursor 等編輯器後即可在此開啟檔案。",
-  "settings.openTargetPreferredMissing":
-    "偏好的編輯器未安裝或未偵測到。在重新選擇之前將使用 Finder／檔案總管。",
-
   "prov.emptyTitle": "尚無供應商",
-  "prov.empty.hostOnly":
-    "自訂供應商需要桌面端應用程式（Tauri）。請在 Grok App 中新增中轉。",
-  "prov.empty.noCustom":
-    "尚無自訂中轉 — 可新增 OpenAI 相容供應商，或使用上方的官方 Grok。",
-  "prov.empty.loadError": "無法載入供應商列表。請先修復上方宿主錯誤後重試。",
   "prov.detailEmpty": "選擇左側供應商，或新增一個。",
   "prov.new": "新增供應商",
   "prov.edit": "編輯",
@@ -3662,27 +3002,8 @@ export const zhTW: Record<MessageKey, string> = {
     "供應商已儲存，Agent 已重載 — 下一則訊息使用新設定（無需重新啟動應用程式）。",
   "prov.savedApplyFailed":
     "供應商已寫入磁碟，但即時套用失敗（{detail}）。可先傳送一則訊息；若對話仍不可用再重新啟動應用程式。",
-  "prov.apply.softRespawn":
-    "供應商已儲存，Agent 已重載 — 下一則訊息使用新設定（無需重新啟動應用程式）。",
-  "prov.apply.savedDiskOnly":
-    "供應商已寫入磁碟。用「使用」啟用（或在輸入框選擇）後才會切換路由。",
-  "prov.apply.hostOnly":
-    "修改供應商需要桌面端應用程式。請在 Grok App 中儲存中轉。",
   "prov.err.saveTimeout":
     "儲存耗時過長。設定可能已寫入 — 請關閉後重新開啟此面板；若對話不可用再重新啟動應用程式。",
-  "prov.err.validation":
-    "無法儲存：供應商欄位無效（id、URL、Key 或模型）。請檢查表單後重試。",
-  "prov.err.network": "無法儲存：網路或宿主 IPC 錯誤。請檢查連線後重試。",
-  "prov.err.hostOnly": "儲存供應商需要桌面端應用程式（Tauri）。",
-  "prov.err.other": "無法儲存供應商（{detail}）。",
-  "prov.ping.err.timeout": "探測逾時。請檢查 Base URL 與網路後重試。",
-  "prov.ping.err.network":
-    "無法連線供應商端點（網路/DNS/TLS）。請檢查 Base URL。",
-  "prov.ping.err.auth": "供應商拒絕了金鑰（401/403）。請更新 API Key 後重試。",
-  "prov.ping.err.hostOnly": "擷取模型 / 探測需要桌面端應用程式。",
-  "prov.ping.err.invalidUrl":
-    "Base URL 無效。請使用完整的 https://…/v1 根位址。",
-  "prov.ping.err.other": "無法探測供應商（{detail}）。",
   "prov.confirmDelete": "刪除供應商「{id}」？",
   "prov.loading": "載入中…",
   "prov.err.needBase": "請填寫 Base URL。",
@@ -3749,7 +3070,6 @@ export const zhTW: Record<MessageKey, string> = {
   "common.confirm": "確認",
   "common.save": "儲存",
   "common.dismiss": "關閉",
-
   "account.section.profile": "官方帳戶",
   "account.section.runtime": "CLI 執行環境",
   "account.signedIn": "已登入",
@@ -3842,7 +3162,6 @@ export const zhTW: Record<MessageKey, string> = {
   "account.importChatBtn": "選擇檔案…",
   "account.importChatOk": "已匯入「{title}」",
   "account.importChatFailed": "匯入失敗",
-
   "onboarding.welcome": "歡迎使用 Grok",
   "onboarding.body": "MIT · 非 xAI 官方。選擇一種帳戶方式，或跳過先進入介面。",
   "onboarding.official": "登入官方 / Official key",
@@ -3857,7 +3176,6 @@ export const zhTW: Record<MessageKey, string> = {
   "onboarding.importCliHint": "透過現有 CLI auth 使用 cached_token",
   "onboarding.skip": "跳過",
   "onboarding.continue": "繼續",
-
   "setup.title": "歡迎使用 Grok",
   "setup.subtitle": "MIT · 非官方 · 本機 Grok Build 桌面控制台",
   "setup.step.runtime": "執行環境",
@@ -3942,7 +3260,6 @@ export const zhTW: Record<MessageKey, string> = {
   "setup.error.accountHint": "可暫時跳過，稍後在設定中登入或設定服務商。",
   "setup.error.cancelled": "已取消",
   "setup.networkHint": "網路異常 — 可換鏡像或使用手動指令。",
-
   "doctor.title": "Doctor",
   "doctor.close": "關閉",
   "doctor.rerun": "重新檢查",
@@ -4037,204 +3354,6 @@ export const zhTW: Record<MessageKey, string> = {
   "doctor.finding.fixId": "修復 id",
   "doctor.finding.destructive": "破壞性",
   "doctor.finding.noDetail": "無更多詳情。",
-
-  // Platform capability matrix (mac / Windows / Linux honesty)
-  "doctor.platformMatrix.title": "平台能力矩陣",
-  "doctor.platformMatrix.hint":
-    "如實展示本安裝在 macOS / Windows / Linux 上的能力說明：路徑探測、沙箱核心、視窗裝飾、更新路徑、媒體迴路。補充 Windows 日用清單，不編造探測結果。",
-  "doctor.platformMatrix.col.capability": "能力",
-  "doctor.platformMatrix.col.status": "狀態",
-  "doctor.platformMatrix.col.detail": "說明",
-  "doctor.platformMatrix.row.platform": "平台",
-  "doctor.platformMatrix.row.cliPathProbe": "CLI 路徑探測",
-  "doctor.platformMatrix.row.sandboxEnforcement": "沙箱核心",
-  "doctor.platformMatrix.row.windowChrome": "視窗裝飾",
-  "doctor.platformMatrix.row.autoUpdate": "應用自動更新",
-  "doctor.platformMatrix.row.mediaLoopback": "媒體迴路",
-  "doctor.platformMatrix.status.pass": "通過",
-  "doctor.platformMatrix.status.warn": "警告",
-  "doctor.platformMatrix.status.na": "不適用",
-  "doctor.platformMatrix.status.unknown": "未知",
-  "doctor.platformMatrix.msg.platform.mac": "macOS（已偵測）。",
-  "doctor.platformMatrix.msg.platform.win": "Windows（已偵測）。",
-  "doctor.platformMatrix.msg.platform.linux": "Linux（已偵測）。",
-  "doctor.platformMatrix.msg.platform.unknown":
-    "未能辨識平台 — 能力說明可能不完整。",
-  "doctor.platformMatrix.msg.cli.found": "路徑探測已解析到 Grok Build CLI 二進位。",
-  "doctor.platformMatrix.msg.cli.missing":
-    "路徑探測未找到 Grok Build 二進位 — 請安裝或在 設定 → 執行環境 中指定路徑。",
-  "doctor.platformMatrix.msg.cli.unknown":
-    "CLI 路徑探測結果尚不可用（請重新執行 Doctor）。",
-  "doctor.platformMatrix.msg.sandbox.off":
-    "沙箱隔離已關閉 — 未請求核心強制。",
-  "doctor.platformMatrix.msg.sandbox.macSeatbelt":
-    "macOS Seatbelt：開啟隔離時 CLI 文件支援 OS 沙箱強制。",
-  "doctor.platformMatrix.msg.sandbox.linuxLandlock":
-    "Linux Landlock：開啟隔離時 CLI 文件支援 OS 沙箱強制。",
-  "doctor.platformMatrix.msg.sandbox.winSoftFail":
-    "Windows：CLI 可能接受沙箱設定但 soft-fail、無核心強制 — 請勿當作硬性安全邊界。",
-  "doctor.platformMatrix.msg.sandbox.platformSoft":
-    "此平台 OS 沙箱強制 soft-fail（CLI 可能在無隔離情況下繼續執行）。",
-  "doctor.platformMatrix.msg.sandbox.unknown":
-    "此平台的沙箱核心支援未知。",
-  "doctor.platformMatrix.msg.chrome.macOverlay":
-    "macOS Overlay 標題列 + 交通燈（tauri.macos.conf）。",
-  "doctor.platformMatrix.msg.chrome.winFrameless":
-    "Windows 無邊框自繪窗控（最小化 / 最大化 / 關閉）— tauri.windows.conf。",
-  "doctor.platformMatrix.msg.chrome.linuxDecorated":
-    "Linux 使用標準視窗裝飾（基礎 tauri.conf）。",
-  "doctor.platformMatrix.msg.chrome.unknown":
-    "此平台的視窗裝飾佈局未分類。",
-  "doctor.platformMatrix.msg.update.silent":
-    "已簽名發行路徑：支援應用內靜默自動更新。",
-  "doctor.platformMatrix.msg.update.manual":
-    "手動 / GitHub 更新路徑（本機、未簽名或外掛關閉）— 開啟 Releases；不宣稱靜默安裝。",
-  "doctor.platformMatrix.msg.update.unsupported":
-    "此安裝包類型不支援靜默自動更新（例如 Linux .deb/.rpm）— 請手動下載。",
-  "doctor.platformMatrix.msg.update.hostOnly":
-    "未在桌面應用宿主中執行 — 自動更新不適用。",
-  "doctor.platformMatrix.msg.update.unknown":
-    "更新通道尚未回報 — 請勿假定靜默安裝。",
-  "doctor.platformMatrix.msg.media.loopback":
-    "本機媒體走迴路 HTTP（127.0.0.1）並經 path-scope 白名單 — 產品路徑不用 raw media://。",
-  "doctor.platformMatrix.msg.media.unavailable":
-    "媒體迴路端點不可用 — 宿主媒體服務就緒前預覽可能 soft-fail。",
-  "doctor.platformMatrix.msg.media.unknown":
-    "此平台的媒體迴路能力未分類。",
-  // Windows day-use acceptance checklist (Doctor / Reliability)
-  "doctor.windowsDayuse.title": "Windows 日常驗收",
-  "doctor.windowsDayuse.lead":
-    "面向 Windows 日常使用的驗收清單。App 可自動探測部分項，其餘保持手動。未探測時不會臆造 SmartScreen / 未簽章狀態。",
-  "doctor.windowsDayuse.notTarget":
-    "macOS / Linux 不是本清單目標平台 — 項顯示為 N/A。請在 Windows 建置上驗證安裝、CLI、含空白路徑與鏡像日常使用。",
-  "doctor.windowsDayuse.summary":
-    "{pass} 通過 · {fail} 失敗 · {manual} 手動 · {na} 不適用",
-  "doctor.windowsDayuse.copy": "複製清單",
-  "doctor.windowsDayuse.copied": "已複製清單",
-  "doctor.windowsDayuse.copyFail": "無法複製清單",
-  "doctor.windowsDayuse.docs": "驗收文件",
-  "doctor.windowsDayuse.platform.win": "Windows",
-  "doctor.windowsDayuse.platform.mac": "macOS",
-  "doctor.windowsDayuse.platform.linux": "Linux",
-  "doctor.windowsDayuse.platform.other": "其他",
-  "doctor.windowsDayuse.status.pass": "通過",
-  "doctor.windowsDayuse.status.fail": "失敗",
-  "doctor.windowsDayuse.status.manual": "手動",
-  "doctor.windowsDayuse.status.na": "不適用",
-  "doctor.windowsDayuse.item.installPath": "安裝路徑（Release / SmartScreen）",
-  "doctor.windowsDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
-  "doctor.windowsDayuse.item.projectSpaces": "含空白的專案路徑",
-  "doctor.windowsDayuse.item.singleAttachment": "單次貼上附件",
-  "doctor.windowsDayuse.item.appUpdateCheck": "檢查更新（關於）",
-  "doctor.windowsDayuse.item.mirrorReadonly": "手機鏡像預設唯讀",
-  "doctor.windowsDayuse.detail.na": "目前平台不適用。",
-  "doctor.windowsDayuse.detail.installPath.manual":
-    "從 GitHub Release 安裝（setup.exe 或可攜 zip）。未簽章時 SmartScreen 可能提示 — App 在未探測時不會臆造該狀態。",
-  "doctor.windowsDayuse.detail.installPath.pass": "安裝簽章探測為已簽章 / 通過。",
-  "doctor.windowsDayuse.detail.installPath.fail": "安裝簽章探測為未簽章或被攔截。",
-  "doctor.windowsDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
-  "doctor.windowsDayuse.detail.cliFound.fail":
-    "未找到 CLI — 開啟 Setup 或 設定 → 執行階段 安裝 / 設定路徑。",
-  "doctor.windowsDayuse.detail.cliFound.manual":
-    "CLI 探測尚未就緒 — 重新執行 Doctor 或開啟 Setup。",
-  "doctor.windowsDayuse.detail.projectSpaces.pass":
-    "受信任專案路徑包含空白（不應再出現主控台閃爍風暴）。",
-  "doctor.windowsDayuse.detail.projectSpaces.fail":
-    "尚無受信任專案 — 請新增並信任一個資料夾（路徑可含空白）。",
-  "doctor.windowsDayuse.detail.projectSpaces.manual":
-    "已有受信任專案；若尚未驗證，請用含空白路徑再測一次。",
-  "doctor.windowsDayuse.detail.singleAttachment.manual":
-    "手動：完成一次工具對話，貼上一張截圖 — 確認只有單一附件（App 無法自動證明貼上）。",
-  "doctor.windowsDayuse.detail.appUpdateCheck.pass":
-    "可用的更新檢查路徑（應用程式內或 GitHub 手動）。",
-  "doctor.windowsDayuse.detail.appUpdateCheck.fail":
-    "此建置不支援更新檢查 — 請試 設定 → 關於。",
-  "doctor.windowsDayuse.detail.appUpdateCheck.manual":
-    "開啟 設定 → 關於 → 檢查更新（有新版本則下載安裝套件）。",
-  "doctor.windowsDayuse.detail.mirrorReadonly.pass":
-    "手機鏡像為唯讀（寫入關閉）— 預設姿態。",
-  "doctor.windowsDayuse.detail.mirrorReadonly.fail":
-    "手機鏡像寫入已開啟 — 日常驗收期望唯讀；可在 遠端控制 → 鏡像 關閉寫入。",
-  "doctor.windowsDayuse.detail.mirrorReadonly.manual":
-    "鏡像狀態未知 — 開啟 遠端控制 → 鏡像；日常驗收期望唯讀啟動 + 可重新產生連結。",
-  "doctor.windowsDayuse.link.about": "關於 / 更新",
-  "doctor.windowsDayuse.link.mirror": "鏡像",
-  "doctor.windowsDayuse.link.setup": "Setup / CLI",
-  "doctor.windowsDayuse.link.runtime": "執行階段",
-  "settings.runtime.platformTip": "平台",
-  "settings.runtime.platformTipDesc":
-    "用於介面文案的作業系統探測（檔案管理員、日常驗收清單）。Windows 建置可在 Doctor 中查看 day-use 驗收卡片。",
-  "doctor.linuxDayuse.title": "Linux 日常驗收",
-  "doctor.linuxDayuse.lead":
-    "面向 Linux 日常使用的驗收清單。App 可自動探測部分項，其餘保持手動。未探測時不會臆造 Landlock、系統匣自啟或 Wayland/X11 狀態。",
-  "doctor.linuxDayuse.notTarget":
-    "macOS / Windows 不是本清單目標平台 — 項顯示為 N/A。請在 Linux 建置上驗證 CLI、含空白路徑、沙箱 Landlock、系統匣與顯示伺服器日常使用。",
-  "doctor.linuxDayuse.summary":
-    "{pass} 通過 · {fail} 失敗 · {warn} 警告 · {manual} 手動 · {na} 不適用",
-  "doctor.linuxDayuse.copy": "複製清單",
-  "doctor.linuxDayuse.copied": "已複製清單",
-  "doctor.linuxDayuse.copyFail": "無法複製清單",
-  "doctor.linuxDayuse.docs": "驗收文件",
-  "doctor.linuxDayuse.platform.win": "Windows",
-  "doctor.linuxDayuse.platform.mac": "macOS",
-  "doctor.linuxDayuse.platform.linux": "Linux",
-  "doctor.linuxDayuse.platform.other": "其他",
-  "doctor.linuxDayuse.status.pass": "通過",
-  "doctor.linuxDayuse.status.fail": "失敗",
-  "doctor.linuxDayuse.status.manual": "手動",
-  "doctor.linuxDayuse.status.warn": "警告",
-  "doctor.linuxDayuse.status.na": "不適用",
-  "doctor.linuxDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
-  "doctor.linuxDayuse.item.pathSpaces": "含空白的專案路徑",
-  "doctor.linuxDayuse.item.sandboxLandlock": "沙箱 → Landlock 強制",
-  "doctor.linuxDayuse.item.trayAutostart": "系統匣 / 自啟動",
-  "doctor.linuxDayuse.item.waylandX11": "Wayland / X11 工作階段",
-  "doctor.linuxDayuse.item.appUpdateCheck": "檢查更新（關於）",
-  "doctor.linuxDayuse.detail.na": "目前平台不適用。",
-  "doctor.linuxDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
-  "doctor.linuxDayuse.detail.cliFound.fail":
-    "未找到 CLI — 開啟 Setup 或 設定 → 執行階段 安裝 / 設定路徑。",
-  "doctor.linuxDayuse.detail.cliFound.manual":
-    "CLI 探測尚未就緒 — 重新執行 Doctor 或開啟 Setup。",
-  "doctor.linuxDayuse.detail.pathSpaces.pass": "受信任專案路徑包含空白。",
-  "doctor.linuxDayuse.detail.pathSpaces.fail":
-    "尚無受信任專案 — 請新增並信任一個資料夾（路徑可含空白）。",
-  "doctor.linuxDayuse.detail.pathSpaces.manual":
-    "已有受信任專案；若尚未驗證，請用含空白路徑再測一次。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.na":
-    "沙箱設定檔為關閉 — Landlock 強制不適用。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.warn":
-    "沙箱設定檔非關閉。在 Linux 上核心強制為 Landlock（Seatbelt 僅限 macOS）。未探測時 App 不會重新驗證 Landlock。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.pass":
-    "Landlock 探測報告：所選沙箱設定檔的強制已生效。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.fail":
-    "Landlock 探測報告：沙箱非關閉但強制未生效。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.manual":
-    "沙箱設定未知 — 開啟 設定 → 一般 → 權限 設定設定檔。關閉 = 不適用；非關閉 = Linux 上為 Landlock。",
-  "doctor.linuxDayuse.detail.trayAutostart.pass": "系統匣 / 自啟動探測為已啟用。",
-  "doctor.linuxDayuse.detail.trayAutostart.fail": "系統匣 / 自啟動探測為未啟用。",
-  "doctor.linuxDayuse.detail.trayAutostart.manual":
-    "手動：若依賴系統匣圖示與桌面自啟動，請自行確認。未探測時 App 不會臆造狀態。",
-  "doctor.linuxDayuse.detail.waylandX11.pass":
-    "顯示伺服器探測報告為 Wayland 或 X11。",
-  "doctor.linuxDayuse.detail.waylandX11.fail":
-    "顯示伺服器探測報告既非 Wayland 也非 X11。",
-  "doctor.linuxDayuse.detail.waylandX11.manual":
-    "未探測時狀態未知 — 請手動確認 Wayland 或 X11，以便排查合成器相關問題。",
-  "doctor.linuxDayuse.detail.appUpdateCheck.pass":
-    "可用的更新檢查路徑（應用程式內或 GitHub 手動）。",
-  "doctor.linuxDayuse.detail.appUpdateCheck.fail":
-    "此建置不支援更新檢查 — 請試 設定 → 關於。",
-  "doctor.linuxDayuse.detail.appUpdateCheck.manual":
-    "開啟 設定 → 關於 → 檢查更新（有新版本則下載安裝套件）。",
-  "doctor.linuxDayuse.link.about": "關於 / 更新",
-  "doctor.linuxDayuse.link.setup": "Setup / CLI",
-  "doctor.linuxDayuse.link.runtime": "執行階段",
-  "doctor.linuxDayuse.link.sandbox": "沙箱",
-  "settings.runtime.platformTip": "平台",
-  "settings.runtime.platformTipDesc":
-    "用於介面文案的作業系統探測（檔案管理員、日常驗收清單）。Linux 建置可在 Doctor 中查看 day-use 驗收卡片。",
-
   "reliability.title": "可靠性",
   "reliability.close": "關閉可靠性中心",
   "reliability.lead":
@@ -4297,19 +3416,8 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.goal.copySummary": "複製摘要",
   "reliability.goal.copied": "已複製目標摘要",
   "reliability.goal.copyFail": "無法複製目標摘要",
-  "reliability.goal.clearTimeline": "清空時間軸",
-  "reliability.goal.clearConfirmTitle": "清空目標時間軸？",
-  "reliability.goal.clearConfirmMessage":
-    "從本應用本機環形緩衝中移除 {count} 條 goal_updated 事件？不會停止 CLI 目標系統，也不會關閉輸入框 /goal 模式。",
-  "reliability.goal.clearConfirmAction": "清空時間軸",
-  "reliability.goal.clearDone": "已清空 {count} 條本機目標事件",
-  "reliability.goal.emptySessionMismatch": "目前工作階段沒有目標事件",
-  "reliability.goal.emptySessionMismatchHint":
-    "其他工作階段已觀察到 goal_updated。可開啟可靠性中心查看完整本機時間軸，或在本對話中使用 /goal。",
-  "reliability.goal.openReliability": "開啟可靠性中心",
-  "reliability.goal.sessionMenuAria": "目標編排操作",
   "reliability.goal.sessionChip": "目標 · {phase}",
-  "reliability.goal.sessionChipAria": "最近目標階段 {phase}。開啟目標操作選單。",
+  "reliability.goal.sessionChipAria": "最近目標階段 {phase}。開啟可靠性中心。",
   "reliability.goal.phase.planner": "規劃",
   "reliability.goal.phase.strategist": "策略",
   "reliability.goal.phase.classifier": "分類器",
@@ -4320,44 +3428,6 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.goal.phase.unknown": "目標",
   "reliability.supportZipHint":
     "去敏後的 Doctor 報告、近期日誌與停滯時間軸快照（不含金鑰）。",
-  "reliability.supportZip.confirmTitle": "匯出支援包？",
-  "reliability.supportZip.confirmMessage":
-    "請先核對下方去敏清單。支援包絕不會包含金鑰、登入憑證或 API Key。",
-  "reliability.supportZip.confirmAction": "匯出支援包",
-  "reliability.supportZip.checklistTitle": "將包含的部分（已去敏）",
-  "reliability.supportZip.secretsNever":
-    "絕不會包含金鑰（無 secrets.json、帳戶登入或原始 API Key）。",
-  "reliability.supportZip.redacted": "已去敏",
-  "reliability.supportZip.whenAvailable": "主機上存在時才寫入",
-  "reliability.supportZip.sectionOmitted": "本次不包含",
-  "reliability.supportZip.auditNotIncluded":
-    "工具稽核帳本不在此壓縮檔內 — 請改用「稽核」匯出。",
-  "reliability.supportZip.manifestPreview": "文字清單預覽",
-  "reliability.supportZip.section.doctor": "Doctor 報告（doctor.json）",
-  "reliability.supportZip.section.doctorHint":
-    "健康檢查；介面未傳入時由主機重新產生（僅路徑，無金鑰）。",
-  "reliability.supportZip.section.settings": "應用程式設定（settings.json）",
-  "reliability.supportZip.section.settingsHint":
-    "僅當本機存在設定檔時寫入；金鑰已去敏。",
-  "reliability.supportZip.section.meta": "應用程式 / 系統中繼資料（meta.json）",
-  "reliability.supportZip.section.metaHint":
-    "版本、系統架構、工作階段與專案數量 — 不含含金鑰路徑。",
-  "reliability.supportZip.section.stall": "停滯時間軸（stall-timeline.json）",
-  "reliability.supportZip.section.stallHint":
-    "僅在有可靠性中心停滯訊號時寫入結構化快照。",
-  "reliability.supportZip.section.logs": "近期日誌（logs/）",
-  "reliability.supportZip.section.logsHint":
-    "主機上存在時才寫入近期日誌；限大小並去敏 — 絕不虛構日誌。",
-  "reliability.supportZip.section.readme": "README.txt",
-  "reliability.supportZip.section.readmeHint": "給接收方的壓縮檔內容說明。",
-  "reliability.supportZip.emptyHostOnly": "支援包需要桌面應用程式",
-  "reliability.supportZip.emptyHostOnlyHint":
-    "匯出僅在 Tauri 主機上執行 — 請在桌面版 Grok App 中產生去敏支援包。",
-  "reliability.supportZip.failHostOnly": "支援包需要桌面應用程式（瀏覽器中不可用）",
-  "reliability.supportZip.failCancel": "已取消匯出支援包",
-  "reliability.supportZip.failIo": "無法寫入支援包（磁碟或權限）",
-  "reliability.supportZip.failEmpty": "目前沒有可誠實寫入支援包的內容",
-
   "reliability.audit.title": "工具稽核帳本",
   "reliability.audit.count": "{count}",
   "reliability.audit.empty": "尚無稽核紀錄。",
@@ -4402,7 +3472,6 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.audit.unknownSession": "無工作階段",
   "reliability.audit.outcome.ok": "成功",
   "reliability.audit.outcome.err": "失敗",
-
   "costRollup.title": "費用彙總",
   "costRollup.settingsDesc":
     "依專案或工作階段與日期彙總已知 token 用量（來自即時 usage 與工作階段 journal，若有）。可依專案／工作階段篩選、匯出純文字摘要，或清除本機樣本環。僅為估算 — 非帳單。",
@@ -4464,7 +3533,6 @@ export const zhTW: Record<MessageKey, string> = {
   "costRollup.exportWindow": "視窗：近 {days} 天",
   "costRollup.exportEmpty": "目前篩選下沒有可匯出的已知用量。",
   "costRollup.invoiceNote": "非帳單級精度。",
-
   "smj.title": "串流 Messages JSON",
   "smj.settingsDesc":
     "解析並預覽無頭模式 `--output-format streaming-messages-json` NDJSON（Anthropic Messages 線格式；CLI 0.2.117+）。",
@@ -4551,7 +3619,6 @@ export const zhTW: Record<MessageKey, string> = {
     "匯入擷取、貼上 NDJSON，或執行軟門控 headless 探測。",
   "streamAcpNdjson.softGateNote":
     "僅當 CLI ≥ {min} 時探測才會加上 --output-format streaming-json；舊版本會省略該旗標。",
-
   "doctor.advanced": "進階",
   "doctor.cliDoctor": "Grok Build CLI doctor",
   "doctor.cliDoctorHint": "來自 `grok doctor --json`（終端機、剪貼簿、色彩）。",
@@ -4588,14 +3655,12 @@ export const zhTW: Record<MessageKey, string> = {
     "已套用 {count} 項安全修復。Doctor 已重新執行。",
   "doctor.cliDoctorFixBatchPartial":
     "已套用 {ok} 項安全修復；在「{id}」處停止：{error}",
-
   "conn.idle": "閒置",
   "conn.connecting": "連線中",
   "conn.ready": "就緒",
   "conn.streaming": "工作中",
   "conn.permission": "等待授權",
   "conn.disconnected": "已中斷",
-
   "shortcuts.title": "鍵盤快捷鍵",
   "shortcuts.close": "關閉",
   "shortcuts.search": "搜尋對話 / 專案",
@@ -4612,7 +3677,6 @@ export const zhTW: Record<MessageKey, string> = {
   "shortcuts.send": "傳送訊息",
   "shortcuts.help": "顯示快捷鍵",
   "shortcuts.voice": "開關語音輸入",
-
   "tutorial.menu": "產品導覽",
   "tutorial.replay": "重新播放產品導覽",
   "tutorial.replayDesc":
@@ -4651,7 +3715,6 @@ export const zhTW: Record<MessageKey, string> = {
     "選擇已信任的專案，新增對話並發起目標。可隨時從帳戶選單、「設定 → 關於」、命令面板或 /tutorial 重播本導覽。",
   "slash.tutorial": "產品導覽",
   "slash.tutorialDesc": "開啟可選的應用內產品導覽",
-
   "session.copyMd": "複製對話為 Markdown",
   "session.copyMdDone": "已複製對話為 Markdown",
   "session.copyMdFail": "無法複製對話",
@@ -4731,9 +3794,8 @@ export const zhTW: Record<MessageKey, string> = {
   "session.tracesTitle": "最近的 trace",
   "session.tracesDesc":
     "對話 trace 匯出的本機歷史（僅路徑）。可在資料夾中顯示或複製路徑 — 大檔不會載入應用。",
-  "session.tracesEmpty": "還沒有匯出過 trace",
-  "session.tracesEmptyHint":
-    "在有 agent 對話的選單中選擇「僅本機匯出」或「匯出並上傳」。僅儲存路徑 — 不會把封存載入應用。",
+  "session.tracesEmpty":
+    "還沒有匯出過 trace。在有 agent 對話的選單中選擇「僅本機匯出」或「匯出並上傳」。",
   "session.tracesReveal": "在資料夾中顯示",
   "session.tracesCopyPath": "複製路徑",
   "session.tracesCopied": "路徑已複製",
@@ -4741,19 +3803,11 @@ export const zhTW: Record<MessageKey, string> = {
   "session.tracesClearAll": "全部清除",
   "session.tracesClearConfirmTitle": "清除 trace 歷史？",
   "session.tracesClearConfirmMessage":
-    "將從列表中移除 {count} 條最近的 trace 匯出路徑。磁碟上的封存檔不會被刪除。",
+    "將從列表中移除全部最近的 trace 匯出路徑。磁碟上的封存檔不會被刪除。",
   "session.tracesClearConfirmAction": "全部清除",
   "session.tracesSearch": "依標題或路徑篩選…",
   "session.tracesEmptyFilter": "沒有相符的 trace",
-  "session.tracesEmptyFilterHint": "試試其他關鍵詞，或切換「全部 / 本機 / 已上傳」篩選。",
-  "session.tracesClearFilters": "清除篩選",
-  "session.tracesFilterAria": "Trace 匯出範圍",
-  "session.tracesFilter.all": "全部",
-  "session.tracesFilter.local": "本機",
-  "session.tracesFilter.uploaded": "已上傳",
   "session.tracesUploadedBadge": "已上傳",
-  "session.tracesUploadedBadgeTitle":
-    "匯出所報告的上傳狀態（僅路徑 — 不儲存遠端 URL）",
   "session.exportBundle": "匯出完整診斷包",
   "session.exportBundleDone": "診斷包已儲存",
   "session.exportBundleFail": "診斷包匯出失敗",
@@ -4780,21 +3834,18 @@ export const zhTW: Record<MessageKey, string> = {
   "session.exportSizeHint": "預估大小：{size}",
   "session.emptyRunToast":
     "本輪沒有可見回覆也沒有呼叫工具就結束了。若任務未完成可回覆「繼續」；也可從對話選單匯出診斷包回報。",
-
   "empty.noProjectTitle": "尚未開啟專案",
   "empty.noProjectHint": "從側欄新增資料夾，以便帶上下文開始工作。",
   "empty.noChatsTitle": "還沒有對話",
   "empty.noChatsHint": "開始對話後會顯示在側欄。",
   "empty.disconnectedTitle": "Agent 已中斷",
   "empty.disconnectedHint": "重新連線以繼續此對話，或新建一個。",
-
   "notify.turnDoneTitle": "Grok 已完成一輪",
   "notify.turnDoneBody": "對話已就緒，可繼續輸入。",
   "notify.permissionTitle": "需要授權",
   "notify.permissionBody": "Agent 正在等待你的批准。",
   "notify.askUserTitle": "Agent 提問",
   "notify.askUserBody": "Agent 正在等待你的回答。",
-
   "slash.section.commands": "指令",
   "slash.section.skills": "技能",
   "slash.empty": "沒有相符的指令或技能",
@@ -4863,24 +3914,6 @@ export const zhTW: Record<MessageKey, string> = {
   "slash.compactAfterUnknown": "用量未知時無法估算",
   "slash.compactEstimateHint":
     "壓縮後估值為所選預設的粗略保留比例（~），非模型精確分詞。應用內聊天紀錄不會被改寫。",
-  "slash.compactApply.nextTurn":
-    "確認後立即以 Agent 回合傳送 /compact。目前行程上的模式/細節會用於此次壓縮。",
-  "slash.compactApply.softRespawn":
-    "模式/細節變更會 soft-respawn Agent — 下一則訊息重新載入壓縮 flags。",
-  "slash.compactApply.unsupported":
-    "此 CLI 可能忽略 --compaction-mode / --compaction-detail（需要 0.2.117+）。已連線時 /compact 仍按 Agent 預設執行。",
-  "slash.compactApply.idle":
-    "尚無 live Agent — 請先連線。壓縮模式/細節等待下次啟動；之後 /compact 作為回合執行。",
-  "slash.compactApply.modeOnly":
-    "此次壓縮使用的模式：{mode}（啟動 flags；變更會 soft-respawn 已連線 Agent）。",
-  "slash.compactApply.modeDetail":
-    "壓縮模式 {mode}，分段細節 {detail}（啟動 flags；變更會 soft-respawn 已連線 Agent）。",
-  "slash.compactApply.savingsKnown":
-    "上次已知壓縮：{before} → {after} tokens（節省 {saved}）。非估算。",
-  "slash.compactApply.savingsUnknown":
-    "在 Agent 回報壓縮前後 token 數之前無法計算節省量。上方「壓縮後（估）」僅為粗略保留比例猜測。",
-  "slash.compactApply.presetNote":
-    "強度預設僅用於填入 /compact 的保留備註模板 — CLI 無 light/standard/aggressive 參數。",
   "compact.bannerAuto": "上下文已自動壓縮",
   "compact.bannerManual": "上下文已壓縮",
   "compact.tokensRange": "{before} → {after} tokens",
@@ -5000,7 +4033,6 @@ export const zhTW: Record<MessageKey, string> = {
   "slash.yoloDesc": "切換一律核准（YOLO）權限",
   "slash.yoloOn": "已開啟一律核准",
   "slash.yoloOff": "已關閉一律核准",
-
   "statusModal.title": "對話狀態",
   "statusModal.sessionId": "對話 ID",
   "statusModal.agentSessionId": "Agent 對話",
@@ -5010,7 +4042,6 @@ export const zhTW: Record<MessageKey, string> = {
   "statusModal.policy": "權限",
   "statusModal.project": "專案",
   "statusModal.messages": "訊息數",
-
   "mcpModal.title": "MCP 伺服器",
   "mcpModal.hint":
     "由 Grok Build inspect 發現的伺服器。可在「設定 → 擴充」中啟用/停用；已啟用的伺服器會注入新對話。",
@@ -5090,8 +4121,6 @@ export const zhTW: Record<MessageKey, string> = {
   "mcpModal.oauth.noCliHelper":
     "沒有無頭的 `grok mcp oauth` 命令 — 授權需互動（TUI）或透過診斷提供的瀏覽器 URL。應用不會將用戶端密鑰寫入日誌。",
   "mcpModal.oauth.unknownServer": "伺服器",
-
-  // MCP OAuth recovery wizard
   "mcpOauth.wizard.progress": "第 {n} / {total} 步",
   "mcpOauth.wizard.next": "繼續",
   "mcpOauth.wizard.back": "上一步",
@@ -5132,8 +4161,6 @@ export const zhTW: Record<MessageKey, string> = {
   "mcpOauth.wizard.soft.openUrlFailed": "無法開啟 URL",
   "mcpOauth.wizard.soft.doctorFailed": "診斷重新整理失敗",
   "mcpOauth.wizard.soft.stillNeedsAuth": "仍需 OAuth",
-
-  // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":
     "管理本機外掛、技能與 MCP。外掛為使用者全域；有目前專案時技能/MCP 以該目錄為範圍。",
   "ext.refresh": "重新整理",
@@ -5445,18 +4472,6 @@ export const zhTW: Record<MessageKey, string> = {
     "將移除本機保存的 {count} 條最近 hook 活動記錄，此操作無法復原。",
   "ext.hooks.activity.clearConfirmOk": "清空",
   "ext.hooks.activity.sourceDebug": "試跑",
-  "ext.hooks.activity.export": "匯出脫敏…",
-  "ext.hooks.activity.exportHint":
-    "將目前篩選的活動列表下載為脫敏 JSON（不含密鑰）",
-  "ext.hooks.activity.copySummary": "複製摘要",
-  "ext.hooks.activity.copySummaryHint":
-    "將目前篩選的活動列表複製為脫敏純文字",
-  "ext.hooks.activity.exportCopied": "已複製 {count} 條脫敏紀錄",
-  "ext.hooks.activity.exportDownloaded": "已下載 {count} 條脫敏紀錄",
-  "ext.hooks.activity.exportEmpty": "目前篩選下沒有可匯出的活動。",
-  "ext.hooks.activity.exportCopyFailed": "無法複製摘要（剪貼簿被攔截）",
-  "ext.hooks.activity.exportDownloadFailed": "無法下載活動匯出",
-  "ext.hooks.activity.exportFailed": "活動匯出失敗",
   "ext.hooks.try.hookName": "Hook 名稱",
   "ext.hooks.try.hookNamePlaceholder": "選填 — 選擇或輸入檔名",
   "ext.hooks.try.eventType": "事件類型",
@@ -5638,7 +4653,6 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.market.err.hint.hostOnly": "請在桌面應用程式（Tauri）中管理外掛。",
   "ext.market.err.hint.hostError": "Host 呼叫失敗 — 見詳情。",
   "ext.market.err.hint.other": "意外結果 — 見詳情後重試。",
-
   "ext.agents.title": "Agents",
   "ext.agents.desc":
     "供 CLI `--agent` 使用的 Agent 定義檔（使用者 GROK_HOME 與專案 `.grok/agents`）。可建立範本、在編輯器中修改，之後在 設定 → Agent → 偏好 Agent 中為新工作階段選用。",
@@ -5672,8 +4686,7 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.agents.reveal": "在 Finder 中顯示",
   "ext.agents.openUser": "開啟使用者資料夾",
   "ext.agents.openProject": "開啟專案資料夾",
-
-"error.needTauri": "需要在 Tauri 視窗中選擇目錄",
+  "error.needTauri": "需要在 Tauri 視窗中選擇目錄",
   "common.comingSoon": "即將推出",
   "common.local": "本機",
   "common.close": "關閉",
@@ -5692,7 +4705,6 @@ export const zhTW: Record<MessageKey, string> = {
   "perm.hintSession": "本對話內同類操作不再詢問。",
   "perm.hintDeny": "阻止本次操作並告知 Agent。",
   "perm.autoDenyCountdown": "{seconds} 秒後自動拒絕",
-
   "askUser.title": "Agent 提問",
   "askUser.submit": "提交",
   "askUser.cancel": "略過",
@@ -5700,7 +4712,6 @@ export const zhTW: Record<MessageKey, string> = {
   "askUser.freeTextHint": "或輸入自訂回答",
   "askUser.multiHint": "可多選",
   "askUser.autoCancelCountdown": "{seconds} 秒後自動略過",
-
   "message.interjectionTag": "引導",
   "message.copy": "複製",
   "message.copied": "已複製",
@@ -5895,31 +4906,6 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.history.clearBody":
     "將刪除本機已觀察到的執行列表，且無法復原。已排程任務本身不受影響。",
   "automations.history.clearConfirm": "清除",
-  "automations.inbox.section": "收件匣",
-  "automations.inbox.desc":
-    "本行程內觀察到的排程執行審閱佇列。可在已知時開啟關聯對話、在任務仍存在時重試，或標記已讀。",
-  "automations.inbox.processBound":
-    "僅在 Grok 應用開啟或收起到系統匣期間記錄執行。完全結束後不會虛構離線執行——重新開啟後若尚未觸發，收件匣為空是正常的。",
-  "automations.inbox.search": "搜尋收件匣",
-  "automations.inbox.filterAria": "依結果篩選收件匣",
-  "automations.inbox.empty": "暫無收件匣項目。",
-  "automations.inbox.emptyFiltered": "沒有符合此篩選或搜尋的執行。",
-  "automations.inbox.emptyProcessBound":
-    "尚無觀察到的執行。當本行程內排程觸發或你使用「立即執行」時會寫入——完全結束後的離線觸發不會出現。",
-  "automations.inbox.openSession": "開啟對話",
-  "automations.inbox.openProject": "開啟專案",
-  "automations.inbox.runNow": "立即執行",
-  "automations.inbox.markRead": "標為已讀",
-  "automations.inbox.markAllRead": "全部標為已讀",
-  "automations.inbox.clear": "清除收件匣",
-  "automations.inbox.clearTitle": "清除收件匣歷史？",
-  "automations.inbox.clearBody":
-    "將刪除本機已觀察到的執行列表與已讀標記，且無法復原。已排程任務本身不受影響。",
-  "automations.inbox.clearConfirm": "清除",
-  "automations.inbox.unreadCount": "{n} 則未讀",
-  "automations.inbox.sessionMissing":
-    "該對話已不存在，可能在執行後被刪除。",
-  "automations.inbox.projectMissing": "該專案已不存在。",
   "automations.oneshot.title": "一次性觸發已排程任務",
   "automations.oneshot.desc":
     "系統匣駐留可在行程存活期間持續檢查。完全結束後，可用 {flag}（應用資料目錄中的助手腳本 {script}）最多觸發一個到期任務（無需完整互動介面），然後退出。",
@@ -5945,8 +4931,6 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.connectFailed": "已排程任務無法連線 Agent：{detail}",
   "automations.msgTag": "已排程",
   "remoteIm.msgTag": "遠端 IM",
-
-  // System tray / menu-bar (native; Rust mirror in tray_i18n.rs — keep in sync)
   "tray.recent": "最近",
   "tray.noRecent": "尚無最近對話",
   "tray.untitled": "未命名",
@@ -5961,7 +4945,6 @@ export const zhTW: Record<MessageKey, string> = {
   "tray.usageWithReset": "額度  ·  剩餘 {pct}%  ·  {time}",
   "tray.usagePct": "額度  ·  剩餘 {pct}%",
   "tray.usageUnknown": "額度  ·  —",
-  // Remote mirror — Connect panel (desktop) + phone chrome
   "mirror.connect": "連接裝置",
   "mirror.connectTitle": "連接手機",
   "mirror.connectHint":
@@ -6088,7 +5071,6 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.chrome.signedOut": "主機未登入",
   "mirror.unsupported": "此操作需在桌面端完成",
   "mirror.desktopOnly": "請在桌面應用中使用",
-
   "phone.menu": "對話",
   "phone.account": "帳戶",
   "phone.toolsTitle": "工具",
@@ -6138,32 +5120,6 @@ export const zhTW: Record<MessageKey, string> = {
     "該 worktree 有本地修改（或已鎖定）。是否強制移除並刪除目錄？",
   "composer.worktreeRemoveCurrentWarn":
     "目前正在使用此 worktree。移除後會話將切換到主 worktree。",
-  "composer.worktreeCompare": "與 main 對比…",
-  "composer.worktreeCompareTip": "列出相對主 worktree 的差異檔案（不合併）",
-  "composer.worktreeCompareTitle": "與 main 對比",
-  "composer.worktreeCompareHint":
-    "唯讀檔案列表，來自 git diff --name-status（相對 main 的三方差異）。選擇性套用 / 合併不在本功能範圍內。",
-  "composer.worktreeCompareRange": "{base}...{other}",
-  "composer.worktreeCompareLoading": "正在對比…",
-  "composer.worktreeCompareEmpty": "工作樹一致 — 無檔案差異。",
-  "composer.worktreeCompareFailed": "無法對比 worktree",
-  "composer.worktreeCompareNeedProject": "請先開啟專案資料夾再對比",
-  "composer.worktreeCompareOnMain":
-    "目前已在主 worktree — 請切換到關聯 worktree 後再對比",
-  "composer.worktreeCompareSamePath": "對比路徑相同",
-  "composer.worktreeCompareNotGit": "不是 git 儲存庫（或未安裝 git）",
-  "composer.worktreeCompareMissingPath": "worktree 路徑缺失",
-  "composer.worktreeCompareChipAdded": "+{n} 新增",
-  "composer.worktreeCompareChipModified": "~{n} 修改",
-  "composer.worktreeCompareChipDeleted": "−{n} 刪除",
-  "composer.worktreeCompareChipRenamed": "→{n} 重新命名",
-  "composer.worktreeCompareChipOther": "?{n} 其他",
-  "composer.worktreeCompareChipTotal": "{n} 個檔案",
-  "composer.worktreeCompareCopyPath": "複製路徑",
-  "composer.worktreeCompareReveal": "在檔案總管中顯示",
-  "composer.worktreeComparePathCopied": "已複製路徑",
-  "composer.worktreeCompareOverflow":
-    "顯示 {shown}/{total} — 另有 {n} 條未列出",
   "composer.worktreeShip": "發佈…",
   "composer.worktreeShipTip": "推送分支並建立 GitHub Pull Request",
   "composer.worktreeShipTitle": "發佈分支",
@@ -6294,51 +5250,30 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.configTomlEdit.needTauri":
     "設定編輯需要桌面應用程式（Tauri host）。",
   "settings.permissionRules": "Permission rules",
-  "settings.permissionRulesAdd": "新增規則",
-  "settings.permissionRulesAddWorking": "儲存中…",
-  "settings.permissionRulesDesc": "寫入 agent config.toml 的精簡 allow / deny / ask 模式（deny 優先於 ask 優先於 allow）。範例：Bash(git *)、Read(src/**)、Edit。儲存後軟重啟 agent，下一輪載入新規則。",
-  "settings.permissionRulesEmpty": "尚無規則 — 在下方新增一條模式。",
-  "settings.permissionRulesEmptyHint":
-    "可先加一條安全的 git allow、危險 shell 的 deny，或編輯類的 ask。儲存後會軟重啟 agent。",
-  "settings.permissionRulesFilterEmpty": "沒有規則符合目前篩選。",
-  "settings.permissionRulesFilterEmptyHint":
-    "清除篩選，或換一個模式子字串再試。",
-  "settings.permissionRulesFilterPlaceholder": "篩選規則…",
-  "settings.permissionRulesFilterClear": "清除篩選",
-  "settings.permissionRulesCountsAria":
-    "規則計數：拒絕 {deny}，詢問 {ask}，允許 {allow}",
-  "settings.permissionRulesError": "無法更新權限規則",
-  "settings.permissionRulesLoading": "正在載入規則…",
-  "settings.permissionRulesPath": "設定：{path}",
-  "settings.permissionRulesPlaceholder": "例如 Bash(git *)",
-  "settings.permissionRulesRemove": "移除",
-  "settings.permissionRulesRemoveConfirm": "從 config.toml 移除 {action} 規則「{rule}」？",
-  "settings.permissionRulesRemoveTitle": "移除權限規則",
+  "settings.permissionRulesAdd": "Add rule",
+  "settings.permissionRulesAddWorking": "Saving…",
+  "settings.permissionRulesDesc": "Compact allow / deny / ask patterns in agent config.toml (deny wins over ask over allow). Examples: Bash(git *), Read(src/**), Edit. Changes soft-respawn the agent so the next turn reloads rules.",
+  "settings.permissionRulesEmpty": "No rules yet — add a pattern below.",
+  "settings.permissionRulesError": "Could not update permission rules",
+  "settings.permissionRulesLoading": "Loading rules…",
+  "settings.permissionRulesPath": "Config: {path}",
+  "settings.permissionRulesPlaceholder": "e.g. Bash(git *)",
+  "settings.permissionRulesRemove": "Remove",
+  "settings.permissionRulesRemoveConfirm": "Remove {action} rule “{rule}” from config.toml?",
+  "settings.permissionRulesRemoveTitle": "Remove permission rule",
   "settings.preferredAgentDesc": "Preferred agent definition for new sessions",
-  "settings.permissionRulesAction.allow": "允許",
-  "settings.permissionRulesAction.deny": "拒絕",
-  "settings.permissionRulesAction.ask": "詢問",
+  "settings.permissionRulesAction.allow": "Allow",
+  "settings.permissionRulesAction.deny": "Deny",
+  "settings.permissionRulesAction.ask": "Ask",
   "settings.permissionRulesSim": "試算工具呼叫",
   "settings.permissionRulesSimDesc":
     "依目前規則模擬決策（deny > ask > allow）。僅預覽，不寫入設定。",
   "settings.permissionRulesSimPlaceholder": "例如 Bash(git status)",
-  "settings.permissionRulesSimSamples": "範例工具呼叫",
   "settings.permissionRulesSimResult.allow": "將允許",
   "settings.permissionRulesSimResult.deny": "將拒絕",
   "settings.permissionRulesSimResult.ask": "將詢問",
   "settings.permissionRulesSimResult.none": "無符合規則",
-  "settings.permissionRulesSimHonesty.allow":
-    "預覽：首條符合的 allow 規則將允許此呼叫。真實 agent 仍受模式 / 內建策略約束。",
-  "settings.permissionRulesSimHonesty.deny":
-    "預覽：deny 規則優先（deny > ask > allow）。真實 agent 將攔截此呼叫。",
-  "settings.permissionRulesSimHonesty.ask":
-    "預覽：命中 ask 規則 — agent 會在執行前詢問。",
-  "settings.permissionRulesSimHonesty.none":
-    "預覽：無精簡規則符合。回落到權限模式與內建策略 — 不會自動放行。",
   "settings.permissionRulesSimMatched": "命中：{rule}",
-  "settings.permissionRulesSimCopy": "複製符合摘要",
-  "settings.permissionRulesSimCopied": "已複製",
-  "settings.permissionRulesSimCopyFailed": "無法複製符合摘要",
   "voice.mockReady": "模擬語音已就緒",
   "voice.ready": "語音已就緒",
   "voice.micDenied": "麥克風權限被拒絕",
@@ -6395,75 +5330,9 @@ export const zhTW: Record<MessageKey, string> = {
   "voice.sendTranscriptNeedSpeech":
     "需要主機提供的使用者或助手發言後才能傳送。",
   "voice.transcriptSent": "轉寫已傳送到目前工作階段",
-  "voice.center.toolIdle": "目前沒有 Build 工具在執行",
-  "voice.center.chipDelegated": "語音",
-  "voice.center.keepAgentsOn":
-    "結束後保留編碼工作階段：開 — 結束即時語音不會停止已委派的 Agent。",
-  "voice.center.keepAgentsOff":
-    "結束後保留編碼工作階段：關 — 結束即時語音可能會停止由語音拉起的工作階段。",
-  "voice.center.endNote.keepAgents":
-    "停止會結束語音並取消進行中的主機工具；編碼工作階段會保留。",
-  "voice.center.endNote.keepRunning":
-    "停止會結束語音；正在執行的委派編碼工作階段會繼續保留。",
-  "voice.center.endNote.cancelDelegates":
-    "停止會結束語音、取消進行中的工具，並停止委派的編碼工作階段。",
-  "voice.center.endNote.stopOnly":
-    "停止會結束語音並取消進行中的主機工具。",
-  "voice.center.empty.noAuth":
-    "即時語音需要 Grok 驗證（CLI 登入或官方 API key）。尚無語音轉寫。",
-  "voice.center.empty.noMic":
-    "麥克風不可用。在主機推送文字之前轉寫保持為空 — 不會偽造 STT。",
-  "voice.center.empty.transcriptWithDelegates":
-    "尚無語音轉寫（僅主機推送）。上方已列出委派的編碼工作階段。",
   "settings.preferredAgent.default": "Default (CLI)",
   "settings.preferredAgent.source.bundled": "Bundled",
   "settings.preferredAgent.source.builtin": "Built-in",
-  // Settings → General → Agent → Agents & Personas console
-  "settings.agentsPersonas.title": "Agents 與 Personas",
-  "settings.agentsPersonas.desc":
-    "瀏覽內建、使用者與專案級 agent 定義，以及磁碟上發現的 personas（與 CLI `/config-agents` 根目錄一致）。不會憑空編造 persona — 僅列出真實檔案。首選 agent 作用於新工作階段。",
-  "settings.agentsPersonas.tab.agents": "Agents",
-  "settings.agentsPersonas.tab.personas": "Personas",
-  "settings.agentsPersonas.searchPlaceholder": "依名稱、來源或路徑篩選…",
-  "settings.agentsPersonas.refresh": "重新整理",
-  "settings.agentsPersonas.loading": "載入中…",
-  "settings.agentsPersonas.clearFilter": "清除篩選",
-  "settings.agentsPersonas.open": "開啟",
-  "settings.agentsPersonas.reveal": "在 Finder 中顯示",
-  "settings.agentsPersonas.openUserAgents": "開啟使用者 agents 目錄",
-  "settings.agentsPersonas.openProjectAgents": "開啟專案 agents 目錄",
-  "settings.agentsPersonas.openUserPersonas": "開啟使用者 personas 目錄",
-  "settings.agentsPersonas.openProjectPersonas": "開啟專案 personas 目錄",
-  "settings.agentsPersonas.browsePersonas": "瀏覽 personas 目錄",
-  "settings.agentsPersonas.needProjectHint":
-    "請先在工作台選擇專案，以管理專案級定義。",
-  "settings.agentsPersonas.agentsEmpty": "未發現 agent 定義",
-  "settings.agentsPersonas.agentsEmptyHint":
-    "目錄載入後一律列出內建 agent。可在 ~/.grok/agents 或專案 `.grok/agents` 新增 `*.md`，或在「擴充 → Agents」建立。",
-  "settings.agentsPersonas.personasEmpty": "未發現 personas",
-  "settings.agentsPersonas.personasEmptyHint":
-    "Personas 為 ~/.grok/personas 或專案 `.grok/personas` 下的 `*.toml` / `*.md`。應用不會編造 persona 名稱 — 請用 CLI 或開啟目錄新增檔案。",
-  "settings.agentsPersonas.filterEmpty": "沒有符合篩選條件的項目",
-  "settings.agentsPersonas.filterEmptyHint": "清除篩選以查看完整列表。",
-  "settings.agentsPersonas.hostOnly": "請在桌面應用中列出 agents 與 personas",
-  "settings.agentsPersonas.hostOnlyHint":
-    "檔案系統發現需要 Tauri 主機。內建名稱仍可能來自目錄，以便首選 agent 誠實展示。",
-  "settings.agentsPersonas.noProject": "未開啟專案",
-  "settings.agentsPersonas.noProjectHint":
-    "開啟工作台專案以列出專案級 agents 與 personas。",
-  "settings.agentsPersonas.error": "無法載入 agents 與 personas",
-  "settings.agentsPersonas.builtinNoPath": "內建 · 無定義檔路徑",
-  "settings.agentsPersonas.setPreferred": "設為首選",
-  "settings.agentsPersonas.preferredBadge": "首選",
-  "settings.agentsPersonas.preferredDefault":
-    "首選 agent：預設（CLI）— 新工作階段不傳 `--agent`。",
-  "settings.agentsPersonas.preferredCurrent":
-    "首選 agent：{name} · {source}",
-  "settings.agentsPersonas.preferredMissing":
-    "首選 agent “{name}” 不在目錄中",
-  "settings.agentsPersonas.preferredMissingHint":
-    "可能已重新命名或刪除。請另選 agent 或預設（CLI）。在變更前，啟動仍會使用已儲存的名稱。",
-  // Remote control (settings section id: remote_im)
   "settings.nav.remoteIm": "遠端控制",
   "settings.remoteIm.sidebarAria": "IM 通訊渠道",
   "settings.remoteIm.bridgeOverview": "Bridge 總覽",
@@ -7002,6 +5871,758 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.resilience.errorKind.crash": "異常結束 / 崩潰",
   "settings.remoteIm.resilience.errorKind.config": "設定",
   "settings.remoteIm.resilience.errorKind.unknown": "未知",
+  "settings.remoteIm.cmd.project": "列出 / 綁定已信任專案（新會話）",
+  "settings.remoteIm.cmd.resume": "列出 / 恢復 App 歷史會話",
+  "settings.remoteIm.cmd.new": "新會話，保持專案",
+  "settings.remoteIm.cmd.status": "查看綁定狀態",
+  "settings.remoteIm.cmd.context": "查看目前會話上下文用量",
+  "settings.remoteIm.cmd.compact": "壓縮目前 agent 會話上下文",
+  "settings.remoteIm.cmd.help": "歡迎與命令說明",
+  "settings.remoteIm.cmd.whoami": "查看發送者 id",
+  "settings.remoteIm.cmd.stop": "中斷目前任務",
+  "settings.remoteIm.cmd.account": "查看已儲存帳號與 SuperGrok 剩餘額度",
+  "settings.remoteIm.cmd.switch": "按序號或標籤切換目前 Grok 帳號",
+  "settings.remoteIm.bridge.telegramNativeCommands":
+    "Telegram：Bridge 啟動後會註冊原生 / 命令選單；/p、/r、/account 的結果可透過可翻頁的行內按鈕選擇。",
+  "settings.remoteIm.channel.feishu": "飛書",
+  "settings.remoteIm.channel.lark": "Lark",
+  "settings.remoteIm.channel.dingtalk": "釘釘",
+  "settings.remoteIm.channel.wecom": "企業微信",
+  "settings.remoteIm.channel.weixin": "微信個人",
+  "settings.remoteIm.channel.wpsXiezuo": "WPS 協作",
+  "settings.remoteIm.channel.weibo": "微博",
+  "settings.remoteIm.channel.qq": "QQ（OneBot）",
+  "settings.remoteIm.channel.qqbot": "QQ 官方機器人",
+  "settings.remoteIm.channel.telegram": "Telegram",
+  "settings.remoteIm.channel.slack": "Slack",
+  "settings.remoteIm.channel.discord": "Discord",
+  "settings.remoteIm.channel.matrix": "Matrix",
+  "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.wpsAgentspace": "WPS 數字員工",
+  "ui.errorBoundary.title": "此檢視渲染出錯",
+  "ui.errorBoundary.body":
+    "聊天區域無法顯示。磁碟上的工作階段仍保留 — 可重試或切換對話。",
+  "ui.errorBoundary.retry": "重試",
+  "prHub.title": "Pull requests",
+  "prHub.desc":
+    "透過 GitHub CLI（`gh pr list`）列出目前專案的開啟 PR。展開可查看 CI 檢查與近期討論留言。若缺少 gh/git 或非倉庫，則軟失敗提示。",
+  "prHub.refresh": "重新整理",
+  "prHub.refreshing": "重新整理中…",
+  "prHub.loading": "正在載入 Pull requests…",
+  "prHub.count": "{n} 個開啟",
+  "prHub.empty": "沒有開啟的 Pull request",
+  "prHub.emptyBody": "此倉庫目前沒有開啟的 PR（或不符合預設篩選）。",
+  "prHub.needProject": "未選擇專案",
+  "prHub.needProjectBody": "在工作台選擇專案資料夾後，可列出其 GitHub Pull requests。",
+  "prHub.needTauri": "PR 中心需要 Grok 桌面視窗。",
+  "prHub.needGh": "找不到 GitHub CLI",
+  "prHub.needGhBody":
+    "請安裝 GitHub CLI（`gh`）並登入（`gh auth login`）。PATH 需包含 `gh`（桌面應用也會搜尋 `~/.grok/bin` 與常見安裝路徑）。",
+  "prHub.needGit": "找不到 git",
+  "prHub.needGitBody": "請安裝 git，並確保桌面應用的 PATH 可找到它。",
+  "prHub.notGit": "不是 git 倉庫",
+  "prHub.notGitBody": "目前專案資料夾不在 git 工作樹內。",
+  "prHub.unavailable": "無法列出 Pull requests",
+  "prHub.unavailableBody": "gh pr list 失敗。請檢查登入、遠端倉庫與網路。",
+  "prHub.error": "PR 中心錯誤",
+  "prHub.open": "開啟",
+  "prHub.openInBrowser": "在瀏覽器中開啟 Pull request",
+  "prHub.openConversation": "開啟討論",
+  "prHub.openCheck": "開啟檢查詳情",
+  "prHub.draft": "草稿",
+  "prHub.mergeable": "可合併",
+  "prHub.conflicting": "有衝突",
+  "prHub.mergeableUnknown": "合併狀態未知",
+  "prHub.author": "作者 {name}",
+  "prHub.untitled": "（無標題）",
+  "prHub.expandDetails": "顯示檢查與留言",
+  "prHub.collapseDetails": "隱藏檢查與留言",
+  "prHub.expandChecks": "顯示 CI 檢查",
+  "prHub.collapseChecks": "隱藏 CI 檢查",
+  "prHub.checks.title": "CI 檢查",
+  "prHub.checks.colName": "名稱",
+  "prHub.checks.colState": "狀態",
+  "prHub.checks.none": "無檢查",
+  "prHub.checks.loading": "正在載入檢查…",
+  "prHub.checks.failed": "無法載入檢查",
+  "prHub.comments.title": "近期留言",
+  "prHub.comments.loading": "正在載入留言…",
+  "prHub.comments.failed": "無法載入留言",
+  "prHub.comments.none": "尚無留言",
+  "prHub.comments.comment": "留言",
+  "prHub.comments.review": "審查",
+  "prHub.comments.open": "開啟留言",
+  "prHub.comments.unknownAuthor": "未知",
+  "prHub.comments.emptyBody": "（無正文）",
+  "prHub.review.approved": "已核准",
+  "prHub.review.changesRequested": "請求修改",
+  "prHub.review.commented": "已留言",
+  "prHub.review.dismissed": "已駁回",
+  "changes.comment": "評論",
+  "changes.commentTip": "針對此變更區塊寫審閱備註，並插入到對話輸入框",
+  "changes.commentModalTitle": "評論變更區塊",
+  "changes.commentModalDesc": "「{name}」· 第 {n} 塊。會把結構化提示寫入輸入框，不會自動傳送。",
+  "changes.commentPlaceholder": "希望代理如何修改或解釋此變更？",
+  "changes.commentInsert": "插入到對話",
+  "changes.commentInsertedToast": "審閱備註已寫入輸入框",
+  "changes.commentErrorEmpty": "請先填寫簡短審閱備註",
+  "changes.commentErrorTooLong": "備註過長（最多約 4000 字元）",
+  "changes.commentErrorGeneric": "無法產生對話提示",
+  "prHub.checks.fixCi": "用 Grok 修復",
+  "prHub.checks.fixCiTitle":
+    "將修復 CI 的草稿插入輸入框（不會自動傳送）",
+  "prHub.comments.askGrok": "問 Grok",
+  "prHub.comments.askGrokTitle":
+    "將關於此留言的草稿插入輸入框（不會自動傳送）",
+  "prHub.draftInsertedToast": "草稿已插入輸入框",
+  "dashboard.peek.label": "工作階段詳情",
+  "dashboard.peek.expand": "展開 {title} 的詳情",
+  "dashboard.peek.collapse": "收起 {title} 的詳情",
+  "dashboard.peek.status": "狀態",
+  "dashboard.peek.tool": "工具",
+  "dashboard.peek.noTool": "無執行中的工具",
+  "dashboard.peek.project": "專案",
+  "dashboard.peek.model": "模型",
+  "dashboard.peek.activity": "更新",
+  "dashboard.peek.openChat": "開啟對話",
+  "dashboard.dispatch.title": "派發新 Agent",
+  "dashboard.dispatch.projectLabel": "已信任專案",
+  "dashboard.dispatch.promptPlaceholder": "新工作階段的提示詞…",
+  "dashboard.dispatch.button": "派發",
+  "dashboard.dispatch.buttonTitle":
+    "在所選專案新建對話、填入提示詞並送出",
+  "dashboard.dispatch.noTrusted":
+    "尚無已信任專案。請先在側欄信任一個專案後再派發。",
+  "dashboard.dispatch.emptyPrompt": "請輸入要派發的提示詞。",
+  "dashboard.dispatch.noProject": "請先選擇一個已信任專案。",
+  "dashboard.dispatch.untrusted": "該專案尚未信任。請先信任後再派發。",
+  "dashboard.dispatch.started": "已派發到 {name}",
+  "composer.worktreeFirstPrompt": "首條提示（可選）",
+  "composer.worktreeFirstPromptHint":
+    "開啟新對話時使用 — 建立後填入輸入框。",
+  "composer.worktreeFirstPromptPlaceholder":
+    "希望 Agent 在這個 worktree 裡做什麼？",
+  "composer.worktreeAutoSend": "開啟後傳送",
+  "composer.worktreeAutoSendHint":
+    "勾選後，新對話開啟時自動傳送首條提示（僅已信任專案）。預設關閉。",
+  "composer.parallelTask": "並行任務（worktree）",
+  "composer.parallelTaskHostOnly": "並行任務需要在桌面應用視窗中操作。",
+  "composer.parallelTaskNoProject": "請先選擇一個專案。",
+  "composer.parallelTaskUntrusted":
+    "請先信任該專案，再啟動並行 worktree 任務。",
+  "composer.parallelTaskNotGit":
+    "目前資料夾不是 git 倉庫（或 git 不可用）。",
+  "plan.edit": "編輯計劃",
+  "plan.cancelEdit": "取消編輯",
+  "plan.requestWithDraft": "用草稿請求修改",
+  "plan.approveDirtyHint":
+    "你有未提交的計劃修改。請先用草稿請求修改，或丟棄後再核准 Agent 的原計劃。",
+  "plan.draftPlaceholder": "編輯計劃 Markdown…",
+  "plan.draftAria": "計劃草稿 Markdown",
+  "plan.discardTitle": "丟棄計劃修改？",
+  "plan.discardMessage":
+    "本機修改將遺失。在請求修改或核准之前，仍以 Agent 原計劃為準。",
+  "plan.discardConfirm": "丟棄修改",
+  "plan.draftEmpty": "計劃草稿不能為空。",
+  "plan.draftTooLong": "計劃草稿過長（上限約 20 萬字元）。",
+  "composer.intent.enqueue":
+    "傳送會將後續排入此對話佇列，本輪結束後自動傳送。若要對進行中的任務插話，請對佇列項目使用「引導」。",
+  "composer.intent.enqueueShort": "排隊後續",
+  "composer.intent.steer":
+    "「引導」會向目前進行中的任務插入中途指示（不是排隊後續）。",
+  "composer.intent.foreignConcurrent":
+    "傳送會在此開始並行工作 — 另一對話仍在執行。可用新對話分開草稿。",
+  "composer.intent.foreignShort": "傳送（並行）",
+  "composer.intent.blockedPermission": "請先處理權限請求",
+  "composer.intent.openAsNewChat": "以新對話開啟",
+  "composer.intent.stripEnqueue": "後續 — 本輪結束後傳送",
+  "composer.intent.stripHold": "自動傳送已暫停",
+  "composer.intent.stripSteerHint": "本輪結束後傳送後續 · 引導可中途插話",
+  "resources.agents": "Agents",
+  "resources.agentsShow": "顯示 Agents 側欄",
+  "resources.agentsHide": "隱藏 Agents 側欄",
+  "agentsRail.noTasks": "本輪尚無 Agent 任務",
+  "agentsRail.busyHint":
+    "對話正在工作 — 工具步驟與巢狀子代理會在啟動後出現在這裡。",
+  "agentsRail.idleHint":
+    "當本對話執行工具或啟動子代理時，任務樹會顯示在這裡，無需開啟浮動任務面板。",
+  "agentsRail.filterEmpty": "沒有符合篩選條件的任務",
+  "agentsRail.filterEmptyHint": "清除搜尋或換一個狀態篩選以查看更多任務。",
+  "reliability.goal.clearTimeline": "清空時間軸",
+  "reliability.goal.clearConfirmTitle": "清空目標時間軸？",
+  "reliability.goal.clearConfirmMessage":
+    "從本應用本機環形緩衝中移除 {count} 條 goal_updated 事件？不會停止 CLI 目標系統，也不會關閉輸入框 /goal 模式。",
+  "reliability.goal.clearConfirmAction": "清空時間軸",
+  "reliability.goal.clearDone": "已清空 {count} 條本機目標事件",
+  "reliability.goal.emptySessionMismatch": "目前工作階段沒有目標事件",
+  "reliability.goal.emptySessionMismatchHint":
+    "其他工作階段已觀察到 goal_updated。可開啟可靠性中心查看完整本機時間軸，或在本對話中使用 /goal。",
+  "reliability.goal.openReliability": "開啟可靠性中心",
+  "reliability.goal.sessionMenuAria": "目標編排操作",
+  "dashboard.openBoard": "看板檢視",
+  "dashboard.openBoardTitle":
+    "依狀態分欄檢視工作階段（需你處理 / 執行中 / 閒置 / 完成）",
+  "taskBoard.title": "工作階段任務看板",
+  "taskBoard.hint":
+    "依應用程式內工作階段與本地 live 狀態分欄 — 非 CI/雲端。點擊卡片開啟該對話。",
+  "taskBoard.open": "工作階段任務看板",
+  "taskBoard.searchPlaceholder": "篩選工作階段…",
+  "taskBoard.projectSearchPlaceholder": "依專案篩選…",
+  "taskBoard.includeArchived": "含已封存",
+  "taskBoard.includeArchivedTitle": "在「完成」欄顯示已封存的閒置工作階段",
+  "taskBoard.columnsLabel": "工作階段狀態欄",
+  "taskBoard.column.needsYou": "需你處理",
+  "taskBoard.column.running": "執行中",
+  "taskBoard.column.idle": "閒置",
+  "taskBoard.column.done": "完成",
+  "taskBoard.column.error": "異常",
+  "taskBoard.columnEmpty": "尚無工作階段",
+  "taskBoard.empty": "尚無工作階段",
+  "taskBoard.emptyHint":
+    "開始對話或等待 Agent 回合 — 工作階段會依狀態出現在這裡。",
+  "taskBoard.filterEmpty": "沒有符合篩選條件的工作階段",
+  "taskBoard.filterEmptyHint": "清空搜尋或勾選「含已封存」以查看更多工作階段。",
+  "taskBoard.clearFilters": "清除篩選",
+  "taskBoard.totalCount": "{n} 個工作階段",
+  "settings.agentsPersonas.title": "Agents 與 Personas",
+  "settings.agentsPersonas.desc":
+    "瀏覽內建、使用者與專案級 agent 定義，以及磁碟上發現的 personas（與 CLI `/config-agents` 根目錄一致）。不會憑空編造 persona — 僅列出真實檔案。首選 agent 作用於新工作階段。",
+  "settings.agentsPersonas.tab.agents": "Agents",
+  "settings.agentsPersonas.tab.personas": "Personas",
+  "settings.agentsPersonas.searchPlaceholder": "依名稱、來源或路徑篩選…",
+  "settings.agentsPersonas.refresh": "重新整理",
+  "settings.agentsPersonas.loading": "載入中…",
+  "settings.agentsPersonas.clearFilter": "清除篩選",
+  "settings.agentsPersonas.open": "開啟",
+  "settings.agentsPersonas.reveal": "在 Finder 中顯示",
+  "settings.agentsPersonas.openUserAgents": "開啟使用者 agents 目錄",
+  "settings.agentsPersonas.openProjectAgents": "開啟專案 agents 目錄",
+  "settings.agentsPersonas.openUserPersonas": "開啟使用者 personas 目錄",
+  "settings.agentsPersonas.openProjectPersonas": "開啟專案 personas 目錄",
+  "settings.agentsPersonas.browsePersonas": "瀏覽 personas 目錄",
+  "settings.agentsPersonas.needProjectHint":
+    "請先在工作台選擇專案，以管理專案級定義。",
+  "settings.agentsPersonas.agentsEmpty": "未發現 agent 定義",
+  "settings.agentsPersonas.agentsEmptyHint":
+    "目錄載入後一律列出內建 agent。可在 ~/.grok/agents 或專案 `.grok/agents` 新增 `*.md`，或在「擴充 → Agents」建立。",
+  "settings.agentsPersonas.personasEmpty": "未發現 personas",
+  "settings.agentsPersonas.personasEmptyHint":
+    "Personas 為 ~/.grok/personas 或專案 `.grok/personas` 下的 `*.toml` / `*.md`。應用不會編造 persona 名稱 — 請用 CLI 或開啟目錄新增檔案。",
+  "settings.agentsPersonas.filterEmpty": "沒有符合篩選條件的項目",
+  "settings.agentsPersonas.filterEmptyHint": "清除篩選以查看完整列表。",
+  "settings.agentsPersonas.hostOnly": "請在桌面應用中列出 agents 與 personas",
+  "settings.agentsPersonas.hostOnlyHint":
+    "檔案系統發現需要 Tauri 主機。內建名稱仍可能來自目錄，以便首選 agent 誠實展示。",
+  "settings.agentsPersonas.noProject": "未開啟專案",
+  "settings.agentsPersonas.noProjectHint":
+    "開啟工作台專案以列出專案級 agents 與 personas。",
+  "settings.agentsPersonas.error": "無法載入 agents 與 personas",
+  "settings.agentsPersonas.builtinNoPath": "內建 · 無定義檔路徑",
+  "settings.agentsPersonas.setPreferred": "設為首選",
+  "settings.agentsPersonas.preferredBadge": "首選",
+  "settings.agentsPersonas.preferredDefault":
+    "首選 agent：預設（CLI）— 新工作階段不傳 `--agent`。",
+  "settings.agentsPersonas.preferredCurrent":
+    "首選 agent：{name} · {source}",
+  "settings.agentsPersonas.preferredMissing":
+    "首選 agent “{name}” 不在目錄中",
+  "settings.agentsPersonas.preferredMissingHint":
+    "可能已重新命名或刪除。請另選 agent 或預設（CLI）。在變更前，啟動仍會使用已儲存的名稱。",
+  "composer.worktreeCompare": "與 main 對比…",
+  "composer.worktreeCompareTip": "列出相對主 worktree 的差異檔案（不合併）",
+  "composer.worktreeCompareTitle": "與 main 對比",
+  "composer.worktreeCompareHint":
+    "唯讀檔案列表，來自 git diff --name-status（相對 main 的三方差異）。選擇性套用 / 合併不在本功能範圍內。",
+  "composer.worktreeCompareRange": "{base}...{other}",
+  "composer.worktreeCompareLoading": "正在對比…",
+  "composer.worktreeCompareEmpty": "工作樹一致 — 無檔案差異。",
+  "composer.worktreeCompareFailed": "無法對比 worktree",
+  "composer.worktreeCompareNeedProject": "請先開啟專案資料夾再對比",
+  "composer.worktreeCompareOnMain":
+    "目前已在主 worktree — 請切換到關聯 worktree 後再對比",
+  "composer.worktreeCompareSamePath": "對比路徑相同",
+  "composer.worktreeCompareNotGit": "不是 git 儲存庫（或未安裝 git）",
+  "composer.worktreeCompareMissingPath": "worktree 路徑缺失",
+  "composer.worktreeCompareChipAdded": "+{n} 新增",
+  "composer.worktreeCompareChipModified": "~{n} 修改",
+  "composer.worktreeCompareChipDeleted": "−{n} 刪除",
+  "composer.worktreeCompareChipRenamed": "→{n} 重新命名",
+  "composer.worktreeCompareChipOther": "?{n} 其他",
+  "composer.worktreeCompareChipTotal": "{n} 個檔案",
+  "composer.worktreeCompareCopyPath": "複製路徑",
+  "composer.worktreeCompareReveal": "在檔案總管中顯示",
+  "composer.worktreeComparePathCopied": "已複製路徑",
+  "composer.worktreeCompareOverflow":
+    "顯示 {shown}/{total} — 另有 {n} 條未列出",
+  "settings.workflows.authorHint":
+    "完整流水線請用 create-workflow 技能（/create-workflow）編寫，或直接編輯 .rhai。本面板僅產生簡短範本，並依名稱 smoke/執行——不是視覺化編輯器。",
+  "settings.workflows.reveal": "顯示",
+  "settings.workflows.revealTitle": "在資料夾中顯示工作流程檔案",
+  "settings.workflows.openEditor": "開啟",
+  "settings.workflows.openEditorTitle": "在已設定的編輯器中開啟工作流程",
+  "settings.workflows.create": "從範本新建",
+  "settings.workflows.create.title": "從範本新建工作流程",
+  "settings.workflows.create.hint":
+    "寫入帶純字面量 meta 的最小 .rhai 腳手架。請用真實的 agent()/parallel() 步驟取代正文（見 create-workflow 技能）。",
+  "settings.workflows.create.name": "名稱",
+  "settings.workflows.create.namePlaceholder": "review-changes",
+  "settings.workflows.create.namePreview": "將儲存為 {name}.rhai",
+  "settings.workflows.create.scope": "範圍",
+  "settings.workflows.create.needProjectHint": "在工作台開啟專案後即可使用專案範圍。",
+  "settings.workflows.create.needProject": "專案範圍需要目前專案路徑。",
+  "settings.workflows.create.argsNote":
+    "可選：透過 workflow 工具啟動時傳入 args 物件（未傳時 args 為 ()）。",
+  "settings.workflows.create.pathPreview": "路徑：{path}",
+  "settings.workflows.create.submit": "建立",
+  "settings.workflows.create.creating": "建立中…",
+  "settings.workflows.create.created": "已建立工作流程 {name}",
+  "settings.workflows.create.overwritten": "已覆寫工作流程 {name}",
+  "settings.workflows.create.nameInvalid":
+    "請使用字母、數字、連字號或底線（不要包含路徑分隔符）。",
+  "settings.workflows.create.error": "無法建立工作流程（soft-fail）。",
+  "settings.workflows.create.desktopOnly": "建立工作流程需要桌面應用宿主。",
+  "settings.workflows.create.overwriteTitle": "覆寫工作流程？",
+  "settings.workflows.create.overwriteBody":
+    "名為「{name}」的工作流程已存在。要用範本腳手架覆寫嗎？",
+  "settings.workflows.create.overwrite": "覆寫",
+  "settings.workflows.empty.no_workflows":
+    "在 ~/.grok/workflows 或目前專案的 .grok/workflows 下找不到 .rhai 工作流程。可建立範本或使用 /create-workflow。",
+  "settings.workflows.empty.scan_soft_fail":
+    "無法掃描工作流程資料夾（soft-fail）。磁碟上的路徑可能仍然存在。",
+  "settings.workflows.empty.browser_only": "探索與建立工作流程需要桌面應用宿主。",
+  "settings.workflows.empty.history_empty":
+    "尚無觀察到的 smoke/執行結果。歷史僅記錄設定頁 Smoke/執行結果（本機、已去敏）。",
+  "settings.workflows.history": "最近執行",
+  "settings.workflows.history.show": "最近執行（{count}）",
+  "settings.workflows.history.hide": "隱藏最近執行",
+  "settings.workflows.history.honesty":
+    "僅本機記錄設定頁 smoke/執行結果（最多約 20 筆）。不是即時 /workflows 儀表板；不會虛構離線觸發。",
+  "settings.workflows.history.filter": "篩選最近執行",
+  "settings.workflows.history.filter.all": "全部",
+  "settings.workflows.history.filterEmpty": "沒有符合此篩選的執行。",
+  "settings.workflows.history.outcome.ok": "ok",
+  "settings.workflows.history.outcome.error": "錯誤",
+  "settings.workflows.history.outcome.softFail": "soft-fail",
+  "settings.workflows.history.clear": "清空歷史",
+  "settings.workflows.history.clearTitle": "清空最近執行？",
+  "settings.workflows.history.clearBody": "移除 {count} 筆本機歷史記錄？此操作無法復原。",
+  "settings.workflows.history.clearConfirm": "清空",
+  "settings.workflows.history.cleared": "已清空工作流程執行歷史",
+  "automations.inbox.section": "收件匣",
+  "automations.inbox.desc":
+    "本行程內觀察到的排程執行審閱佇列。可在已知時開啟關聯對話、在任務仍存在時重試，或標記已讀。",
+  "automations.inbox.processBound":
+    "僅在 Grok 應用開啟或收起到系統匣期間記錄執行。完全結束後不會虛構離線執行——重新開啟後若尚未觸發，收件匣為空是正常的。",
+  "automations.inbox.search": "搜尋收件匣",
+  "automations.inbox.filterAria": "依結果篩選收件匣",
+  "automations.inbox.empty": "暫無收件匣項目。",
+  "automations.inbox.emptyFiltered": "沒有符合此篩選或搜尋的執行。",
+  "automations.inbox.emptyProcessBound":
+    "尚無觀察到的執行。當本行程內排程觸發或你使用「立即執行」時會寫入——完全結束後的離線觸發不會出現。",
+  "automations.inbox.openSession": "開啟對話",
+  "automations.inbox.openProject": "開啟專案",
+  "automations.inbox.runNow": "立即執行",
+  "automations.inbox.markRead": "標為已讀",
+  "automations.inbox.markAllRead": "全部標為已讀",
+  "automations.inbox.clear": "清除收件匣",
+  "automations.inbox.clearTitle": "清除收件匣歷史？",
+  "automations.inbox.clearBody":
+    "將刪除本機已觀察到的執行列表與已讀標記，且無法復原。已排程任務本身不受影響。",
+  "automations.inbox.clearConfirm": "清除",
+  "automations.inbox.unreadCount": "{n} 則未讀",
+  "automations.inbox.sessionMissing":
+    "該對話已不存在，可能在執行後被刪除。",
+  "automations.inbox.projectMissing": "該專案已不存在。",
+  "settings.sandbox.openGuide": "開啟沙箱指南",
+  "settings.sandbox.recommendedDaily": "日常使用推薦",
+  "sandboxWizard.title.trust": "選擇沙箱設定檔",
+  "sandboxWizard.title.info": "沙箱設定檔指南",
+  "sandboxWizard.progress": "第 {n} / {total} 步 · {step}",
+  "sandboxWizard.step.intro": "為何使用沙箱",
+  "sandboxWizard.step.pick": "選擇設定檔",
+  "sandboxWizard.step.confirm": "確認",
+  "sandboxWizard.next": "繼續",
+  "sandboxWizard.back": "上一步",
+  "sandboxWizard.skip": "暫不設定",
+  "sandboxWizard.apply": "套用設定檔",
+  "sandboxWizard.intro.trust":
+    "你已信任此專案。可選為 Agent 行程設定作業系統級沙箱，使寫入範圍限制在工作區（及暫存目錄）。",
+  "sandboxWizard.intro.info":
+    "OS 沙箱設定檔限制 Agent 行程的寫入能力。請依你對本機的使用方式選擇設定檔。",
+  "sandboxWizard.reason.workspace":
+    "日常程式設計推薦：工作區 — 可讀任意路徑；寫入限制為工作階段工作目錄、~/.grok/ 與系統暫存目錄。網路允許。",
+  "sandboxWizard.honesty.platform":
+    "目前平台未文件化核心級 OS 沙箱強制（僅 macOS Seatbelt / Linux Landlock）。CLI 可能接受設定但 soft-fail 且無強制執行 — 請勿當作硬性安全邊界。",
+  "sandboxWizard.honesty.cliUnsupported":
+    "目前 CLI 過舊，不支援 --sandbox（需要 ≥ {min}）。設定可儲存，但會 soft-fail（省略 flag）直至升級 Grok Build。",
+  "sandboxWizard.pick.lead":
+    "選擇沙箱設定檔。日常使用推薦「工作區」。",
+  "sandboxWizard.recommendedBadge": "推薦",
+  "sandboxWizard.confirm.lead": "將「{profile}」套用為應用程式級沙箱設定檔？",
+  "sandboxWizard.confirm.respawnHint":
+    "在新啟動 Agent 時生效——變更後請重新連線工作階段。仍可在專案選單中為單一專案覆寫。",
+  "sandboxWizard.dontOfferAgain": "信任專案後不再提示",
+  "voice.center.toolIdle": "目前沒有 Build 工具在執行",
+  "voice.center.chipDelegated": "語音",
+  "voice.center.keepAgentsOn":
+    "結束後保留編碼工作階段：開 — 結束即時語音不會停止已委派的 Agent。",
+  "voice.center.keepAgentsOff":
+    "結束後保留編碼工作階段：關 — 結束即時語音可能會停止由語音拉起的工作階段。",
+  "voice.center.endNote.keepAgents":
+    "停止會結束語音並取消進行中的主機工具；編碼工作階段會保留。",
+  "voice.center.endNote.keepRunning":
+    "停止會結束語音；正在執行的委派編碼工作階段會繼續保留。",
+  "voice.center.endNote.cancelDelegates":
+    "停止會結束語音、取消進行中的工具，並停止委派的編碼工作階段。",
+  "voice.center.endNote.stopOnly":
+    "停止會結束語音並取消進行中的主機工具。",
+  "voice.center.empty.noAuth":
+    "即時語音需要 Grok 驗證（CLI 登入或官方 API key）。尚無語音轉寫。",
+  "voice.center.empty.noMic":
+    "麥克風不可用。在主機推送文字之前轉寫保持為空 — 不會偽造 STT。",
+  "voice.center.empty.transcriptWithDelegates":
+    "尚無語音轉寫（僅主機推送）。上方已列出委派的編碼工作階段。",
+  "settings.codeGraph": "程式碼圖",
+  "settings.codeGraphDesc":
+    "統一展示程式碼庫索引（CLI 程式碼圖）與應用內專案搜尋（僅關鍵字）的誠實狀態。不會虛構程式碼圖或 embedding 命中。",
+  "settings.codeGraph.modeLabel": "程式碼圖狀態",
+  "settings.codeGraph.chip.appKeyword": "應用內搜尋：關鍵字",
+  "settings.codeGraph.chip.cliGraph": "CLI 程式碼圖：開",
+  "settings.codeGraph.chip.cliGraphDefaultOn": "CLI 程式碼圖：預設開",
+  "settings.codeGraph.chip.graphUnavailable": "應用內圖搜尋：不可用",
+  "settings.codeGraph.chip.keywordOnly": "程式碼圖：關",
+  "settings.codeGraph.chip.cliOld": "CLI 過舊，不支援程式碼圖",
+  "settings.codeGraph.chip.noEmbeddings": "非 embedding",
+  "settings.codeGraph.mode.keywordOnly":
+    "程式碼庫索引已關閉 — CLI 不會建置程式碼圖。應用內專案搜尋仍為關鍵字（rg/走訪）。",
+  "settings.codeGraph.mode.graphEnabledUnknown":
+    "程式碼庫索引已開啟，CLI 可能建置程式碼圖；應用尚無法確認圖就緒狀態或回傳圖命中。",
+  "settings.codeGraph.mode.graphUnavailable":
+    "程式碼庫索引對 CLI code-nav 已開啟，但應用內專案搜尋沒有圖 API — 結果仍僅為關鍵字。",
+  "settings.codeGraph.mode.cliOld":
+    "CLI 低於 {min} — 可能忽略 `[features].codebase_indexing`（soft-fail）。應用內搜尋仍為關鍵字。",
+  "settings.codeGraph.mode.unsetDefaultOn":
+    "鍵未設定 — CLI 預設開啟。應用不會虛構已寫入的設定值；專案搜尋仍為關鍵字。",
+  "settings.codeGraph.appSearchRemainsKeyword":
+    "在 Host 提供真正的圖搜尋 API 之前，應用內專案搜尋保持關鍵字。CLI 圖/code-nav 請另行啟用索引。",
+  "settings.codeGraph.openIndexingSettings": "程式碼庫索引設定",
+  "settings.codeGraph.openSearchSettings": "專案程式碼庫搜尋",
+  "settings.codeGraph.empty.cliOld": "CLI 過舊，不支援程式碼圖索引",
+  "settings.codeGraph.empty.cliOldHint":
+    "請升級 Grok Build CLI 以使用 `[features].codebase_indexing`。應用內搜尋仍僅為關鍵字。",
+  "settings.codeGraph.empty.unsetDefaultOn":
+    "程式碼庫索引鍵未設定（CLI 預設開啟）",
+  "settings.codeGraph.empty.unsetDefaultOnHint":
+    "切換一次可寫入明確 bool。應用內搜尋不使用程式碼圖。",
+  "settings.codeGraph.empty.keywordOnly": "程式碼圖索引已關閉",
+  "settings.codeGraph.empty.keywordOnlyHint":
+    "開啟程式碼庫索引以供 CLI code-nav。應用內專案搜尋始終為關鍵字。",
+  "settings.codeGraph.empty.graphUnavailable":
+    "CLI 程式碼圖可能已啟用 — 應用內圖搜尋不可用",
+  "settings.codeGraph.empty.graphUnavailableHint":
+    "索引可協助 CLI agent；此應用介面僅執行關鍵字（rg/走訪）專案搜尋。",
+  "settings.codeGraph.empty.graphEnabledUnknown":
+    "CLI 程式碼圖可能已啟用 — 應用內狀態未知",
+  "settings.codeGraph.empty.graphEnabledUnknownHint":
+    "應用不會探測圖健康度，也不會虛構圖命中。專案搜尋僅為關鍵字。",
+  "settings.codeGraph.empty.searchKeywordIdle": "輸入關鍵字以搜尋此專案",
+  "settings.codeGraph.empty.searchKeywordIdleHint":
+    "結果為路徑/名稱或內容相符 — 絕不會虛構程式碼圖或 embedding 命中。",
+  "settings.codeGraph.empty.searchNoMatches": "無關鍵字相符",
+  "settings.codeGraph.empty.searchNoMatchesHint":
+    "專案下無路徑/名稱或內容命中。這不是程式碼圖或向量搜尋。",
+  "settings.codeGraph.rebuild.availableNote": "Host 可重建程式碼圖索引。",
+  "settings.codeGraph.rebuild.unavailableNote":
+    "應用沒有程式碼圖的 Host 重建介面。",
+  "settings.codeGraph.rebuild.cliHint":
+    "若索引過期，請在 Grok Build CLI 提供相應命令時於 CLI 重建 — 本面板不會虛構重建按鈕。",
+  "composer.apply.model.immediate": "模型已在目前 Agent 上生效（session/set_model）。",
+  "composer.apply.model.softRespawn": "模型將在重新連線後的下一則訊息生效。",
+  "composer.apply.model.nextMessage": "模型已儲存 — 下一則訊息生效。",
+  "composer.apply.model.unsupported": "此模型變更無法在工作階段中途套用。",
+  "composer.apply.effort.immediate": "推理強度已立即生效。",
+  "composer.apply.effort.softRespawn":
+    "推理強度將在重新連線後的下一則訊息生效（無 mid-session set_effort）。",
+  "composer.apply.effort.nextMessage": "推理強度已儲存 — 下一則訊息生效。",
+  "composer.apply.effort.unsupported": "此推理強度變更無法在工作階段中途套用。",
+  "composer.apply.error.setModelFailed": "無法在目前 Agent 上切換模型",
+  "composer.apply.error.softRespawnFailed": "無法依新設定重載 Agent",
+  "composer.apply.error.invalidModel": "無效模型",
+  "composer.apply.error.invalidEffort": "無效推理強度",
+  "composer.apply.error.disconnected": "Agent 未連線",
+  "composer.apply.error.busy": "Agent 回合進行中 — 本輪結束後生效",
+  "composer.apply.error.other": "無法套用模型或推理強度變更",
+  "composer.skillsPicker": "技能",
+  "skillsPicker.aria": "為本則提示選擇技能",
+  "skillsPicker.placeholder": "搜尋技能…",
+  "skillsPicker.recent": "最近",
+  "skillsPicker.all": "全部技能",
+  "skillsPicker.loading": "正在載入技能…",
+  "skillsPicker.empty": "未安裝可呼叫的技能",
+  "skillsPicker.emptyHint":
+    "可在「擴充 → 插件市集」安裝，或在「擴充 → 技能」中啟用。",
+  "skillsPicker.filterEmpty": "沒有相符的技能",
+  "skillsPicker.filterEmptyHint": "試試其他關鍵字，或清除篩選。",
+  "skillsPicker.hostOnly": "無法載入技能",
+  "skillsPicker.hostOnlyHint":
+    "技能需要桌面宿主與 Grok Build CLI。請檢查「設定 → CLI / 執行階段」。",
+  "skillsPicker.clearFilter": "清除篩選",
+  "settings.memoryOps": "記憶操作中心",
+  "settings.memoryOpsDesc":
+    "統一記憶瀏覽器、embedding 誠實狀態與清除範圍。應用內搜尋僅為關鍵字 — 不會偽造 embedding。CLI 混合檢索需設定 embedding 模型；無 host 搜尋路徑時瀏覽器混合檢索不可用。",
+  "settings.memoryOps.modeLabel": "記憶搜尋模式",
+  "settings.memoryOps.mode.appKeyword": "應用：關鍵字",
+  "settings.memoryOps.mode.cliHybrid": "CLI agent：混合",
+  "settings.memoryOps.mode.hybridUnavailable": "瀏覽器混合：不可用",
+  "settings.memoryOps.mode.memoryOff": "記憶：關閉",
+  "settings.memoryOps.hybridUnavailableHint":
+    "已為 agent 工具設定 embedding 模型，但應用內瀏覽器沒有 host 混合檢索 CLI（grok memory search）— 僅關鍵字掃描。不會偽造 embedding。",
+  "settings.memoryOps.openEmbed": "Embedding 設定",
+  "settings.memoryOps.presenceLabel": "Dream / Watcher 設定存在性",
+  "settings.memoryOps.dream": "Dream",
+  "settings.memoryOps.watcher": "Watcher",
+  "settings.memoryOps.presenceNote": "僅表示設定鍵是否設定 — 不是行程執行狀態。",
+  "settings.memoryOps.clearLabel": "清除記憶範圍",
+  "settings.memoryOps.clear.workspace": "清除工作區",
+  "settings.memoryOps.clear.session": "清除工作階段",
+  "settings.memoryOps.clear.all": "全部清除",
+  "settings.memoryOps.clear.busy": "清除中…",
+  "settings.memoryOps.clear.confirmTitle.workspace": "清除工作區記憶？",
+  "settings.memoryOps.clear.confirmTitle.session": "清除工作階段記憶？",
+  "settings.memoryOps.clear.confirmTitle.all": "清除全部記憶？",
+  "settings.memoryOps.clear.confirmMsg.workspace":
+    "對目前專案執行 grok memory clear --workspace（MEMORY.md、工作階段摘要、索引）。不會刪除應用程式內聊天紀錄。此操作無法復原。",
+  "settings.memoryOps.clear.confirmMsg.session":
+    "應用 host 尚不支援僅清除工作階段範圍（CLI 無 session 作用域）。",
+  "settings.memoryOps.clear.confirmMsg.all":
+    "在目前 GROK_HOME 下執行 grok memory clear --all，將刪除全域與工作區記憶檔案。不會刪除應用程式內聊天紀錄。此操作無法復原。",
+  "settings.memoryOps.clear.done.workspace": "已清除工作區記憶",
+  "settings.memoryOps.clear.done.session": "已清除工作階段記憶",
+  "settings.memoryOps.clear.done.all": "已清除全部記憶",
+  "settings.memoryOps.clear.unavailable.session":
+    "host CLI 尚不支援僅清除工作階段範圍。",
+  "settings.memoryOps.clear.unavailable.memoryOff":
+    "請先開啟上方的「跨工作階段記憶」再清除。",
+  "settings.memoryOps.clear.unavailable.noCwd":
+    "請先開啟專案以清除工作區記憶。",
+  "settings.memoryOps.clear.unavailable.host":
+    "應用 host 暫不支援此清除範圍。",
+  "settings.memoryOps.empty.memoryOff": "記憶已關閉",
+  "settings.memoryOps.empty.memoryOffHint":
+    "請先開啟上方的「跨工作階段記憶」以瀏覽檔案與清除範圍。",
+  "settings.memoryOps.empty.noProject": "未選擇專案",
+  "settings.memoryOps.empty.noProjectHint":
+    "開啟專案以匹配工作區記憶。全域 MEMORY.md 仍可能顯示。",
+  "settings.memoryOps.empty.catalog": "尚無記憶檔案",
+  "settings.memoryOps.empty.catalogHint":
+    "agent 寫入 MEMORY.md、工作階段日誌或索引後會出現檔案。",
+  "settings.memoryOps.empty.hybridUnavailable":
+    "尚無記憶檔案 · 瀏覽器混合檢索不可用",
+  "settings.lspTools": "LSP 工具",
+  "settings.lspToolsDesc":
+    "如實展示目前 GROK_HOME config.toml 中的 Grok Build `[features].lsp_tools`。開啟後向 CLI agent 暴露 lsp 工具——應用本身不執行語言伺服器，也不顯示即時診斷。獨立 agent-home 可寫入 bool 並 soft-respawn；共用模式唯讀。已知舊版 CLI 時 soft-fail。",
+  "settings.lspTools.path": "設定：{path}",
+  "settings.lspTools.loading": "正在載入 LSP 工具設定…",
+  "settings.lspTools.error": "無法載入或更新 LSP 工具設定",
+  "settings.lspTools.saved": "LSP 工具設定已儲存（agent 已 soft-respawn）",
+  "settings.lspTools.sharedWarning":
+    "共用模式顯示 ~/.grok/config.toml（唯讀探測）。切換到獨立工作階段資料模式後，才能將 `[features].lsp_tools` 寫入 App agent-home。",
+  "settings.lspTools.mode.independent": "獨立（agent-home）",
+  "settings.lspTools.mode.shared": "共用（~/.grok）",
+  "settings.lspTools.missing": "檔案尚不存在",
+  "settings.lspTools.writable": "可編輯",
+  "settings.lspTools.readOnly": "唯讀",
+  "settings.lspTools.presence.unset": "未設定",
+  "settings.lspTools.presence.on": "開",
+  "settings.lspTools.presence.off": "關",
+  "settings.lspTools.status.off": "關 — agent 無 lsp 工具",
+  "settings.lspTools.status.on": "開 — 僅 CLI agent 工具",
+  "settings.lspTools.status.unset": "未設定 — CLI 預設關閉",
+  "settings.lspTools.status.sharedReadonly": "共用唯讀",
+  "settings.lspTools.status.cliOld": "CLI 低於 {min}（soft-fail）",
+  "settings.lspTools.status.hostOnly": "需要桌面主機",
+  "settings.lspTools.chip.off": "關",
+  "settings.lspTools.chip.on": "開",
+  "settings.lspTools.chip.unset": "未設定",
+  "settings.lspTools.chip.sharedReadonly": "共用唯讀",
+  "settings.lspTools.chip.cliOld": "CLI < {min}",
+  "settings.lspTools.chip.hostOnly": "僅主機",
+  "settings.lspTools.chip.cliDefaultOff": "CLI 預設關",
+  "settings.lspTools.chip.noAppLsp": "應用：無 LSP 用戶端",
+  "settings.lspTools.chip.noDiagnostics": "無即時診斷",
+  "settings.lspTools.cliUnknown": "CLI 版本未知（soft-fail）",
+  "settings.lspTools.enable": "啟用 LSP 工具",
+  "settings.lspTools.enableDesc":
+    "開啟後，若 agent 設定中已設定語言伺服器，CLI agent 可使用 lsp 工具。關閉或未設定（CLI 預設）時 agent 無 lsp 工具。應用不會在此顯示診斷列表。",
+  "settings.lspTools.unsetDefaultHint":
+    "鍵未設定 — CLI 預設關閉。切換一次即可將明確 bool 寫入 config.toml。",
+  "settings.lspTools.empty.off": "關閉時，agent 無 lsp 工具。",
+  "settings.lspTools.empty.offHint":
+    "在獨立 agent-home 中啟用該旗標，soft-respawn 後即可向 CLI agent 暴露 lsp 工具。",
+  "settings.lspTools.empty.on": "已開啟：若已設定伺服器，CLI agent 可使用 lsp 工具。",
+  "settings.lspTools.empty.onHint":
+    "應用尚未顯示即時診斷——工具僅在 CLI agent 中執行。",
+  "settings.lspTools.empty.unset": "鍵未設定 — CLI 預設關閉（agent 無 lsp 工具）。",
+  "settings.lspTools.empty.unsetHint":
+    "切換一次即可寫入明確的 `[features].lsp_tools` bool。",
+  "settings.lspTools.empty.sharedReadonly": "共用模式對此旗標唯讀。",
+  "settings.lspTools.empty.sharedReadonlyHint":
+    "切換到獨立工作階段資料模式後才能編輯 agent-home config.toml。",
+  "settings.lspTools.empty.cliOld":
+    "CLI 可能低於 {min}；可能忽略 lsp_tools（soft-fail）。",
+  "settings.lspTools.empty.cliOldHint":
+    "升級 Grok Build CLI 以獲得文件化能力。仍可寫入設定。",
+  "settings.lspTools.empty.hostOnly": "LSP 工具設定需要桌面應用程式。",
+  "settings.lspTools.empty.hostOnlyHint":
+    "開啟 Tauri 桌面主機以讀取或寫入 agent-home 設定。",
+  "settings.lspTools.empty.noDiagnostics":
+    "應用內無即時診斷 — 僅在啟用時提供 CLI agent 工具。",
+  "settings.lspTools.empty.noDiagnosticsHint":
+    "開啟後，若已設定伺服器，CLI agent 可使用 lsp 工具。此工作台不會虛構診斷列表。",
+  "settings.lspTools.banner.sharedReadonly":
+    "共用模式唯讀 — 切換到獨立模式後才能寫入 lsp_tools。",
+  "settings.lspTools.banner.cliOld":
+    "CLI 低於 {min} — 可能忽略該鍵（soft-fail）。",
+  "settings.lspTools.banner.hostOnly": "需要桌面主機。",
+  "settings.lspTools.banner.softRespawn":
+    "儲存會寫入 config.toml 並 soft-respawn agent，以便生效該旗標。",
+  "settings.lspTools.banner.noAppLsp": "Grok App 本身不執行語言伺服器。",
+  "settings.lspTools.banner.agentToolsOnly":
+    "僅在啟用且已設定伺服器時提供 CLI agent 工具。",
+  "settings.lspTools.banner.noDiagnostics": "應用尚未顯示即時診斷。",
+  "settings.lspTools.refresh": "重新整理",
+  "settings.lspTools.reset": "重設",
+  "settings.lspTools.save": "儲存 LSP 工具",
+  "settings.lspTools.saving": "儲存中…",
+  "settings.lspTools.needTauri": "LSP 工具設定需要桌面應用程式。",
+  "settings.lspTools.openConfigSection": "開啟 agent 設定分區",
+  "settings.lspTools.copySummary": "複製狀態摘要",
+  "settings.lspTools.copied": "已複製",
+  "settings.lspTools.copyFailed": "無法複製摘要到剪貼簿",
+  "message.copyLink": "複製連結",
+  "message.linkCopied": "連結已複製",
+  "message.deepLinkMissing": "此對話中找不到該訊息",
+  "batchAgents.downloadSummary": "下載 .txt",
+  "batchAgents.downloaded": "已下載",
+  "batchAgents.exportEmpty": "尚無批量結果可匯出。",
+  "batchAgents.exportFailed": "無法匯出結果。",
+  "batchAgents.templatesLabel": "提示詞範本",
+  "batchAgents.tpl.codeReview.title": "程式碼審查",
+  "batchAgents.tpl.codeReview.body":
+    "審查本倉庫近期變更。指出風險、缺失測試與未完成工作，並給出具體檔案路徑。對不確定處保持誠實——不要編造發現。",
+  "batchAgents.tpl.fixTests.title": "修復測試",
+  "batchAgents.tpl.fixTests.body":
+    "找出本倉庫失敗或不穩定的測試，用最小改動修復，並回報仍失敗的項目。若未實際跑測試，不要聲稱已通過。",
+  "batchAgents.tpl.summarize.title": "總結倉庫",
+  "batchAgents.tpl.summarize.body":
+    "總結本倉庫用途、目錄結構與當前風險或未完成 TODO。優先依據樹中證據，避免臆測。",
+  "batchAgents.eligibilitySummary":
+    "可執行 {ready} · 不合格 {skip}（已選 {selected}）",
+  "batchAgents.eligibilityNone": "目前選擇中沒有可執行的專案。",
+  "batchAgents.status.okEmpty": "成功（無詳情）",
+  "batchAgents.status.partial": "部分",
+  "settings.sessionDataMode.status": "目前：{modeLabel} · Agent 主目錄 {path}",
+  "settings.sessionDataMode.independentNote":
+    "獨立模式使用 {path}。可寫入 agent 設定的應用程式設定作用於此目錄；不會改寫 CLI 的 ~/.grok。",
+  "settings.sessionDataMode.confirm.intro":
+    "將對話資料主目錄從 {fromHome} 切換到 {toHome}？\n歷史不會合併。線上 Agent 將被回收。",
+  "settings.sessionDataMode.risk.homesDiffer":
+    "Agent 主目錄會變更 — 重連只使用新目錄",
+  "settings.sessionDataMode.risk.noSilentMerge":
+    "不會靜默合併：獨立與共用兩套歷史保持分離",
+  "settings.sessionDataMode.risk.recycleAgents":
+    "將立即回收全部 live / background / parked Agent 行程",
+  "settings.sessionDataMode.risk.sharedWithCli":
+    "共用模式使用 ~/.grok — 與終端機 Grok Build CLI 同一工作階段列表",
+  "settings.sessionDataMode.risk.noConfigRewrite":
+    "應用程式不會在共用模式下改寫 CLI 的密鑰 / config.toml（隱私、供應商等）",
+  "settings.sessionDataMode.risk.conflictPossible":
+    "App 與 CLI 同時寫入時可能衝突；若報錯請鎖定或重試",
+  "settings.sessionDataMode.risk.leaveShared":
+    "離開共用：應用回到獨立 agent-home；終端機 CLI 的 ~/.grok 保持不變",
+  "settings.sessionDataMode.banner.sharedWithCli":
+    "與 CLI 共用：Agent 主目錄為 ~/.grok（與終端機 Grok Build 同一工作階段列表）。",
+  "settings.sessionDataMode.banner.noRewriteSecrets":
+    "共用模式下應用拒絕改寫 agent 密鑰 / config.toml — 需要應用代寫設定時請改用獨立模式。",
+  "settings.sessionDataMode.banner.conflictPossible":
+    "App 與 CLI 同時寫同一工作階段索引可能衝突 — 跨模式不會靜默合併歷史。",
+  "settings.autoUpdateIdle": "需要時再檢查 — 尚無更新狀態。",
+  "settings.autoUpdateBody.checking":
+    "正在連線已簽名更新端點或 GitHub Releases…",
+  "settings.autoUpdateBody.downloading":
+    "正在下載已簽名安裝包。安裝成功前智慧體繼續執行。",
+  "settings.autoUpdateBody.installing":
+    "正在暫存更新。智慧體、語音、遠端 IM 與鏡像僅在安裝準備成功後才會停止。",
+  "settings.autoUpdateBody.ready":
+    "準備好後可安裝並重新啟動。安裝失敗不會停止智慧體。",
+  "settings.autoUpdateBody.manual":
+    "請開啟發佈頁或下載本平台安裝包。此建置不支援應用程式內靜默安裝。",
+  "settings.autoUpdateBody.agentsNote":
+    "智慧體、語音、遠端 IM 與鏡像繼續執行；僅在安裝準備成功後才會停止。",
+  "settings.autoUpdateError.network":
+    "無法連線更新伺服器。請檢查網路或代理後重試。",
+  "settings.autoUpdateError.signature":
+    "更新包簽名校驗失敗。請使用已簽名正式版，或從 GitHub Releases 下載。",
+  "settings.autoUpdateError.pluginMissing":
+    "此建置未啟用應用程式內更新（未簽名或本機版）。請點「檢查更新」開啟 GitHub Releases。",
+  "settings.autoUpdateError.notReady":
+    "更新尚未就緒。請等待下載完成後再點「安裝並重新啟動」。",
+  "settings.autoUpdateError.hostOnly":
+    "應用更新僅在桌面端可用，瀏覽器預覽中不可用。",
+  "settings.autoUpdateError.other":
+    "更新失敗。你仍可開啟發佈頁並手動安裝。",
+  "settings.autoUpdateChannelUnsupported":
+    "更新通道：手動安裝（此安裝包類型不支援自動更新）",
+  "settings.autoUpdateChannelHostOnly":
+    "更新通道：僅桌面端（此處不可用）",
+  "cliTrust.grade.verified": "校驗已通過",
+  "cliTrust.grade.missingSidecar": "無校驗檔",
+  "cliTrust.grade.mismatch": "校驗和不匹配",
+  "cliTrust.grade.unverifiedAllowed": "已允許未校驗安裝",
+  "cliTrust.grade.unknown": "校驗狀態未知",
+  "cliTrust.hint.missingSidecar":
+    "官方鏡像目前未發佈 SHA-256 校驗檔。安裝依賴 HTTPS 白名單 + 二進位探測，未經密碼學校驗。",
+  "cliTrust.hint.mismatch":
+    "已發佈校驗和與下載內容不一致，安裝已拒絕——校驗失敗時不可強制略過。",
+  "cliTrust.hint.unverifiedAllowed":
+    "在無已發佈校驗檔的情況下完成安裝（逃生開關或預設「缺校驗可裝」策略）。",
+  "cliTrust.hint.unknown":
+    "尚無 App 託管安裝的校驗記錄。手動或外部安裝不評級。",
+  "settings.askDemo.title": "Ask-user 示範路徑",
+  "settings.askDemo.desc":
+    "建議步驟：無需四處尋找設定，即可對比 Ask 與 YOLO。應用只準備權限與範例提示詞——真實問卷仍取決於模型與 CLI。",
+  "settings.askDemo.honesty":
+    "誠實說明：真正的 `ask_user_question` 取決於模型與 Grok Build CLI。應用不會自動傳送提示詞，也不會聲稱 Agent 一定會提問。",
+  "settings.askDemo.step.policyAsk": "將權限策略設為 Ask",
+  "settings.askDemo.step.policyAskHint": "使用產品 Ask，以便工具與提問可以彈出確認。",
+  "settings.askDemo.step.notYolo": "確保 YOLO / 一律核准已關閉",
+  "settings.askDemo.step.notYoloHint": "YOLO 會略過確認，不適合作為 Ask 對比基線。",
+  "settings.askDemo.step.askUserEnabled": "保持向使用者提問已啟用",
+  "settings.askDemo.step.askUserEnabledHint":
+    "關閉「停用向使用者提問」（Agent 分頁 / --no-ask-user），以允許問卷。",
+  "settings.askDemo.step.samplePrompt": "在對話中貼上範例提示詞（可選）",
+  "settings.askDemo.step.samplePromptHint":
+    "僅為建議措辭——請自行複製並傳送。不保證 Agent 會提問。",
+  "settings.askDemo.chip.pass": "就緒",
+  "settings.askDemo.chip.fail": "需設定",
+  "settings.askDemo.chip.next": "建議",
+  "settings.askDemo.blocker.policy": "權限策略不是 Ask。",
+  "settings.askDemo.blocker.yolo": "YOLO / 一律核准已開啟。",
+  "settings.askDemo.blocker.noAskUser": "向使用者提問已停用（--no-ask-user）。",
+  "settings.askDemo.apply": "套用建議的 Ask 策略",
+  "settings.askDemo.applied": "已套用 Ask 策略並重新啟用向使用者提問。",
+  "settings.askDemo.appliedPolicyOnly": "已套用 Ask 策略。",
+  "settings.askDemo.copyPrompt": "複製範例提示詞",
+  "settings.askDemo.copied": "範例提示詞已複製——請自行貼到對話中。",
+  "settings.askDemo.copyFailed": "無法複製到剪貼簿。",
+  "settings.askDemo.preview": "預覽範例問卷",
+  "settings.askDemo.previewTitle": "示範問卷（非來自 Agent）",
+  "settings.askDemo.previewBanner":
+    "僅預覽——此問卷由應用內建用於示範，並非即時 Agent 回合發出。",
+  "settings.askDemo.openDocs": "Ask-user 文件",
+  "settings.askDemo.openDocsFailed": "無法在瀏覽器中開啟文件。",
+  "settings.askDemo.ready": "設定看起來已適合 Ask 路徑示範。需要時再貼上範例提示詞。",
+  "settings.askDemo.blocked": "請先處理紅色清單項目，或點擊「套用建議的 Ask 策略」。",
   "settings.remoteIm.security.title": "安全運維",
   "settings.remoteIm.security.subtitle": "遠端安全檢查清單",
   "settings.remoteIm.security.lead":
@@ -7068,101 +6689,412 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.security.yoloConfirmBody":
     "遠端 YOLO 會讓 IM 回合在無常規桌面權限流程的情況下自動核准工具。請僅與嚴格的 allow-from 列表一起使用。確認啟用？",
   "settings.remoteIm.security.yoloConfirmOk": "啟用 YOLO",
-  "settings.remoteIm.cmd.project": "列出 / 綁定已信任專案（新會話）",
-  "settings.remoteIm.cmd.resume": "列出 / 恢復 App 歷史會話",
-  "settings.remoteIm.cmd.new": "新會話，保持專案",
-  "settings.remoteIm.cmd.status": "查看綁定狀態",
-  "settings.remoteIm.cmd.context": "查看目前會話上下文用量",
-  "settings.remoteIm.cmd.compact": "壓縮目前 agent 會話上下文",
-  "settings.remoteIm.cmd.help": "歡迎與命令說明",
-  "settings.remoteIm.cmd.whoami": "查看發送者 id",
-  "settings.remoteIm.cmd.stop": "中斷目前任務",
-  "settings.remoteIm.cmd.account": "查看已儲存帳號與 SuperGrok 剩餘額度",
-  "settings.remoteIm.cmd.switch": "按序號或標籤切換目前 Grok 帳號",
-  "settings.remoteIm.bridge.telegramNativeCommands":
-    "Telegram：Bridge 啟動後會註冊原生 / 命令選單；/p、/r、/account 的結果可透過可翻頁的行內按鈕選擇。",
-  "settings.remoteIm.channel.feishu": "飛書",
-  "settings.remoteIm.channel.lark": "Lark",
-  "settings.remoteIm.channel.dingtalk": "釘釘",
-  "settings.remoteIm.channel.wecom": "企業微信",
-  "settings.remoteIm.channel.weixin": "微信個人",
-  "settings.remoteIm.channel.wpsXiezuo": "WPS 協作",
-  "settings.remoteIm.channel.weibo": "微博",
-  "settings.remoteIm.channel.qq": "QQ（OneBot）",
-  "settings.remoteIm.channel.qqbot": "QQ 官方機器人",
-  "settings.remoteIm.channel.telegram": "Telegram",
-  "settings.remoteIm.channel.slack": "Slack",
-  "settings.remoteIm.channel.discord": "Discord",
-  "settings.remoteIm.channel.matrix": "Matrix",
-  "settings.remoteIm.channel.line": "LINE",
-  "settings.remoteIm.channel.wpsAgentspace": "WPS 數字員工",
-
-  "ui.errorBoundary.title": "此檢視渲染出錯",
-  "ui.errorBoundary.body":
-    "聊天區域無法顯示。磁碟上的工作階段仍保留 — 可重試或切換對話。",
-  "ui.errorBoundary.retry": "重試",
-
-  // GitHub PR hub
-  "prHub.title": "Pull requests",
-  "prHub.desc":
-    "透過 GitHub CLI（`gh pr list`）列出目前專案的開啟 PR。展開可查看 CI 檢查與近期討論留言。若缺少 gh/git 或非倉庫，則軟失敗提示。",
-  "prHub.refresh": "重新整理",
-  "prHub.refreshing": "重新整理中…",
-  "prHub.loading": "正在載入 Pull requests…",
-  "prHub.count": "{n} 個開啟",
-  "prHub.empty": "沒有開啟的 Pull request",
-  "prHub.emptyBody": "此倉庫目前沒有開啟的 PR（或不符合預設篩選）。",
-  "prHub.needProject": "未選擇專案",
-  "prHub.needProjectBody": "在工作台選擇專案資料夾後，可列出其 GitHub Pull requests。",
-  "prHub.needTauri": "PR 中心需要 Grok 桌面視窗。",
-  "prHub.needGh": "找不到 GitHub CLI",
-  "prHub.needGhBody":
-    "請安裝 GitHub CLI（`gh`）並登入（`gh auth login`）。PATH 需包含 `gh`（桌面應用也會搜尋 `~/.grok/bin` 與常見安裝路徑）。",
-  "prHub.needGit": "找不到 git",
-  "prHub.needGitBody": "請安裝 git，並確保桌面應用的 PATH 可找到它。",
-  "prHub.notGit": "不是 git 倉庫",
-  "prHub.notGitBody": "目前專案資料夾不在 git 工作樹內。",
-  "prHub.unavailable": "無法列出 Pull requests",
-  "prHub.unavailableBody": "gh pr list 失敗。請檢查登入、遠端倉庫與網路。",
-  "prHub.error": "PR 中心錯誤",
-  "prHub.open": "開啟",
-  "prHub.openInBrowser": "在瀏覽器中開啟 Pull request",
-  "prHub.openConversation": "開啟討論",
-  "prHub.openCheck": "開啟檢查詳情",
-  "prHub.draft": "草稿",
-  "prHub.mergeable": "可合併",
-  "prHub.conflicting": "有衝突",
-  "prHub.mergeableUnknown": "合併狀態未知",
-  "prHub.author": "作者 {name}",
-  "prHub.untitled": "（無標題）",
-  "prHub.expandDetails": "顯示檢查與留言",
-  "prHub.collapseDetails": "隱藏檢查與留言",
-  "prHub.expandChecks": "顯示 CI 檢查",
-  "prHub.collapseChecks": "隱藏 CI 檢查",
-  "prHub.checks.title": "CI 檢查",
-  "prHub.checks.colName": "名稱",
-  "prHub.checks.colState": "狀態",
-  "prHub.checks.none": "無檢查",
-  "prHub.checks.loading": "正在載入檢查…",
-  "prHub.checks.failed": "無法載入檢查",
-  "prHub.checks.fixCi": "用 Grok 修復",
-  "prHub.checks.fixCiTitle":
-    "將修復 CI 的草稿插入輸入框（不會自動傳送）",
-  "prHub.comments.title": "近期留言",
-  "prHub.comments.loading": "正在載入留言…",
-  "prHub.comments.failed": "無法載入留言",
-  "prHub.comments.none": "尚無留言",
-  "prHub.comments.comment": "留言",
-  "prHub.comments.review": "審查",
-  "prHub.comments.open": "開啟留言",
-  "prHub.comments.unknownAuthor": "未知",
-  "prHub.comments.emptyBody": "（無正文）",
-  "prHub.comments.askGrok": "問 Grok",
-  "prHub.comments.askGrokTitle":
-    "將關於此留言的草稿插入輸入框（不會自動傳送）",
-  "prHub.draftInsertedToast": "草稿已插入輸入框",
-  "prHub.review.approved": "已核准",
-  "prHub.review.changesRequested": "請求修改",
-  "prHub.review.commented": "已留言",
-  "prHub.review.dismissed": "已駁回",
+  "reliability.supportZip.confirmTitle": "匯出支援包？",
+  "reliability.supportZip.confirmMessage":
+    "請先核對下方去敏清單。支援包絕不會包含金鑰、登入憑證或 API Key。",
+  "reliability.supportZip.confirmAction": "匯出支援包",
+  "reliability.supportZip.checklistTitle": "將包含的部分（已去敏）",
+  "reliability.supportZip.secretsNever":
+    "絕不會包含金鑰（無 secrets.json、帳戶登入或原始 API Key）。",
+  "reliability.supportZip.redacted": "已去敏",
+  "reliability.supportZip.whenAvailable": "主機上存在時才寫入",
+  "reliability.supportZip.sectionOmitted": "本次不包含",
+  "reliability.supportZip.auditNotIncluded":
+    "工具稽核帳本不在此壓縮檔內 — 請改用「稽核」匯出。",
+  "reliability.supportZip.manifestPreview": "文字清單預覽",
+  "reliability.supportZip.section.doctor": "Doctor 報告（doctor.json）",
+  "reliability.supportZip.section.doctorHint":
+    "健康檢查；介面未傳入時由主機重新產生（僅路徑，無金鑰）。",
+  "reliability.supportZip.section.settings": "應用程式設定（settings.json）",
+  "reliability.supportZip.section.settingsHint":
+    "僅當本機存在設定檔時寫入；金鑰已去敏。",
+  "reliability.supportZip.section.meta": "應用程式 / 系統中繼資料（meta.json）",
+  "reliability.supportZip.section.metaHint":
+    "版本、系統架構、工作階段與專案數量 — 不含含金鑰路徑。",
+  "reliability.supportZip.section.stall": "停滯時間軸（stall-timeline.json）",
+  "reliability.supportZip.section.stallHint":
+    "僅在有可靠性中心停滯訊號時寫入結構化快照。",
+  "reliability.supportZip.section.logs": "近期日誌（logs/）",
+  "reliability.supportZip.section.logsHint":
+    "主機上存在時才寫入近期日誌；限大小並去敏 — 絕不虛構日誌。",
+  "reliability.supportZip.section.readme": "README.txt",
+  "reliability.supportZip.section.readmeHint": "給接收方的壓縮檔內容說明。",
+  "reliability.supportZip.emptyHostOnly": "支援包需要桌面應用程式",
+  "reliability.supportZip.emptyHostOnlyHint":
+    "匯出僅在 Tauri 主機上執行 — 請在桌面版 Grok App 中產生去敏支援包。",
+  "reliability.supportZip.failHostOnly": "支援包需要桌面應用程式（瀏覽器中不可用）",
+  "reliability.supportZip.failCancel": "已取消匯出支援包",
+  "reliability.supportZip.failIo": "無法寫入支援包（磁碟或權限）",
+  "reliability.supportZip.failEmpty": "目前沒有可誠實寫入支援包的內容",
+  "doctor.platformMatrix.title": "平台能力矩陣",
+  "doctor.platformMatrix.hint":
+    "如實展示本安裝在 macOS / Windows / Linux 上的能力說明：路徑探測、沙箱核心、視窗裝飾、更新路徑、媒體迴路。補充 Windows 日用清單，不編造探測結果。",
+  "doctor.platformMatrix.col.capability": "能力",
+  "doctor.platformMatrix.col.status": "狀態",
+  "doctor.platformMatrix.col.detail": "說明",
+  "doctor.platformMatrix.row.platform": "平台",
+  "doctor.platformMatrix.row.cliPathProbe": "CLI 路徑探測",
+  "doctor.platformMatrix.row.sandboxEnforcement": "沙箱核心",
+  "doctor.platformMatrix.row.windowChrome": "視窗裝飾",
+  "doctor.platformMatrix.row.autoUpdate": "應用自動更新",
+  "doctor.platformMatrix.row.mediaLoopback": "媒體迴路",
+  "doctor.platformMatrix.status.pass": "通過",
+  "doctor.platformMatrix.status.warn": "警告",
+  "doctor.platformMatrix.status.na": "不適用",
+  "doctor.platformMatrix.status.unknown": "未知",
+  "doctor.platformMatrix.msg.platform.mac": "macOS（已偵測）。",
+  "doctor.platformMatrix.msg.platform.win": "Windows（已偵測）。",
+  "doctor.platformMatrix.msg.platform.linux": "Linux（已偵測）。",
+  "doctor.platformMatrix.msg.platform.unknown":
+    "未能辨識平台 — 能力說明可能不完整。",
+  "doctor.platformMatrix.msg.cli.found": "路徑探測已解析到 Grok Build CLI 二進位。",
+  "doctor.platformMatrix.msg.cli.missing":
+    "路徑探測未找到 Grok Build 二進位 — 請安裝或在 設定 → 執行環境 中指定路徑。",
+  "doctor.platformMatrix.msg.cli.unknown":
+    "CLI 路徑探測結果尚不可用（請重新執行 Doctor）。",
+  "doctor.platformMatrix.msg.sandbox.off":
+    "沙箱隔離已關閉 — 未請求核心強制。",
+  "doctor.platformMatrix.msg.sandbox.macSeatbelt":
+    "macOS Seatbelt：開啟隔離時 CLI 文件支援 OS 沙箱強制。",
+  "doctor.platformMatrix.msg.sandbox.linuxLandlock":
+    "Linux Landlock：開啟隔離時 CLI 文件支援 OS 沙箱強制。",
+  "doctor.platformMatrix.msg.sandbox.winSoftFail":
+    "Windows：CLI 可能接受沙箱設定但 soft-fail、無核心強制 — 請勿當作硬性安全邊界。",
+  "doctor.platformMatrix.msg.sandbox.platformSoft":
+    "此平台 OS 沙箱強制 soft-fail（CLI 可能在無隔離情況下繼續執行）。",
+  "doctor.platformMatrix.msg.sandbox.unknown":
+    "此平台的沙箱核心支援未知。",
+  "doctor.platformMatrix.msg.chrome.macOverlay":
+    "macOS Overlay 標題列 + 交通燈（tauri.macos.conf）。",
+  "doctor.platformMatrix.msg.chrome.winFrameless":
+    "Windows 無邊框自繪窗控（最小化 / 最大化 / 關閉）— tauri.windows.conf。",
+  "doctor.platformMatrix.msg.chrome.linuxDecorated":
+    "Linux 使用標準視窗裝飾（基礎 tauri.conf）。",
+  "doctor.platformMatrix.msg.chrome.unknown":
+    "此平台的視窗裝飾佈局未分類。",
+  "doctor.platformMatrix.msg.update.silent":
+    "已簽名發行路徑：支援應用內靜默自動更新。",
+  "doctor.platformMatrix.msg.update.manual":
+    "手動 / GitHub 更新路徑（本機、未簽名或外掛關閉）— 開啟 Releases；不宣稱靜默安裝。",
+  "doctor.platformMatrix.msg.update.unsupported":
+    "此安裝包類型不支援靜默自動更新（例如 Linux .deb/.rpm）— 請手動下載。",
+  "doctor.platformMatrix.msg.update.hostOnly":
+    "未在桌面應用宿主中執行 — 自動更新不適用。",
+  "doctor.platformMatrix.msg.update.unknown":
+    "更新通道尚未回報 — 請勿假定靜默安裝。",
+  "doctor.platformMatrix.msg.media.loopback":
+    "本機媒體走迴路 HTTP（127.0.0.1）並經 path-scope 白名單 — 產品路徑不用 raw media://。",
+  "doctor.platformMatrix.msg.media.unavailable":
+    "媒體迴路端點不可用 — 宿主媒體服務就緒前預覽可能 soft-fail。",
+  "doctor.platformMatrix.msg.media.unknown":
+    "此平台的媒體迴路能力未分類。",
+  "settings.privacy.externalOtel": "外部 OpenTelemetry（企業）",
+  "settings.privacy.externalOtelDesc":
+    "CLI 雙重 opt-in：將用量匯出到客戶自有 OTLP 收集器（GROK_EXTERNAL_OTEL + exporter）。與產品遙測、/privacy 編碼資料無關；預設無內容（content-free）。未設定時本應用不會虛構為「關閉」，也從不寫入收集器密鑰。",
+  "settings.privacy.externalOtel.dualOptIn": "雙重 opt-in",
+  "settings.privacy.externalOtel.status.off":
+    "外部 OTEL 已關閉（主開關明確為關）",
+  "settings.privacy.externalOtel.status.incomplete":
+    "雙重 opt-in 不完整（僅有主開關或僅有 exporter）",
+  "settings.privacy.externalOtel.status.ready":
+    "外部 OTEL 就緒（主開關 + exporter）",
+  "settings.privacy.externalOtel.status.unknown":
+    "外部 OTEL 未設定 — 不宣稱已關閉",
+  "settings.privacy.externalOtel.status.hostOnly":
+    "外部 OTEL 狀態需要桌面應用程式",
+  "settings.privacy.externalOtel.unknownNotOff":
+    "「未設定」不等於「關閉」。缺失的 GROK_EXTERNAL_OTEL / exporter 保持未知——本應用不會把外部 OTEL 虛構為已停用。",
+  "settings.privacy.externalOtel.incompleteHint":
+    "雙重 opt-in 需要主開關（GROK_EXTERNAL_OTEL / otel_enabled）以及至少一個 exporter（otlp 或 console）。任一半單獨啟用都不會生效。",
+  "settings.privacy.externalOtel.check.master":
+    "主開關 — GROK_EXTERNAL_OTEL=1 或 [telemetry] otel_enabled = true",
+  "settings.privacy.externalOtel.check.exporter":
+    "Exporter — OTEL_METRICS_EXPORTER 或 OTEL_LOGS_EXPORTER = otlp | console",
+  "settings.privacy.externalOtel.check.contentFree":
+    "預設無內容 — 除非開啟內容門控，否則不匯出提示詞、程式碼、路徑或工具參數",
+  "settings.privacy.externalOtel.check.noAppSecrets":
+    "本應用從不寫入 OTEL 密鑰 — 收集器鑑權僅用 OTEL_EXPORTER_OTLP_HEADERS（不進 config.toml）",
+  "settings.privacy.externalOtel.check.independent":
+    "獨立資料流 — 非產品遙測、非 /privacy 編碼資料、不攜帶 SpaceXAI 憑證",
+  "settings.privacy.externalOtel.step.done": "已滿足",
+  "settings.privacy.externalOtel.step.missing": "缺失",
+  "settings.privacy.externalOtel.step.unknown": "未知 / 未設定",
+  "settings.privacy.externalOtel.contentFree":
+    "CLI 預設匯出無內容用量 schema。可選 OTEL_LOG_USER_PROMPTS / OTEL_LOG_TOOL_DETAILS 開啟有限內容。",
+  "settings.privacy.externalOtel.noSecrets":
+    "本應用不寫入 OTEL headers 或權杖。請僅在行程環境中設定收集器鑑權。",
+  "settings.privacy.externalOtel.sharedNote":
+    "共用模式下 App 隱私鍵為唯讀。外部 OTEL 由 CLI 行程透過環境變數 / [telemetry] otel_* 設定——本應用不會寫入。",
+  "settings.privacy.externalOtel.copyEnv": "複製環境變數範本",
+  "settings.privacy.externalOtel.copied": "已複製",
+  "doctor.windowsDayuse.title": "Windows 日常驗收",
+  "doctor.windowsDayuse.lead":
+    "面向 Windows 日常使用的驗收清單。App 可自動探測部分項，其餘保持手動。未探測時不會臆造 SmartScreen / 未簽章狀態。",
+  "doctor.windowsDayuse.notTarget":
+    "macOS / Linux 不是本清單目標平台 — 項顯示為 N/A。請在 Windows 建置上驗證安裝、CLI、含空白路徑與鏡像日常使用。",
+  "doctor.windowsDayuse.summary":
+    "{pass} 通過 · {fail} 失敗 · {manual} 手動 · {na} 不適用",
+  "doctor.windowsDayuse.copy": "複製清單",
+  "doctor.windowsDayuse.copied": "已複製清單",
+  "doctor.windowsDayuse.copyFail": "無法複製清單",
+  "doctor.windowsDayuse.docs": "驗收文件",
+  "doctor.windowsDayuse.platform.win": "Windows",
+  "doctor.windowsDayuse.platform.mac": "macOS",
+  "doctor.windowsDayuse.platform.linux": "Linux",
+  "doctor.windowsDayuse.platform.other": "其他",
+  "doctor.windowsDayuse.status.pass": "通過",
+  "doctor.windowsDayuse.status.fail": "失敗",
+  "doctor.windowsDayuse.status.manual": "手動",
+  "doctor.windowsDayuse.status.na": "不適用",
+  "doctor.windowsDayuse.item.installPath": "安裝路徑（Release / SmartScreen）",
+  "doctor.windowsDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
+  "doctor.windowsDayuse.item.projectSpaces": "含空白的專案路徑",
+  "doctor.windowsDayuse.item.singleAttachment": "單次貼上附件",
+  "doctor.windowsDayuse.item.appUpdateCheck": "檢查更新（關於）",
+  "doctor.windowsDayuse.item.mirrorReadonly": "手機鏡像預設唯讀",
+  "doctor.windowsDayuse.detail.na": "目前平台不適用。",
+  "doctor.windowsDayuse.detail.installPath.manual":
+    "從 GitHub Release 安裝（setup.exe 或可攜 zip）。未簽章時 SmartScreen 可能提示 — App 在未探測時不會臆造該狀態。",
+  "doctor.windowsDayuse.detail.installPath.pass": "安裝簽章探測為已簽章 / 通過。",
+  "doctor.windowsDayuse.detail.installPath.fail": "安裝簽章探測為未簽章或被攔截。",
+  "doctor.windowsDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
+  "doctor.windowsDayuse.detail.cliFound.fail":
+    "未找到 CLI — 開啟 Setup 或 設定 → 執行階段 安裝 / 設定路徑。",
+  "doctor.windowsDayuse.detail.cliFound.manual":
+    "CLI 探測尚未就緒 — 重新執行 Doctor 或開啟 Setup。",
+  "doctor.windowsDayuse.detail.projectSpaces.pass":
+    "受信任專案路徑包含空白（不應再出現主控台閃爍風暴）。",
+  "doctor.windowsDayuse.detail.projectSpaces.fail":
+    "尚無受信任專案 — 請新增並信任一個資料夾（路徑可含空白）。",
+  "doctor.windowsDayuse.detail.projectSpaces.manual":
+    "已有受信任專案；若尚未驗證，請用含空白路徑再測一次。",
+  "doctor.windowsDayuse.detail.singleAttachment.manual":
+    "手動：完成一次工具對話，貼上一張截圖 — 確認只有單一附件（App 無法自動證明貼上）。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.pass":
+    "可用的更新檢查路徑（應用程式內或 GitHub 手動）。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.fail":
+    "此建置不支援更新檢查 — 請試 設定 → 關於。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.manual":
+    "開啟 設定 → 關於 → 檢查更新（有新版本則下載安裝套件）。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.pass":
+    "手機鏡像為唯讀（寫入關閉）— 預設姿態。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.fail":
+    "手機鏡像寫入已開啟 — 日常驗收期望唯讀；可在 遠端控制 → 鏡像 關閉寫入。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.manual":
+    "鏡像狀態未知 — 開啟 遠端控制 → 鏡像；日常驗收期望唯讀啟動 + 可重新產生連結。",
+  "doctor.windowsDayuse.link.about": "關於 / 更新",
+  "doctor.windowsDayuse.link.mirror": "鏡像",
+  "doctor.windowsDayuse.link.setup": "Setup / CLI",
+  "doctor.windowsDayuse.link.runtime": "執行階段",
+  "settings.runtime.platformTip": "平台",
+  "settings.runtime.platformTipDesc":
+    "用於介面文案的作業系統探測（檔案管理員、日常驗收清單）。Windows 建置可在 Doctor 中查看 day-use 驗收卡片。",
+  "settings.permissionRulesEmptyHint":
+    "可先加一條安全的 git allow、危險 shell 的 deny，或編輯類的 ask。儲存後會軟重啟 agent。",
+  "settings.permissionRulesFilterEmpty": "沒有規則符合目前篩選。",
+  "settings.permissionRulesFilterEmptyHint":
+    "清除篩選，或換一個模式子字串再試。",
+  "settings.permissionRulesFilterPlaceholder": "篩選規則…",
+  "settings.permissionRulesFilterClear": "清除篩選",
+  "settings.permissionRulesCountsAria":
+    "規則計數：拒絕 {deny}，詢問 {ask}，允許 {allow}",
+  "settings.permissionRulesSimSamples": "範例工具呼叫",
+  "settings.permissionRulesSimHonesty.allow":
+    "預覽：首條符合的 allow 規則將允許此呼叫。真實 agent 仍受模式 / 內建策略約束。",
+  "settings.permissionRulesSimHonesty.deny":
+    "預覽：deny 規則優先（deny > ask > allow）。真實 agent 將攔截此呼叫。",
+  "settings.permissionRulesSimHonesty.ask":
+    "預覽：命中 ask 規則 — agent 會在執行前詢問。",
+  "settings.permissionRulesSimHonesty.none":
+    "預覽：無精簡規則符合。回落到權限模式與內建策略 — 不會自動放行。",
+  "settings.permissionRulesSimCopy": "複製符合摘要",
+  "settings.permissionRulesSimCopied": "已複製",
+  "settings.permissionRulesSimCopyFailed": "無法複製符合摘要",
+  "resources.openErr.noEditor":
+    "沒有可用的程式碼編輯器。請安裝編輯器，或在設定中選擇 Finder／檔案總管。",
+  "resources.openErr.notFound": "找不到該檔案 — 可能已被移動或刪除。",
+  "resources.openErr.pathDenied": "無法開啟此路徑（權限或白名單限制）。",
+  "resources.openErr.hostOnly": "在編輯器中開啟需要桌面端應用程式。",
+  "resources.openErr.cancelled": "已取消開啟。",
+  "resources.openErr.other": "無法在編輯器中開啟。",
+  "resources.revealErr.notFound": "找不到該路徑 — 無法在檔案管理員中顯示。",
+  "resources.revealErr.pathDenied": "無法顯示此路徑（權限或白名單限制）。",
+  "resources.revealErr.hostOnly": "在檔案管理員中顯示需要桌面端應用程式。",
+  "resources.revealErr.cancelled": "已取消顯示。",
+  "resources.revealErr.other": "無法在檔案管理員中顯示。",
+  "settings.openTargetEmpty":
+    "未偵測到程式碼編輯器 — Finder／檔案總管仍可用。安裝 VS Code、Cursor 等編輯器後即可在此開啟檔案。",
+  "settings.openTargetPreferredMissing":
+    "偏好的編輯器未安裝或未偵測到。在重新選擇之前將使用 Finder／檔案總管。",
+  "settings.compactionApply.softRespawn":
+    "變更模式或細節會 soft-respawn 已連線的 Agent，使下一則訊息重新載入 --compaction-mode / --compaction-detail。",
+  "settings.compactionApply.nextSpawn":
+    "目前無 live Agent — 模式與細節在下次連線 / 啟動時生效。",
+  "settings.compactionApply.unsupported":
+    "此 CLI 版本不接受壓縮相關 flags（需要 0.2.117+）。仍可能設定環境變數；舊版 CLI soft-fail 並忽略未知 flags。",
+  "settings.compactionApply.note":
+    "已連線 Agent 時，變更模式或細節會 soft-respawn，使下一則訊息重新載入 flags。無 live Agent 時設定等待下次連線。舊版 CLI soft-fail（不支援時省略 flags）。手動 /compact 是獨立的 Agent 回合，不會改這些啟動 flags。",
+  "slash.compactApply.nextTurn":
+    "確認後立即以 Agent 回合傳送 /compact。目前行程上的模式/細節會用於此次壓縮。",
+  "slash.compactApply.softRespawn":
+    "模式/細節變更會 soft-respawn Agent — 下一則訊息重新載入壓縮 flags。",
+  "slash.compactApply.unsupported":
+    "此 CLI 可能忽略 --compaction-mode / --compaction-detail（需要 0.2.117+）。已連線時 /compact 仍按 Agent 預設執行。",
+  "slash.compactApply.idle":
+    "尚無 live Agent — 請先連線。壓縮模式/細節等待下次啟動；之後 /compact 作為回合執行。",
+  "slash.compactApply.modeOnly":
+    "此次壓縮使用的模式：{mode}（啟動 flags；變更會 soft-respawn 已連線 Agent）。",
+  "slash.compactApply.modeDetail":
+    "壓縮模式 {mode}，分段細節 {detail}（啟動 flags；變更會 soft-respawn 已連線 Agent）。",
+  "slash.compactApply.savingsKnown":
+    "上次已知壓縮：{before} → {after} tokens（節省 {saved}）。非估算。",
+  "slash.compactApply.savingsUnknown":
+    "在 Agent 回報壓縮前後 token 數之前無法計算節省量。上方「壓縮後（估）」僅為粗略保留比例猜測。",
+  "slash.compactApply.presetNote":
+    "強度預設僅用於填入 /compact 的保留備註模板 — CLI 無 light/standard/aggressive 參數。",
+  "doctor.linuxDayuse.title": "Linux 日常驗收",
+  "doctor.linuxDayuse.lead":
+    "面向 Linux 日常使用的驗收清單。App 可自動探測部分項，其餘保持手動。未探測時不會臆造 Landlock、系統匣自啟或 Wayland/X11 狀態。",
+  "doctor.linuxDayuse.notTarget":
+    "macOS / Windows 不是本清單目標平台 — 項顯示為 N/A。請在 Linux 建置上驗證 CLI、含空白路徑、沙箱 Landlock、系統匣與顯示伺服器日常使用。",
+  "doctor.linuxDayuse.summary":
+    "{pass} 通過 · {fail} 失敗 · {warn} 警告 · {manual} 手動 · {na} 不適用",
+  "doctor.linuxDayuse.copy": "複製清單",
+  "doctor.linuxDayuse.copied": "已複製清單",
+  "doctor.linuxDayuse.copyFail": "無法複製清單",
+  "doctor.linuxDayuse.docs": "驗收文件",
+  "doctor.linuxDayuse.platform.win": "Windows",
+  "doctor.linuxDayuse.platform.mac": "macOS",
+  "doctor.linuxDayuse.platform.linux": "Linux",
+  "doctor.linuxDayuse.platform.other": "其他",
+  "doctor.linuxDayuse.status.pass": "通過",
+  "doctor.linuxDayuse.status.fail": "失敗",
+  "doctor.linuxDayuse.status.manual": "手動",
+  "doctor.linuxDayuse.status.warn": "警告",
+  "doctor.linuxDayuse.status.na": "不適用",
+  "doctor.linuxDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
+  "doctor.linuxDayuse.item.pathSpaces": "含空白的專案路徑",
+  "doctor.linuxDayuse.item.sandboxLandlock": "沙箱 → Landlock 強制",
+  "doctor.linuxDayuse.item.trayAutostart": "系統匣 / 自啟動",
+  "doctor.linuxDayuse.item.waylandX11": "Wayland / X11 工作階段",
+  "doctor.linuxDayuse.item.appUpdateCheck": "檢查更新（關於）",
+  "doctor.linuxDayuse.detail.na": "目前平台不適用。",
+  "doctor.linuxDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
+  "doctor.linuxDayuse.detail.cliFound.fail":
+    "未找到 CLI — 開啟 Setup 或 設定 → 執行階段 安裝 / 設定路徑。",
+  "doctor.linuxDayuse.detail.cliFound.manual":
+    "CLI 探測尚未就緒 — 重新執行 Doctor 或開啟 Setup。",
+  "doctor.linuxDayuse.detail.pathSpaces.pass": "受信任專案路徑包含空白。",
+  "doctor.linuxDayuse.detail.pathSpaces.fail":
+    "尚無受信任專案 — 請新增並信任一個資料夾（路徑可含空白）。",
+  "doctor.linuxDayuse.detail.pathSpaces.manual":
+    "已有受信任專案；若尚未驗證，請用含空白路徑再測一次。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.na":
+    "沙箱設定檔為關閉 — Landlock 強制不適用。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.warn":
+    "沙箱設定檔非關閉。在 Linux 上核心強制為 Landlock（Seatbelt 僅限 macOS）。未探測時 App 不會重新驗證 Landlock。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.pass":
+    "Landlock 探測報告：所選沙箱設定檔的強制已生效。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.fail":
+    "Landlock 探測報告：沙箱非關閉但強制未生效。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.manual":
+    "沙箱設定未知 — 開啟 設定 → 一般 → 權限 設定設定檔。關閉 = 不適用；非關閉 = Linux 上為 Landlock。",
+  "doctor.linuxDayuse.detail.trayAutostart.pass": "系統匣 / 自啟動探測為已啟用。",
+  "doctor.linuxDayuse.detail.trayAutostart.fail": "系統匣 / 自啟動探測為未啟用。",
+  "doctor.linuxDayuse.detail.trayAutostart.manual":
+    "手動：若依賴系統匣圖示與桌面自啟動，請自行確認。未探測時 App 不會臆造狀態。",
+  "doctor.linuxDayuse.detail.waylandX11.pass":
+    "顯示伺服器探測報告為 Wayland 或 X11。",
+  "doctor.linuxDayuse.detail.waylandX11.fail":
+    "顯示伺服器探測報告既非 Wayland 也非 X11。",
+  "doctor.linuxDayuse.detail.waylandX11.manual":
+    "未探測時狀態未知 — 請手動確認 Wayland 或 X11，以便排查合成器相關問題。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.pass":
+    "可用的更新檢查路徑（應用程式內或 GitHub 手動）。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.fail":
+    "此建置不支援更新檢查 — 請試 設定 → 關於。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.manual":
+    "開啟 設定 → 關於 → 檢查更新（有新版本則下載安裝套件）。",
+  "doctor.linuxDayuse.link.about": "關於 / 更新",
+  "doctor.linuxDayuse.link.setup": "Setup / CLI",
+  "doctor.linuxDayuse.link.runtime": "執行階段",
+  "doctor.linuxDayuse.link.sandbox": "沙箱",
+  "session.tracesEmptyHint":
+    "在有 agent 對話的選單中選擇「僅本機匯出」或「匯出並上傳」。僅儲存路徑 — 不會把封存載入應用。",
+  "session.tracesEmptyFilterHint": "試試其他關鍵詞，或切換「全部 / 本機 / 已上傳」篩選。",
+  "session.tracesClearFilters": "清除篩選",
+  "session.tracesFilterAria": "Trace 匯出範圍",
+  "session.tracesFilter.all": "全部",
+  "session.tracesFilter.local": "本機",
+  "session.tracesFilter.uploaded": "已上傳",
+  "session.tracesUploadedBadgeTitle":
+    "匯出所報告的上傳狀態（僅路徑 — 不儲存遠端 URL）",
+  "prov.empty.hostOnly":
+    "自訂供應商需要桌面端應用程式（Tauri）。請在 Grok App 中新增中轉。",
+  "prov.empty.noCustom":
+    "尚無自訂中轉 — 可新增 OpenAI 相容供應商，或使用上方的官方 Grok。",
+  "prov.empty.loadError": "無法載入供應商列表。請先修復上方宿主錯誤後重試。",
+  "prov.apply.softRespawn":
+    "供應商已儲存，Agent 已重載 — 下一則訊息使用新設定（無需重新啟動應用程式）。",
+  "prov.apply.savedDiskOnly":
+    "供應商已寫入磁碟。用「使用」啟用（或在輸入框選擇）後才會切換路由。",
+  "prov.apply.hostOnly":
+    "修改供應商需要桌面端應用程式。請在 Grok App 中儲存中轉。",
+  "prov.err.validation":
+    "無法儲存：供應商欄位無效（id、URL、Key 或模型）。請檢查表單後重試。",
+  "prov.err.network": "無法儲存：網路或宿主 IPC 錯誤。請檢查連線後重試。",
+  "prov.err.hostOnly": "儲存供應商需要桌面端應用程式（Tauri）。",
+  "prov.err.other": "無法儲存供應商（{detail}）。",
+  "prov.ping.err.timeout": "探測逾時。請檢查 Base URL 與網路後重試。",
+  "prov.ping.err.network":
+    "無法連線供應商端點（網路/DNS/TLS）。請檢查 Base URL。",
+  "prov.ping.err.auth": "供應商拒絕了金鑰（401/403）。請更新 API Key 後重試。",
+  "prov.ping.err.hostOnly": "擷取模型 / 探測需要桌面端應用程式。",
+  "prov.ping.err.invalidUrl":
+    "Base URL 無效。請使用完整的 https://…/v1 根位址。",
+  "prov.ping.err.other": "無法探測供應商（{detail}）。",
+  "ext.hooks.activity.export": "匯出脫敏…",
+  "ext.hooks.activity.exportHint":
+    "將目前篩選的活動列表下載為脫敏 JSON（不含密鑰）",
+  "ext.hooks.activity.copySummary": "複製摘要",
+  "ext.hooks.activity.copySummaryHint":
+    "將目前篩選的活動列表複製為脫敏純文字",
+  "ext.hooks.activity.exportCopied": "已複製 {count} 條脫敏紀錄",
+  "ext.hooks.activity.exportDownloaded": "已下載 {count} 條脫敏紀錄",
+  "ext.hooks.activity.exportEmpty": "目前篩選下沒有可匯出的活動。",
+  "ext.hooks.activity.exportCopyFailed": "無法複製摘要（剪貼簿被攔截）",
+  "ext.hooks.activity.exportDownloadFailed": "無法下載活動匯出",
+  "ext.hooks.activity.exportFailed": "活動匯出失敗",
+  "settings.cliSessionsEmptyHint":
+    "在此 home 下執行 Grok Build，或若預期是終端機 CLI 工作階段，請切換對話資料模式。",
+  "settings.cliSessionsEmptyCliMissing":
+    "找不到 Grok Build CLI — 暫無 CLI 工作階段可列出。",
+  "settings.cliSessionsEmptyCliMissingHint":
+    "請在「設定 → 執行階段」安裝或定位 CLI。安裝後重新整理可顯示本機磁碟工作階段。",
+  "settings.cliSessionsEmptyError": "無法載入 CLI 工作階段。",
+  "settings.cliSessionsEmptyErrorHint":
+    "請檢查 GROK_HOME 路徑與 CLI 安裝，然後重新整理。",
+  "settings.cliSessions.filterAll": "全部",
+  "settings.cliSessions.filterLinked": "已關聯",
+  "settings.cliSessions.filterUnlinked": "未關聯",
+  "settings.cliSessionsFilterEmptyHint": "嘗試其他關聯篩選，或清除篩選。",
+  "settings.cliSessionsSearchEmptyHint": "換個關鍵字，或清除搜尋。",
+  "settings.cliSessions.clearFilters": "清除篩選",
+  "settings.cliSessions.err.cli_missing": "CLI 缺失",
+  "settings.cliSessions.err.cli_missingHint":
+    "請安裝 Grok Build CLI，然後重新整理列表。",
+  "settings.cliSessions.err.cli_unsupported": "CLI 不支援搜尋",
+  "settings.cliSessions.err.cli_unsupportedHint":
+    "目前 CLI 可能沒有 sessions search — 已改為篩選本機列表。",
+  "settings.cliSessions.err.timeout": "搜尋逾時",
+  "settings.cliSessions.err.timeoutHint": "請縮小關鍵字或重新整理本機列表。",
+  "settings.cliSessions.err.host_only": "需要桌面應用程式",
+  "settings.cliSessions.err.host_onlyHint":
+    "CLI 工作階段探索僅在桌面應用程式中可用。",
+  "settings.cliSessions.err.permission": "權限不足",
+  "settings.cliSessions.err.permissionHint": "請檢查 GROK_HOME 下的檔案權限。",
+  "settings.cliSessions.err.other": "搜尋失敗",
+  "settings.cliSessions.err.otherHint": "請重新整理後再試。",
+  "settings.cliSessionsImportPlan":
+    "將匯入 {importable} / {selected}（略過已關聯 {skipped}）",
 };

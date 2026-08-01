@@ -7,18 +7,13 @@ export type Locale = "zh" | "zh-TW" | "en";
 export type MessageKey = keyof typeof en;
 
 const en = {
-  // App chrome
   "app.name": "Grok",
   "app.tagline": "MIT · Unofficial · Sister project grok-go",
   "app.versionFooter": "Grok v0.2.3 · MIT · Unofficial · Sister project grok-go",
-
-  // Window chrome (Windows self-drawn controls)
   "window.minimize": "Minimize",
   "window.maximize": "Maximize",
   "window.restore": "Restore",
   "window.close": "Close",
-
-  // Sidebar chrome
   "sidebar.expand": "Expand sidebar",
   "sidebar.collapse": "Collapse sidebar",
   "sidebar.resize": "Resize sidebar",
@@ -82,8 +77,6 @@ const en = {
   "user.theme": "Theme",
   "user.themeLight": "Switch to light",
   "user.themeDark": "Switch to dark",
-
-  // Project / session actions
   "project.pin": "Pin project",
   "project.unpin": "Unpin project",
   "project.reveal": "Reveal in Finder",
@@ -129,7 +122,6 @@ const en = {
   "project.colorSet": '"{name}" color: {color}',
   "project.colorCleared": '"{name}" color cleared',
   "project.rules": "Project rules",
-  /** CLI `grok -c/--continue` — most recent agent session for this project path. */
   "project.continueCwd": "Continue last agent for this project",
   "project.continueCwdWorking": "Continuing last agent…",
   "project.continueCwdNone":
@@ -145,7 +137,6 @@ const en = {
     "Continue last agent requires the desktop app window.",
   "project.continueCwdImportFailed":
     "Found an agent session but could not import it into the app.",
-
   "session.pin": "Pin chat",
   "session.unpin": "Unpin chat",
   "session.pinned": "Pinned",
@@ -403,11 +394,6 @@ const en = {
   "message.nodes.user": "You",
   "message.nodes.assistant": "Grok",
   "message.nodes.count": "{current} / {total}",
-  "message.copyLink": "Copy link",
-  "message.linkCopied": "Link copied",
-  "message.deepLinkMissing": "Message not found in this conversation",
-
-  // Main
   "main.rightPane": "Files pane",
   "main.leftPane": "Sidebar",
   "main.leftPaneShow": "Show sidebar",
@@ -522,39 +508,12 @@ const en = {
   "resources.openDefault": "Open with system default",
   "resources.revealFolder": "Reveal in file manager",
   "resources.noEditors": "No code editors detected on this machine",
-  "resources.openErr.noEditor":
-    "No code editor available. Install one or choose Finder/Explorer in Settings.",
-  "resources.openErr.notFound":
-    "File not found — it may have been moved or deleted.",
-  "resources.openErr.pathDenied":
-    "This path cannot be opened (permission or allowlist).",
-  "resources.openErr.hostOnly": "Open in editor needs the desktop app.",
-  "resources.openErr.cancelled": "Open cancelled.",
-  "resources.openErr.other": "Could not open in editor.",
-  "resources.revealErr.notFound":
-    "Path not found — nothing to reveal in the file manager.",
-  "resources.revealErr.pathDenied":
-    "This path cannot be revealed (permission or allowlist).",
-  "resources.revealErr.hostOnly": "Reveal needs the desktop app.",
-  "resources.revealErr.cancelled": "Reveal cancelled.",
-  "resources.revealErr.other": "Could not reveal in file manager.",
   "resources.needProject": "Add or select a project to browse files here.",
   "resources.emptyPreview": "No file open",
   "resources.emptyPreviewHint":
     "Pick a file from the tree on the right to preview it here.",
   "resources.plan": "Plan",
   "resources.planEmpty": "No plan is waiting for review in this session.",
-  "resources.agents": "Agents",
-  "resources.agentsShow": "Show agents rail",
-  "resources.agentsHide": "Hide agents rail",
-  "agentsRail.noTasks": "No agent tasks in this turn",
-  "agentsRail.busyHint":
-    "The session is working — tool steps and nested subagents will appear here as they start.",
-  "agentsRail.idleHint":
-    "When this chat runs tools or spawns subagents, their task tree shows here without opening the floating Tasks panel.",
-  "agentsRail.filterEmpty": "No tasks match these filters",
-  "agentsRail.filterEmptyHint":
-    "Clear the search or pick another status to see more tasks.",
   "resources.copyPathShort": "Path",
   "resources.tabClose": "Close tab",
   "resources.tabCloseOthers": "Close other tabs",
@@ -702,18 +661,6 @@ const en = {
     "Undo {n} hunk(s) in “{name}”. This writes the file without those hunks.",
   "changes.batchHunksAcceptDone": "Accepted {n} hunk(s)",
   "changes.batchHunksRejectDone": "Rejected {n} hunk(s)",
-  "changes.comment": "Comment",
-  "changes.commentTip": "Add a review note on this hunk and insert it into the chat composer",
-  "changes.commentModalTitle": "Comment on hunk",
-  "changes.commentModalDesc": "Review note for “{name}” · hunk {n}. Inserts a structured prompt into the composer — does not send automatically.",
-  "changes.commentPlaceholder": "What should the agent fix or explain about this change?",
-  "changes.commentInsert": "Insert into chat",
-  "changes.commentInsertedToast": "Review note inserted into composer",
-  "changes.commentErrorEmpty": "Enter a short review note first",
-  "changes.commentErrorTooLong": "Note is too long (max ~4000 characters)",
-  "changes.commentErrorGeneric": "Could not build the chat prompt",
-
-  // Project rules (AGENTS.md / CLAUDE.md / .grok rules) — project menu modal
   "rules.title": "Rules",
   "rules.modalTitleNamed": "Project rules · {name}",
   "rules.empty": "No project rule files found",
@@ -906,58 +853,6 @@ const en = {
   "dashboard.batchAgents": "Batch agents…",
   "dashboard.batchAgentsTitle":
     "Dispatch the same prompt to multiple projects (sessions or headless)",
-  "dashboard.peek.label": "Session details",
-  "dashboard.peek.expand": "Show details for {title}",
-  "dashboard.peek.collapse": "Hide details for {title}",
-  "dashboard.peek.status": "Status",
-  "dashboard.peek.tool": "Tool",
-  "dashboard.peek.noTool": "No active tool",
-  "dashboard.peek.project": "Project",
-  "dashboard.peek.model": "Model",
-  "dashboard.peek.activity": "Updated",
-  "dashboard.peek.openChat": "Open chat",
-  "dashboard.dispatch.title": "Dispatch new agent",
-  "dashboard.dispatch.projectLabel": "Trusted project",
-  "dashboard.dispatch.promptPlaceholder": "Prompt for a new session…",
-  "dashboard.dispatch.button": "Dispatch",
-  "dashboard.dispatch.buttonTitle":
-    "Open a new chat on the selected project, fill the prompt, and send",
-  "dashboard.dispatch.noTrusted":
-    "No trusted projects yet. Trust a project in the sidebar to dispatch.",
-  "dashboard.dispatch.emptyPrompt": "Enter a prompt to dispatch.",
-  "dashboard.dispatch.noProject": "Pick a trusted project first.",
-  "dashboard.dispatch.untrusted":
-    "That project is not trusted. Trust it before dispatching.",
-  "dashboard.dispatch.started": "Dispatched to {name}",
-  "dashboard.openBoard": "Board view",
-  "dashboard.openBoardTitle":
-    "Open sessions as a status board (needs you / running / idle / done)",
-
-  "taskBoard.title": "Session task board",
-  "taskBoard.hint":
-    "Sessions grouped by local status from the app and live agent state — not CI or cloud. Click a card to open that chat.",
-  "taskBoard.open": "Session task board",
-  "taskBoard.searchPlaceholder": "Filter sessions…",
-  "taskBoard.projectSearchPlaceholder": "Filter by project…",
-  "taskBoard.includeArchived": "Include archived",
-  "taskBoard.includeArchivedTitle":
-    "Show archived idle sessions in the Done column",
-  "taskBoard.columnsLabel": "Session status columns",
-  "taskBoard.column.needsYou": "Needs you",
-  "taskBoard.column.running": "Running",
-  "taskBoard.column.idle": "Idle",
-  "taskBoard.column.done": "Done",
-  "taskBoard.column.error": "Error",
-  "taskBoard.columnEmpty": "No sessions",
-  "taskBoard.empty": "No sessions to show",
-  "taskBoard.emptyHint":
-    "Start a chat or wait for an agent turn — sessions appear here by status.",
-  "taskBoard.filterEmpty": "No sessions match these filters",
-  "taskBoard.filterEmptyHint":
-    "Clear the search or include archived to see more sessions.",
-  "taskBoard.clearFilters": "Clear filters",
-  "taskBoard.totalCount": "{n} sessions",
-
   "batchAgents.title": "Batch agents",
   "batchAgents.hint":
     "Select trusted projects, enter one prompt, then open a session per project or run headless one-shots. Failures soft-fail per project and never wipe other work.",
@@ -988,27 +883,8 @@ const en = {
   "batchAgents.resultsMeta":
     "ok {ok} · soft-fail {soft} · error {err} · skipped {skip}",
   "batchAgents.copySummary": "Copy summary",
-  "batchAgents.downloadSummary": "Download .txt",
   "batchAgents.copied": "Copied",
-  "batchAgents.downloaded": "Downloaded",
-  "batchAgents.exportEmpty": "No batch results to export yet.",
-  "batchAgents.exportFailed": "Could not export results.",
-  "batchAgents.templatesLabel": "Prompt templates",
-  "batchAgents.tpl.codeReview.title": "Code review",
-  "batchAgents.tpl.codeReview.body":
-    "Review recent changes in this repository. Call out risks, missing tests, and incomplete work with concrete file paths. Be honest about uncertainty — do not invent findings.",
-  "batchAgents.tpl.fixTests.title": "Fix tests",
-  "batchAgents.tpl.fixTests.body":
-    "Find failing or flaky tests in this repository, fix them with minimal changes, and report what still fails. Do not claim green if tests were not run.",
-  "batchAgents.tpl.summarize.title": "Summarize",
-  "batchAgents.tpl.summarize.body":
-    "Summarize what this repository does, its layout, and current risks or open TODOs. Prefer evidence from the tree over speculation.",
-  "batchAgents.eligibilitySummary":
-    "{ready} ready · {skip} not eligible of {selected} selected",
-  "batchAgents.eligibilityNone": "No eligible projects in the current selection.",
   "batchAgents.status.ok": "OK",
-  "batchAgents.status.okEmpty": "OK (no detail)",
-  "batchAgents.status.partial": "Partial",
   "batchAgents.status.softFail": "Soft-fail",
   "batchAgents.status.error": "Error",
   "batchAgents.status.skipped": "Skipped",
@@ -1026,7 +902,6 @@ const en = {
   "batchAgents.openFromSettings": "Open batch agents…",
   "batchAgents.toastDone":
     "Batch done: {ok} ok · {soft} soft-fail · {err} error · {skip} skipped",
-
   "media.loadError": "Could not load this media in the app preview.",
   "media.openExternal": "Open with system player",
   "media.loading": "Loading media…",
@@ -1041,7 +916,6 @@ const en = {
   "media.err.mediaServerUnavailable":
     "Local media server is unavailable — try again in a moment.",
   "media.err.other": "Could not load this media in the app preview.",
-
   "office.loading": "Rendering document…",
   "office.renderFailed": "Could not render this document in the app",
   "office.openExternal": "Open externally",
@@ -1051,34 +925,17 @@ const en = {
   "office.prevPage": "Previous",
   "office.nextPage": "Next",
   "office.pageOf": "{page} / {total}",
-
-  // Composer
   "composer.placeholder": "Type freely…",
   "composer.add": "Add",
   "composer.addFiles": "Upload files",
   "composer.planMode": "Plan mode",
   "composer.planModeHint": "Turn on plan mode",
   "composer.skills": "Skills",
-  "composer.skillsPicker": "Skills",
   "composer.skillsEmpty": "No invocable skills found",
   "composer.skillsEmptyHint":
     "Install from Extensions → Marketplace, or enable skills under Extensions → Skills.",
   "composer.skillsLoadError": "Could not load skills",
   "composer.skillsLoading": "Loading skills…",
-  "skillsPicker.aria": "Skills for this prompt",
-  "skillsPicker.placeholder": "Search skills…",
-  "skillsPicker.recent": "Recent",
-  "skillsPicker.all": "All skills",
-  "skillsPicker.loading": "Loading skills…",
-  "skillsPicker.empty": "No invocable skills installed",
-  "skillsPicker.emptyHint":
-    "Install from Extensions → Marketplace, or enable skills under Extensions → Skills.",
-  "skillsPicker.filterEmpty": "No matching skills",
-  "skillsPicker.filterEmptyHint": "Try another search, or clear the filter.",
-  "skillsPicker.hostOnly": "Could not load skills",
-  "skillsPicker.hostOnlyHint":
-    "Skills need the desktop host and Grok Build CLI. Check Settings → CLI / Runtime.",
-  "skillsPicker.clearFilter": "Clear filter",
   "composer.goal": "Goal",
   "composer.goalHint": "Set a goal to pursue continuously",
   "composer.goalPlaceholder":
@@ -1198,21 +1055,6 @@ const en = {
   "composer.queueEditEmpty": "Message cannot be empty",
   "composer.queueEmptyPreview": "(attachment)",
   "composer.queueFilesCount": "{n} files",
-  // Send-intent honesty (steer vs queue vs concurrent — pure classification)
-  "composer.intent.enqueue":
-    "Send queues a follow-up for after this turn (this chat). Use Steer on a queued item to interject mid-turn.",
-  "composer.intent.enqueueShort": "Queue follow-up",
-  "composer.intent.steer":
-    "Steer injects mid-turn guidance into the live task (not a queued follow-up).",
-  "composer.intent.foreignConcurrent":
-    "Send starts concurrent work here — another chat is still running. Open a new chat to keep drafts separate.",
-  "composer.intent.foreignShort": "Send (concurrent)",
-  "composer.intent.blockedPermission": "Resolve the permission prompt first",
-  "composer.intent.openAsNewChat": "Open as new chat",
-  "composer.intent.stripEnqueue": "Follow-ups — send after this turn",
-  "composer.intent.stripHold": "Auto-send paused",
-  "composer.intent.stripSteerHint":
-    "Follow-ups after this turn · Steer injects mid-turn",
   "composer.stop": "Stop",
   "composer.noProject": "General",
   "composer.noProjectWriteHint":
@@ -1230,13 +1072,13 @@ const en = {
   "composer.worktreeTip": "Switch git worktree / branch",
   "composer.worktreeSwitched": "Using worktree {name} ({branch})",
   "composer.worktreeNew": "New worktree",
-  "composer.worktreeNewChat": "Parallel task (worktree)",
+  "composer.worktreeNewChat": "New worktree & chat",
   "composer.worktreeNewTitle": "New git worktree",
-  "composer.worktreeNewChatTitle": "Parallel task (worktree)",
+  "composer.worktreeNewChatTitle": "New worktree & chat",
   "composer.worktreeNewHint":
     "Creates a linked git worktree (default: CLI layout under ~/.grok/worktrees) and checks out a new branch. Same idea as grok --worktree=name.",
   "composer.worktreeNewChatHint":
-    "Creates a linked worktree, then starts a new chat with that folder as the project cwd (session meta bound for the CLI/WT badge). Parallel work without touching the main checkout.",
+    "Creates a linked worktree, then starts a new chat with that folder as the project cwd (session meta bound for the CLI/WT badge).",
   "composer.worktreeName": "Name",
   "composer.worktreeNamePlaceholder": "feat-login",
   "composer.worktreeLayout": "Location",
@@ -1249,14 +1091,6 @@ const en = {
   "composer.worktreeRefInvalid":
     "Start point must not start with '-' or contain line breaks",
   "composer.worktreePathPreview": "Path: {path}",
-  "composer.worktreeFirstPrompt": "First prompt (optional)",
-  "composer.worktreeFirstPromptHint":
-    "Used when opening a new chat — filled into the composer after create.",
-  "composer.worktreeFirstPromptPlaceholder":
-    "What should the agent work on in this worktree?",
-  "composer.worktreeAutoSend": "Send after open",
-  "composer.worktreeAutoSendHint":
-    "When checked, send the first prompt once the new chat opens (trusted projects only). Default off.",
   "composer.worktreeCreate": "Create",
   "composer.worktreeCreateChat": "Create & open chat",
   "composer.worktreeCreating": "Creating…",
@@ -1266,14 +1100,6 @@ const en = {
   "composer.worktreeNameRequired": "Enter a worktree name",
   "composer.worktreeNameInvalid":
     "Use letters, digits, '.', '_' or '-' (no spaces or slashes)",
-  "composer.parallelTask": "Parallel task (worktree)",
-  "composer.parallelTaskHostOnly":
-    "Parallel task needs the desktop app window.",
-  "composer.parallelTaskNoProject": "Select a project first.",
-  "composer.parallelTaskUntrusted":
-    "Trust this project before starting a parallel worktree task.",
-  "composer.parallelTaskNotGit":
-    "This folder is not a git repository (or git is unavailable).",
   "composer.clearProject": "General workspace",
   "composer.projectUntrusted": "Not trusted yet",
   "composer.projectBound": "Session bound to “{name}”",
@@ -1284,32 +1110,6 @@ const en = {
   "composer.modelSearchPlaceholder": "Search models…",
   "composer.modelSearchEmpty": "No models match",
   "composer.effort": "Reasoning",
-  // Model / effort mid-session apply honesty (toast + menu footer)
-  "composer.apply.model.immediate":
-    "Model applied on the live agent (session/set_model).",
-  "composer.apply.model.softRespawn":
-    "Model applies on next message after reconnect.",
-  "composer.apply.model.nextMessage":
-    "Model saved — applies on the next message.",
-  "composer.apply.model.unsupported":
-    "This model change cannot be applied mid-session.",
-  "composer.apply.effort.immediate": "Reasoning effort applied immediately.",
-  "composer.apply.effort.softRespawn":
-    "Reasoning applies on next message after reconnect (no mid-session set_effort).",
-  "composer.apply.effort.nextMessage":
-    "Reasoning saved — applies on the next message.",
-  "composer.apply.effort.unsupported":
-    "This reasoning change cannot be applied mid-session.",
-  "composer.apply.error.setModelFailed":
-    "Could not switch model on the live agent",
-  "composer.apply.error.softRespawnFailed":
-    "Could not reload the agent with new settings",
-  "composer.apply.error.invalidModel": "Invalid model",
-  "composer.apply.error.invalidEffort": "Invalid reasoning effort",
-  "composer.apply.error.disconnected": "Agent is not connected",
-  "composer.apply.error.busy":
-    "Agent is mid-turn — change applies after this turn",
-  "composer.apply.error.other": "Could not apply model or reasoning change",
   "composer.mode": "Mode",
   "composer.permission": "Permission",
   "composer.access": "Access",
@@ -1371,13 +1171,10 @@ const en = {
   "resources.browserReload": "Reload",
   "resources.browserFailed": "Could not load this page in the built-in browser.",
   "resources.browserIframeHint": "Some sites block iframe embedding. Use “Open externally”, or run the desktop app for a real webview.",
-
-  // Catalog labels
   "effort.high": "High",
   "effort.medium": "Medium",
   "effort.low": "Low",
   "effort.xhigh": "Extra high",
-  /** Alias for top ladder slot when spawn id is `max` (DeepSeek). */
   "effort.max": "Extra high",
   "mode.agent": "Agent",
   "mode.plan": "Plan",
@@ -1414,8 +1211,6 @@ const en = {
   "cliPermission.dontAsk": "dontAsk — deny without prompts",
   "cliPermission.bypassPermissions": "bypassPermissions — YOLO full access",
   "cliPermission.plan": "plan — product Plan mode (composer)",
-
-  // Search panel
   "search.title": "Search",
   "search.placeholder": "Search chats, projects, actions, or message content…",
   "search.projects": "Projects",
@@ -1460,8 +1255,6 @@ const en = {
     "Command palette ranking: Keyword (substring) or Hybrid (keyword + local token overlap on titles/snippets). Not cloud embeddings — no embedding API. Scope chips (All / Title / Content) and Include archived are remembered in this browser.",
   "settings.sessionSearchRank.keyword": "Keyword",
   "settings.sessionSearchRank.hybrid": "Hybrid (local tokens)",
-
-  // In-conversation find (Cmd/Ctrl+F)
   "chatFind.placeholder": "Find in conversation…",
   "chatFind.prev": "Previous match",
   "chatFind.next": "Next match",
@@ -1469,13 +1262,10 @@ const en = {
   "chatFind.count": "{current} / {total}",
   "chatFind.noMatches": "No matches",
   "chatFind.aria": "Find in conversation",
-
-  // Plan card
   "plan.waiting": "Waiting for plan",
   "plan.ready": "Plan ready for review",
   "plan.context": "Context",
   "plan.empty": "(empty plan)",
-  /** PLAN-MODE-PRO — Resources → Plan empty states */
   "plan.emptyDisabledTitle": "Plan mode is off",
   "plan.emptyDisabledHint":
     "Allow plan mode in Settings → Agent so the agent can draft plans. You can still browse archived plans from history.",
@@ -1500,20 +1290,6 @@ const en = {
     "Optional note for the agent. Leave empty to ask for a general revision.",
   "plan.reviseNotePlaceholder": "What should change? (optional)",
   "plan.reviseNoteSubmit": "Send revision request",
-  /** Editable plan canvas (Resources → Plan before approve) */
-  "plan.edit": "Edit plan",
-  "plan.cancelEdit": "Cancel edit",
-  "plan.requestWithDraft": "Request changes with draft",
-  "plan.approveDirtyHint":
-    "You have unsaved plan edits. Request changes with your draft first, or discard them to approve the agent's plan.",
-  "plan.draftPlaceholder": "Edit the plan markdown…",
-  "plan.draftAria": "Plan draft markdown",
-  "plan.discardTitle": "Discard plan edits?",
-  "plan.discardMessage":
-    "Your local edits will be lost. The agent’s original plan stays until you request changes or approve.",
-  "plan.discardConfirm": "Discard edits",
-  "plan.draftEmpty": "Plan draft cannot be empty.",
-  "plan.draftTooLong": "Plan draft is too long (max about 200k characters).",
   "plan.phaseLabel": "Thinking {n}",
   "plan.steps": "Steps",
   "plan.openInResources": "Open in resources",
@@ -1542,8 +1318,6 @@ const en = {
   "plan.historyDecisionApproved": "Approved",
   "plan.historyDecisionAbandoned": "Abandoned",
   "plan.historyDecisionCompleted": "Completed",
-
-  // Sticky plan/goal bar
   "planBar.aria": "Plan and goal status",
   "planBar.goal": "Goal active",
   "planBar.planMode": "Plan mode",
@@ -1554,8 +1328,6 @@ const en = {
   "planBar.current": "Now",
   "planBar.expand": "Open in resources",
   "planBar.clearGoal": "Clear goal",
-
-  // Settings / onboarding
   "settings.title": "Settings",
   "settings.backToApp": "Back to app",
   "settings.backToIndex": "Back to settings",
@@ -1734,45 +1506,6 @@ const en = {
     "Save writes allowlisted keys and soft-respawns the agent so the next turn reloads config.toml.",
   "settings.privacy.apply.independentOnly":
     "Writes apply only in independent agent-home mode. Shared mode is a read-only probe of ~/.grok.",
-  "settings.privacy.externalOtel": "External OpenTelemetry (enterprise)",
-  "settings.privacy.externalOtelDesc":
-    "CLI dual opt-in for a customer-owned OTLP collector (GROK_EXTERNAL_OTEL + exporters). Independent of product telemetry and /privacy coding-data. Content-free by default. This App never invents “off” when env/config is unset, and never writes collector secrets.",
-  "settings.privacy.externalOtel.dualOptIn": "Dual opt-in",
-  "settings.privacy.externalOtel.status.off":
-    "External OTEL off (master explicitly disabled)",
-  "settings.privacy.externalOtel.status.incomplete":
-    "Incomplete dual opt-in (master or exporter only)",
-  "settings.privacy.externalOtel.status.ready":
-    "External OTEL ready (master + exporter)",
-  "settings.privacy.externalOtel.status.unknown":
-    "External OTEL unset — not claimed off",
-  "settings.privacy.externalOtel.status.hostOnly":
-    "External OTEL status needs the desktop app",
-  "settings.privacy.externalOtel.unknownNotOff":
-    "Unset is not off. Missing GROK_EXTERNAL_OTEL / exporters stay unknown — this App never invents external OTEL as disabled.",
-  "settings.privacy.externalOtel.incompleteHint":
-    "Dual opt-in requires both the master switch (GROK_EXTERNAL_OTEL / otel_enabled) and at least one exporter (otlp or console). Either half alone enables nothing.",
-  "settings.privacy.externalOtel.check.master":
-    "Master switch — GROK_EXTERNAL_OTEL=1 or [telemetry] otel_enabled = true",
-  "settings.privacy.externalOtel.check.exporter":
-    "Exporter — OTEL_METRICS_EXPORTER or OTEL_LOGS_EXPORTER = otlp | console",
-  "settings.privacy.externalOtel.check.contentFree":
-    "Content-free by default — no prompts, code, paths, or tool args unless content gates are enabled",
-  "settings.privacy.externalOtel.check.noAppSecrets":
-    "App never writes OTEL secrets — collector auth is OTEL_EXPORTER_OTLP_HEADERS only (not config.toml)",
-  "settings.privacy.externalOtel.check.independent":
-    "Independent stream — not product telemetry, not /privacy coding-data, not SpaceXAI credentials",
-  "settings.privacy.externalOtel.step.done": "Done",
-  "settings.privacy.externalOtel.step.missing": "Missing",
-  "settings.privacy.externalOtel.step.unknown": "Unknown / unset",
-  "settings.privacy.externalOtel.contentFree":
-    "CLI ships a content-free usage schema by default. Optional OTEL_LOG_USER_PROMPTS / OTEL_LOG_TOOL_DETAILS re-enable limited content.",
-  "settings.privacy.externalOtel.noSecrets":
-    "This App does not write OTEL headers or tokens. Set collector auth in the process environment only.",
-  "settings.privacy.externalOtel.sharedNote":
-    "Shared mode is read-only for App privacy keys. External OTEL is configured on the CLI process via env / [telemetry] otel_* — not written by this App.",
-  "settings.privacy.externalOtel.copyEnv": "Copy env template",
-  "settings.privacy.externalOtel.copied": "Copied",
   "settings.searchResults": "Matching settings",
   "settings.searchOpen": "Open",
   "settings.inspect.manageInExtensions": "Manage in Extensions",
@@ -1884,15 +1617,6 @@ const en = {
   "settings.cliSessionsImportedN": "Imported {n} session(s)",
   "settings.cliSessionsLoading": "Looking for CLI sessions…",
   "settings.cliSessionsEmpty": "No CLI sessions found under the active home.",
-  "settings.cliSessionsEmptyHint":
-    "Run Grok Build in this home, or switch session data mode if you expected terminal CLI sessions.",
-  "settings.cliSessionsEmptyCliMissing":
-    "Grok Build CLI not found — no CLI sessions to list.",
-  "settings.cliSessionsEmptyCliMissingHint":
-    "Install or locate the CLI under Settings → Runtime. Local disk may still show sessions after install.",
-  "settings.cliSessionsEmptyError": "Could not load CLI sessions.",
-  "settings.cliSessionsEmptyErrorHint":
-    "Check GROK_HOME path and CLI install, then refresh.",
   "settings.cliSessionsMsgs": "{n} messages",
   "settings.cliSessionsLinked": "Linked",
   "settings.cliSessionsAgentId": "id {id}",
@@ -1900,42 +1624,15 @@ const en = {
   "settings.cliSessionsCopied": "Copied",
   "settings.cliSessionsFilterPlaceholder":
     "Search summaries and first prompts…",
-  "settings.cliSessions.filterAll": "All",
-  "settings.cliSessions.filterLinked": "Linked",
-  "settings.cliSessions.filterUnlinked": "Unlinked",
   "settings.cliSessionsFilterEmpty": "No sessions match this filter.",
-  "settings.cliSessionsFilterEmptyHint":
-    "Try another link chip or clear filters.",
   "settings.cliSessionsSearching": "Searching CLI sessions…",
   "settings.cliSessionsSearchEmpty": "No CLI sessions match this search.",
-  "settings.cliSessionsSearchEmptyHint":
-    "Try a different query or clear the search.",
-  "settings.cliSessions.clearFilters": "Clear filters",
   "settings.cliSessionsSearchViaCli":
     "Results from grok sessions search (summaries + first prompts)",
   "settings.cliSessionsSearchViaLocal":
     "Local disk search (title, id, cwd, first prompt)",
   "settings.cliSessionsSearchFallback":
     "CLI search unavailable — filtering the local list",
-  "settings.cliSessions.err.cli_missing": "CLI missing",
-  "settings.cliSessions.err.cli_missingHint":
-    "Install Grok Build CLI, then refresh this list.",
-  "settings.cliSessions.err.cli_unsupported": "CLI search unsupported",
-  "settings.cliSessions.err.cli_unsupportedHint":
-    "This CLI build may lack sessions search — filtering the local list instead.",
-  "settings.cliSessions.err.timeout": "Search timed out",
-  "settings.cliSessions.err.timeoutHint":
-    "Try a narrower query or refresh the local list.",
-  "settings.cliSessions.err.host_only": "Desktop app required",
-  "settings.cliSessions.err.host_onlyHint":
-    "CLI session discovery runs in the desktop app only.",
-  "settings.cliSessions.err.permission": "Permission denied",
-  "settings.cliSessions.err.permissionHint":
-    "Check file permissions under GROK_HOME.",
-  "settings.cliSessions.err.other": "Search failed",
-  "settings.cliSessions.err.otherHint": "Refresh and try again.",
-  "settings.cliSessionsImportPlan":
-    "Import {importable} of {selected} (skip {skipped} already linked)",
   "settings.cliSessionsDeleteRemoteOnly":
     "No on-disk folder under GROK_HOME for this hit (remote-only)",
   "settings.cliSessionsSource": "Scanning {path}",
@@ -1980,14 +1677,6 @@ const en = {
   "settings.compactionDetail.verbose": "Verbose",
   "settings.compactionDetail.help":
     "Only applies when Compaction mode is Segments. CLI default is Verbose.",
-  "settings.compactionApply.softRespawn":
-    "Changing mode or detail soft-respawns a live agent so the next message reloads --compaction-mode / --compaction-detail.",
-  "settings.compactionApply.nextSpawn":
-    "No live agent — mode and detail apply on the next connect / spawn.",
-  "settings.compactionApply.unsupported":
-    "This CLI version does not take compaction flags (need 0.2.117+). Env may still be set; older CLIs soft-fail and ignore unknown flags.",
-  "settings.compactionApply.note":
-    "When a live agent is attached, changing mode or detail soft-respawns so the next message reloads flags. Without a live agent, prefs wait for the next connect. Older CLIs soft-fail (flags omitted when unsupported). Manual /compact is a separate agent turn — it does not change these spawn flags.",
   "settings.twoPassCompaction": "Two-pass prefire compaction",
   "settings.twoPassCompactionDesc":
     "When on, Grok Build may prefire a hierarchical two-pass compact before the main compact (CLI 0.2.117+ config two_pass_compaction_enabled + GROK_TWO_PASS_COMPACTION). Default off. Independent mode writes agent-home config.toml; shared mode keeps the App setting only (does not rewrite ~/.grok). Soft-respawns after change; older CLIs soft-fail (env omitted).",
@@ -2069,58 +1758,6 @@ const en = {
   "settings.memoryBrowser.searchEmptyHintHybridUnavailable":
     "No keyword matches. Embedding is configured for the agent, but App browser hybrid is unavailable (no host CLI path). Never invents embeddings client-side.",
   "settings.memoryBrowser.openEmbedSettings": "Memory embedding settings",
-  "settings.memoryOps": "Memory operations center",
-  "settings.memoryOpsDesc":
-    "Unified memory browser, embedding honesty, and clear scopes. App search is keyword-only — never invents embeddings. CLI hybrid needs an embedding model; browser hybrid stays unavailable without a host search path.",
-  "settings.memoryOps.modeLabel": "Memory search modes",
-  "settings.memoryOps.mode.appKeyword": "App: keyword",
-  "settings.memoryOps.mode.cliHybrid": "CLI agent: hybrid",
-  "settings.memoryOps.mode.hybridUnavailable": "Browser hybrid: unavailable",
-  "settings.memoryOps.mode.memoryOff": "Memory: off",
-  "settings.memoryOps.hybridUnavailableHint":
-    "Embedding model is set for the agent tool, but the App browser has no host hybrid CLI (grok memory search) — keyword scan only. Never invents embeddings.",
-  "settings.memoryOps.openEmbed": "Embedding settings",
-  "settings.memoryOps.presenceLabel": "Dream / watcher config presence",
-  "settings.memoryOps.dream": "Dream",
-  "settings.memoryOps.watcher": "Watcher",
-  "settings.memoryOps.presenceNote":
-    "Config presence only — not a live running status.",
-  "settings.memoryOps.clearLabel": "Clear memory scopes",
-  "settings.memoryOps.clear.workspace": "Clear workspace",
-  "settings.memoryOps.clear.session": "Clear session",
-  "settings.memoryOps.clear.all": "Clear all",
-  "settings.memoryOps.clear.busy": "Clearing…",
-  "settings.memoryOps.clear.confirmTitle.workspace": "Clear workspace memory?",
-  "settings.memoryOps.clear.confirmTitle.session": "Clear session memory?",
-  "settings.memoryOps.clear.confirmTitle.all": "Clear all memory?",
-  "settings.memoryOps.clear.confirmMsg.workspace":
-    "Runs grok memory clear --workspace for the current project (MEMORY.md, session logs, index). App chat history is kept. This cannot be undone.",
-  "settings.memoryOps.clear.confirmMsg.session":
-    "Session-only clear is not available from the App host yet (CLI has no session scope).",
-  "settings.memoryOps.clear.confirmMsg.all":
-    "Runs grok memory clear --all under the active GROK_HOME. Removes global and workspace memory files. App chat history is kept. This cannot be undone.",
-  "settings.memoryOps.clear.done.workspace": "Workspace memory cleared",
-  "settings.memoryOps.clear.done.session": "Session memory cleared",
-  "settings.memoryOps.clear.done.all": "All memory cleared",
-  "settings.memoryOps.clear.unavailable.session":
-    "Session-only clear is not supported by the host CLI yet.",
-  "settings.memoryOps.clear.unavailable.memoryOff":
-    "Turn on Cross-session memory before clearing.",
-  "settings.memoryOps.clear.unavailable.noCwd":
-    "Open a project to clear workspace memory.",
-  "settings.memoryOps.clear.unavailable.host":
-    "This clear scope is not available from the App host.",
-  "settings.memoryOps.empty.memoryOff": "Memory is off",
-  "settings.memoryOps.empty.memoryOffHint":
-    "Enable Cross-session memory above to browse files and clear scopes.",
-  "settings.memoryOps.empty.noProject": "No project selected",
-  "settings.memoryOps.empty.noProjectHint":
-    "Open a project for workspace-scoped memory. Global MEMORY.md may still appear.",
-  "settings.memoryOps.empty.catalog": "No memory files yet",
-  "settings.memoryOps.empty.catalogHint":
-    "Files appear after the agent writes MEMORY.md, session logs, or an index.",
-  "settings.memoryOps.empty.hybridUnavailable":
-    "No memory files · browser hybrid unavailable",
   "settings.memoryEmbed": "Memory embedding (CLI 0.2.117)",
   "settings.memoryEmbedDesc":
     "Read allowlisted `[memory.*]` keys from the active GROK_HOME config.toml (embedding, search, MMR, dream, watcher). Missing keys stay unset. Independent agent-home can write safe keys + soft-respawn; shared mode is read-only. App browser search is always keyword — never invents embeddings client-side.",
@@ -2242,93 +1879,6 @@ const en = {
   "settings.codebaseIndexing.saving": "Saving…",
   "settings.codebaseIndexing.needTauri":
     "Codebase indexing settings require the desktop app.",
-  "settings.lspTools": "LSP tools",
-  "settings.lspToolsDesc":
-    "Honest status for Grok Build `[features].lsp_tools` in the active GROK_HOME config.toml. Exposes CLI agent lsp tools when on — the App does not run language servers or show live diagnostics. Independent agent-home can write the bool + soft-respawn; shared mode is read-only. Soft-fails when CLI is known older.",
-  "settings.lspTools.path": "Config: {path}",
-  "settings.lspTools.loading": "Loading LSP tools config…",
-  "settings.lspTools.error": "Could not load or update LSP tools config",
-  "settings.lspTools.saved": "LSP tools config saved (agent soft-respawned)",
-  "settings.lspTools.sharedWarning":
-    "Shared mode shows ~/.grok/config.toml (read-only probe). Switch session data mode to independent to write `[features].lsp_tools` into App agent-home.",
-  "settings.lspTools.mode.independent": "Independent (agent-home)",
-  "settings.lspTools.mode.shared": "Shared (~/.grok)",
-  "settings.lspTools.missing": "File not found yet",
-  "settings.lspTools.writable": "Editable",
-  "settings.lspTools.readOnly": "Read-only",
-  "settings.lspTools.presence.unset": "unset",
-  "settings.lspTools.presence.on": "on",
-  "settings.lspTools.presence.off": "off",
-  "settings.lspTools.status.off": "off — agent has no lsp tools",
-  "settings.lspTools.status.on": "on — CLI agent tools only",
-  "settings.lspTools.status.unset": "unset — CLI default off",
-  "settings.lspTools.status.sharedReadonly": "shared read-only",
-  "settings.lspTools.status.cliOld": "CLI older than {min} (soft-fail)",
-  "settings.lspTools.status.hostOnly": "desktop host required",
-  "settings.lspTools.chip.off": "off",
-  "settings.lspTools.chip.on": "on",
-  "settings.lspTools.chip.unset": "unset",
-  "settings.lspTools.chip.sharedReadonly": "shared read-only",
-  "settings.lspTools.chip.cliOld": "CLI < {min}",
-  "settings.lspTools.chip.hostOnly": "host only",
-  "settings.lspTools.chip.cliDefaultOff": "CLI default off",
-  "settings.lspTools.chip.noAppLsp": "App: no LSP client",
-  "settings.lspTools.chip.noDiagnostics": "no live diagnostics",
-  "settings.lspTools.cliUnknown": "CLI version unknown (soft-fail)",
-  "settings.lspTools.enable": "Enable LSP tools",
-  "settings.lspTools.enableDesc":
-    "When on, the CLI agent may use lsp tools if language servers are configured in agent config. When off or unset (CLI default), the agent has no lsp tools. The App never shows a diagnostics list here.",
-  "settings.lspTools.unsetDefaultHint":
-    "Key is unset — CLI default is off. Toggle once to write an explicit bool into config.toml.",
-  "settings.lspTools.empty.off": "When off, the agent has no lsp tools.",
-  "settings.lspTools.empty.offHint":
-    "Enable the flag in independent agent-home to expose CLI agent lsp tools after soft-respawn.",
-  "settings.lspTools.empty.on":
-    "On: CLI agent may use lsp tools if servers are configured.",
-  "settings.lspTools.empty.onHint":
-    "App does not show live diagnostics yet — tools run in the CLI agent only.",
-  "settings.lspTools.empty.unset":
-    "Key unset — CLI default is off (agent has no lsp tools).",
-  "settings.lspTools.empty.unsetHint":
-    "Toggle once to write an explicit `[features].lsp_tools` bool.",
-  "settings.lspTools.empty.sharedReadonly":
-    "Shared mode is read-only for this flag.",
-  "settings.lspTools.empty.sharedReadonlyHint":
-    "Switch session data mode to independent to edit agent-home config.toml.",
-  "settings.lspTools.empty.cliOld":
-    "CLI may be older than {min}; lsp_tools may be ignored (soft-fail).",
-  "settings.lspTools.empty.cliOldHint":
-    "Upgrade Grok Build CLI for the documented surface. Config write still allowed.",
-  "settings.lspTools.empty.hostOnly":
-    "LSP tools settings require the desktop app.",
-  "settings.lspTools.empty.hostOnlyHint":
-    "Open the Tauri desktop host to read or write agent-home config.",
-  "settings.lspTools.empty.noDiagnostics":
-    "No live diagnostics in App — CLI agent tools only when enabled.",
-  "settings.lspTools.empty.noDiagnosticsHint":
-    "When on, the CLI agent may use lsp tools if servers are configured. This workbench never invents a diagnostics list.",
-  "settings.lspTools.banner.sharedReadonly":
-    "Shared mode is read-only — switch to independent to write lsp_tools.",
-  "settings.lspTools.banner.cliOld":
-    "CLI older than {min} — key may be ignored (soft-fail).",
-  "settings.lspTools.banner.hostOnly": "Desktop host required.",
-  "settings.lspTools.banner.softRespawn":
-    "Saving writes config.toml and soft-respawns the agent so the flag is picked up.",
-  "settings.lspTools.banner.noAppLsp":
-    "Grok App does not run language servers itself.",
-  "settings.lspTools.banner.agentToolsOnly":
-    "CLI agent tools only when enabled and servers are configured.",
-  "settings.lspTools.banner.noDiagnostics":
-    "App does not show live diagnostics yet.",
-  "settings.lspTools.refresh": "Refresh",
-  "settings.lspTools.reset": "Reset",
-  "settings.lspTools.save": "Save LSP tools",
-  "settings.lspTools.saving": "Saving…",
-  "settings.lspTools.needTauri": "LSP tools settings require the desktop app.",
-  "settings.lspTools.openConfigSection": "Open agent config sections",
-  "settings.lspTools.copySummary": "Copy status summary",
-  "settings.lspTools.copied": "Copied",
-  "settings.lspTools.copyFailed": "Could not copy summary to clipboard",
   "settings.codebaseSearch": "Project codebase search",
   "settings.codebaseSearchDesc":
     "Search the active project by file path/name and/or file content. Host uses ripgrep when available, otherwise a capped walk. Path-scoped to the trusted project — keyword only; never invents embeddings or CLI code-graph results.",
@@ -2376,81 +1926,11 @@ const en = {
   "settings.codebaseSearch.openResources": "Resources",
   "settings.codebaseSearch.refresh": "Refresh",
   "settings.codebaseSearch.clear": "Clear",
-  "settings.codeGraph": "Code graph",
-  "settings.codeGraphDesc":
-    "Unified honesty for codebase indexing (CLI code graph) and App project search (keyword only). Never invents graph or embedding hits.",
-  "settings.codeGraph.modeLabel": "Code graph status",
-  "settings.codeGraph.chip.appKeyword": "App search: keyword",
-  "settings.codeGraph.chip.cliGraph": "CLI code graph: on",
-  "settings.codeGraph.chip.cliGraphDefaultOn": "CLI code graph: default on",
-  "settings.codeGraph.chip.graphUnavailable": "App graph search: unavailable",
-  "settings.codeGraph.chip.keywordOnly": "Code graph: off",
-  "settings.codeGraph.chip.cliOld": "CLI too old for code graph",
-  "settings.codeGraph.chip.noEmbeddings": "Not embeddings",
-  "settings.codeGraph.mode.keywordOnly":
-    "Codebase indexing is off — CLI will not build a code graph. App project search stays keyword (rg/walk).",
-  "settings.codeGraph.mode.graphEnabledUnknown":
-    "Codebase indexing is on and CLI may build a code graph; App cannot confirm graph readiness or return graph hits yet.",
-  "settings.codeGraph.mode.graphUnavailable":
-    "Codebase indexing is on for CLI code-nav, but App project search has no graph API — results stay keyword only.",
-  "settings.codeGraph.mode.cliOld":
-    "CLI older than {min} — `[features].codebase_indexing` may be ignored (soft-fail). App search stays keyword.",
-  "settings.codeGraph.mode.unsetDefaultOn":
-    "Key is unset — CLI default is on. App does not invent a written config value; project search stays keyword.",
-  "settings.codeGraph.appSearchRemainsKeyword":
-    "App project search remains keyword until the host exposes a real graph search API. Enable indexing for CLI graph/code-nav separately.",
-  "settings.codeGraph.openIndexingSettings": "Codebase indexing settings",
-  "settings.codeGraph.openSearchSettings": "Project codebase search",
-  "settings.codeGraph.empty.cliOld": "CLI too old for code graph indexing",
-  "settings.codeGraph.empty.cliOldHint":
-    "Update Grok Build CLI to use `[features].codebase_indexing`. App search is still keyword only.",
-  "settings.codeGraph.empty.unsetDefaultOn":
-    "Codebase indexing key is unset (CLI default on)",
-  "settings.codeGraph.empty.unsetDefaultOnHint":
-    "Toggle once to write an explicit bool. App search does not use the code graph.",
-  "settings.codeGraph.empty.keywordOnly": "Code graph indexing is off",
-  "settings.codeGraph.empty.keywordOnlyHint":
-    "Turn on codebase indexing for CLI code-nav. App project search stays keyword either way.",
-  "settings.codeGraph.empty.graphUnavailable":
-    "CLI code graph may be enabled — App graph search unavailable",
-  "settings.codeGraph.empty.graphUnavailableHint":
-    "Indexing can help CLI agents; this App surface only runs keyword (rg/walk) project search.",
-  "settings.codeGraph.empty.graphEnabledUnknown":
-    "CLI code graph may be enabled — status unknown in App",
-  "settings.codeGraph.empty.graphEnabledUnknownHint":
-    "App does not probe graph health or invent graph hits. Project search is keyword only.",
-  "settings.codeGraph.empty.searchKeywordIdle":
-    "Type a keyword query to search this project",
-  "settings.codeGraph.empty.searchKeywordIdleHint":
-    "Results are path/name or content matches — never invented graph or embedding hits.",
-  "settings.codeGraph.empty.searchNoMatches": "No keyword matches",
-  "settings.codeGraph.empty.searchNoMatchesHint":
-    "No path/name or content hits under the project. This is not code-graph or vector search.",
-  "settings.codeGraph.rebuild.availableNote":
-    "Host can rebuild the code graph index.",
-  "settings.codeGraph.rebuild.unavailableNote":
-    "App has no host rebuild for the code graph.",
-  "settings.codeGraph.rebuild.cliHint":
-    "If the index is stale, rebuild via Grok Build CLI when that command is available — this panel does not invent a rebuild button.",
   "settings.allowUnverifiedCli": "Allow unverified CLI install",
   "settings.allowUnverifiedCliDesc":
-    "Official mirrors often omit SHA-256 sidecars — missing checksum is a warn-grade risk (HTTPS allowlist + binary probe), allowed by default. Turn this on only to override GROK_CLI_REQUIRE_CHECKSUM=1. A mismatched published checksum always fails closed and is never forceable.",
+    "Official mirrors often omit SHA-256 sidecars; missing checksums are allowed by default (HTTPS allowlist + binary probe). Turn this on to install even when GROK_CLI_REQUIRE_CHECKSUM=1. A mismatched checksum always fails.",
   "settings.cliChecksumVerified": "last install checksum OK",
   "settings.cliChecksumUnverified": "last install unverified",
-  // CLI supply-chain trust grades (Setup risk chip + Settings Runtime)
-  "cliTrust.grade.verified": "Checksum verified",
-  "cliTrust.grade.missingSidecar": "No checksum sidecar",
-  "cliTrust.grade.mismatch": "Checksum mismatch",
-  "cliTrust.grade.unverifiedAllowed": "Unverified install allowed",
-  "cliTrust.grade.unknown": "Checksum status unknown",
-  "cliTrust.hint.missingSidecar":
-    "Official mirrors currently omit published SHA-256 sidecars. Install uses HTTPS allowlist + binary probe; not cryptographically verified.",
-  "cliTrust.hint.mismatch":
-    "Published checksum did not match the download. Install is refused — do not force unverified on mismatch.",
-  "cliTrust.hint.unverifiedAllowed":
-    "Install proceeded without a published sidecar (escape hatch or default missing-sidecar policy).",
-  "cliTrust.hint.unknown":
-    "No App-managed install checksum record yet. Manual or external installs are not graded.",
   "settings.cliPath": "CLI path",
   "settings.cliPathDesc": "Path to the Grok Build CLI binary",
   "settings.cliNotFound": "(not found)",
@@ -2597,12 +2077,11 @@ const en = {
   "agent.capacityRecycledToast":
     "Reclaimed an idle warm agent to free a slot — that session reconnects on its next message.",
   "agent.dataModeRecycledToast":
-    "Agents recycled after session data mode change — histories were not merged; next message reconnects under the new home.",
+    "Agents restarted after data mode change — next message reconnects under the new home.",
   "agent.softRespawnToast":
     "Agent reloaded with new settings — next message reconnects.",
   "agent.processLimitToast":
     "Agent process limit reached (all slots are busy turns). Stop a running session or raise the limit in Settings → Runtime → Process pool.",
-  // Process budget occupancy (Settings pool + Reliability)
   "processBudget.title": "Process budget",
   "processBudget.lead":
     "Live occupancy of warm agent processes (focused live, mid-turn background, idle parked). Cap is Max concurrent agents; idle parked are reclaimed before PROCESS_LIMIT.",
@@ -2668,42 +2147,6 @@ const en = {
   "settings.askUserTimeout.60": "1 minute",
   "settings.askUserTimeout.120": "2 minutes",
   "settings.askUserTimeout.300": "5 minutes",
-  // Ask-user demo path (Settings → Permissions) — prepare only; never invent agent turns
-  "settings.askDemo.title": "Ask-user demo path",
-  "settings.askDemo.desc":
-    "Suggested path to compare Ask vs YOLO without hunting settings. App only prepares policy and a sample prompt — a live questionnaire still depends on the model and CLI.",
-  "settings.askDemo.honesty":
-    "Honesty: real `ask_user_question` depends on the model and Grok Build CLI. The App never auto-sends a prompt and never claims the agent will ask.",
-  "settings.askDemo.step.policyAsk": "Set permission policy to Ask",
-  "settings.askDemo.step.policyAskHint": "Use product Ask so tools and questions can surface prompts.",
-  "settings.askDemo.step.notYolo": "Ensure YOLO / always-approve is off",
-  "settings.askDemo.step.notYoloHint": "YOLO skips confirmations and is a poor Ask comparison baseline.",
-  "settings.askDemo.step.askUserEnabled": "Keep ask-user questions enabled",
-  "settings.askDemo.step.askUserEnabledHint":
-    "Turn off “Disable ask-user questions” (Agent tab / --no-ask-user) so questionnaires are allowed.",
-  "settings.askDemo.step.samplePrompt": "Paste the sample prompt in chat (optional)",
-  "settings.askDemo.step.samplePromptHint":
-    "Suggested wording only — copy and send yourself. Not a guarantee the agent will ask.",
-  "settings.askDemo.chip.pass": "Ready",
-  "settings.askDemo.chip.fail": "Needs setup",
-  "settings.askDemo.chip.next": "Suggested",
-  "settings.askDemo.blocker.policy": "Permission policy is not Ask.",
-  "settings.askDemo.blocker.yolo": "YOLO / always-approve is on.",
-  "settings.askDemo.blocker.noAskUser": "Ask-user questions are disabled (--no-ask-user).",
-  "settings.askDemo.apply": "Apply recommended Ask policy",
-  "settings.askDemo.applied": "Applied Ask policy and re-enabled ask-user questions.",
-  "settings.askDemo.appliedPolicyOnly": "Applied Ask policy.",
-  "settings.askDemo.copyPrompt": "Copy sample prompt",
-  "settings.askDemo.copied": "Sample prompt copied — paste it in chat yourself.",
-  "settings.askDemo.copyFailed": "Could not copy to clipboard.",
-  "settings.askDemo.preview": "Preview sample questionnaire",
-  "settings.askDemo.previewTitle": "Demo questionnaire (not from agent)",
-  "settings.askDemo.previewBanner":
-    "Preview only — this questionnaire is built into the App for demos. It was not sent by a live agent turn.",
-  "settings.askDemo.openDocs": "Ask-user docs",
-  "settings.askDemo.openDocsFailed": "Could not open docs in the browser.",
-  "settings.askDemo.ready": "Settings look ready for an Ask-path demo. Paste the sample prompt when you want to try.",
-  "settings.askDemo.blocked": "Clear the red checklist items first, or use Apply recommended Ask policy.",
   "settings.sandboxProfile": "Sandbox profile",
   "settings.sandboxProfileDesc":
     "OS-level filesystem/network isolation for the agent process (Linux Landlock / macOS Seatbelt). Applied when a new agent starts — reconnect the session after changing. Projects can override this from the project menu.",
@@ -2737,36 +2180,6 @@ const en = {
     "Child-process network blocking for this profile is enforced on Linux only; on macOS it is a no-op (in-process tools still have network).",
   "settings.sandbox.recommendedNote":
     "Tip: Workspace is the recommended everyday profile.",
-  "settings.sandbox.openGuide": "Open sandbox guide",
-  "settings.sandbox.recommendedDaily": "Recommended for daily use",
-  // Sandbox profile wizard (trust offer + Settings guide)
-  "sandboxWizard.title.trust": "Choose a sandbox profile",
-  "sandboxWizard.title.info": "Sandbox profile guide",
-  "sandboxWizard.progress": "Step {n} of {total} · {step}",
-  "sandboxWizard.step.intro": "Why sandbox",
-  "sandboxWizard.step.pick": "Pick a profile",
-  "sandboxWizard.step.confirm": "Confirm",
-  "sandboxWizard.next": "Continue",
-  "sandboxWizard.back": "Back",
-  "sandboxWizard.skip": "Not now",
-  "sandboxWizard.apply": "Apply profile",
-  "sandboxWizard.intro.trust":
-    "You trusted this project. Optionally set an OS-level sandbox for agent processes so writes stay scoped to the workspace (and temp).",
-  "sandboxWizard.intro.info":
-    "OS sandbox profiles limit what the agent process can write. Pick a profile that matches how you use this machine.",
-  "sandboxWizard.reason.workspace":
-    "Recommended for daily coding: Workspace — read anywhere; write limited to the session working directory, ~/.grok/, and system temp. Network allowed.",
-  "sandboxWizard.honesty.platform":
-    "On this platform, kernel OS sandbox enforcement is not documented (macOS Seatbelt / Linux Landlock only). The CLI may accept the profile but soft-fail without enforcement — not a hard security boundary.",
-  "sandboxWizard.honesty.cliUnsupported":
-    "This CLI is too old for --sandbox (needs ≥ {min}). The profile can be saved, but the flag is omitted (soft-fail) until you upgrade Grok Build.",
-  "sandboxWizard.pick.lead":
-    "Select a sandbox profile. Workspace is recommended for everyday use.",
-  "sandboxWizard.recommendedBadge": "Recommended",
-  "sandboxWizard.confirm.lead": "Apply “{profile}” as the app sandbox profile?",
-  "sandboxWizard.confirm.respawnHint":
-    "Takes effect when a new agent starts — reconnect the session after changing. Projects can still override this from the project menu.",
-  "sandboxWizard.dontOfferAgain": "Don’t offer this after trusting projects",
   "settings.disableWebSearch": "Disable web search & fetch",
   "settings.disableWebSearchDesc":
     "Spawn agents with --disable-web-search so web_search and web_fetch tools are unavailable. Live agents soft-respawn when this changes.",
@@ -2789,7 +2202,6 @@ const en = {
   "settings.disallowedTools.clear": "Clear all",
   "settings.disallowedTools.webCovered":
     "web_search / web_fetch also blocked by Disable web search above",
-    "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "Allow subagents",
   "settings.subagentsEnabledDesc": "When off, spawn with --no-subagents so nested Agent / task tools cannot start child sessions. Soft-respawns after change.",
   "settings.subagentWorktreeSnapshot": "Subagent worktree snapshot",
@@ -2877,65 +2289,6 @@ const en = {
   "settings.workflows.run.reason.empty": "empty output",
   "settings.workflows.run.reason.nonzero_exit": "non-zero exit",
   "settings.workflows.run.reason.soft_fail": "soft-fail",
-  "settings.workflows.authorHint":
-    "Author full pipelines with the create-workflow skill (/create-workflow), or edit the .rhai file. This panel only scaffolds a short template and can smoke/run by name — not a visual editor.",
-  "settings.workflows.reveal": "Reveal",
-  "settings.workflows.revealTitle": "Reveal workflow file in folder",
-  "settings.workflows.openEditor": "Open",
-  "settings.workflows.openEditorTitle": "Open workflow in configured editor",
-  "settings.workflows.create": "New from template",
-  "settings.workflows.create.title": "New workflow from template",
-  "settings.workflows.create.hint":
-    "Writes a minimal .rhai scaffold with pure-literal meta. Replace the body with real agent()/parallel() steps (see create-workflow skill).",
-  "settings.workflows.create.name": "Name",
-  "settings.workflows.create.namePlaceholder": "review-changes",
-  "settings.workflows.create.namePreview": "Will save as {name}.rhai",
-  "settings.workflows.create.scope": "Scope",
-  "settings.workflows.create.needProjectHint":
-    "Open a project in the workbench to enable project scope.",
-  "settings.workflows.create.needProject":
-    "Project scope needs an active project path.",
-  "settings.workflows.create.argsNote":
-    "Optional: pass args as an object when launching via the workflow tool (args is () if omitted).",
-  "settings.workflows.create.pathPreview": "Path: {path}",
-  "settings.workflows.create.submit": "Create",
-  "settings.workflows.create.creating": "Creating…",
-  "settings.workflows.create.created": "Created workflow {name}",
-  "settings.workflows.create.overwritten": "Overwrote workflow {name}",
-  "settings.workflows.create.nameInvalid":
-    "Use letters, digits, dashes, or underscores (no path separators).",
-  "settings.workflows.create.error": "Could not create workflow (soft-fail).",
-  "settings.workflows.create.desktopOnly":
-    "Creating workflows requires the desktop app host.",
-  "settings.workflows.create.overwriteTitle": "Overwrite workflow?",
-  "settings.workflows.create.overwriteBody":
-    "A workflow named “{name}” already exists. Overwrite with the template scaffold?",
-  "settings.workflows.create.overwrite": "Overwrite",
-  "settings.workflows.empty.no_workflows":
-    "No .rhai workflows found under ~/.grok/workflows or this project’s .grok/workflows. Create a template or use /create-workflow.",
-  "settings.workflows.empty.scan_soft_fail":
-    "Workflow folders could not be scanned (soft-fail). Paths may still exist on disk.",
-  "settings.workflows.empty.browser_only":
-    "Workflow discovery and create require the desktop app host.",
-  "settings.workflows.empty.history_empty":
-    "No observed smoke/run results yet. History only records Settings Smoke/Run outcomes (local, redacted).",
-  "settings.workflows.history": "Recent runs",
-  "settings.workflows.history.show": "Recent runs ({count})",
-  "settings.workflows.history.hide": "Hide recent runs",
-  "settings.workflows.history.honesty":
-    "Local ring of Settings smoke/run outcomes only (max ~20). Not a live /workflows dashboard; does not invent offline fires.",
-  "settings.workflows.history.filter": "Filter recent runs",
-  "settings.workflows.history.filter.all": "All",
-  "settings.workflows.history.filterEmpty": "No runs match this filter.",
-  "settings.workflows.history.outcome.ok": "ok",
-  "settings.workflows.history.outcome.error": "error",
-  "settings.workflows.history.outcome.softFail": "soft-fail",
-  "settings.workflows.history.clear": "Clear history",
-  "settings.workflows.history.clearTitle": "Clear recent runs?",
-  "settings.workflows.history.clearBody":
-    "Remove {count} local history row(s)? This cannot be undone.",
-  "settings.workflows.history.clearConfirm": "Clear",
-  "settings.workflows.history.cleared": "Workflow run history cleared",
   "settings.useLeader": "Share agent backend (leader)",
   "settings.useLeaderDesc": "Connect with --leader so multiple clients can share one backend process. Off uses --no-leader (default). Soft-respawns after change.",
   "settings.leader.title": "Agent leader / serve",
@@ -3436,7 +2789,6 @@ const en = {
   "settings.wallpaper.err.generic": "Could not apply wallpaper.",
   "settings.doctorDesc": "Diagnose CLI, auth, and provider connectivity",
   "settings.runDoctor": "Run Doctor",
-  // Settings → Runtime → Project inspect
   "inspect.title": "Inspect active project",
   "inspect.desc":
     "Summary from `grok inspect --json` for the workbench project: plugins, skills, MCP, hooks, agents, rules paths, and model hints. Secrets are stripped.",
@@ -3502,8 +2854,6 @@ const en = {
   "inspect.permissions.loaded": "Loaded {n}",
   "inspect.permissions.sources": "{n} sources",
   "inspect.permissions.managed": "Managed settings active",
-
-  // Managed configuration (`grok setup`)
   "managedSetup.title": "Managed setup",
   "managedSetup.desc":
     "Fetch and install organization-managed configuration (`grok setup`). Follow the steps below: CLI → team auth → optional preview → install → verify local signature artifacts. Soft-fails when the CLI or inspect is unavailable.",
@@ -3596,7 +2946,7 @@ const en = {
   "settings.aboutApp": "About Grok App",
   "settings.checkUpdate": "Check for updates",
   "settings.checkUpdateDesc":
-    "Signed release builds can download and install updates in-app. Local or unsigned builds open the GitHub release page instead. Agents, voice, Remote IM, and mirror keep running until install succeeds.",
+    "Signed release builds can download and install updates in-app. Local or unsigned builds open the GitHub release page instead.",
   "settings.checkUpdateChecking": "Checking…",
   "settings.checkUpdateLatest": "You are on the latest version ({version}).",
   "settings.checkUpdateAvailable":
@@ -3604,7 +2954,6 @@ const en = {
   "settings.checkUpdateOpen": "Open release page",
   "settings.checkUpdateDownload": "Download installer",
   "settings.checkUpdateFailed": "Could not check: {error}",
-  "settings.autoUpdateIdle": "Check when you want — no update status yet.",
   "settings.autoUpdateChecking": "Checking for updates…",
   "settings.autoUpdateUpToDate": "You are on the latest version.",
   "settings.autoUpdateAvailable": "Version {version} is available.",
@@ -3615,38 +2964,10 @@ const en = {
   "settings.autoUpdateManualRequired":
     "Version {version} is available. This install type cannot auto-update — download from the release page.",
   "settings.autoUpdateError": "Update failed: {error}",
-  "settings.autoUpdateBody.checking":
-    "Contacting the signed updater endpoint or GitHub Releases…",
-  "settings.autoUpdateBody.downloading":
-    "Downloading a signed package. Agents keep running until install succeeds.",
-  "settings.autoUpdateBody.installing":
-    "Staging the update. Agents, voice, Remote IM, and mirror stop only after a successful install prepare.",
-  "settings.autoUpdateBody.ready":
-    "Install and restart when ready. A failed install will not stop agents.",
-  "settings.autoUpdateBody.manual":
-    "Open the release page or download the installer for this platform. In-app silent install is not available on this build.",
-  "settings.autoUpdateBody.agentsNote":
-    "Agents, voice, Remote IM, and mirror keep running; they stop only after a successful install prepare.",
-  "settings.autoUpdateError.network":
-    "Could not reach the update server. Check your network or proxy, then try again.",
-  "settings.autoUpdateError.signature":
-    "The update package failed signature verification. Use a signed release build or download from GitHub Releases.",
-  "settings.autoUpdateError.pluginMissing":
-    "In-app updater is not available in this build (unsigned or local). Use Check for updates to open GitHub Releases.",
-  "settings.autoUpdateError.notReady":
-    "The update is not ready to install yet. Wait for download to finish, then try Install and restart.",
-  "settings.autoUpdateError.hostOnly":
-    "App updates are only available in the desktop app, not in a browser preview.",
-  "settings.autoUpdateError.other":
-    "Update failed. You can still open the GitHub release page and install manually.",
   "settings.autoUpdateChannelSilent":
     "Update channel: in-app (signed release)",
   "settings.autoUpdateChannelManual":
     "Update channel: GitHub download (unsigned / local build)",
-  "settings.autoUpdateChannelUnsupported":
-    "Update channel: manual install (this package type cannot auto-update)",
-  "settings.autoUpdateChannelHostOnly":
-    "Update channel: desktop app only (not available here)",
   "settings.close": "Close",
   "settings.sharedConfirm":
     "Switch to shared ~/.grok? Data will not merge silently. Confirm?",
@@ -3654,31 +2975,6 @@ const en = {
   "settings.modeShared": "shared (~/.grok)",
   "settings.sessionModeHelp":
     "Independent keeps chats in the app data dir. Shared uses the CLI home so App and terminal see the same sessions. CLI session import works in both modes; independent mode scans agent-home (not always ~/.grok).",
-  "settings.sessionDataMode.status": "Current: {modeLabel} · agent home {path}",
-  "settings.sessionDataMode.independentNote":
-    "Independent mode uses {path}. App settings that write agent config apply here; CLI ~/.grok is not rewritten.",
-  "settings.sessionDataMode.confirm.intro":
-    "Switch session data home from {fromHome} → {toHome}?\nHistories are not merged. Live agents will be recycled.",
-  "settings.sessionDataMode.risk.homesDiffer":
-    "Agent home changes — reconnects use the new directory only",
-  "settings.sessionDataMode.risk.noSilentMerge":
-    "No silent merge: independent and shared histories stay separate",
-  "settings.sessionDataMode.risk.recycleAgents":
-    "All live / background / parked agents are recycled now",
-  "settings.sessionDataMode.risk.sharedWithCli":
-    "Shared mode uses ~/.grok — same sessions as terminal Grok Build CLI",
-  "settings.sessionDataMode.risk.noConfigRewrite":
-    "App will not rewrite CLI secrets/config.toml for privacy, providers, and similar keys",
-  "settings.sessionDataMode.risk.conflictPossible":
-    "Concurrent App + CLI writes may conflict; lock or retry if you see errors",
-  "settings.sessionDataMode.risk.leaveShared":
-    "Leaving shared: App isolates to agent-home; terminal CLI keeps ~/.grok unchanged",
-  "settings.sessionDataMode.banner.sharedWithCli":
-    "Shared with CLI: agent home is ~/.grok (same session list as terminal Grok Build).",
-  "settings.sessionDataMode.banner.noRewriteSecrets":
-    "App refuses rewriting agent-home secrets/config.toml keys in shared mode — use independent for App-managed config writes.",
-  "settings.sessionDataMode.banner.conflictPossible":
-    "Conflict possible if App and CLI write the same session index at once — no silent history merge across modes.",
   "settings.tabOfficial": "Official account",
   "settings.tabProviders": "Custom providers",
   "settings.tabExtras": "Extras",
@@ -3688,7 +2984,6 @@ const en = {
     "Add OpenAI-compatible relays (CPA, sub2api, self-hosted). Keys stay on this device.",
   "settings.tabExtrasHint":
     "When the main route is a custom provider: inject official tools (MCP official-aux) and optionally load your other MCPs.",
-
   "modelAux.title": "Auxiliary model routing",
   "modelAux.desc":
     "Main model handles the chat loop. Side tasks can use a stronger multimodal model (like Hermes auxiliary slots). Writes only [models] task keys — never changes your main route.",
@@ -3751,18 +3046,7 @@ const en = {
   "settings.openTargetDesc":
     "Default app when opening a path from the resource pane",
   "settings.openFinder": "Finder / Explorer",
-  "settings.openTargetEmpty":
-    "No code editors detected — Finder/Explorer still works. Install VS Code, Cursor, or another editor to open files there.",
-  "settings.openTargetPreferredMissing":
-    "Preferred editor is not installed or not detected. Finder/Explorer will be used until you pick another.",
-
   "prov.emptyTitle": "No providers yet",
-  "prov.empty.hostOnly":
-    "Custom providers need the desktop app (Tauri). Open Grok App to add relays.",
-  "prov.empty.noCustom":
-    "No custom relays yet — add an OpenAI-compatible provider, or use Official Grok above.",
-  "prov.empty.loadError":
-    "Could not load providers. Fix the host error above, then retry.",
   "prov.detailEmpty": "Select a provider or add a new one.",
   "prov.new": "Add provider",
   "prov.edit": "Edit",
@@ -3837,32 +3121,8 @@ const en = {
     "Provider saved. Agents reloaded — next message uses the new config (no app restart).",
   "prov.savedApplyFailed":
     "Provider saved on disk, but live apply failed ({detail}). Try sending a message, or restart the app if chat stays offline.",
-  "prov.apply.softRespawn":
-    "Provider saved. Agents reloaded — next message uses the new config (no app restart).",
-  "prov.apply.savedDiskOnly":
-    "Provider saved on disk. Activate with Use (or pick it in the composer) to apply the route.",
-  "prov.apply.hostOnly":
-    "Provider changes need the desktop app. Open Grok App to save relays.",
   "prov.err.saveTimeout":
     "Save is taking too long. Config may still have been written — close and reopen this panel, or restart if chat does not work.",
-  "prov.err.validation":
-    "Could not save: invalid provider fields (id, URL, key, or models). Check the form and try again.",
-  "prov.err.network":
-    "Could not save: network or host IPC error. Check connectivity and retry.",
-  "prov.err.hostOnly":
-    "Saving providers needs the desktop app (Tauri).",
-  "prov.err.other": "Could not save provider ({detail}).",
-  "prov.ping.err.timeout":
-    "Probe timed out. Check base URL and network, then retry.",
-  "prov.ping.err.network":
-    "Could not reach the provider endpoint (network/DNS/TLS). Check base URL.",
-  "prov.ping.err.auth":
-    "Provider rejected the key (401/403). Update the API key and retry.",
-  "prov.ping.err.hostOnly":
-    "Fetch models / ping needs the desktop app.",
-  "prov.ping.err.invalidUrl":
-    "Base URL is invalid. Use a full https://…/v1 style root.",
-  "prov.ping.err.other": "Could not probe provider ({detail}).",
   "prov.confirmDelete": "Delete provider “{id}”?",
   "prov.loading": "Loading…",
   "prov.err.needBase": "Base URL is required.",
@@ -3883,7 +3143,6 @@ const en = {
   "prov.officialAuxWithUserMcp": "Also load extension MCPs",
   "prov.officialAuxWithUserMcpDesc":
     "When inject is on, also start your other MCP servers (Playwright, etc.). Off by default so official-aux is available immediately.",
-
   "prov.officialApiKey": "Official xAI API key",
   "prov.officialKeyPh": "xai-…",
   "prov.officialKeySave": "Save key",
@@ -3931,8 +3190,6 @@ const en = {
   "common.confirm": "Confirm",
   "common.save": "Save",
   "common.dismiss": "Dismiss",
-
-  // Official Grok Build account / membership
   "account.section.profile": "Official account",
   "account.section.runtime": "CLI runtime",
   "account.signedIn": "Signed in",
@@ -4025,7 +3282,6 @@ const en = {
   "account.importChatBtn": "Choose file…",
   "account.importChatOk": "Imported “{title}”",
   "account.importChatFailed": "Import failed",
-
   "onboarding.welcome": "Welcome to Grok",
   "onboarding.body":
     "MIT · Unofficial. Pick an account path, or skip into the shell.",
@@ -4041,8 +3297,6 @@ const en = {
   "onboarding.importCliHint": "Use cached_token via existing CLI auth",
   "onboarding.skip": "Skip",
   "onboarding.continue": "Continue",
-
-  // First-run setup gate (full-screen wizard)
   "setup.title": "Welcome to Grok",
   "setup.subtitle": "MIT · Unofficial desktop workbench for Grok Build",
   "setup.step.runtime": "Runtime",
@@ -4129,7 +3383,6 @@ const en = {
     "You can skip and configure login or a provider later in Settings.",
   "setup.error.cancelled": "Cancelled",
   "setup.networkHint": "Network error — try another mirror or the manual command.",
-
   "doctor.title": "Doctor",
   "doctor.close": "Close",
   "doctor.rerun": "Re-run",
@@ -4215,7 +3468,6 @@ const en = {
   "doctor.openReliability": "Reliability center",
   "doctor.openReliabilityHint":
     "Busy sessions, stall signals, and recent error cards.",
-  // Doctor findings triage (DOCTOR-PRO)
   "doctor.findings.title": "Findings",
   "doctor.findings.hint": "Showing {shown} of {total}",
   "doctor.filter.searchPlaceholder": "Search findings…",
@@ -4264,211 +3516,6 @@ const en = {
   "doctor.finding.fixId": "Fix id",
   "doctor.finding.destructive": "destructive",
   "doctor.finding.noDetail": "No additional detail.",
-
-  // Platform capability matrix (mac / Windows / Linux honesty)
-  "doctor.platformMatrix.title": "Platform matrix",
-  "doctor.platformMatrix.hint":
-    "Honest macOS / Windows / Linux capability notes for this install — path probe, sandbox kernel, window chrome, update path, media loopback. Complements the Windows day-use checklist without inventing probe results.",
-  "doctor.platformMatrix.col.capability": "Capability",
-  "doctor.platformMatrix.col.status": "Status",
-  "doctor.platformMatrix.col.detail": "Detail",
-  "doctor.platformMatrix.row.platform": "Platform",
-  "doctor.platformMatrix.row.cliPathProbe": "CLI path probe",
-  "doctor.platformMatrix.row.sandboxEnforcement": "Sandbox kernel",
-  "doctor.platformMatrix.row.windowChrome": "Window chrome",
-  "doctor.platformMatrix.row.autoUpdate": "App auto-update",
-  "doctor.platformMatrix.row.mediaLoopback": "Media loopback",
-  "doctor.platformMatrix.status.pass": "Pass",
-  "doctor.platformMatrix.status.warn": "Warn",
-  "doctor.platformMatrix.status.na": "N/A",
-  "doctor.platformMatrix.status.unknown": "Unknown",
-  "doctor.platformMatrix.msg.platform.mac": "macOS (detected).",
-  "doctor.platformMatrix.msg.platform.win": "Windows (detected).",
-  "doctor.platformMatrix.msg.platform.linux": "Linux (detected).",
-  "doctor.platformMatrix.msg.platform.unknown":
-    "Platform not recognized — capability notes may be incomplete.",
-  "doctor.platformMatrix.msg.cli.found": "Grok Build CLI binary resolved by path probe.",
-  "doctor.platformMatrix.msg.cli.missing":
-    "CLI path probe did not find a Grok Build binary — install or set path in Settings → Runtime.",
-  "doctor.platformMatrix.msg.cli.unknown":
-    "CLI path probe result not available yet (re-run Doctor).",
-  "doctor.platformMatrix.msg.sandbox.off":
-    "Sandbox isolation is off — no kernel enforcement requested.",
-  "doctor.platformMatrix.msg.sandbox.macSeatbelt":
-    "macOS Seatbelt: CLI OS sandbox enforcement is documented when isolation is on.",
-  "doctor.platformMatrix.msg.sandbox.linuxLandlock":
-    "Linux Landlock: CLI OS sandbox enforcement is documented when isolation is on.",
-  "doctor.platformMatrix.msg.sandbox.winSoftFail":
-    "Windows: CLI may accept the sandbox profile but soft-fails without kernel enforcement — not a hard security boundary.",
-  "doctor.platformMatrix.msg.sandbox.platformSoft":
-    "This platform soft-fails OS sandbox enforcement (CLI may continue without isolation).",
-  "doctor.platformMatrix.msg.sandbox.unknown":
-    "Sandbox kernel support unknown on this platform.",
-  "doctor.platformMatrix.msg.chrome.macOverlay":
-    "macOS Overlay title bar + traffic lights (tauri.macos.conf).",
-  "doctor.platformMatrix.msg.chrome.winFrameless":
-    "Windows frameless custom chrome (min / max / close) — tauri.windows.conf.",
-  "doctor.platformMatrix.msg.chrome.linuxDecorated":
-    "Linux uses standard window decorations (base tauri.conf).",
-  "doctor.platformMatrix.msg.chrome.unknown":
-    "Window chrome layout not classified for this platform.",
-  "doctor.platformMatrix.msg.update.silent":
-    "Signed release path: silent in-app auto-update is available.",
-  "doctor.platformMatrix.msg.update.manual":
-    "Manual / GitHub update path (local, unsigned, or plugin off) — open Releases; no silent install claimed.",
-  "doctor.platformMatrix.msg.update.unsupported":
-    "This package type cannot silent-auto-update (e.g. Linux .deb/.rpm) — use manual download.",
-  "doctor.platformMatrix.msg.update.hostOnly":
-    "Not running in the desktop app host — auto-update N/A.",
-  "doctor.platformMatrix.msg.update.unknown":
-    "Update channel not reported yet — do not assume silent install.",
-  "doctor.platformMatrix.msg.media.loopback":
-    "Local media uses loopback HTTP (127.0.0.1) with path-scope allowlist — not raw media:// in product paths.",
-  "doctor.platformMatrix.msg.media.unavailable":
-    "Media loopback endpoint unavailable — previews may soft-fail until the host media server is up.",
-  "doctor.platformMatrix.msg.media.unknown":
-    "Media loopback capability not classified for this platform.",
-  // Windows day-use acceptance checklist (Doctor / Reliability)
-  "doctor.windowsDayuse.title": "Windows day-use",
-  "doctor.windowsDayuse.lead":
-    "Acceptance checklist for day-to-day Windows use. App auto-probes some items; others stay manual. SmartScreen / unsigned status is never invented.",
-  "doctor.windowsDayuse.notTarget":
-    "macOS / Linux is not the target of this list — items show N/A. Use a Windows build to exercise install, CLI, project spaces, and mirror day-use.",
-  "doctor.windowsDayuse.summary":
-    "{pass} pass · {fail} fail · {manual} manual · {na} n/a",
-  "doctor.windowsDayuse.copy": "Copy checklist",
-  "doctor.windowsDayuse.copied": "Checklist copied",
-  "doctor.windowsDayuse.copyFail": "Could not copy checklist",
-  "doctor.windowsDayuse.docs": "Acceptance doc",
-  "doctor.windowsDayuse.platform.win": "Windows",
-  "doctor.windowsDayuse.platform.mac": "macOS",
-  "doctor.windowsDayuse.platform.linux": "Linux",
-  "doctor.windowsDayuse.platform.other": "Other",
-  "doctor.windowsDayuse.status.pass": "Pass",
-  "doctor.windowsDayuse.status.fail": "Fail",
-  "doctor.windowsDayuse.status.manual": "Manual",
-  "doctor.windowsDayuse.status.na": "N/A",
-  "doctor.windowsDayuse.item.installPath": "Install path (Release / SmartScreen)",
-  "doctor.windowsDayuse.item.cliFound": "CLI found (Doctor / Setup)",
-  "doctor.windowsDayuse.item.projectSpaces": "Project path with spaces",
-  "doctor.windowsDayuse.item.singleAttachment": "Single attachment paste",
-  "doctor.windowsDayuse.item.appUpdateCheck": "Check for updates (About)",
-  "doctor.windowsDayuse.item.mirrorReadonly": "Phone mirror read-only default",
-  "doctor.windowsDayuse.detail.na": "Not applicable on this platform.",
-  "doctor.windowsDayuse.detail.installPath.manual":
-    "Install from GitHub Release (setup.exe or portable zip). SmartScreen may warn when unsigned — App does not invent that status without a probe.",
-  "doctor.windowsDayuse.detail.installPath.pass":
-    "Install signature probe reports signed / clear.",
-  "doctor.windowsDayuse.detail.installPath.fail":
-    "Install signature probe reports unsigned or blocked.",
-  "doctor.windowsDayuse.detail.cliFound.pass": "Grok Build CLI resolved.",
-  "doctor.windowsDayuse.detail.cliFound.fail":
-    "CLI not found — open Setup or Settings → Runtime to install / set path.",
-  "doctor.windowsDayuse.detail.cliFound.manual":
-    "CLI probe not available yet — re-run Doctor or open Setup.",
-  "doctor.windowsDayuse.detail.projectSpaces.pass":
-    "Trusted project path includes spaces (console flash storm should stay gone).",
-  "doctor.windowsDayuse.detail.projectSpaces.fail":
-    "No trusted project yet — add and trust a folder (spaces OK).",
-  "doctor.windowsDayuse.detail.projectSpaces.manual":
-    "Trusted project present; re-check with a path that contains spaces if you have not already.",
-  "doctor.windowsDayuse.detail.singleAttachment.manual":
-    "Manual: one tool-using chat turn, paste a screenshot once — confirm a single attachment (App cannot auto-prove paste).",
-  "doctor.windowsDayuse.detail.appUpdateCheck.pass":
-    "Update check path available (in-app or GitHub manual).",
-  "doctor.windowsDayuse.detail.appUpdateCheck.fail":
-    "Update check not supported in this build — try Settings → About.",
-  "doctor.windowsDayuse.detail.appUpdateCheck.manual":
-    "Open Settings → About → Check for updates (download installer if newer).",
-  "doctor.windowsDayuse.detail.mirrorReadonly.pass":
-    "Phone mirror is read-only (write off) — default posture.",
-  "doctor.windowsDayuse.detail.mirrorReadonly.fail":
-    "Phone mirror write is enabled — default day-use expects read-only; turn write off in Remote control → Mirror if testing acceptance.",
-  "doctor.windowsDayuse.detail.mirrorReadonly.manual":
-    "Mirror status unknown — open Remote control → Mirror; day-use expects read-only start + regenerate link.",
-  "doctor.windowsDayuse.link.about": "About / updates",
-  "doctor.windowsDayuse.link.mirror": "Mirror",
-  "doctor.windowsDayuse.link.setup": "Setup / CLI",
-  "doctor.windowsDayuse.link.runtime": "Runtime",
-  "settings.runtime.platformTip": "Platform",
-  "settings.runtime.platformTipDesc":
-    "Detected OS for UI labels (file manager, day-use checklist). Windows builds get the day-use acceptance card in Doctor.",
-  // Linux day-use checklist (Doctor honesty card)
-  "doctor.linuxDayuse.title": "Linux day-use",
-  "doctor.linuxDayuse.lead":
-    "Acceptance checklist for day-to-day Linux use. App auto-probes some items; others stay manual. Landlock, tray autostart, and Wayland/X11 are never invented without a probe.",
-  "doctor.linuxDayuse.notTarget":
-    "macOS / Windows is not the target of this list — items show N/A. Use a Linux build to exercise CLI, path spaces, sandbox Landlock, tray, and display-server day-use.",
-  "doctor.linuxDayuse.summary":
-    "{pass} pass · {fail} fail · {warn} warn · {manual} manual · {na} n/a",
-  "doctor.linuxDayuse.copy": "Copy checklist",
-  "doctor.linuxDayuse.copied": "Checklist copied",
-  "doctor.linuxDayuse.copyFail": "Could not copy checklist",
-  "doctor.linuxDayuse.docs": "Acceptance doc",
-  "doctor.linuxDayuse.platform.win": "Windows",
-  "doctor.linuxDayuse.platform.mac": "macOS",
-  "doctor.linuxDayuse.platform.linux": "Linux",
-  "doctor.linuxDayuse.platform.other": "Other",
-  "doctor.linuxDayuse.status.pass": "Pass",
-  "doctor.linuxDayuse.status.fail": "Fail",
-  "doctor.linuxDayuse.status.manual": "Manual",
-  "doctor.linuxDayuse.status.warn": "Warn",
-  "doctor.linuxDayuse.status.na": "N/A",
-  "doctor.linuxDayuse.item.cliFound": "CLI found (Doctor / Setup)",
-  "doctor.linuxDayuse.item.pathSpaces": "Project path with spaces",
-  "doctor.linuxDayuse.item.sandboxLandlock": "Sandbox → Landlock enforcement",
-  "doctor.linuxDayuse.item.trayAutostart": "Tray / autostart",
-  "doctor.linuxDayuse.item.waylandX11": "Wayland / X11 session",
-  "doctor.linuxDayuse.item.appUpdateCheck": "Check for updates (About)",
-  "doctor.linuxDayuse.detail.na": "Not applicable on this platform.",
-  "doctor.linuxDayuse.detail.cliFound.pass": "Grok Build CLI resolved.",
-  "doctor.linuxDayuse.detail.cliFound.fail":
-    "CLI not found — open Setup or Settings → Runtime to install / set path.",
-  "doctor.linuxDayuse.detail.cliFound.manual":
-    "CLI probe not available yet — re-run Doctor or open Setup.",
-  "doctor.linuxDayuse.detail.pathSpaces.pass":
-    "Trusted project path includes spaces.",
-  "doctor.linuxDayuse.detail.pathSpaces.fail":
-    "No trusted project yet — add and trust a folder (spaces OK).",
-  "doctor.linuxDayuse.detail.pathSpaces.manual":
-    "Trusted project present; re-check with a path that contains spaces if you have not already.",
-  "doctor.linuxDayuse.detail.sandboxLandlock.na":
-    "Sandbox profile is off — Landlock enforcement is N/A.",
-  "doctor.linuxDayuse.detail.sandboxLandlock.warn":
-    "Sandbox profile is not off. On Linux, kernel enforcement is Landlock (Seatbelt is macOS-only). App does not re-verify Landlock without a probe.",
-  "doctor.linuxDayuse.detail.sandboxLandlock.pass":
-    "Landlock probe reports enforcement active for the selected sandbox profile.",
-  "doctor.linuxDayuse.detail.sandboxLandlock.fail":
-    "Landlock probe reports enforcement not active despite a non-off sandbox profile.",
-  "doctor.linuxDayuse.detail.sandboxLandlock.manual":
-    "Sandbox profile unknown — open Settings → General → Permissions to set a profile. Off = N/A; not off = Landlock on Linux.",
-  "doctor.linuxDayuse.detail.trayAutostart.pass":
-    "Tray / autostart probe reports enabled.",
-  "doctor.linuxDayuse.detail.trayAutostart.fail":
-    "Tray / autostart probe reports disabled.",
-  "doctor.linuxDayuse.detail.trayAutostart.manual":
-    "Manual: confirm tray icon and desktop autostart if you rely on them. App does not invent this without a probe.",
-  "doctor.linuxDayuse.detail.waylandX11.pass":
-    "Display-server probe reports Wayland or X11.",
-  "doctor.linuxDayuse.detail.waylandX11.fail":
-    "Display-server probe reports neither Wayland nor X11.",
-  "doctor.linuxDayuse.detail.waylandX11.manual":
-    "Unknown without a display-server probe — confirm Wayland or X11 manually for compositor-specific issues.",
-  "doctor.linuxDayuse.detail.appUpdateCheck.pass":
-    "Update check path available (in-app or GitHub manual).",
-  "doctor.linuxDayuse.detail.appUpdateCheck.fail":
-    "Update check not supported in this build — try Settings → About.",
-  "doctor.linuxDayuse.detail.appUpdateCheck.manual":
-    "Open Settings → About → Check for updates (download package if newer).",
-  "doctor.linuxDayuse.link.about": "About / updates",
-  "doctor.linuxDayuse.link.setup": "Setup / CLI",
-  "doctor.linuxDayuse.link.runtime": "Runtime",
-  "doctor.linuxDayuse.link.sandbox": "Sandbox",
-  "settings.runtime.platformTip": "Platform",
-  "settings.runtime.platformTipDesc":
-    "Detected OS for UI labels (file manager, day-use checklist). Linux builds get the day-use acceptance card in Doctor.",
-
-  // Reliability / Observability center (long-task signals)
   "reliability.title": "Reliability",
   "reliability.close": "Close reliability center",
   "reliability.lead":
@@ -4514,45 +3561,6 @@ const en = {
     "Aggregate busy chats, stall signals, recent error cards, and the tool audit ledger; export support zip.",
   "reliability.supportZipHint":
     "Redacted Doctor report, recent logs, and stall timeline snapshot (no secrets).",
-  "reliability.supportZip.confirmTitle": "Export support zip?",
-  "reliability.supportZip.confirmMessage":
-    "Review the redacted checklist below. The zip never includes secrets, auth tokens, or API keys.",
-  "reliability.supportZip.confirmAction": "Export support zip",
-  "reliability.supportZip.checklistTitle": "Included sections (redacted)",
-  "reliability.supportZip.secretsNever":
-    "Secrets are never included (no secrets.json, account auth, or raw API keys).",
-  "reliability.supportZip.redacted": "redacted",
-  "reliability.supportZip.whenAvailable": "if present on host",
-  "reliability.supportZip.sectionOmitted": "not included this export",
-  "reliability.supportZip.auditNotIncluded":
-    "Tool audit ledger is not in this zip — use Audit export instead.",
-  "reliability.supportZip.manifestPreview": "Text manifest preview",
-  "reliability.supportZip.section.doctor": "Doctor report (doctor.json)",
-  "reliability.supportZip.section.doctorHint":
-    "Health checks; host builds a fresh report when none is passed (paths only, no keys).",
-  "reliability.supportZip.section.settings": "App settings (settings.json)",
-  "reliability.supportZip.section.settingsHint":
-    "Included only when settings exist on this device; secrets scrubbed.",
-  "reliability.supportZip.section.meta": "App / OS meta (meta.json)",
-  "reliability.supportZip.section.metaHint":
-    "Version, OS/arch, session and project counts — no paths with secrets.",
-  "reliability.supportZip.section.stall": "Stall timeline (stall-timeline.json)",
-  "reliability.supportZip.section.stallHint":
-    "Structured stall signals from Reliability center only when present.",
-  "reliability.supportZip.section.logs": "Recent logs (logs/)",
-  "reliability.supportZip.section.logsHint":
-    "Recent log files if present on host; size-capped and redacted — never invented.",
-  "reliability.supportZip.section.readme": "README.txt",
-  "reliability.supportZip.section.readmeHint":
-    "Plain inventory of zip contents for the recipient.",
-  "reliability.supportZip.emptyHostOnly": "Support zip needs the desktop app",
-  "reliability.supportZip.emptyHostOnlyHint":
-    "Export runs on the Tauri host only — open Grok App on desktop to build a redacted support zip.",
-  "reliability.supportZip.failHostOnly":
-    "Support zip needs the desktop app (not available in browser)",
-  "reliability.supportZip.failCancel": "Support zip cancelled",
-  "reliability.supportZip.failIo": "Could not write support zip (disk or permission)",
-  "reliability.supportZip.failEmpty": "Nothing honest to put in the support zip",
   "reliability.goal.title": "Goal orchestration",
   "reliability.goal.count": "{count}",
   "reliability.goal.lead":
@@ -4573,21 +3581,9 @@ const en = {
   "reliability.goal.copySummary": "Copy summary",
   "reliability.goal.copied": "Goal summary copied",
   "reliability.goal.copyFail": "Could not copy goal summary",
-  "reliability.goal.clearTimeline": "Clear timeline",
-  "reliability.goal.clearConfirmTitle": "Clear goal timeline?",
-  "reliability.goal.clearConfirmMessage":
-    "Remove {count} local goal_updated event(s) from this app ring? This does not stop the CLI goal harness or change composer /goal mode.",
-  "reliability.goal.clearConfirmAction": "Clear timeline",
-  "reliability.goal.clearDone": "Cleared {count} local goal event(s)",
-  "reliability.goal.emptySessionMismatch":
-    "No goal events for this session",
-  "reliability.goal.emptySessionMismatchHint":
-    "Other sessions have observed goal_updated events. Open Reliability to see the full local timeline, or start /goal in this chat.",
-  "reliability.goal.openReliability": "Open Reliability",
-  "reliability.goal.sessionMenuAria": "Goal orchestration actions",
   "reliability.goal.sessionChip": "Goal · {phase}",
   "reliability.goal.sessionChipAria":
-    "Latest goal phase {phase}. Open goal actions menu.",
+    "Latest goal phase {phase}. Open reliability center.",
   "reliability.goal.phase.planner": "Planner",
   "reliability.goal.phase.strategist": "Strategist",
   "reliability.goal.phase.classifier": "Classifier",
@@ -4596,8 +3592,6 @@ const en = {
   "reliability.goal.phase.worker": "Worker",
   "reliability.goal.phase.status": "Status",
   "reliability.goal.phase.unknown": "Goal",
-
-  // Cross-session tool / permission audit ledger
   "reliability.audit.title": "Tool audit ledger",
   "reliability.audit.count": "{count}",
   "reliability.audit.empty": "No audit entries yet.",
@@ -4642,8 +3636,6 @@ const en = {
   "reliability.audit.unknownSession": "No session",
   "reliability.audit.outcome.ok": "ok",
   "reliability.audit.outcome.err": "err",
-
-  // Cost rollup (Settings → Runtime → Tools) — known tokens only, never invoice-grade
   "costRollup.title": "Cost rollup",
   "costRollup.settingsDesc":
     "Known token usage by project or session and day (from live usage and session journals when available). Filter by project/session, export a plain-text summary, or clear the local sample ring. Estimates only — not billing.",
@@ -4705,8 +3697,6 @@ const en = {
   "costRollup.exportWindow": "Window: last {days} day(s)",
   "costRollup.exportEmpty": "No known usage to export for this filter.",
   "costRollup.invoiceNote": "Not invoice-grade.",
-
-  // Streaming-messages-json diagnostics (Settings → Runtime → Tools)
   "smj.title": "Streaming messages JSON",
   "smj.settingsDesc":
     "Parse and preview headless `--output-format streaming-messages-json` NDJSON (Anthropic Messages wire format; CLI 0.2.117+).",
@@ -4750,7 +3740,6 @@ const en = {
   "smj.copied": "Copied",
   "smj.copyFailed": "Copy failed",
   "smj.resultLabel": "Result",
-  // Streaming ACP NDJSON diagnostics (CLI 0.2.117+ streaming-json)
   "streamAcpNdjson.title": "Streaming ACP NDJSON",
   "streamAcpNdjson.settingsDesc":
     "Parse headless --output-format streaming-json (ACP session updates, CLI 0.2.117+). Import, paste, or run a short probe; list event types and copy a summary. Not streaming-messages-json.",
@@ -4795,16 +3784,12 @@ const en = {
     "Import a capture, paste NDJSON, or run the soft-gated headless probe.",
   "streamAcpNdjson.softGateNote":
     "Probe uses --output-format streaming-json only when the CLI is ≥ {min}; older builds omit the flag.",
-
-  // Connection status pill
   "conn.idle": "Idle",
   "conn.connecting": "Connecting",
   "conn.ready": "Ready",
   "conn.streaming": "Working",
   "conn.permission": "Needs permission",
   "conn.disconnected": "Disconnected",
-
-  // Keyboard shortcuts help
   "shortcuts.title": "Keyboard shortcuts",
   "shortcuts.close": "Close",
   "shortcuts.search": "Search chats / projects",
@@ -4822,8 +3807,6 @@ const en = {
   "shortcuts.send": "Send message",
   "shortcuts.help": "Show shortcuts",
   "shortcuts.voice": "Toggle voice dictation",
-
-  // Product tour (optional; not first-run account setup)
   "tutorial.menu": "Product tour",
   "tutorial.replay": "Replay product tour",
   "tutorial.replayDesc":
@@ -4862,8 +3845,6 @@ const en = {
     "Pick a trusted project, start a chat, and send a goal. Replay this tour anytime from the account menu, Settings → About, the command palette, or /tutorial.",
   "slash.tutorial": "Product tour",
   "slash.tutorialDesc": "Open the optional in-app product tour",
-
-  // Session export
   "session.copyMd": "Copy conversation as Markdown",
   "session.copyMdDone": "Conversation copied as Markdown",
   "session.copyMdFail": "Could not copy conversation",
@@ -4945,9 +3926,8 @@ const en = {
   "session.tracesTitle": "Recent traces",
   "session.tracesDesc":
     "Local history of session trace exports (paths only). Open the folder or copy the path — large archives are not loaded into the app.",
-  "session.tracesEmpty": "No traces exported yet",
-  "session.tracesEmptyHint":
-    "Use Export local or Export and upload from a chat menu after a conversation has an agent session. Paths only — archives are never loaded into the app.",
+  "session.tracesEmpty":
+    "No traces exported yet. Use Export local or Export and upload from a chat menu after a conversation has an agent session.",
   "session.tracesReveal": "Reveal in folder",
   "session.tracesCopyPath": "Copy path",
   "session.tracesCopied": "Path copied",
@@ -4955,20 +3935,11 @@ const en = {
   "session.tracesClearAll": "Clear all",
   "session.tracesClearConfirmTitle": "Clear trace history?",
   "session.tracesClearConfirmMessage":
-    "Remove {count} recent trace export path(s) from this list. Archive files on disk are not deleted.",
+    "Remove all recent trace export paths from this list. Archive files on disk are not deleted.",
   "session.tracesClearConfirmAction": "Clear all",
   "session.tracesSearch": "Filter by title or path…",
   "session.tracesEmptyFilter": "No traces match this filter",
-  "session.tracesEmptyFilterHint":
-    "Try another search, or switch the All / Local / Uploaded chip.",
-  "session.tracesClearFilters": "Clear filters",
-  "session.tracesFilterAria": "Trace export scope",
-  "session.tracesFilter.all": "All",
-  "session.tracesFilter.local": "Local",
-  "session.tracesFilter.uploaded": "Uploaded",
   "session.tracesUploadedBadge": "Uploaded",
-  "session.tracesUploadedBadgeTitle":
-    "Upload reported by export (path only — no remote URL stored)",
   "session.exportBundle": "Export diagnostic package",
   "session.exportBundleDone": "Diagnostic package saved",
   "session.exportBundleFail": "Diagnostic export failed",
@@ -4995,24 +3966,18 @@ const en = {
   "session.exportSizeHint": "Estimated size: {size}",
   "session.emptyRunToast":
     "This turn ended without a visible reply or tool calls. Reply “continue” if the task is unfinished, or export a diagnostic package from the session menu.",
-
-  // Empty states
   "empty.noProjectTitle": "No project open",
   "empty.noProjectHint": "Add a folder from the sidebar to start coding with context.",
   "empty.noChatsTitle": "No chats yet",
   "empty.noChatsHint": "Start a conversation — it will show up in the sidebar.",
   "empty.disconnectedTitle": "Agent disconnected",
   "empty.disconnectedHint": "Reconnect to continue this chat, or start a new one.",
-
-  // Desktop notifications
   "notify.turnDoneTitle": "Grok finished a turn",
   "notify.turnDoneBody": "Session is ready for the next message.",
   "notify.permissionTitle": "Permission needed",
   "notify.permissionBody": "The agent is waiting for your approval.",
   "notify.askUserTitle": "Question from agent",
   "notify.askUserBody": "The agent is waiting for your answer.",
-
-  // Slash palette
   "slash.section.commands": "Commands",
   "slash.section.skills": "Skills",
   "slash.empty": "No matching commands or skills",
@@ -5081,24 +4046,6 @@ const en = {
   "slash.compactAfterUnknown": "Unknown until usage is known",
   "slash.compactEstimateHint":
     "After estimate is a rough keep-ratio guess for the selected preset (~), not the model’s tokenizer. Host chat history is not rewritten.",
-  "slash.compactApply.nextTurn":
-    "Confirm sends /compact as an agent turn now. Mode/detail already on this process apply to that compact.",
-  "slash.compactApply.softRespawn":
-    "Mode/detail change soft-respawns the agent — the next message reloads compaction flags.",
-  "slash.compactApply.unsupported":
-    "This CLI may ignore --compaction-mode / --compaction-detail (need 0.2.117+). /compact still runs with agent defaults when connected.",
-  "slash.compactApply.idle":
-    "No live agent yet — connect first. Compaction mode/detail wait for the next spawn; then /compact runs as a turn.",
-  "slash.compactApply.modeOnly":
-    "Compaction mode for this compact: {mode} (spawn flags; change soft-respawns a live agent).",
-  "slash.compactApply.modeDetail":
-    "Compaction mode {mode}, segments detail {detail} (spawn flags; change soft-respawns a live agent).",
-  "slash.compactApply.savingsKnown":
-    "Last known compact: {before} → {after} tokens (saved {saved}). Not an estimate.",
-  "slash.compactApply.savingsUnknown":
-    "Token savings unknown until the agent reports both before and after counts. After (est.) above is only a rough keep-ratio guess.",
-  "slash.compactApply.presetNote":
-    "Intensity presets only seed the keep-note template for /compact — CLI has no light/standard/aggressive flag.",
   "compact.bannerAuto": "Context auto-compacted",
   "compact.bannerManual": "Context compacted",
   "compact.tokensRange": "{before} → {after} tokens",
@@ -5219,7 +4166,6 @@ const en = {
   "slash.yoloDesc": "Toggle YOLO permission bypass",
   "slash.yoloOn": "Always-approve enabled",
   "slash.yoloOff": "Always-approve disabled",
-
   "statusModal.title": "Session status",
   "statusModal.sessionId": "Session ID",
   "statusModal.agentSessionId": "Agent session",
@@ -5229,7 +4175,6 @@ const en = {
   "statusModal.policy": "Permission",
   "statusModal.project": "Project",
   "statusModal.messages": "Messages",
-
   "mcpModal.title": "MCP servers",
   "mcpModal.hint":
     "Servers discovered by Grok Build (inspect). Enable or disable them under Settings → Extensions; enabled servers inject into new agent sessions.",
@@ -5312,8 +4257,6 @@ const en = {
   "mcpModal.oauth.noCliHelper":
     "There is no headless `grok mcp oauth` command — authorization is interactive (TUI) or via a doctor-provided browser URL. The app never stores client secrets in logs.",
   "mcpModal.oauth.unknownServer": "server",
-
-  // MCP OAuth recovery wizard
   "mcpOauth.wizard.progress": "Step {n} of {total}",
   "mcpOauth.wizard.next": "Continue",
   "mcpOauth.wizard.back": "Back",
@@ -5354,8 +4297,6 @@ const en = {
   "mcpOauth.wizard.soft.openUrlFailed": "Could not open URL",
   "mcpOauth.wizard.soft.doctorFailed": "Doctor refresh failed",
   "mcpOauth.wizard.soft.stillNeedsAuth": "Still needs OAuth",
-
-  // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":
     "Manage plugins, skills, and MCP for this machine. Plugins are user-global; skills/MCP respect the active project when set.",
   "ext.refresh": "Refresh",
@@ -5650,8 +4591,6 @@ const en = {
   "ext.enabled": "Enabled",
   "ext.disabled": "Disabled",
   "ext.enableAll": "Enable all",
-
-  // Errors / misc
   "ext.hooks.title": "Hooks",
   "ext.hooks.desc":
     "Lifecycle scripts in your user or project hooks folder. Edit files in your editor.",
@@ -5685,20 +4624,6 @@ const en = {
     "Remove {count} recent hook activity row(s) stored on this device. This cannot be undone.",
   "ext.hooks.activity.clearConfirmOk": "Clear",
   "ext.hooks.activity.sourceDebug": "dry-run",
-  "ext.hooks.activity.export": "Export redacted…",
-  "ext.hooks.activity.exportHint":
-    "Download the filtered activity list as redacted JSON (no secrets)",
-  "ext.hooks.activity.copySummary": "Copy summary",
-  "ext.hooks.activity.copySummaryHint":
-    "Copy the filtered activity list as redacted plain text",
-  "ext.hooks.activity.exportCopied": "Copied {count} redacted row(s)",
-  "ext.hooks.activity.exportDownloaded": "Downloaded {count} redacted row(s)",
-  "ext.hooks.activity.exportEmpty": "No activity to export for this filter.",
-  "ext.hooks.activity.exportCopyFailed":
-    "Could not copy summary (clipboard blocked)",
-  "ext.hooks.activity.exportDownloadFailed":
-    "Could not download activity export",
-  "ext.hooks.activity.exportFailed": "Activity export failed",
   "ext.hooks.try.hookName": "Hook name",
   "ext.hooks.try.hookNamePlaceholder": "Optional — pick or type a file name",
   "ext.hooks.try.eventType": "Event type",
@@ -5891,8 +4816,6 @@ const en = {
     "Open the desktop app (Tauri) to manage plugins.",
   "ext.market.err.hint.hostError": "Host invoke failed — see detail.",
   "ext.market.err.hint.other": "Unexpected result — see detail and retry.",
-
-  // Extensions → Agents (definition files under ~/.grok/agents + project)
   "ext.agents.title": "Agents",
   "ext.agents.desc":
     "Agent definition files for CLI `--agent` (user GROK_HOME and project `.grok/agents`). Create a stub, edit in your editor, then pick it under Settings → Agent → Preferred agent on new sessions.",
@@ -5928,8 +4851,7 @@ const en = {
   "ext.agents.reveal": "Reveal",
   "ext.agents.openUser": "Open user folder",
   "ext.agents.openProject": "Open project folder",
-
-"error.needTauri": "Folder picker requires the Tauri window",
+  "error.needTauri": "Folder picker requires the Tauri window",
   "common.comingSoon": "Coming soon",
   "common.local": "Local",
   "common.close": "Close",
@@ -5948,8 +4870,6 @@ const en = {
   "perm.hintSession": "Allow similar actions for the rest of this chat.",
   "perm.hintDeny": "Block this action and tell the agent.",
   "perm.autoDenyCountdown": "Auto-deny in {seconds}s",
-
-  // Agent ask_user_question
   "askUser.title": "Agent question",
   "askUser.submit": "Submit",
   "askUser.cancel": "Dismiss",
@@ -5957,7 +4877,6 @@ const en = {
   "askUser.freeTextHint": "Or type a custom answer",
   "askUser.multiHint": "Select one or more options",
   "askUser.autoCancelCountdown": "Auto-dismiss in {seconds}s",
-
   "message.interjectionTag": "Steer",
   "message.copy": "Copy",
   "message.copied": "Copied",
@@ -5984,7 +4903,6 @@ const en = {
   "composer.editing": "Editing message",
   "composer.editingCancel": "Cancel edit",
   "chat.thinking": "Thinking…",
-  /** Grok web timeline one-line (no ellipsis). */
   "chat.thinkingLabel": "Thinking",
   "chat.workedFor": "Worked for {duration}",
   "chat.worked": "Worked",
@@ -5993,9 +4911,7 @@ const en = {
   "chat.ranSearch": "Ran 1 search",
   "chat.ranSearches": "Ran {n} searches",
   "chat.browsed": "Browsed {url}",
-  /** Official web: “Browsed ” prefix + URL (same weight). */
   "chat.browsedPrefix": "Browsed",
-  /** Official web: “Searched web for ” + query. */
   "chat.searchedWebForPrefix": "Searched web for",
   "chat.searchedWebFor": "Searched web for {query}",
   "chat.searchResults": "{n} results",
@@ -6005,7 +4921,6 @@ const en = {
   "chat.hostVisionTitle": "Recognizing image",
   "chat.hostSearchTitle": "Searching on X",
   "chat.turnFailed": "This turn failed",
-  /** Bare thinking chrome fallback when duration unknown — short, not “complete”. */
   "chat.thoughtDone": "Thought",
   "chat.thoughtFor": "Thought for {n}s",
   "chat.showThought": "Show",
@@ -6162,32 +5077,6 @@ const en = {
   "automations.history.clearBody":
     "Removes the local observed run list on this device. This cannot be undone. Schedules themselves are unchanged.",
   "automations.history.clearConfirm": "Clear",
-  "automations.inbox.section": "Inbox",
-  "automations.inbox.desc":
-    "Review queue for schedule runs observed in this process. Open the linked session when known, retry when the task still exists, or mark items read.",
-  "automations.inbox.processBound":
-    "Runs are recorded only while Grok App is open or in the tray. Full Quit does not invent offline runs — empty Inbox after relaunch is normal until something fires.",
-  "automations.inbox.search": "Search inbox",
-  "automations.inbox.filterAria": "Filter inbox by outcome",
-  "automations.inbox.empty": "No inbox items.",
-  "automations.inbox.emptyFiltered": "No runs match this filter or search.",
-  "automations.inbox.emptyProcessBound":
-    "No observed runs yet. History fills when a schedule fires in this process or you use Run now — never after Quit offline.",
-  "automations.inbox.openSession": "Open session",
-  "automations.inbox.openProject": "Open project",
-  "automations.inbox.runNow": "Run now",
-  "automations.inbox.markRead": "Mark read",
-  "automations.inbox.markAllRead": "Mark all read",
-  "automations.inbox.clear": "Clear inbox",
-  "automations.inbox.clearTitle": "Clear inbox history?",
-  "automations.inbox.clearBody":
-    "Removes the local observed run list and read markers on this device. This cannot be undone. Schedules themselves are unchanged.",
-  "automations.inbox.clearConfirm": "Clear",
-  "automations.inbox.unreadCount": "{n} unread",
-  "automations.inbox.sessionMissing":
-    "That session is no longer available. It may have been deleted after the run.",
-  "automations.inbox.projectMissing":
-    "That project is no longer available.",
   "automations.oneshot.title": "One-shot schedule fire",
   "automations.oneshot.desc":
     "Tray residency keeps continuous ticks while the process is alive. After full Quit, invoke {flag} (helper script {script} under app data) to fire at most one due task without opening the full UI, then exit.",
@@ -6214,8 +5103,6 @@ const en = {
     "Scheduled task could not connect to the agent: {detail}",
   "automations.msgTag": "Scheduled",
   "remoteIm.msgTag": "Remote IM",
-
-  // System tray / menu-bar (native; Rust mirror in tray_i18n.rs — keep in sync)
   "tray.recent": "Recent",
   "tray.noRecent": "No recent chats",
   "tray.untitled": "Untitled",
@@ -6230,7 +5117,6 @@ const en = {
   "tray.usageWithReset": "Usage  ·  {pct}% left  ·  {time}",
   "tray.usagePct": "Usage  ·  {pct}% left",
   "tray.usageUnknown": "Usage  ·  —",
-  // Remote mirror — Connect panel (desktop) + phone chrome
   "mirror.connect": "Connect device",
   "mirror.connectTitle": "Connect phone",
   "mirror.connectHint":
@@ -6360,8 +5246,6 @@ const en = {
   "mirror.chrome.signedOut": "Host signed out",
   "mirror.unsupported": "This action needs the desktop app",
   "mirror.desktopOnly": "Use the desktop app for this",
-
-  // Phone mirror chrome (≤820px)
   "phone.menu": "Sessions",
   "phone.account": "Account",
   "phone.toolsTitle": "Tools",
@@ -6412,33 +5296,6 @@ const en = {
     "This worktree has local changes (or is locked). Force-remove and delete the folder?",
   "composer.worktreeRemoveCurrentWarn":
     "You are currently using this worktree. After removal, the session will switch to the main worktree.",
-  "composer.worktreeCompare": "Compare with main…",
-  "composer.worktreeCompareTip":
-    "List files that differ from the main worktree (no merge)",
-  "composer.worktreeCompareTitle": "Compare with main",
-  "composer.worktreeCompareHint":
-    "Read-only file list from git diff --name-status (three-dot vs main). Selective apply / merge is out of scope.",
-  "composer.worktreeCompareRange": "{base}...{other}",
-  "composer.worktreeCompareLoading": "Comparing…",
-  "composer.worktreeCompareEmpty": "Identical trees — no file differences.",
-  "composer.worktreeCompareFailed": "Could not compare worktrees",
-  "composer.worktreeCompareNeedProject": "Open a project folder to compare",
-  "composer.worktreeCompareOnMain":
-    "Already on the main worktree — switch to a linked worktree to compare",
-  "composer.worktreeCompareSamePath": "Base and other paths are the same",
-  "composer.worktreeCompareNotGit": "Not a git repository (or git missing)",
-  "composer.worktreeCompareMissingPath": "Worktree path is missing",
-  "composer.worktreeCompareChipAdded": "+{n} added",
-  "composer.worktreeCompareChipModified": "~{n} modified",
-  "composer.worktreeCompareChipDeleted": "−{n} deleted",
-  "composer.worktreeCompareChipRenamed": "→{n} renamed",
-  "composer.worktreeCompareChipOther": "?{n} other",
-  "composer.worktreeCompareChipTotal": "{n} files",
-  "composer.worktreeCompareCopyPath": "Copy path",
-  "composer.worktreeCompareReveal": "Reveal in file manager",
-  "composer.worktreeComparePathCopied": "Path copied",
-  "composer.worktreeCompareOverflow":
-    "Showing {shown} of {total} — {n} more not listed",
   "composer.worktreeShip": "Ship…",
   "composer.worktreeShipTip": "Push branch and open a GitHub pull request",
   "composer.worktreeShipTitle": "Ship branch",
@@ -6574,15 +5431,6 @@ const en = {
   "settings.permissionRulesAddWorking": "Saving…",
   "settings.permissionRulesDesc": "Compact allow / deny / ask patterns in agent config.toml (deny wins over ask over allow). Examples: Bash(git *), Read(src/**), Edit. Changes soft-respawn the agent so the next turn reloads rules.",
   "settings.permissionRulesEmpty": "No rules yet — add a pattern below.",
-  "settings.permissionRulesEmptyHint":
-    "Start with an allow for safe git, a deny for destructive shell, or an ask for edits. Changes soft-respawn the agent.",
-  "settings.permissionRulesFilterEmpty": "No rules match this filter.",
-  "settings.permissionRulesFilterEmptyHint":
-    "Clear the filter or try a different pattern substring.",
-  "settings.permissionRulesFilterPlaceholder": "Filter rules…",
-  "settings.permissionRulesFilterClear": "Clear filter",
-  "settings.permissionRulesCountsAria":
-    "Rule counts: deny {deny}, ask {ask}, allow {allow}",
   "settings.permissionRulesError": "Could not update permission rules",
   "settings.permissionRulesLoading": "Loading rules…",
   "settings.permissionRulesPath": "Config: {path}",
@@ -6598,23 +5446,11 @@ const en = {
   "settings.permissionRulesSimDesc":
     "Simulate how current rules would decide (deny > ask > allow). Preview only — does not write config.",
   "settings.permissionRulesSimPlaceholder": "e.g. Bash(git status)",
-  "settings.permissionRulesSimSamples": "Sample tool calls",
   "settings.permissionRulesSimResult.allow": "Would allow",
   "settings.permissionRulesSimResult.deny": "Would deny",
   "settings.permissionRulesSimResult.ask": "Would ask",
   "settings.permissionRulesSimResult.none": "No matching rule",
-  "settings.permissionRulesSimHonesty.allow":
-    "Preview: first matching allow rule would permit this call. Real agent still respects mode / built-ins.",
-  "settings.permissionRulesSimHonesty.deny":
-    "Preview: a deny rule wins (deny > ask > allow). Real agent would block this call.",
-  "settings.permissionRulesSimHonesty.ask":
-    "Preview: an ask rule matches — agent would prompt before running.",
-  "settings.permissionRulesSimHonesty.none":
-    "Preview: no compact rule matched. Falls through to permission mode and built-in policy — not auto-allowed.",
   "settings.permissionRulesSimMatched": "Matched: {rule}",
-  "settings.permissionRulesSimCopy": "Copy match summary",
-  "settings.permissionRulesSimCopied": "Copied",
-  "settings.permissionRulesSimCopyFailed": "Could not copy match summary",
   "voice.mockReady": "Mock voice ready",
   "voice.ready": "Voice ready",
   "voice.micDenied": "Microphone permission denied",
@@ -6674,75 +5510,9 @@ const en = {
   "voice.sendTranscriptNeedSpeech":
     "Need user or assistant speech from the host before sending.",
   "voice.transcriptSent": "Transcript sent to the active session",
-  "voice.center.toolIdle": "No Build tool running",
-  "voice.center.chipDelegated": "Voice",
-  "voice.center.keepAgentsOn":
-    "Keep coding sessions: on — ending Live Voice leaves delegated agents running.",
-  "voice.center.keepAgentsOff":
-    "Keep coding sessions: off — ending Live Voice may stop sessions started from voice.",
-  "voice.center.endNote.keepAgents":
-    "Stop ends voice and cancels in-flight host tools. Coding sessions stay.",
-  "voice.center.endNote.keepRunning":
-    "Stop ends voice. Running delegated coding sessions stay open.",
-  "voice.center.endNote.cancelDelegates":
-    "Stop ends voice, cancels in-flight tools, and stops delegated coding sessions.",
-  "voice.center.endNote.stopOnly":
-    "Stop ends voice and cancels in-flight host tools.",
-  "voice.center.empty.noAuth":
-    "Live Voice needs Grok auth (CLI login or official API key). No speech transcript yet.",
-  "voice.center.empty.noMic":
-    "Microphone unavailable. Transcript stays empty until the host sends text — nothing is invented.",
-  "voice.center.empty.transcriptWithDelegates":
-    "No speech transcript yet (host only). Delegated coding sessions are listed above.",
   "settings.preferredAgent.default": "Default (CLI)",
   "settings.preferredAgent.source.bundled": "Bundled",
   "settings.preferredAgent.source.builtin": "Built-in",
-  // Settings → General → Agent → Agents & Personas console
-  "settings.agentsPersonas.title": "Agents & Personas",
-  "settings.agentsPersonas.desc":
-    "Browse built-in, user, and project agent definitions and discovered personas (CLI `/config-agents` roots). Never invents personas — only files on disk. Preferred agent applies to new sessions.",
-  "settings.agentsPersonas.tab.agents": "Agents",
-  "settings.agentsPersonas.tab.personas": "Personas",
-  "settings.agentsPersonas.searchPlaceholder": "Filter by name, source, or path…",
-  "settings.agentsPersonas.refresh": "Refresh",
-  "settings.agentsPersonas.loading": "Loading…",
-  "settings.agentsPersonas.clearFilter": "Clear filter",
-  "settings.agentsPersonas.open": "Open",
-  "settings.agentsPersonas.reveal": "Reveal",
-  "settings.agentsPersonas.openUserAgents": "Open user agents folder",
-  "settings.agentsPersonas.openProjectAgents": "Open project agents folder",
-  "settings.agentsPersonas.openUserPersonas": "Open user personas folder",
-  "settings.agentsPersonas.openProjectPersonas": "Open project personas folder",
-  "settings.agentsPersonas.browsePersonas": "Browse personas folder",
-  "settings.agentsPersonas.needProjectHint":
-    "Select a project in the workbench to manage project-scoped definitions.",
-  "settings.agentsPersonas.agentsEmpty": "No agent definitions found",
-  "settings.agentsPersonas.agentsEmptyHint":
-    "Built-ins always list when the catalog loads. Add `*.md` under ~/.grok/agents or project `.grok/agents`, or create one under Extensions → Agents.",
-  "settings.agentsPersonas.personasEmpty": "No personas discovered",
-  "settings.agentsPersonas.personasEmptyHint":
-    "Personas are `*.toml` / `*.md` under ~/.grok/personas or project `.grok/personas`. The App never invents persona names — use the CLI or open the folder to add files.",
-  "settings.agentsPersonas.filterEmpty": "No matches for this filter",
-  "settings.agentsPersonas.filterEmptyHint": "Clear the filter to see the full list.",
-  "settings.agentsPersonas.hostOnly": "Open the desktop app to list agents and personas",
-  "settings.agentsPersonas.hostOnlyHint":
-    "Filesystem discovery needs the Tauri host. Built-in names may still appear from the catalog for preferred-agent honesty.",
-  "settings.agentsPersonas.noProject": "No project open",
-  "settings.agentsPersonas.noProjectHint":
-    "Open a workbench project to list project-scoped agents and personas.",
-  "settings.agentsPersonas.error": "Could not load agents and personas",
-  "settings.agentsPersonas.builtinNoPath": "Built-in · no definition file path",
-  "settings.agentsPersonas.setPreferred": "Set preferred",
-  "settings.agentsPersonas.preferredBadge": "Preferred",
-  "settings.agentsPersonas.preferredDefault":
-    "Preferred agent: Default (CLI) — new sessions omit `--agent`.",
-  "settings.agentsPersonas.preferredCurrent":
-    "Preferred agent: {name} · {source}",
-  "settings.agentsPersonas.preferredMissing":
-    "Preferred agent “{name}” is not in the catalog",
-  "settings.agentsPersonas.preferredMissingHint":
-    "It may have been renamed or removed. Pick another agent or Default (CLI). Spawn still passes the saved name until you change it.",
-  // Remote control (settings section id: remote_im)
   "settings.nav.remoteIm": "Remote control",
   "settings.remoteIm.sidebarAria": "IM messaging channels",
   "settings.remoteIm.bridgeOverview": "Bridge overview",
@@ -6805,7 +5575,6 @@ const en = {
   "settings.remoteIm.pairPasteDesc": "One-shot split for app_id:app_secret (e.g. cli_xxx:secret).",
   "settings.remoteIm.pairPasteApply": "Apply",
   "settings.remoteIm.pairPastePlaceholder": "cli_xxx:secret",
-  // Channel health (deep card for Feishu/Lark + Telegram)
   "settings.remoteIm.health.title": "Channel health",
   "settings.remoteIm.health.credentials": "Credentials",
   "settings.remoteIm.health.credentialsSaved": "Saved (masked)",
@@ -6921,7 +5690,6 @@ const en = {
   "settings.remoteIm.health.hint.qqbotIntentsDefault": "Intents left empty — Bridge defaults include INTERACTION (and related message intents).",
   "settings.remoteIm.health.hint.qqbotIntentsCustom": "Custom intents are set — ensure they cover the events your bot needs.",
   "settings.remoteIm.health.hint.qqbotAcl": "QQ official bot open allow-from is high risk — restrict by user id when possible.",
-  // Bridge event timeline (local ring, no secrets)
   "settings.remoteIm.timeline.title": "Event timeline",
   "settings.remoteIm.timeline.subtitle": "Recent Bridge events",
   "settings.remoteIm.timeline.desc": "Local ring buffer on this device only. Never stores secrets or tokens.",
@@ -7283,6 +6051,791 @@ const en = {
   "settings.remoteIm.resilience.errorKind.crash": "Unexpected exit / crash",
   "settings.remoteIm.resilience.errorKind.config": "Configuration",
   "settings.remoteIm.resilience.errorKind.unknown": "Unknown",
+  "settings.remoteIm.cmd.project": "List / bind a trusted project (new session)",
+  "settings.remoteIm.cmd.resume": "List / resume an App history session",
+  "settings.remoteIm.cmd.new": "New session, keep project",
+  "settings.remoteIm.cmd.status": "Show binding status",
+  "settings.remoteIm.cmd.context": "Show current session context usage",
+  "settings.remoteIm.cmd.compact": "Compact the current agent session context",
+  "settings.remoteIm.cmd.help": "Welcome & command help",
+  "settings.remoteIm.cmd.whoami": "Show your sender id",
+  "settings.remoteIm.cmd.stop": "Cancel the current turn",
+  "settings.remoteIm.cmd.account": "List saved Grok accounts & remaining SuperGrok quota",
+  "settings.remoteIm.cmd.switch": "Switch the active Grok account by number or label",
+  "settings.remoteIm.bridge.telegramNativeCommands":
+    "Telegram: Bridge start registers the native / menu; /p, /r, and /account results use paginated inline buttons.",
+  "settings.remoteIm.channel.feishu": "Feishu",
+  "settings.remoteIm.channel.lark": "Lark",
+  "settings.remoteIm.channel.dingtalk": "DingTalk",
+  "settings.remoteIm.channel.wecom": "WeCom",
+  "settings.remoteIm.channel.weixin": "WeChat (personal)",
+  "settings.remoteIm.channel.wpsXiezuo": "WPS Collaboration",
+  "settings.remoteIm.channel.weibo": "Weibo",
+  "settings.remoteIm.channel.qq": "QQ (OneBot)",
+  "settings.remoteIm.channel.qqbot": "QQ official bot",
+  "settings.remoteIm.channel.telegram": "Telegram",
+  "settings.remoteIm.channel.slack": "Slack",
+  "settings.remoteIm.channel.discord": "Discord",
+  "settings.remoteIm.channel.matrix": "Matrix",
+  "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
+  "ui.errorBoundary.title": "This view hit a display error",
+  "ui.errorBoundary.body":
+    "The chat surface failed to render. Your session on disk is kept — retry or switch chats.",
+  "ui.errorBoundary.retry": "Retry",
+  "prHub.title": "Pull requests",
+  "prHub.desc":
+    "Open PRs for the active project via GitHub CLI (`gh pr list`). Expand a row for CI checks and recent conversation comments. Soft-fails when gh or git is missing, or the folder is not a repository.",
+  "prHub.refresh": "Refresh",
+  "prHub.refreshing": "Refreshing…",
+  "prHub.loading": "Loading pull requests…",
+  "prHub.count": "{n} open",
+  "prHub.empty": "No open pull requests",
+  "prHub.emptyBody": "This repository has no open PRs (or none match the default filter).",
+  "prHub.needProject": "No active project",
+  "prHub.needProjectBody":
+    "Select a project folder in the workbench to list its GitHub pull requests.",
+  "prHub.needTauri": "PR hub requires the Grok desktop window.",
+  "prHub.needGh": "GitHub CLI not found",
+  "prHub.needGhBody":
+    "Install GitHub CLI (`gh`) and sign in (`gh auth login`). PATH should include `gh` (GUI apps also search `~/.grok/bin` and common install locations).",
+  "prHub.needGit": "Git not available",
+  "prHub.needGitBody": "Install git and ensure it is on PATH for the desktop app.",
+  "prHub.notGit": "Not a git repository",
+  "prHub.notGitBody": "The active project folder is not inside a git work tree.",
+  "prHub.unavailable": "Could not list pull requests",
+  "prHub.unavailableBody": "gh pr list failed. Check auth, remote, and network.",
+  "prHub.error": "PR hub error",
+  "prHub.open": "Open",
+  "prHub.openInBrowser": "Open pull request in browser",
+  "prHub.openConversation": "Open conversation",
+  "prHub.openCheck": "Open check details",
+  "prHub.draft": "Draft",
+  "prHub.mergeable": "Mergeable",
+  "prHub.conflicting": "Conflicts",
+  "prHub.mergeableUnknown": "Merge status unknown",
+  "prHub.author": "by {name}",
+  "prHub.untitled": "(no title)",
+  "prHub.expandDetails": "Show checks and comments",
+  "prHub.collapseDetails": "Hide checks and comments",
+  "prHub.expandChecks": "Show CI checks",
+  "prHub.collapseChecks": "Hide CI checks",
+  "prHub.checks.title": "CI checks",
+  "prHub.checks.colName": "Name",
+  "prHub.checks.colState": "State",
+  "prHub.checks.none": "No checks",
+  "prHub.checks.loading": "Loading checks…",
+  "prHub.checks.failed": "Could not load checks",
+  "prHub.comments.title": "Recent comments",
+  "prHub.comments.loading": "Loading comments…",
+  "prHub.comments.failed": "Could not load comments",
+  "prHub.comments.none": "No comments yet",
+  "prHub.comments.comment": "Comment",
+  "prHub.comments.review": "Review",
+  "prHub.comments.open": "Open comment",
+  "prHub.comments.unknownAuthor": "Unknown",
+  "prHub.comments.emptyBody": "(no body)",
+  "prHub.review.approved": "Approved",
+  "prHub.review.changesRequested": "Changes requested",
+  "prHub.review.commented": "Commented",
+  "prHub.review.dismissed": "Dismissed",
+  "changes.comment": "Comment",
+  "changes.commentTip": "Add a review note on this hunk and insert it into the chat composer",
+  "changes.commentModalTitle": "Comment on hunk",
+  "changes.commentModalDesc": "Review note for “{name}” · hunk {n}. Inserts a structured prompt into the composer — does not send automatically.",
+  "changes.commentPlaceholder": "What should the agent fix or explain about this change?",
+  "changes.commentInsert": "Insert into chat",
+  "changes.commentInsertedToast": "Review note inserted into composer",
+  "changes.commentErrorEmpty": "Enter a short review note first",
+  "changes.commentErrorTooLong": "Note is too long (max ~4000 characters)",
+  "changes.commentErrorGeneric": "Could not build the chat prompt",
+  "prHub.checks.fixCi": "Fix with Grok",
+  "prHub.checks.fixCiTitle":
+    "Insert a draft into the composer asking Grok to fix failing CI (does not auto-send)",
+  "prHub.comments.askGrok": "Ask Grok",
+  "prHub.comments.askGrokTitle":
+    "Insert a draft into the composer about this comment (does not auto-send)",
+  "prHub.draftInsertedToast": "Draft inserted into composer",
+  "dashboard.peek.label": "Session details",
+  "dashboard.peek.expand": "Show details for {title}",
+  "dashboard.peek.collapse": "Hide details for {title}",
+  "dashboard.peek.status": "Status",
+  "dashboard.peek.tool": "Tool",
+  "dashboard.peek.noTool": "No active tool",
+  "dashboard.peek.project": "Project",
+  "dashboard.peek.model": "Model",
+  "dashboard.peek.activity": "Updated",
+  "dashboard.peek.openChat": "Open chat",
+  "dashboard.dispatch.title": "Dispatch new agent",
+  "dashboard.dispatch.projectLabel": "Trusted project",
+  "dashboard.dispatch.promptPlaceholder": "Prompt for a new session…",
+  "dashboard.dispatch.button": "Dispatch",
+  "dashboard.dispatch.buttonTitle":
+    "Open a new chat on the selected project, fill the prompt, and send",
+  "dashboard.dispatch.noTrusted":
+    "No trusted projects yet. Trust a project in the sidebar to dispatch.",
+  "dashboard.dispatch.emptyPrompt": "Enter a prompt to dispatch.",
+  "dashboard.dispatch.noProject": "Pick a trusted project first.",
+  "dashboard.dispatch.untrusted":
+    "That project is not trusted. Trust it before dispatching.",
+  "dashboard.dispatch.started": "Dispatched to {name}",
+  "composer.worktreeFirstPrompt": "First prompt (optional)",
+  "composer.worktreeFirstPromptHint":
+    "Used when opening a new chat — filled into the composer after create.",
+  "composer.worktreeFirstPromptPlaceholder":
+    "What should the agent work on in this worktree?",
+  "composer.worktreeAutoSend": "Send after open",
+  "composer.worktreeAutoSendHint":
+    "When checked, send the first prompt once the new chat opens (trusted projects only). Default off.",
+  "composer.parallelTask": "Parallel task (worktree)",
+  "composer.parallelTaskHostOnly":
+    "Parallel task needs the desktop app window.",
+  "composer.parallelTaskNoProject": "Select a project first.",
+  "composer.parallelTaskUntrusted":
+    "Trust this project before starting a parallel worktree task.",
+  "composer.parallelTaskNotGit":
+    "This folder is not a git repository (or git is unavailable).",
+  "plan.edit": "Edit plan",
+  "plan.cancelEdit": "Cancel edit",
+  "plan.requestWithDraft": "Request changes with draft",
+  "plan.approveDirtyHint":
+    "You have unsaved plan edits. Request changes with your draft first, or discard them to approve the agent's plan.",
+  "plan.draftPlaceholder": "Edit the plan markdown…",
+  "plan.draftAria": "Plan draft markdown",
+  "plan.discardTitle": "Discard plan edits?",
+  "plan.discardMessage":
+    "Your local edits will be lost. The agent’s original plan stays until you request changes or approve.",
+  "plan.discardConfirm": "Discard edits",
+  "plan.draftEmpty": "Plan draft cannot be empty.",
+  "plan.draftTooLong": "Plan draft is too long (max about 200k characters).",
+  "composer.intent.enqueue":
+    "Send queues a follow-up for after this turn (this chat). Use Steer on a queued item to interject mid-turn.",
+  "composer.intent.enqueueShort": "Queue follow-up",
+  "composer.intent.steer":
+    "Steer injects mid-turn guidance into the live task (not a queued follow-up).",
+  "composer.intent.foreignConcurrent":
+    "Send starts concurrent work here — another chat is still running. Open a new chat to keep drafts separate.",
+  "composer.intent.foreignShort": "Send (concurrent)",
+  "composer.intent.blockedPermission": "Resolve the permission prompt first",
+  "composer.intent.openAsNewChat": "Open as new chat",
+  "composer.intent.stripEnqueue": "Follow-ups — send after this turn",
+  "composer.intent.stripHold": "Auto-send paused",
+  "composer.intent.stripSteerHint":
+    "Follow-ups after this turn · Steer injects mid-turn",
+  "resources.agents": "Agents",
+  "resources.agentsShow": "Show agents rail",
+  "resources.agentsHide": "Hide agents rail",
+  "agentsRail.noTasks": "No agent tasks in this turn",
+  "agentsRail.busyHint":
+    "The session is working — tool steps and nested subagents will appear here as they start.",
+  "agentsRail.idleHint":
+    "When this chat runs tools or spawns subagents, their task tree shows here without opening the floating Tasks panel.",
+  "agentsRail.filterEmpty": "No tasks match these filters",
+  "agentsRail.filterEmptyHint":
+    "Clear the search or pick another status to see more tasks.",
+  "reliability.goal.clearTimeline": "Clear timeline",
+  "reliability.goal.clearConfirmTitle": "Clear goal timeline?",
+  "reliability.goal.clearConfirmMessage":
+    "Remove {count} local goal_updated event(s) from this app ring? This does not stop the CLI goal harness or change composer /goal mode.",
+  "reliability.goal.clearConfirmAction": "Clear timeline",
+  "reliability.goal.clearDone": "Cleared {count} local goal event(s)",
+  "reliability.goal.emptySessionMismatch":
+    "No goal events for this session",
+  "reliability.goal.emptySessionMismatchHint":
+    "Other sessions have observed goal_updated events. Open Reliability to see the full local timeline, or start /goal in this chat.",
+  "reliability.goal.openReliability": "Open Reliability",
+  "reliability.goal.sessionMenuAria": "Goal orchestration actions",
+  "dashboard.openBoard": "Board view",
+  "dashboard.openBoardTitle":
+    "Open sessions as a status board (needs you / running / idle / done)",
+  "taskBoard.title": "Session task board",
+  "taskBoard.hint":
+    "Sessions grouped by local status from the app and live agent state — not CI or cloud. Click a card to open that chat.",
+  "taskBoard.open": "Session task board",
+  "taskBoard.searchPlaceholder": "Filter sessions…",
+  "taskBoard.projectSearchPlaceholder": "Filter by project…",
+  "taskBoard.includeArchived": "Include archived",
+  "taskBoard.includeArchivedTitle":
+    "Show archived idle sessions in the Done column",
+  "taskBoard.columnsLabel": "Session status columns",
+  "taskBoard.column.needsYou": "Needs you",
+  "taskBoard.column.running": "Running",
+  "taskBoard.column.idle": "Idle",
+  "taskBoard.column.done": "Done",
+  "taskBoard.column.error": "Error",
+  "taskBoard.columnEmpty": "No sessions",
+  "taskBoard.empty": "No sessions to show",
+  "taskBoard.emptyHint":
+    "Start a chat or wait for an agent turn — sessions appear here by status.",
+  "taskBoard.filterEmpty": "No sessions match these filters",
+  "taskBoard.filterEmptyHint":
+    "Clear the search or include archived to see more sessions.",
+  "taskBoard.clearFilters": "Clear filters",
+  "taskBoard.totalCount": "{n} sessions",
+  "settings.agentsPersonas.title": "Agents & Personas",
+  "settings.agentsPersonas.desc":
+    "Browse built-in, user, and project agent definitions and discovered personas (CLI `/config-agents` roots). Never invents personas — only files on disk. Preferred agent applies to new sessions.",
+  "settings.agentsPersonas.tab.agents": "Agents",
+  "settings.agentsPersonas.tab.personas": "Personas",
+  "settings.agentsPersonas.searchPlaceholder": "Filter by name, source, or path…",
+  "settings.agentsPersonas.refresh": "Refresh",
+  "settings.agentsPersonas.loading": "Loading…",
+  "settings.agentsPersonas.clearFilter": "Clear filter",
+  "settings.agentsPersonas.open": "Open",
+  "settings.agentsPersonas.reveal": "Reveal",
+  "settings.agentsPersonas.openUserAgents": "Open user agents folder",
+  "settings.agentsPersonas.openProjectAgents": "Open project agents folder",
+  "settings.agentsPersonas.openUserPersonas": "Open user personas folder",
+  "settings.agentsPersonas.openProjectPersonas": "Open project personas folder",
+  "settings.agentsPersonas.browsePersonas": "Browse personas folder",
+  "settings.agentsPersonas.needProjectHint":
+    "Select a project in the workbench to manage project-scoped definitions.",
+  "settings.agentsPersonas.agentsEmpty": "No agent definitions found",
+  "settings.agentsPersonas.agentsEmptyHint":
+    "Built-ins always list when the catalog loads. Add `*.md` under ~/.grok/agents or project `.grok/agents`, or create one under Extensions → Agents.",
+  "settings.agentsPersonas.personasEmpty": "No personas discovered",
+  "settings.agentsPersonas.personasEmptyHint":
+    "Personas are `*.toml` / `*.md` under ~/.grok/personas or project `.grok/personas`. The App never invents persona names — use the CLI or open the folder to add files.",
+  "settings.agentsPersonas.filterEmpty": "No matches for this filter",
+  "settings.agentsPersonas.filterEmptyHint": "Clear the filter to see the full list.",
+  "settings.agentsPersonas.hostOnly": "Open the desktop app to list agents and personas",
+  "settings.agentsPersonas.hostOnlyHint":
+    "Filesystem discovery needs the Tauri host. Built-in names may still appear from the catalog for preferred-agent honesty.",
+  "settings.agentsPersonas.noProject": "No project open",
+  "settings.agentsPersonas.noProjectHint":
+    "Open a workbench project to list project-scoped agents and personas.",
+  "settings.agentsPersonas.error": "Could not load agents and personas",
+  "settings.agentsPersonas.builtinNoPath": "Built-in · no definition file path",
+  "settings.agentsPersonas.setPreferred": "Set preferred",
+  "settings.agentsPersonas.preferredBadge": "Preferred",
+  "settings.agentsPersonas.preferredDefault":
+    "Preferred agent: Default (CLI) — new sessions omit `--agent`.",
+  "settings.agentsPersonas.preferredCurrent":
+    "Preferred agent: {name} · {source}",
+  "settings.agentsPersonas.preferredMissing":
+    "Preferred agent “{name}” is not in the catalog",
+  "settings.agentsPersonas.preferredMissingHint":
+    "It may have been renamed or removed. Pick another agent or Default (CLI). Spawn still passes the saved name until you change it.",
+  "composer.worktreeCompare": "Compare with main…",
+  "composer.worktreeCompareTip":
+    "List files that differ from the main worktree (no merge)",
+  "composer.worktreeCompareTitle": "Compare with main",
+  "composer.worktreeCompareHint":
+    "Read-only file list from git diff --name-status (three-dot vs main). Selective apply / merge is out of scope.",
+  "composer.worktreeCompareRange": "{base}...{other}",
+  "composer.worktreeCompareLoading": "Comparing…",
+  "composer.worktreeCompareEmpty": "Identical trees — no file differences.",
+  "composer.worktreeCompareFailed": "Could not compare worktrees",
+  "composer.worktreeCompareNeedProject": "Open a project folder to compare",
+  "composer.worktreeCompareOnMain":
+    "Already on the main worktree — switch to a linked worktree to compare",
+  "composer.worktreeCompareSamePath": "Base and other paths are the same",
+  "composer.worktreeCompareNotGit": "Not a git repository (or git missing)",
+  "composer.worktreeCompareMissingPath": "Worktree path is missing",
+  "composer.worktreeCompareChipAdded": "+{n} added",
+  "composer.worktreeCompareChipModified": "~{n} modified",
+  "composer.worktreeCompareChipDeleted": "−{n} deleted",
+  "composer.worktreeCompareChipRenamed": "→{n} renamed",
+  "composer.worktreeCompareChipOther": "?{n} other",
+  "composer.worktreeCompareChipTotal": "{n} files",
+  "composer.worktreeCompareCopyPath": "Copy path",
+  "composer.worktreeCompareReveal": "Reveal in file manager",
+  "composer.worktreeComparePathCopied": "Path copied",
+  "composer.worktreeCompareOverflow":
+    "Showing {shown} of {total} — {n} more not listed",
+  "settings.workflows.authorHint":
+    "Author full pipelines with the create-workflow skill (/create-workflow), or edit the .rhai file. This panel only scaffolds a short template and can smoke/run by name — not a visual editor.",
+  "settings.workflows.reveal": "Reveal",
+  "settings.workflows.revealTitle": "Reveal workflow file in folder",
+  "settings.workflows.openEditor": "Open",
+  "settings.workflows.openEditorTitle": "Open workflow in configured editor",
+  "settings.workflows.create": "New from template",
+  "settings.workflows.create.title": "New workflow from template",
+  "settings.workflows.create.hint":
+    "Writes a minimal .rhai scaffold with pure-literal meta. Replace the body with real agent()/parallel() steps (see create-workflow skill).",
+  "settings.workflows.create.name": "Name",
+  "settings.workflows.create.namePlaceholder": "review-changes",
+  "settings.workflows.create.namePreview": "Will save as {name}.rhai",
+  "settings.workflows.create.scope": "Scope",
+  "settings.workflows.create.needProjectHint":
+    "Open a project in the workbench to enable project scope.",
+  "settings.workflows.create.needProject":
+    "Project scope needs an active project path.",
+  "settings.workflows.create.argsNote":
+    "Optional: pass args as an object when launching via the workflow tool (args is () if omitted).",
+  "settings.workflows.create.pathPreview": "Path: {path}",
+  "settings.workflows.create.submit": "Create",
+  "settings.workflows.create.creating": "Creating…",
+  "settings.workflows.create.created": "Created workflow {name}",
+  "settings.workflows.create.overwritten": "Overwrote workflow {name}",
+  "settings.workflows.create.nameInvalid":
+    "Use letters, digits, dashes, or underscores (no path separators).",
+  "settings.workflows.create.error": "Could not create workflow (soft-fail).",
+  "settings.workflows.create.desktopOnly":
+    "Creating workflows requires the desktop app host.",
+  "settings.workflows.create.overwriteTitle": "Overwrite workflow?",
+  "settings.workflows.create.overwriteBody":
+    "A workflow named “{name}” already exists. Overwrite with the template scaffold?",
+  "settings.workflows.create.overwrite": "Overwrite",
+  "settings.workflows.empty.no_workflows":
+    "No .rhai workflows found under ~/.grok/workflows or this project’s .grok/workflows. Create a template or use /create-workflow.",
+  "settings.workflows.empty.scan_soft_fail":
+    "Workflow folders could not be scanned (soft-fail). Paths may still exist on disk.",
+  "settings.workflows.empty.browser_only":
+    "Workflow discovery and create require the desktop app host.",
+  "settings.workflows.empty.history_empty":
+    "No observed smoke/run results yet. History only records Settings Smoke/Run outcomes (local, redacted).",
+  "settings.workflows.history": "Recent runs",
+  "settings.workflows.history.show": "Recent runs ({count})",
+  "settings.workflows.history.hide": "Hide recent runs",
+  "settings.workflows.history.honesty":
+    "Local ring of Settings smoke/run outcomes only (max ~20). Not a live /workflows dashboard; does not invent offline fires.",
+  "settings.workflows.history.filter": "Filter recent runs",
+  "settings.workflows.history.filter.all": "All",
+  "settings.workflows.history.filterEmpty": "No runs match this filter.",
+  "settings.workflows.history.outcome.ok": "ok",
+  "settings.workflows.history.outcome.error": "error",
+  "settings.workflows.history.outcome.softFail": "soft-fail",
+  "settings.workflows.history.clear": "Clear history",
+  "settings.workflows.history.clearTitle": "Clear recent runs?",
+  "settings.workflows.history.clearBody":
+    "Remove {count} local history row(s)? This cannot be undone.",
+  "settings.workflows.history.clearConfirm": "Clear",
+  "settings.workflows.history.cleared": "Workflow run history cleared",
+  "automations.inbox.section": "Inbox",
+  "automations.inbox.desc":
+    "Review queue for schedule runs observed in this process. Open the linked session when known, retry when the task still exists, or mark items read.",
+  "automations.inbox.processBound":
+    "Runs are recorded only while Grok App is open or in the tray. Full Quit does not invent offline runs — empty Inbox after relaunch is normal until something fires.",
+  "automations.inbox.search": "Search inbox",
+  "automations.inbox.filterAria": "Filter inbox by outcome",
+  "automations.inbox.empty": "No inbox items.",
+  "automations.inbox.emptyFiltered": "No runs match this filter or search.",
+  "automations.inbox.emptyProcessBound":
+    "No observed runs yet. History fills when a schedule fires in this process or you use Run now — never after Quit offline.",
+  "automations.inbox.openSession": "Open session",
+  "automations.inbox.openProject": "Open project",
+  "automations.inbox.runNow": "Run now",
+  "automations.inbox.markRead": "Mark read",
+  "automations.inbox.markAllRead": "Mark all read",
+  "automations.inbox.clear": "Clear inbox",
+  "automations.inbox.clearTitle": "Clear inbox history?",
+  "automations.inbox.clearBody":
+    "Removes the local observed run list and read markers on this device. This cannot be undone. Schedules themselves are unchanged.",
+  "automations.inbox.clearConfirm": "Clear",
+  "automations.inbox.unreadCount": "{n} unread",
+  "automations.inbox.sessionMissing":
+    "That session is no longer available. It may have been deleted after the run.",
+  "automations.inbox.projectMissing":
+    "That project is no longer available.",
+  "settings.sandbox.openGuide": "Open sandbox guide",
+  "settings.sandbox.recommendedDaily": "Recommended for daily use",
+  "sandboxWizard.title.trust": "Choose a sandbox profile",
+  "sandboxWizard.title.info": "Sandbox profile guide",
+  "sandboxWizard.progress": "Step {n} of {total} · {step}",
+  "sandboxWizard.step.intro": "Why sandbox",
+  "sandboxWizard.step.pick": "Pick a profile",
+  "sandboxWizard.step.confirm": "Confirm",
+  "sandboxWizard.next": "Continue",
+  "sandboxWizard.back": "Back",
+  "sandboxWizard.skip": "Not now",
+  "sandboxWizard.apply": "Apply profile",
+  "sandboxWizard.intro.trust":
+    "You trusted this project. Optionally set an OS-level sandbox for agent processes so writes stay scoped to the workspace (and temp).",
+  "sandboxWizard.intro.info":
+    "OS sandbox profiles limit what the agent process can write. Pick a profile that matches how you use this machine.",
+  "sandboxWizard.reason.workspace":
+    "Recommended for daily coding: Workspace — read anywhere; write limited to the session working directory, ~/.grok/, and system temp. Network allowed.",
+  "sandboxWizard.honesty.platform":
+    "On this platform, kernel OS sandbox enforcement is not documented (macOS Seatbelt / Linux Landlock only). The CLI may accept the profile but soft-fail without enforcement — not a hard security boundary.",
+  "sandboxWizard.honesty.cliUnsupported":
+    "This CLI is too old for --sandbox (needs ≥ {min}). The profile can be saved, but the flag is omitted (soft-fail) until you upgrade Grok Build.",
+  "sandboxWizard.pick.lead":
+    "Select a sandbox profile. Workspace is recommended for everyday use.",
+  "sandboxWizard.recommendedBadge": "Recommended",
+  "sandboxWizard.confirm.lead": "Apply “{profile}” as the app sandbox profile?",
+  "sandboxWizard.confirm.respawnHint":
+    "Takes effect when a new agent starts — reconnect the session after changing. Projects can still override this from the project menu.",
+  "sandboxWizard.dontOfferAgain": "Don’t offer this after trusting projects",
+  "voice.center.toolIdle": "No Build tool running",
+  "voice.center.chipDelegated": "Voice",
+  "voice.center.keepAgentsOn":
+    "Keep coding sessions: on — ending Live Voice leaves delegated agents running.",
+  "voice.center.keepAgentsOff":
+    "Keep coding sessions: off — ending Live Voice may stop sessions started from voice.",
+  "voice.center.endNote.keepAgents":
+    "Stop ends voice and cancels in-flight host tools. Coding sessions stay.",
+  "voice.center.endNote.keepRunning":
+    "Stop ends voice. Running delegated coding sessions stay open.",
+  "voice.center.endNote.cancelDelegates":
+    "Stop ends voice, cancels in-flight tools, and stops delegated coding sessions.",
+  "voice.center.endNote.stopOnly":
+    "Stop ends voice and cancels in-flight host tools.",
+  "voice.center.empty.noAuth":
+    "Live Voice needs Grok auth (CLI login or official API key). No speech transcript yet.",
+  "voice.center.empty.noMic":
+    "Microphone unavailable. Transcript stays empty until the host sends text — nothing is invented.",
+  "voice.center.empty.transcriptWithDelegates":
+    "No speech transcript yet (host only). Delegated coding sessions are listed above.",
+  "settings.codeGraph": "Code graph",
+  "settings.codeGraphDesc":
+    "Unified honesty for codebase indexing (CLI code graph) and App project search (keyword only). Never invents graph or embedding hits.",
+  "settings.codeGraph.modeLabel": "Code graph status",
+  "settings.codeGraph.chip.appKeyword": "App search: keyword",
+  "settings.codeGraph.chip.cliGraph": "CLI code graph: on",
+  "settings.codeGraph.chip.cliGraphDefaultOn": "CLI code graph: default on",
+  "settings.codeGraph.chip.graphUnavailable": "App graph search: unavailable",
+  "settings.codeGraph.chip.keywordOnly": "Code graph: off",
+  "settings.codeGraph.chip.cliOld": "CLI too old for code graph",
+  "settings.codeGraph.chip.noEmbeddings": "Not embeddings",
+  "settings.codeGraph.mode.keywordOnly":
+    "Codebase indexing is off — CLI will not build a code graph. App project search stays keyword (rg/walk).",
+  "settings.codeGraph.mode.graphEnabledUnknown":
+    "Codebase indexing is on and CLI may build a code graph; App cannot confirm graph readiness or return graph hits yet.",
+  "settings.codeGraph.mode.graphUnavailable":
+    "Codebase indexing is on for CLI code-nav, but App project search has no graph API — results stay keyword only.",
+  "settings.codeGraph.mode.cliOld":
+    "CLI older than {min} — `[features].codebase_indexing` may be ignored (soft-fail). App search stays keyword.",
+  "settings.codeGraph.mode.unsetDefaultOn":
+    "Key is unset — CLI default is on. App does not invent a written config value; project search stays keyword.",
+  "settings.codeGraph.appSearchRemainsKeyword":
+    "App project search remains keyword until the host exposes a real graph search API. Enable indexing for CLI graph/code-nav separately.",
+  "settings.codeGraph.openIndexingSettings": "Codebase indexing settings",
+  "settings.codeGraph.openSearchSettings": "Project codebase search",
+  "settings.codeGraph.empty.cliOld": "CLI too old for code graph indexing",
+  "settings.codeGraph.empty.cliOldHint":
+    "Update Grok Build CLI to use `[features].codebase_indexing`. App search is still keyword only.",
+  "settings.codeGraph.empty.unsetDefaultOn":
+    "Codebase indexing key is unset (CLI default on)",
+  "settings.codeGraph.empty.unsetDefaultOnHint":
+    "Toggle once to write an explicit bool. App search does not use the code graph.",
+  "settings.codeGraph.empty.keywordOnly": "Code graph indexing is off",
+  "settings.codeGraph.empty.keywordOnlyHint":
+    "Turn on codebase indexing for CLI code-nav. App project search stays keyword either way.",
+  "settings.codeGraph.empty.graphUnavailable":
+    "CLI code graph may be enabled — App graph search unavailable",
+  "settings.codeGraph.empty.graphUnavailableHint":
+    "Indexing can help CLI agents; this App surface only runs keyword (rg/walk) project search.",
+  "settings.codeGraph.empty.graphEnabledUnknown":
+    "CLI code graph may be enabled — status unknown in App",
+  "settings.codeGraph.empty.graphEnabledUnknownHint":
+    "App does not probe graph health or invent graph hits. Project search is keyword only.",
+  "settings.codeGraph.empty.searchKeywordIdle":
+    "Type a keyword query to search this project",
+  "settings.codeGraph.empty.searchKeywordIdleHint":
+    "Results are path/name or content matches — never invented graph or embedding hits.",
+  "settings.codeGraph.empty.searchNoMatches": "No keyword matches",
+  "settings.codeGraph.empty.searchNoMatchesHint":
+    "No path/name or content hits under the project. This is not code-graph or vector search.",
+  "settings.codeGraph.rebuild.availableNote":
+    "Host can rebuild the code graph index.",
+  "settings.codeGraph.rebuild.unavailableNote":
+    "App has no host rebuild for the code graph.",
+  "settings.codeGraph.rebuild.cliHint":
+    "If the index is stale, rebuild via Grok Build CLI when that command is available — this panel does not invent a rebuild button.",
+  "composer.apply.model.immediate":
+    "Model applied on the live agent (session/set_model).",
+  "composer.apply.model.softRespawn":
+    "Model applies on next message after reconnect.",
+  "composer.apply.model.nextMessage":
+    "Model saved — applies on the next message.",
+  "composer.apply.model.unsupported":
+    "This model change cannot be applied mid-session.",
+  "composer.apply.effort.immediate": "Reasoning effort applied immediately.",
+  "composer.apply.effort.softRespawn":
+    "Reasoning applies on next message after reconnect (no mid-session set_effort).",
+  "composer.apply.effort.nextMessage":
+    "Reasoning saved — applies on the next message.",
+  "composer.apply.effort.unsupported":
+    "This reasoning change cannot be applied mid-session.",
+  "composer.apply.error.setModelFailed":
+    "Could not switch model on the live agent",
+  "composer.apply.error.softRespawnFailed":
+    "Could not reload the agent with new settings",
+  "composer.apply.error.invalidModel": "Invalid model",
+  "composer.apply.error.invalidEffort": "Invalid reasoning effort",
+  "composer.apply.error.disconnected": "Agent is not connected",
+  "composer.apply.error.busy":
+    "Agent is mid-turn — change applies after this turn",
+  "composer.apply.error.other": "Could not apply model or reasoning change",
+  "composer.skillsPicker": "Skills",
+  "skillsPicker.aria": "Skills for this prompt",
+  "skillsPicker.placeholder": "Search skills…",
+  "skillsPicker.recent": "Recent",
+  "skillsPicker.all": "All skills",
+  "skillsPicker.loading": "Loading skills…",
+  "skillsPicker.empty": "No invocable skills installed",
+  "skillsPicker.emptyHint":
+    "Install from Extensions → Marketplace, or enable skills under Extensions → Skills.",
+  "skillsPicker.filterEmpty": "No matching skills",
+  "skillsPicker.filterEmptyHint": "Try another search, or clear the filter.",
+  "skillsPicker.hostOnly": "Could not load skills",
+  "skillsPicker.hostOnlyHint":
+    "Skills need the desktop host and Grok Build CLI. Check Settings → CLI / Runtime.",
+  "skillsPicker.clearFilter": "Clear filter",
+  "settings.memoryOps": "Memory operations center",
+  "settings.memoryOpsDesc":
+    "Unified memory browser, embedding honesty, and clear scopes. App search is keyword-only — never invents embeddings. CLI hybrid needs an embedding model; browser hybrid stays unavailable without a host search path.",
+  "settings.memoryOps.modeLabel": "Memory search modes",
+  "settings.memoryOps.mode.appKeyword": "App: keyword",
+  "settings.memoryOps.mode.cliHybrid": "CLI agent: hybrid",
+  "settings.memoryOps.mode.hybridUnavailable": "Browser hybrid: unavailable",
+  "settings.memoryOps.mode.memoryOff": "Memory: off",
+  "settings.memoryOps.hybridUnavailableHint":
+    "Embedding model is set for the agent tool, but the App browser has no host hybrid CLI (grok memory search) — keyword scan only. Never invents embeddings.",
+  "settings.memoryOps.openEmbed": "Embedding settings",
+  "settings.memoryOps.presenceLabel": "Dream / watcher config presence",
+  "settings.memoryOps.dream": "Dream",
+  "settings.memoryOps.watcher": "Watcher",
+  "settings.memoryOps.presenceNote":
+    "Config presence only — not a live running status.",
+  "settings.memoryOps.clearLabel": "Clear memory scopes",
+  "settings.memoryOps.clear.workspace": "Clear workspace",
+  "settings.memoryOps.clear.session": "Clear session",
+  "settings.memoryOps.clear.all": "Clear all",
+  "settings.memoryOps.clear.busy": "Clearing…",
+  "settings.memoryOps.clear.confirmTitle.workspace": "Clear workspace memory?",
+  "settings.memoryOps.clear.confirmTitle.session": "Clear session memory?",
+  "settings.memoryOps.clear.confirmTitle.all": "Clear all memory?",
+  "settings.memoryOps.clear.confirmMsg.workspace":
+    "Runs grok memory clear --workspace for the current project (MEMORY.md, session logs, index). App chat history is kept. This cannot be undone.",
+  "settings.memoryOps.clear.confirmMsg.session":
+    "Session-only clear is not available from the App host yet (CLI has no session scope).",
+  "settings.memoryOps.clear.confirmMsg.all":
+    "Runs grok memory clear --all under the active GROK_HOME. Removes global and workspace memory files. App chat history is kept. This cannot be undone.",
+  "settings.memoryOps.clear.done.workspace": "Workspace memory cleared",
+  "settings.memoryOps.clear.done.session": "Session memory cleared",
+  "settings.memoryOps.clear.done.all": "All memory cleared",
+  "settings.memoryOps.clear.unavailable.session":
+    "Session-only clear is not supported by the host CLI yet.",
+  "settings.memoryOps.clear.unavailable.memoryOff":
+    "Turn on Cross-session memory before clearing.",
+  "settings.memoryOps.clear.unavailable.noCwd":
+    "Open a project to clear workspace memory.",
+  "settings.memoryOps.clear.unavailable.host":
+    "This clear scope is not available from the App host.",
+  "settings.memoryOps.empty.memoryOff": "Memory is off",
+  "settings.memoryOps.empty.memoryOffHint":
+    "Enable Cross-session memory above to browse files and clear scopes.",
+  "settings.memoryOps.empty.noProject": "No project selected",
+  "settings.memoryOps.empty.noProjectHint":
+    "Open a project for workspace-scoped memory. Global MEMORY.md may still appear.",
+  "settings.memoryOps.empty.catalog": "No memory files yet",
+  "settings.memoryOps.empty.catalogHint":
+    "Files appear after the agent writes MEMORY.md, session logs, or an index.",
+  "settings.memoryOps.empty.hybridUnavailable":
+    "No memory files · browser hybrid unavailable",
+  "settings.lspTools": "LSP tools",
+  "settings.lspToolsDesc":
+    "Honest status for Grok Build `[features].lsp_tools` in the active GROK_HOME config.toml. Exposes CLI agent lsp tools when on — the App does not run language servers or show live diagnostics. Independent agent-home can write the bool + soft-respawn; shared mode is read-only. Soft-fails when CLI is known older.",
+  "settings.lspTools.path": "Config: {path}",
+  "settings.lspTools.loading": "Loading LSP tools config…",
+  "settings.lspTools.error": "Could not load or update LSP tools config",
+  "settings.lspTools.saved": "LSP tools config saved (agent soft-respawned)",
+  "settings.lspTools.sharedWarning":
+    "Shared mode shows ~/.grok/config.toml (read-only probe). Switch session data mode to independent to write `[features].lsp_tools` into App agent-home.",
+  "settings.lspTools.mode.independent": "Independent (agent-home)",
+  "settings.lspTools.mode.shared": "Shared (~/.grok)",
+  "settings.lspTools.missing": "File not found yet",
+  "settings.lspTools.writable": "Editable",
+  "settings.lspTools.readOnly": "Read-only",
+  "settings.lspTools.presence.unset": "unset",
+  "settings.lspTools.presence.on": "on",
+  "settings.lspTools.presence.off": "off",
+  "settings.lspTools.status.off": "off — agent has no lsp tools",
+  "settings.lspTools.status.on": "on — CLI agent tools only",
+  "settings.lspTools.status.unset": "unset — CLI default off",
+  "settings.lspTools.status.sharedReadonly": "shared read-only",
+  "settings.lspTools.status.cliOld": "CLI older than {min} (soft-fail)",
+  "settings.lspTools.status.hostOnly": "desktop host required",
+  "settings.lspTools.chip.off": "off",
+  "settings.lspTools.chip.on": "on",
+  "settings.lspTools.chip.unset": "unset",
+  "settings.lspTools.chip.sharedReadonly": "shared read-only",
+  "settings.lspTools.chip.cliOld": "CLI < {min}",
+  "settings.lspTools.chip.hostOnly": "host only",
+  "settings.lspTools.chip.cliDefaultOff": "CLI default off",
+  "settings.lspTools.chip.noAppLsp": "App: no LSP client",
+  "settings.lspTools.chip.noDiagnostics": "no live diagnostics",
+  "settings.lspTools.cliUnknown": "CLI version unknown (soft-fail)",
+  "settings.lspTools.enable": "Enable LSP tools",
+  "settings.lspTools.enableDesc":
+    "When on, the CLI agent may use lsp tools if language servers are configured in agent config. When off or unset (CLI default), the agent has no lsp tools. The App never shows a diagnostics list here.",
+  "settings.lspTools.unsetDefaultHint":
+    "Key is unset — CLI default is off. Toggle once to write an explicit bool into config.toml.",
+  "settings.lspTools.empty.off": "When off, the agent has no lsp tools.",
+  "settings.lspTools.empty.offHint":
+    "Enable the flag in independent agent-home to expose CLI agent lsp tools after soft-respawn.",
+  "settings.lspTools.empty.on":
+    "On: CLI agent may use lsp tools if servers are configured.",
+  "settings.lspTools.empty.onHint":
+    "App does not show live diagnostics yet — tools run in the CLI agent only.",
+  "settings.lspTools.empty.unset":
+    "Key unset — CLI default is off (agent has no lsp tools).",
+  "settings.lspTools.empty.unsetHint":
+    "Toggle once to write an explicit `[features].lsp_tools` bool.",
+  "settings.lspTools.empty.sharedReadonly":
+    "Shared mode is read-only for this flag.",
+  "settings.lspTools.empty.sharedReadonlyHint":
+    "Switch session data mode to independent to edit agent-home config.toml.",
+  "settings.lspTools.empty.cliOld":
+    "CLI may be older than {min}; lsp_tools may be ignored (soft-fail).",
+  "settings.lspTools.empty.cliOldHint":
+    "Upgrade Grok Build CLI for the documented surface. Config write still allowed.",
+  "settings.lspTools.empty.hostOnly":
+    "LSP tools settings require the desktop app.",
+  "settings.lspTools.empty.hostOnlyHint":
+    "Open the Tauri desktop host to read or write agent-home config.",
+  "settings.lspTools.empty.noDiagnostics":
+    "No live diagnostics in App — CLI agent tools only when enabled.",
+  "settings.lspTools.empty.noDiagnosticsHint":
+    "When on, the CLI agent may use lsp tools if servers are configured. This workbench never invents a diagnostics list.",
+  "settings.lspTools.banner.sharedReadonly":
+    "Shared mode is read-only — switch to independent to write lsp_tools.",
+  "settings.lspTools.banner.cliOld":
+    "CLI older than {min} — key may be ignored (soft-fail).",
+  "settings.lspTools.banner.hostOnly": "Desktop host required.",
+  "settings.lspTools.banner.softRespawn":
+    "Saving writes config.toml and soft-respawns the agent so the flag is picked up.",
+  "settings.lspTools.banner.noAppLsp":
+    "Grok App does not run language servers itself.",
+  "settings.lspTools.banner.agentToolsOnly":
+    "CLI agent tools only when enabled and servers are configured.",
+  "settings.lspTools.banner.noDiagnostics":
+    "App does not show live diagnostics yet.",
+  "settings.lspTools.refresh": "Refresh",
+  "settings.lspTools.reset": "Reset",
+  "settings.lspTools.save": "Save LSP tools",
+  "settings.lspTools.saving": "Saving…",
+  "settings.lspTools.needTauri": "LSP tools settings require the desktop app.",
+  "settings.lspTools.openConfigSection": "Open agent config sections",
+  "settings.lspTools.copySummary": "Copy status summary",
+  "settings.lspTools.copied": "Copied",
+  "settings.lspTools.copyFailed": "Could not copy summary to clipboard",
+  "message.copyLink": "Copy link",
+  "message.linkCopied": "Link copied",
+  "message.deepLinkMissing": "Message not found in this conversation",
+  "batchAgents.downloadSummary": "Download .txt",
+  "batchAgents.downloaded": "Downloaded",
+  "batchAgents.exportEmpty": "No batch results to export yet.",
+  "batchAgents.exportFailed": "Could not export results.",
+  "batchAgents.templatesLabel": "Prompt templates",
+  "batchAgents.tpl.codeReview.title": "Code review",
+  "batchAgents.tpl.codeReview.body":
+    "Review recent changes in this repository. Call out risks, missing tests, and incomplete work with concrete file paths. Be honest about uncertainty — do not invent findings.",
+  "batchAgents.tpl.fixTests.title": "Fix tests",
+  "batchAgents.tpl.fixTests.body":
+    "Find failing or flaky tests in this repository, fix them with minimal changes, and report what still fails. Do not claim green if tests were not run.",
+  "batchAgents.tpl.summarize.title": "Summarize",
+  "batchAgents.tpl.summarize.body":
+    "Summarize what this repository does, its layout, and current risks or open TODOs. Prefer evidence from the tree over speculation.",
+  "batchAgents.eligibilitySummary":
+    "{ready} ready · {skip} not eligible of {selected} selected",
+  "batchAgents.eligibilityNone": "No eligible projects in the current selection.",
+  "batchAgents.status.okEmpty": "OK (no detail)",
+  "batchAgents.status.partial": "Partial",
+  "settings.sessionDataMode.status": "Current: {modeLabel} · agent home {path}",
+  "settings.sessionDataMode.independentNote":
+    "Independent mode uses {path}. App settings that write agent config apply here; CLI ~/.grok is not rewritten.",
+  "settings.sessionDataMode.confirm.intro":
+    "Switch session data home from {fromHome} → {toHome}?\nHistories are not merged. Live agents will be recycled.",
+  "settings.sessionDataMode.risk.homesDiffer":
+    "Agent home changes — reconnects use the new directory only",
+  "settings.sessionDataMode.risk.noSilentMerge":
+    "No silent merge: independent and shared histories stay separate",
+  "settings.sessionDataMode.risk.recycleAgents":
+    "All live / background / parked agents are recycled now",
+  "settings.sessionDataMode.risk.sharedWithCli":
+    "Shared mode uses ~/.grok — same sessions as terminal Grok Build CLI",
+  "settings.sessionDataMode.risk.noConfigRewrite":
+    "App will not rewrite CLI secrets/config.toml for privacy, providers, and similar keys",
+  "settings.sessionDataMode.risk.conflictPossible":
+    "Concurrent App + CLI writes may conflict; lock or retry if you see errors",
+  "settings.sessionDataMode.risk.leaveShared":
+    "Leaving shared: App isolates to agent-home; terminal CLI keeps ~/.grok unchanged",
+  "settings.sessionDataMode.banner.sharedWithCli":
+    "Shared with CLI: agent home is ~/.grok (same session list as terminal Grok Build).",
+  "settings.sessionDataMode.banner.noRewriteSecrets":
+    "App refuses rewriting agent-home secrets/config.toml keys in shared mode — use independent for App-managed config writes.",
+  "settings.sessionDataMode.banner.conflictPossible":
+    "Conflict possible if App and CLI write the same session index at once — no silent history merge across modes.",
+  "settings.autoUpdateIdle": "Check when you want — no update status yet.",
+  "settings.autoUpdateBody.checking":
+    "Contacting the signed updater endpoint or GitHub Releases…",
+  "settings.autoUpdateBody.downloading":
+    "Downloading a signed package. Agents keep running until install succeeds.",
+  "settings.autoUpdateBody.installing":
+    "Staging the update. Agents, voice, Remote IM, and mirror stop only after a successful install prepare.",
+  "settings.autoUpdateBody.ready":
+    "Install and restart when ready. A failed install will not stop agents.",
+  "settings.autoUpdateBody.manual":
+    "Open the release page or download the installer for this platform. In-app silent install is not available on this build.",
+  "settings.autoUpdateBody.agentsNote":
+    "Agents, voice, Remote IM, and mirror keep running; they stop only after a successful install prepare.",
+  "settings.autoUpdateError.network":
+    "Could not reach the update server. Check your network or proxy, then try again.",
+  "settings.autoUpdateError.signature":
+    "The update package failed signature verification. Use a signed release build or download from GitHub Releases.",
+  "settings.autoUpdateError.pluginMissing":
+    "In-app updater is not available in this build (unsigned or local). Use Check for updates to open GitHub Releases.",
+  "settings.autoUpdateError.notReady":
+    "The update is not ready to install yet. Wait for download to finish, then try Install and restart.",
+  "settings.autoUpdateError.hostOnly":
+    "App updates are only available in the desktop app, not in a browser preview.",
+  "settings.autoUpdateError.other":
+    "Update failed. You can still open the GitHub release page and install manually.",
+  "settings.autoUpdateChannelUnsupported":
+    "Update channel: manual install (this package type cannot auto-update)",
+  "settings.autoUpdateChannelHostOnly":
+    "Update channel: desktop app only (not available here)",
+  "cliTrust.grade.verified": "Checksum verified",
+  "cliTrust.grade.missingSidecar": "No checksum sidecar",
+  "cliTrust.grade.mismatch": "Checksum mismatch",
+  "cliTrust.grade.unverifiedAllowed": "Unverified install allowed",
+  "cliTrust.grade.unknown": "Checksum status unknown",
+  "cliTrust.hint.missingSidecar":
+    "Official mirrors currently omit published SHA-256 sidecars. Install uses HTTPS allowlist + binary probe; not cryptographically verified.",
+  "cliTrust.hint.mismatch":
+    "Published checksum did not match the download. Install is refused — do not force unverified on mismatch.",
+  "cliTrust.hint.unverifiedAllowed":
+    "Install proceeded without a published sidecar (escape hatch or default missing-sidecar policy).",
+  "cliTrust.hint.unknown":
+    "No App-managed install checksum record yet. Manual or external installs are not graded.",
+  "settings.askDemo.title": "Ask-user demo path",
+  "settings.askDemo.desc":
+    "Suggested path to compare Ask vs YOLO without hunting settings. App only prepares policy and a sample prompt — a live questionnaire still depends on the model and CLI.",
+  "settings.askDemo.honesty":
+    "Honesty: real `ask_user_question` depends on the model and Grok Build CLI. The App never auto-sends a prompt and never claims the agent will ask.",
+  "settings.askDemo.step.policyAsk": "Set permission policy to Ask",
+  "settings.askDemo.step.policyAskHint": "Use product Ask so tools and questions can surface prompts.",
+  "settings.askDemo.step.notYolo": "Ensure YOLO / always-approve is off",
+  "settings.askDemo.step.notYoloHint": "YOLO skips confirmations and is a poor Ask comparison baseline.",
+  "settings.askDemo.step.askUserEnabled": "Keep ask-user questions enabled",
+  "settings.askDemo.step.askUserEnabledHint":
+    "Turn off “Disable ask-user questions” (Agent tab / --no-ask-user) so questionnaires are allowed.",
+  "settings.askDemo.step.samplePrompt": "Paste the sample prompt in chat (optional)",
+  "settings.askDemo.step.samplePromptHint":
+    "Suggested wording only — copy and send yourself. Not a guarantee the agent will ask.",
+  "settings.askDemo.chip.pass": "Ready",
+  "settings.askDemo.chip.fail": "Needs setup",
+  "settings.askDemo.chip.next": "Suggested",
+  "settings.askDemo.blocker.policy": "Permission policy is not Ask.",
+  "settings.askDemo.blocker.yolo": "YOLO / always-approve is on.",
+  "settings.askDemo.blocker.noAskUser": "Ask-user questions are disabled (--no-ask-user).",
+  "settings.askDemo.apply": "Apply recommended Ask policy",
+  "settings.askDemo.applied": "Applied Ask policy and re-enabled ask-user questions.",
+  "settings.askDemo.appliedPolicyOnly": "Applied Ask policy.",
+  "settings.askDemo.copyPrompt": "Copy sample prompt",
+  "settings.askDemo.copied": "Sample prompt copied — paste it in chat yourself.",
+  "settings.askDemo.copyFailed": "Could not copy to clipboard.",
+  "settings.askDemo.preview": "Preview sample questionnaire",
+  "settings.askDemo.previewTitle": "Demo questionnaire (not from agent)",
+  "settings.askDemo.previewBanner":
+    "Preview only — this questionnaire is built into the App for demos. It was not sent by a live agent turn.",
+  "settings.askDemo.openDocs": "Ask-user docs",
+  "settings.askDemo.openDocsFailed": "Could not open docs in the browser.",
+  "settings.askDemo.ready": "Settings look ready for an Ask-path demo. Paste the sample prompt when you want to try.",
+  "settings.askDemo.blocked": "Clear the red checklist items first, or use Apply recommended Ask policy.",
   "settings.remoteIm.security.title": "Security ops",
   "settings.remoteIm.security.subtitle": "Remote security checklist",
   "settings.remoteIm.security.lead":
@@ -7350,117 +6903,449 @@ const en = {
   "settings.remoteIm.security.yoloConfirmBody":
     "Remote YOLO lets IM turns auto-approve tools without the usual desktop permission flow. Combine only with a tight allow-from list. Confirm?",
   "settings.remoteIm.security.yoloConfirmOk": "Enable YOLO",
-  "settings.remoteIm.cmd.project": "List / bind a trusted project (new session)",
-  "settings.remoteIm.cmd.resume": "List / resume an App history session",
-  "settings.remoteIm.cmd.new": "New session, keep project",
-  "settings.remoteIm.cmd.status": "Show binding status",
-  "settings.remoteIm.cmd.context": "Show current session context usage",
-  "settings.remoteIm.cmd.compact": "Compact the current agent session context",
-  "settings.remoteIm.cmd.help": "Welcome & command help",
-  "settings.remoteIm.cmd.whoami": "Show your sender id",
-  "settings.remoteIm.cmd.stop": "Cancel the current turn",
-  "settings.remoteIm.cmd.account": "List saved Grok accounts & remaining SuperGrok quota",
-  "settings.remoteIm.cmd.switch": "Switch the active Grok account by number or label",
-  "settings.remoteIm.bridge.telegramNativeCommands":
-    "Telegram: Bridge start registers the native / menu; /p, /r, and /account results use paginated inline buttons.",
-  "settings.remoteIm.channel.feishu": "Feishu",
-  "settings.remoteIm.channel.lark": "Lark",
-  "settings.remoteIm.channel.dingtalk": "DingTalk",
-  "settings.remoteIm.channel.wecom": "WeCom",
-  "settings.remoteIm.channel.weixin": "WeChat (personal)",
-  "settings.remoteIm.channel.wpsXiezuo": "WPS Collaboration",
-  "settings.remoteIm.channel.weibo": "Weibo",
-  "settings.remoteIm.channel.qq": "QQ (OneBot)",
-  "settings.remoteIm.channel.qqbot": "QQ official bot",
-  "settings.remoteIm.channel.telegram": "Telegram",
-  "settings.remoteIm.channel.slack": "Slack",
-  "settings.remoteIm.channel.discord": "Discord",
-  "settings.remoteIm.channel.matrix": "Matrix",
-  "settings.remoteIm.channel.line": "LINE",
-  "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
-
-  // UI error boundary (chat pane)
-  "ui.errorBoundary.title": "This view hit a display error",
-  "ui.errorBoundary.body":
-    "The chat surface failed to render. Your session on disk is kept — retry or switch chats.",
-  "ui.errorBoundary.retry": "Retry",
-
-  // GitHub PR hub (Settings → Runtime → Tools)
-  "prHub.title": "Pull requests",
-  "prHub.desc":
-    "Open PRs for the active project via GitHub CLI (`gh pr list`). Expand a row for CI checks and recent conversation comments. Soft-fails when gh or git is missing, or the folder is not a repository.",
-  "prHub.refresh": "Refresh",
-  "prHub.refreshing": "Refreshing…",
-  "prHub.loading": "Loading pull requests…",
-  "prHub.count": "{n} open",
-  "prHub.empty": "No open pull requests",
-  "prHub.emptyBody": "This repository has no open PRs (or none match the default filter).",
-  "prHub.needProject": "No active project",
-  "prHub.needProjectBody":
-    "Select a project folder in the workbench to list its GitHub pull requests.",
-  "prHub.needTauri": "PR hub requires the Grok desktop window.",
-  "prHub.needGh": "GitHub CLI not found",
-  "prHub.needGhBody":
-    "Install GitHub CLI (`gh`) and sign in (`gh auth login`). PATH should include `gh` (GUI apps also search `~/.grok/bin` and common install locations).",
-  "prHub.needGit": "Git not available",
-  "prHub.needGitBody": "Install git and ensure it is on PATH for the desktop app.",
-  "prHub.notGit": "Not a git repository",
-  "prHub.notGitBody": "The active project folder is not inside a git work tree.",
-  "prHub.unavailable": "Could not list pull requests",
-  "prHub.unavailableBody": "gh pr list failed. Check auth, remote, and network.",
-  "prHub.error": "PR hub error",
-  "prHub.open": "Open",
-  "prHub.openInBrowser": "Open pull request in browser",
-  "prHub.openConversation": "Open conversation",
-  "prHub.openCheck": "Open check details",
-  "prHub.draft": "Draft",
-  "prHub.mergeable": "Mergeable",
-  "prHub.conflicting": "Conflicts",
-  "prHub.mergeableUnknown": "Merge status unknown",
-  "prHub.author": "by {name}",
-  "prHub.untitled": "(no title)",
-  "prHub.expandDetails": "Show checks and comments",
-  "prHub.collapseDetails": "Hide checks and comments",
-  "prHub.expandChecks": "Show CI checks",
-  "prHub.collapseChecks": "Hide CI checks",
-  "prHub.checks.title": "CI checks",
-  "prHub.checks.colName": "Name",
-  "prHub.checks.colState": "State",
-  "prHub.checks.none": "No checks",
-  "prHub.checks.loading": "Loading checks…",
-  "prHub.checks.failed": "Could not load checks",
-  "prHub.checks.fixCi": "Fix with Grok",
-  "prHub.checks.fixCiTitle":
-    "Insert a draft into the composer asking Grok to fix failing CI (does not auto-send)",
-  "prHub.comments.title": "Recent comments",
-  "prHub.comments.loading": "Loading comments…",
-  "prHub.comments.failed": "Could not load comments",
-  "prHub.comments.none": "No comments yet",
-  "prHub.comments.comment": "Comment",
-  "prHub.comments.review": "Review",
-  "prHub.comments.open": "Open comment",
-  "prHub.comments.unknownAuthor": "Unknown",
-  "prHub.comments.emptyBody": "(no body)",
-  "prHub.comments.askGrok": "Ask Grok",
-  "prHub.comments.askGrokTitle":
-    "Insert a draft into the composer about this comment (does not auto-send)",
-  "prHub.draftInsertedToast": "Draft inserted into composer",
-  "prHub.review.approved": "Approved",
-  "prHub.review.changesRequested": "Changes requested",
-  "prHub.review.commented": "Commented",
-  "prHub.review.dismissed": "Dismissed",
+  "reliability.supportZip.confirmTitle": "Export support zip?",
+  "reliability.supportZip.confirmMessage":
+    "Review the redacted checklist below. The zip never includes secrets, auth tokens, or API keys.",
+  "reliability.supportZip.confirmAction": "Export support zip",
+  "reliability.supportZip.checklistTitle": "Included sections (redacted)",
+  "reliability.supportZip.secretsNever":
+    "Secrets are never included (no secrets.json, account auth, or raw API keys).",
+  "reliability.supportZip.redacted": "redacted",
+  "reliability.supportZip.whenAvailable": "if present on host",
+  "reliability.supportZip.sectionOmitted": "not included this export",
+  "reliability.supportZip.auditNotIncluded":
+    "Tool audit ledger is not in this zip — use Audit export instead.",
+  "reliability.supportZip.manifestPreview": "Text manifest preview",
+  "reliability.supportZip.section.doctor": "Doctor report (doctor.json)",
+  "reliability.supportZip.section.doctorHint":
+    "Health checks; host builds a fresh report when none is passed (paths only, no keys).",
+  "reliability.supportZip.section.settings": "App settings (settings.json)",
+  "reliability.supportZip.section.settingsHint":
+    "Included only when settings exist on this device; secrets scrubbed.",
+  "reliability.supportZip.section.meta": "App / OS meta (meta.json)",
+  "reliability.supportZip.section.metaHint":
+    "Version, OS/arch, session and project counts — no paths with secrets.",
+  "reliability.supportZip.section.stall": "Stall timeline (stall-timeline.json)",
+  "reliability.supportZip.section.stallHint":
+    "Structured stall signals from Reliability center only when present.",
+  "reliability.supportZip.section.logs": "Recent logs (logs/)",
+  "reliability.supportZip.section.logsHint":
+    "Recent log files if present on host; size-capped and redacted — never invented.",
+  "reliability.supportZip.section.readme": "README.txt",
+  "reliability.supportZip.section.readmeHint":
+    "Plain inventory of zip contents for the recipient.",
+  "reliability.supportZip.emptyHostOnly": "Support zip needs the desktop app",
+  "reliability.supportZip.emptyHostOnlyHint":
+    "Export runs on the Tauri host only — open Grok App on desktop to build a redacted support zip.",
+  "reliability.supportZip.failHostOnly":
+    "Support zip needs the desktop app (not available in browser)",
+  "reliability.supportZip.failCancel": "Support zip cancelled",
+  "reliability.supportZip.failIo": "Could not write support zip (disk or permission)",
+  "reliability.supportZip.failEmpty": "Nothing honest to put in the support zip",
+  "doctor.platformMatrix.title": "Platform matrix",
+  "doctor.platformMatrix.hint":
+    "Honest macOS / Windows / Linux capability notes for this install — path probe, sandbox kernel, window chrome, update path, media loopback. Complements the Windows day-use checklist without inventing probe results.",
+  "doctor.platformMatrix.col.capability": "Capability",
+  "doctor.platformMatrix.col.status": "Status",
+  "doctor.platformMatrix.col.detail": "Detail",
+  "doctor.platformMatrix.row.platform": "Platform",
+  "doctor.platformMatrix.row.cliPathProbe": "CLI path probe",
+  "doctor.platformMatrix.row.sandboxEnforcement": "Sandbox kernel",
+  "doctor.platformMatrix.row.windowChrome": "Window chrome",
+  "doctor.platformMatrix.row.autoUpdate": "App auto-update",
+  "doctor.platformMatrix.row.mediaLoopback": "Media loopback",
+  "doctor.platformMatrix.status.pass": "Pass",
+  "doctor.platformMatrix.status.warn": "Warn",
+  "doctor.platformMatrix.status.na": "N/A",
+  "doctor.platformMatrix.status.unknown": "Unknown",
+  "doctor.platformMatrix.msg.platform.mac": "macOS (detected).",
+  "doctor.platformMatrix.msg.platform.win": "Windows (detected).",
+  "doctor.platformMatrix.msg.platform.linux": "Linux (detected).",
+  "doctor.platformMatrix.msg.platform.unknown":
+    "Platform not recognized — capability notes may be incomplete.",
+  "doctor.platformMatrix.msg.cli.found": "Grok Build CLI binary resolved by path probe.",
+  "doctor.platformMatrix.msg.cli.missing":
+    "CLI path probe did not find a Grok Build binary — install or set path in Settings → Runtime.",
+  "doctor.platformMatrix.msg.cli.unknown":
+    "CLI path probe result not available yet (re-run Doctor).",
+  "doctor.platformMatrix.msg.sandbox.off":
+    "Sandbox isolation is off — no kernel enforcement requested.",
+  "doctor.platformMatrix.msg.sandbox.macSeatbelt":
+    "macOS Seatbelt: CLI OS sandbox enforcement is documented when isolation is on.",
+  "doctor.platformMatrix.msg.sandbox.linuxLandlock":
+    "Linux Landlock: CLI OS sandbox enforcement is documented when isolation is on.",
+  "doctor.platformMatrix.msg.sandbox.winSoftFail":
+    "Windows: CLI may accept the sandbox profile but soft-fails without kernel enforcement — not a hard security boundary.",
+  "doctor.platformMatrix.msg.sandbox.platformSoft":
+    "This platform soft-fails OS sandbox enforcement (CLI may continue without isolation).",
+  "doctor.platformMatrix.msg.sandbox.unknown":
+    "Sandbox kernel support unknown on this platform.",
+  "doctor.platformMatrix.msg.chrome.macOverlay":
+    "macOS Overlay title bar + traffic lights (tauri.macos.conf).",
+  "doctor.platformMatrix.msg.chrome.winFrameless":
+    "Windows frameless custom chrome (min / max / close) — tauri.windows.conf.",
+  "doctor.platformMatrix.msg.chrome.linuxDecorated":
+    "Linux uses standard window decorations (base tauri.conf).",
+  "doctor.platformMatrix.msg.chrome.unknown":
+    "Window chrome layout not classified for this platform.",
+  "doctor.platformMatrix.msg.update.silent":
+    "Signed release path: silent in-app auto-update is available.",
+  "doctor.platformMatrix.msg.update.manual":
+    "Manual / GitHub update path (local, unsigned, or plugin off) — open Releases; no silent install claimed.",
+  "doctor.platformMatrix.msg.update.unsupported":
+    "This package type cannot silent-auto-update (e.g. Linux .deb/.rpm) — use manual download.",
+  "doctor.platformMatrix.msg.update.hostOnly":
+    "Not running in the desktop app host — auto-update N/A.",
+  "doctor.platformMatrix.msg.update.unknown":
+    "Update channel not reported yet — do not assume silent install.",
+  "doctor.platformMatrix.msg.media.loopback":
+    "Local media uses loopback HTTP (127.0.0.1) with path-scope allowlist — not raw media:// in product paths.",
+  "doctor.platformMatrix.msg.media.unavailable":
+    "Media loopback endpoint unavailable — previews may soft-fail until the host media server is up.",
+  "doctor.platformMatrix.msg.media.unknown":
+    "Media loopback capability not classified for this platform.",
+  "settings.privacy.externalOtel": "External OpenTelemetry (enterprise)",
+  "settings.privacy.externalOtelDesc":
+    "CLI dual opt-in for a customer-owned OTLP collector (GROK_EXTERNAL_OTEL + exporters). Independent of product telemetry and /privacy coding-data. Content-free by default. This App never invents “off” when env/config is unset, and never writes collector secrets.",
+  "settings.privacy.externalOtel.dualOptIn": "Dual opt-in",
+  "settings.privacy.externalOtel.status.off":
+    "External OTEL off (master explicitly disabled)",
+  "settings.privacy.externalOtel.status.incomplete":
+    "Incomplete dual opt-in (master or exporter only)",
+  "settings.privacy.externalOtel.status.ready":
+    "External OTEL ready (master + exporter)",
+  "settings.privacy.externalOtel.status.unknown":
+    "External OTEL unset — not claimed off",
+  "settings.privacy.externalOtel.status.hostOnly":
+    "External OTEL status needs the desktop app",
+  "settings.privacy.externalOtel.unknownNotOff":
+    "Unset is not off. Missing GROK_EXTERNAL_OTEL / exporters stay unknown — this App never invents external OTEL as disabled.",
+  "settings.privacy.externalOtel.incompleteHint":
+    "Dual opt-in requires both the master switch (GROK_EXTERNAL_OTEL / otel_enabled) and at least one exporter (otlp or console). Either half alone enables nothing.",
+  "settings.privacy.externalOtel.check.master":
+    "Master switch — GROK_EXTERNAL_OTEL=1 or [telemetry] otel_enabled = true",
+  "settings.privacy.externalOtel.check.exporter":
+    "Exporter — OTEL_METRICS_EXPORTER or OTEL_LOGS_EXPORTER = otlp | console",
+  "settings.privacy.externalOtel.check.contentFree":
+    "Content-free by default — no prompts, code, paths, or tool args unless content gates are enabled",
+  "settings.privacy.externalOtel.check.noAppSecrets":
+    "App never writes OTEL secrets — collector auth is OTEL_EXPORTER_OTLP_HEADERS only (not config.toml)",
+  "settings.privacy.externalOtel.check.independent":
+    "Independent stream — not product telemetry, not /privacy coding-data, not SpaceXAI credentials",
+  "settings.privacy.externalOtel.step.done": "Done",
+  "settings.privacy.externalOtel.step.missing": "Missing",
+  "settings.privacy.externalOtel.step.unknown": "Unknown / unset",
+  "settings.privacy.externalOtel.contentFree":
+    "CLI ships a content-free usage schema by default. Optional OTEL_LOG_USER_PROMPTS / OTEL_LOG_TOOL_DETAILS re-enable limited content.",
+  "settings.privacy.externalOtel.noSecrets":
+    "This App does not write OTEL headers or tokens. Set collector auth in the process environment only.",
+  "settings.privacy.externalOtel.sharedNote":
+    "Shared mode is read-only for App privacy keys. External OTEL is configured on the CLI process via env / [telemetry] otel_* — not written by this App.",
+  "settings.privacy.externalOtel.copyEnv": "Copy env template",
+  "settings.privacy.externalOtel.copied": "Copied",
+  "doctor.windowsDayuse.title": "Windows day-use",
+  "doctor.windowsDayuse.lead":
+    "Acceptance checklist for day-to-day Windows use. App auto-probes some items; others stay manual. SmartScreen / unsigned status is never invented.",
+  "doctor.windowsDayuse.notTarget":
+    "macOS / Linux is not the target of this list — items show N/A. Use a Windows build to exercise install, CLI, project spaces, and mirror day-use.",
+  "doctor.windowsDayuse.summary":
+    "{pass} pass · {fail} fail · {manual} manual · {na} n/a",
+  "doctor.windowsDayuse.copy": "Copy checklist",
+  "doctor.windowsDayuse.copied": "Checklist copied",
+  "doctor.windowsDayuse.copyFail": "Could not copy checklist",
+  "doctor.windowsDayuse.docs": "Acceptance doc",
+  "doctor.windowsDayuse.platform.win": "Windows",
+  "doctor.windowsDayuse.platform.mac": "macOS",
+  "doctor.windowsDayuse.platform.linux": "Linux",
+  "doctor.windowsDayuse.platform.other": "Other",
+  "doctor.windowsDayuse.status.pass": "Pass",
+  "doctor.windowsDayuse.status.fail": "Fail",
+  "doctor.windowsDayuse.status.manual": "Manual",
+  "doctor.windowsDayuse.status.na": "N/A",
+  "doctor.windowsDayuse.item.installPath": "Install path (Release / SmartScreen)",
+  "doctor.windowsDayuse.item.cliFound": "CLI found (Doctor / Setup)",
+  "doctor.windowsDayuse.item.projectSpaces": "Project path with spaces",
+  "doctor.windowsDayuse.item.singleAttachment": "Single attachment paste",
+  "doctor.windowsDayuse.item.appUpdateCheck": "Check for updates (About)",
+  "doctor.windowsDayuse.item.mirrorReadonly": "Phone mirror read-only default",
+  "doctor.windowsDayuse.detail.na": "Not applicable on this platform.",
+  "doctor.windowsDayuse.detail.installPath.manual":
+    "Install from GitHub Release (setup.exe or portable zip). SmartScreen may warn when unsigned — App does not invent that status without a probe.",
+  "doctor.windowsDayuse.detail.installPath.pass":
+    "Install signature probe reports signed / clear.",
+  "doctor.windowsDayuse.detail.installPath.fail":
+    "Install signature probe reports unsigned or blocked.",
+  "doctor.windowsDayuse.detail.cliFound.pass": "Grok Build CLI resolved.",
+  "doctor.windowsDayuse.detail.cliFound.fail":
+    "CLI not found — open Setup or Settings → Runtime to install / set path.",
+  "doctor.windowsDayuse.detail.cliFound.manual":
+    "CLI probe not available yet — re-run Doctor or open Setup.",
+  "doctor.windowsDayuse.detail.projectSpaces.pass":
+    "Trusted project path includes spaces (console flash storm should stay gone).",
+  "doctor.windowsDayuse.detail.projectSpaces.fail":
+    "No trusted project yet — add and trust a folder (spaces OK).",
+  "doctor.windowsDayuse.detail.projectSpaces.manual":
+    "Trusted project present; re-check with a path that contains spaces if you have not already.",
+  "doctor.windowsDayuse.detail.singleAttachment.manual":
+    "Manual: one tool-using chat turn, paste a screenshot once — confirm a single attachment (App cannot auto-prove paste).",
+  "doctor.windowsDayuse.detail.appUpdateCheck.pass":
+    "Update check path available (in-app or GitHub manual).",
+  "doctor.windowsDayuse.detail.appUpdateCheck.fail":
+    "Update check not supported in this build — try Settings → About.",
+  "doctor.windowsDayuse.detail.appUpdateCheck.manual":
+    "Open Settings → About → Check for updates (download installer if newer).",
+  "doctor.windowsDayuse.detail.mirrorReadonly.pass":
+    "Phone mirror is read-only (write off) — default posture.",
+  "doctor.windowsDayuse.detail.mirrorReadonly.fail":
+    "Phone mirror write is enabled — default day-use expects read-only; turn write off in Remote control → Mirror if testing acceptance.",
+  "doctor.windowsDayuse.detail.mirrorReadonly.manual":
+    "Mirror status unknown — open Remote control → Mirror; day-use expects read-only start + regenerate link.",
+  "doctor.windowsDayuse.link.about": "About / updates",
+  "doctor.windowsDayuse.link.mirror": "Mirror",
+  "doctor.windowsDayuse.link.setup": "Setup / CLI",
+  "doctor.windowsDayuse.link.runtime": "Runtime",
+  "settings.runtime.platformTip": "Platform",
+  "settings.runtime.platformTipDesc":
+    "Detected OS for UI labels (file manager, day-use checklist). Windows builds get the day-use acceptance card in Doctor.",
+  "settings.permissionRulesEmptyHint":
+    "Start with an allow for safe git, a deny for destructive shell, or an ask for edits. Changes soft-respawn the agent.",
+  "settings.permissionRulesFilterEmpty": "No rules match this filter.",
+  "settings.permissionRulesFilterEmptyHint":
+    "Clear the filter or try a different pattern substring.",
+  "settings.permissionRulesFilterPlaceholder": "Filter rules…",
+  "settings.permissionRulesFilterClear": "Clear filter",
+  "settings.permissionRulesCountsAria":
+    "Rule counts: deny {deny}, ask {ask}, allow {allow}",
+  "settings.permissionRulesSimSamples": "Sample tool calls",
+  "settings.permissionRulesSimHonesty.allow":
+    "Preview: first matching allow rule would permit this call. Real agent still respects mode / built-ins.",
+  "settings.permissionRulesSimHonesty.deny":
+    "Preview: a deny rule wins (deny > ask > allow). Real agent would block this call.",
+  "settings.permissionRulesSimHonesty.ask":
+    "Preview: an ask rule matches — agent would prompt before running.",
+  "settings.permissionRulesSimHonesty.none":
+    "Preview: no compact rule matched. Falls through to permission mode and built-in policy — not auto-allowed.",
+  "settings.permissionRulesSimCopy": "Copy match summary",
+  "settings.permissionRulesSimCopied": "Copied",
+  "settings.permissionRulesSimCopyFailed": "Could not copy match summary",
+  "resources.openErr.noEditor":
+    "No code editor available. Install one or choose Finder/Explorer in Settings.",
+  "resources.openErr.notFound":
+    "File not found — it may have been moved or deleted.",
+  "resources.openErr.pathDenied":
+    "This path cannot be opened (permission or allowlist).",
+  "resources.openErr.hostOnly": "Open in editor needs the desktop app.",
+  "resources.openErr.cancelled": "Open cancelled.",
+  "resources.openErr.other": "Could not open in editor.",
+  "resources.revealErr.notFound":
+    "Path not found — nothing to reveal in the file manager.",
+  "resources.revealErr.pathDenied":
+    "This path cannot be revealed (permission or allowlist).",
+  "resources.revealErr.hostOnly": "Reveal needs the desktop app.",
+  "resources.revealErr.cancelled": "Reveal cancelled.",
+  "resources.revealErr.other": "Could not reveal in file manager.",
+  "settings.openTargetEmpty":
+    "No code editors detected — Finder/Explorer still works. Install VS Code, Cursor, or another editor to open files there.",
+  "settings.openTargetPreferredMissing":
+    "Preferred editor is not installed or not detected. Finder/Explorer will be used until you pick another.",
+  "settings.compactionApply.softRespawn":
+    "Changing mode or detail soft-respawns a live agent so the next message reloads --compaction-mode / --compaction-detail.",
+  "settings.compactionApply.nextSpawn":
+    "No live agent — mode and detail apply on the next connect / spawn.",
+  "settings.compactionApply.unsupported":
+    "This CLI version does not take compaction flags (need 0.2.117+). Env may still be set; older CLIs soft-fail and ignore unknown flags.",
+  "settings.compactionApply.note":
+    "When a live agent is attached, changing mode or detail soft-respawns so the next message reloads flags. Without a live agent, prefs wait for the next connect. Older CLIs soft-fail (flags omitted when unsupported). Manual /compact is a separate agent turn — it does not change these spawn flags.",
+  "slash.compactApply.nextTurn":
+    "Confirm sends /compact as an agent turn now. Mode/detail already on this process apply to that compact.",
+  "slash.compactApply.softRespawn":
+    "Mode/detail change soft-respawns the agent — the next message reloads compaction flags.",
+  "slash.compactApply.unsupported":
+    "This CLI may ignore --compaction-mode / --compaction-detail (need 0.2.117+). /compact still runs with agent defaults when connected.",
+  "slash.compactApply.idle":
+    "No live agent yet — connect first. Compaction mode/detail wait for the next spawn; then /compact runs as a turn.",
+  "slash.compactApply.modeOnly":
+    "Compaction mode for this compact: {mode} (spawn flags; change soft-respawns a live agent).",
+  "slash.compactApply.modeDetail":
+    "Compaction mode {mode}, segments detail {detail} (spawn flags; change soft-respawns a live agent).",
+  "slash.compactApply.savingsKnown":
+    "Last known compact: {before} → {after} tokens (saved {saved}). Not an estimate.",
+  "slash.compactApply.savingsUnknown":
+    "Token savings unknown until the agent reports both before and after counts. After (est.) above is only a rough keep-ratio guess.",
+  "slash.compactApply.presetNote":
+    "Intensity presets only seed the keep-note template for /compact — CLI has no light/standard/aggressive flag.",
+  "doctor.linuxDayuse.title": "Linux day-use",
+  "doctor.linuxDayuse.lead":
+    "Acceptance checklist for day-to-day Linux use. App auto-probes some items; others stay manual. Landlock, tray autostart, and Wayland/X11 are never invented without a probe.",
+  "doctor.linuxDayuse.notTarget":
+    "macOS / Windows is not the target of this list — items show N/A. Use a Linux build to exercise CLI, path spaces, sandbox Landlock, tray, and display-server day-use.",
+  "doctor.linuxDayuse.summary":
+    "{pass} pass · {fail} fail · {warn} warn · {manual} manual · {na} n/a",
+  "doctor.linuxDayuse.copy": "Copy checklist",
+  "doctor.linuxDayuse.copied": "Checklist copied",
+  "doctor.linuxDayuse.copyFail": "Could not copy checklist",
+  "doctor.linuxDayuse.docs": "Acceptance doc",
+  "doctor.linuxDayuse.platform.win": "Windows",
+  "doctor.linuxDayuse.platform.mac": "macOS",
+  "doctor.linuxDayuse.platform.linux": "Linux",
+  "doctor.linuxDayuse.platform.other": "Other",
+  "doctor.linuxDayuse.status.pass": "Pass",
+  "doctor.linuxDayuse.status.fail": "Fail",
+  "doctor.linuxDayuse.status.manual": "Manual",
+  "doctor.linuxDayuse.status.warn": "Warn",
+  "doctor.linuxDayuse.status.na": "N/A",
+  "doctor.linuxDayuse.item.cliFound": "CLI found (Doctor / Setup)",
+  "doctor.linuxDayuse.item.pathSpaces": "Project path with spaces",
+  "doctor.linuxDayuse.item.sandboxLandlock": "Sandbox → Landlock enforcement",
+  "doctor.linuxDayuse.item.trayAutostart": "Tray / autostart",
+  "doctor.linuxDayuse.item.waylandX11": "Wayland / X11 session",
+  "doctor.linuxDayuse.item.appUpdateCheck": "Check for updates (About)",
+  "doctor.linuxDayuse.detail.na": "Not applicable on this platform.",
+  "doctor.linuxDayuse.detail.cliFound.pass": "Grok Build CLI resolved.",
+  "doctor.linuxDayuse.detail.cliFound.fail":
+    "CLI not found — open Setup or Settings → Runtime to install / set path.",
+  "doctor.linuxDayuse.detail.cliFound.manual":
+    "CLI probe not available yet — re-run Doctor or open Setup.",
+  "doctor.linuxDayuse.detail.pathSpaces.pass":
+    "Trusted project path includes spaces.",
+  "doctor.linuxDayuse.detail.pathSpaces.fail":
+    "No trusted project yet — add and trust a folder (spaces OK).",
+  "doctor.linuxDayuse.detail.pathSpaces.manual":
+    "Trusted project present; re-check with a path that contains spaces if you have not already.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.na":
+    "Sandbox profile is off — Landlock enforcement is N/A.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.warn":
+    "Sandbox profile is not off. On Linux, kernel enforcement is Landlock (Seatbelt is macOS-only). App does not re-verify Landlock without a probe.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.pass":
+    "Landlock probe reports enforcement active for the selected sandbox profile.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.fail":
+    "Landlock probe reports enforcement not active despite a non-off sandbox profile.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.manual":
+    "Sandbox profile unknown — open Settings → General → Permissions to set a profile. Off = N/A; not off = Landlock on Linux.",
+  "doctor.linuxDayuse.detail.trayAutostart.pass":
+    "Tray / autostart probe reports enabled.",
+  "doctor.linuxDayuse.detail.trayAutostart.fail":
+    "Tray / autostart probe reports disabled.",
+  "doctor.linuxDayuse.detail.trayAutostart.manual":
+    "Manual: confirm tray icon and desktop autostart if you rely on them. App does not invent this without a probe.",
+  "doctor.linuxDayuse.detail.waylandX11.pass":
+    "Display-server probe reports Wayland or X11.",
+  "doctor.linuxDayuse.detail.waylandX11.fail":
+    "Display-server probe reports neither Wayland nor X11.",
+  "doctor.linuxDayuse.detail.waylandX11.manual":
+    "Unknown without a display-server probe — confirm Wayland or X11 manually for compositor-specific issues.",
+  "doctor.linuxDayuse.detail.appUpdateCheck.pass":
+    "Update check path available (in-app or GitHub manual).",
+  "doctor.linuxDayuse.detail.appUpdateCheck.fail":
+    "Update check not supported in this build — try Settings → About.",
+  "doctor.linuxDayuse.detail.appUpdateCheck.manual":
+    "Open Settings → About → Check for updates (download package if newer).",
+  "doctor.linuxDayuse.link.about": "About / updates",
+  "doctor.linuxDayuse.link.setup": "Setup / CLI",
+  "doctor.linuxDayuse.link.runtime": "Runtime",
+  "doctor.linuxDayuse.link.sandbox": "Sandbox",
+  "session.tracesEmptyHint":
+    "Use Export local or Export and upload from a chat menu after a conversation has an agent session. Paths only — archives are never loaded into the app.",
+  "session.tracesEmptyFilterHint":
+    "Try another search, or switch the All / Local / Uploaded chip.",
+  "session.tracesClearFilters": "Clear filters",
+  "session.tracesFilterAria": "Trace export scope",
+  "session.tracesFilter.all": "All",
+  "session.tracesFilter.local": "Local",
+  "session.tracesFilter.uploaded": "Uploaded",
+  "session.tracesUploadedBadgeTitle":
+    "Upload reported by export (path only — no remote URL stored)",
+  "prov.empty.hostOnly":
+    "Custom providers need the desktop app (Tauri). Open Grok App to add relays.",
+  "prov.empty.noCustom":
+    "No custom relays yet — add an OpenAI-compatible provider, or use Official Grok above.",
+  "prov.empty.loadError":
+    "Could not load providers. Fix the host error above, then retry.",
+  "prov.apply.softRespawn":
+    "Provider saved. Agents reloaded — next message uses the new config (no app restart).",
+  "prov.apply.savedDiskOnly":
+    "Provider saved on disk. Activate with Use (or pick it in the composer) to apply the route.",
+  "prov.apply.hostOnly":
+    "Provider changes need the desktop app. Open Grok App to save relays.",
+  "prov.err.validation":
+    "Could not save: invalid provider fields (id, URL, key, or models). Check the form and try again.",
+  "prov.err.network":
+    "Could not save: network or host IPC error. Check connectivity and retry.",
+  "prov.err.hostOnly":
+    "Saving providers needs the desktop app (Tauri).",
+  "prov.err.other": "Could not save provider ({detail}).",
+  "prov.ping.err.timeout":
+    "Probe timed out. Check base URL and network, then retry.",
+  "prov.ping.err.network":
+    "Could not reach the provider endpoint (network/DNS/TLS). Check base URL.",
+  "prov.ping.err.auth":
+    "Provider rejected the key (401/403). Update the API key and retry.",
+  "prov.ping.err.hostOnly":
+    "Fetch models / ping needs the desktop app.",
+  "prov.ping.err.invalidUrl":
+    "Base URL is invalid. Use a full https://…/v1 style root.",
+  "prov.ping.err.other": "Could not probe provider ({detail}).",
+  "ext.hooks.activity.export": "Export redacted…",
+  "ext.hooks.activity.exportHint":
+    "Download the filtered activity list as redacted JSON (no secrets)",
+  "ext.hooks.activity.copySummary": "Copy summary",
+  "ext.hooks.activity.copySummaryHint":
+    "Copy the filtered activity list as redacted plain text",
+  "ext.hooks.activity.exportCopied": "Copied {count} redacted row(s)",
+  "ext.hooks.activity.exportDownloaded": "Downloaded {count} redacted row(s)",
+  "ext.hooks.activity.exportEmpty": "No activity to export for this filter.",
+  "ext.hooks.activity.exportCopyFailed":
+    "Could not copy summary (clipboard blocked)",
+  "ext.hooks.activity.exportDownloadFailed":
+    "Could not download activity export",
+  "ext.hooks.activity.exportFailed": "Activity export failed",
+  "settings.cliSessionsEmptyHint":
+    "Run Grok Build in this home, or switch session data mode if you expected terminal CLI sessions.",
+  "settings.cliSessionsEmptyCliMissing":
+    "Grok Build CLI not found — no CLI sessions to list.",
+  "settings.cliSessionsEmptyCliMissingHint":
+    "Install or locate the CLI under Settings → Runtime. Local disk may still show sessions after install.",
+  "settings.cliSessionsEmptyError": "Could not load CLI sessions.",
+  "settings.cliSessionsEmptyErrorHint":
+    "Check GROK_HOME path and CLI install, then refresh.",
+  "settings.cliSessions.filterAll": "All",
+  "settings.cliSessions.filterLinked": "Linked",
+  "settings.cliSessions.filterUnlinked": "Unlinked",
+  "settings.cliSessionsFilterEmptyHint":
+    "Try another link chip or clear filters.",
+  "settings.cliSessionsSearchEmptyHint":
+    "Try a different query or clear the search.",
+  "settings.cliSessions.clearFilters": "Clear filters",
+  "settings.cliSessions.err.cli_missing": "CLI missing",
+  "settings.cliSessions.err.cli_missingHint":
+    "Install Grok Build CLI, then refresh this list.",
+  "settings.cliSessions.err.cli_unsupported": "CLI search unsupported",
+  "settings.cliSessions.err.cli_unsupportedHint":
+    "This CLI build may lack sessions search — filtering the local list instead.",
+  "settings.cliSessions.err.timeout": "Search timed out",
+  "settings.cliSessions.err.timeoutHint":
+    "Try a narrower query or refresh the local list.",
+  "settings.cliSessions.err.host_only": "Desktop app required",
+  "settings.cliSessions.err.host_onlyHint":
+    "CLI session discovery runs in the desktop app only.",
+  "settings.cliSessions.err.permission": "Permission denied",
+  "settings.cliSessions.err.permissionHint":
+    "Check file permissions under GROK_HOME.",
+  "settings.cliSessions.err.other": "Search failed",
+  "settings.cliSessions.err.otherHint": "Refresh and try again.",
+  "settings.cliSessionsImportPlan":
+    "Import {importable} of {selected} (skip {skipped} already linked)",
+  "settings.section.agent": "Agent",
 } as const;
 
 const zh: Record<MessageKey, string> = {
   "app.name": "Grok",
   "app.tagline": "MIT · 非 xAI 官方 · 姐妹项目 grok-go",
   "app.versionFooter": "Grok v0.2.3 · MIT · 非 xAI 官方 · 姐妹项目 grok-go",
-
   "window.minimize": "最小化",
   "window.maximize": "最大化",
   "window.restore": "还原",
   "window.close": "关闭",
-
   "sidebar.expand": "展开侧栏",
   "sidebar.collapse": "收起侧栏",
   "sidebar.resize": "调整侧栏宽度",
@@ -7522,7 +7407,6 @@ const zh: Record<MessageKey, string> = {
   "user.theme": "主题",
   "user.themeLight": "切换到浅色",
   "user.themeDark": "切换到深色",
-
   "project.pin": "置顶项目",
   "project.unpin": "取消置顶",
   "project.reveal": "在 Finder 中显示",
@@ -7582,7 +7466,6 @@ const zh: Record<MessageKey, string> = {
   "project.continueCwdHostOnly": "继续最近的 Agent 需要在桌面应用窗口中操作。",
   "project.continueCwdImportFailed":
     "找到了 Agent 会话，但无法导入到应用中。",
-
   "session.pin": "置顶会话",
   "session.unpin": "取消置顶",
   "session.pinned": "已置顶",
@@ -7812,10 +7695,6 @@ const zh: Record<MessageKey, string> = {
   "message.nodes.user": "你",
   "message.nodes.assistant": "Grok",
   "message.nodes.count": "{current} / {total}",
-  "message.copyLink": "复制链接",
-  "message.linkCopied": "链接已复制",
-  "message.deepLinkMissing": "此对话中未找到该消息",
-
   "main.rightPane": "文件栏",
   "main.leftPane": "侧栏",
   "main.leftPaneShow": "显示侧栏",
@@ -7929,33 +7808,11 @@ const zh: Record<MessageKey, string> = {
   "resources.openDefault": "用系统默认应用打开",
   "resources.revealFolder": "在文件管理器中显示",
   "resources.noEditors": "未检测到本机代码编辑器",
-  "resources.openErr.noEditor":
-    "没有可用的代码编辑器。请安装编辑器，或在设置中选择访达/资源管理器。",
-  "resources.openErr.notFound": "找不到该文件 — 可能已被移动或删除。",
-  "resources.openErr.pathDenied": "无法打开此路径（权限或白名单限制）。",
-  "resources.openErr.hostOnly": "在编辑器中打开需要桌面端应用。",
-  "resources.openErr.cancelled": "已取消打开。",
-  "resources.openErr.other": "无法在编辑器中打开。",
-  "resources.revealErr.notFound": "找不到该路径 — 无法在文件管理器中显示。",
-  "resources.revealErr.pathDenied": "无法显示此路径（权限或白名单限制）。",
-  "resources.revealErr.hostOnly": "在文件管理器中显示需要桌面端应用。",
-  "resources.revealErr.cancelled": "已取消显示。",
-  "resources.revealErr.other": "无法在文件管理器中显示。",
   "resources.needProject": "添加或选择项目后，即可在此浏览文件。",
   "resources.emptyPreview": "尚未打开文件",
   "resources.emptyPreviewHint": "从右侧文件树选择文件进行预览。",
   "resources.plan": "计划",
   "resources.planEmpty": "当前会话没有待审阅的计划。",
-  "resources.agents": "Agents",
-  "resources.agentsShow": "显示 Agents 侧栏",
-  "resources.agentsHide": "隐藏 Agents 侧栏",
-  "agentsRail.noTasks": "本轮暂无 Agent 任务",
-  "agentsRail.busyHint":
-    "会话正在工作 — 工具步骤与嵌套子代理会在启动后出现在这里。",
-  "agentsRail.idleHint":
-    "当本对话运行工具或拉起子代理时，任务树会显示在这里，无需打开浮动任务面板。",
-  "agentsRail.filterEmpty": "没有符合筛选条件的任务",
-  "agentsRail.filterEmptyHint": "清除搜索或换一个状态筛选以查看更多任务。",
   "resources.copyPathShort": "路径",
   "resources.tabClose": "关闭标签",
   "resources.tabCloseOthers": "关闭其他标签",
@@ -8101,17 +7958,6 @@ const zh: Record<MessageKey, string> = {
     "撤销「{name}」中的 {n} 个 hunk，将写入不含这些块的内容。",
   "changes.batchHunksAcceptDone": "已接受 {n} 个块",
   "changes.batchHunksRejectDone": "已拒绝 {n} 个块",
-  "changes.comment": "评论",
-  "changes.commentTip": "针对此变更块写审阅备注，并插入到对话输入框",
-  "changes.commentModalTitle": "评论变更块",
-  "changes.commentModalDesc": "「{name}」· 第 {n} 块。将结构化提示写入输入框，不会自动发送。",
-  "changes.commentPlaceholder": "希望代理如何修改或解释此变更？",
-  "changes.commentInsert": "插入到对话",
-  "changes.commentInsertedToast": "审阅备注已写入输入框",
-  "changes.commentErrorEmpty": "请先填写简短审阅备注",
-  "changes.commentErrorTooLong": "备注过长（最多约 4000 字符）",
-  "changes.commentErrorGeneric": "无法生成对话提示",
-
   "rules.title": "规则",
   "rules.modalTitleNamed": "项目规则 · {name}",
   "rules.empty": "未找到项目规则文件",
@@ -8295,55 +8141,6 @@ const zh: Record<MessageKey, string> = {
   "dashboard.batchAgents": "批量 Agent…",
   "dashboard.batchAgentsTitle":
     "将同一提示词派发到多个项目（会话或无头摘要）",
-  "dashboard.peek.label": "会话详情",
-  "dashboard.peek.expand": "展开 {title} 的详情",
-  "dashboard.peek.collapse": "收起 {title} 的详情",
-  "dashboard.peek.status": "状态",
-  "dashboard.peek.tool": "工具",
-  "dashboard.peek.noTool": "无运行中的工具",
-  "dashboard.peek.project": "项目",
-  "dashboard.peek.model": "模型",
-  "dashboard.peek.activity": "更新",
-  "dashboard.peek.openChat": "打开对话",
-  "dashboard.dispatch.title": "派发新 Agent",
-  "dashboard.dispatch.projectLabel": "已信任项目",
-  "dashboard.dispatch.promptPlaceholder": "新会话的提示词…",
-  "dashboard.dispatch.button": "派发",
-  "dashboard.dispatch.buttonTitle":
-    "在所选项目新建对话、填入提示词并发送",
-  "dashboard.dispatch.noTrusted":
-    "还没有已信任项目。请先在侧栏信任一个项目后再派发。",
-  "dashboard.dispatch.emptyPrompt": "请输入要派发的提示词。",
-  "dashboard.dispatch.noProject": "请先选择一个已信任项目。",
-  "dashboard.dispatch.untrusted": "该项目尚未信任。请先信任后再派发。",
-  "dashboard.dispatch.started": "已派发到 {name}",
-  "dashboard.openBoard": "看板视图",
-  "dashboard.openBoardTitle":
-    "按状态分列查看会话（需你处理 / 运行中 / 空闲 / 完成）",
-
-  "taskBoard.title": "会话任务看板",
-  "taskBoard.hint":
-    "按应用内会话与本地 live 状态分列 — 非 CI/云端。点击卡片打开该对话。",
-  "taskBoard.open": "会话任务看板",
-  "taskBoard.searchPlaceholder": "筛选会话…",
-  "taskBoard.projectSearchPlaceholder": "按项目筛选…",
-  "taskBoard.includeArchived": "含已归档",
-  "taskBoard.includeArchivedTitle": "在「完成」列显示已归档的空闲会话",
-  "taskBoard.columnsLabel": "会话状态列",
-  "taskBoard.column.needsYou": "需你处理",
-  "taskBoard.column.running": "运行中",
-  "taskBoard.column.idle": "空闲",
-  "taskBoard.column.done": "完成",
-  "taskBoard.column.error": "异常",
-  "taskBoard.columnEmpty": "暂无会话",
-  "taskBoard.empty": "暂无会话",
-  "taskBoard.emptyHint":
-    "开始对话或等待 Agent 回合 — 会话会按状态出现在这里。",
-  "taskBoard.filterEmpty": "没有符合筛选条件的会话",
-  "taskBoard.filterEmptyHint": "清空搜索或勾选「含已归档」以查看更多会话。",
-  "taskBoard.clearFilters": "清除筛选",
-  "taskBoard.totalCount": "{n} 个会话",
-
   "batchAgents.title": "批量 Agent",
   "batchAgents.hint":
     "勾选已信任项目、填写同一提示词，然后为每个项目打开会话，或跑无头一轮并汇总 soft-fail 结果。单项目失败不会清空其它工作。",
@@ -8372,27 +8169,8 @@ const zh: Record<MessageKey, string> = {
   "batchAgents.resultsMeta":
     "成功 {ok} · soft-fail {soft} · 错误 {err} · 跳过 {skip}",
   "batchAgents.copySummary": "复制摘要",
-  "batchAgents.downloadSummary": "下载 .txt",
   "batchAgents.copied": "已复制",
-  "batchAgents.downloaded": "已下载",
-  "batchAgents.exportEmpty": "暂无批量结果可导出。",
-  "batchAgents.exportFailed": "无法导出结果。",
-  "batchAgents.templatesLabel": "提示词模板",
-  "batchAgents.tpl.codeReview.title": "代码审查",
-  "batchAgents.tpl.codeReview.body":
-    "审查本仓库近期变更。指出风险、缺失测试与未完成工作，并给出具体文件路径。对不确定处保持诚实——不要编造发现。",
-  "batchAgents.tpl.fixTests.title": "修复测试",
-  "batchAgents.tpl.fixTests.body":
-    "找出本仓库失败或不稳定的测试，用最小改动修复，并汇报仍失败的项。若未实际跑测试，不要声称已通过。",
-  "batchAgents.tpl.summarize.title": "总结仓库",
-  "batchAgents.tpl.summarize.body":
-    "总结本仓库用途、目录结构与当前风险或未完成 TODO。优先依据树中证据，避免臆测。",
-  "batchAgents.eligibilitySummary":
-    "可运行 {ready} · 不合格 {skip}（已选 {selected}）",
-  "batchAgents.eligibilityNone": "当前选择中没有可运行的项目。",
   "batchAgents.status.ok": "成功",
-  "batchAgents.status.okEmpty": "成功（无详情）",
-  "batchAgents.status.partial": "部分",
   "batchAgents.status.softFail": "Soft-fail",
   "batchAgents.status.error": "错误",
   "batchAgents.status.skipped": "跳过",
@@ -8410,7 +8188,6 @@ const zh: Record<MessageKey, string> = {
   "batchAgents.openFromSettings": "打开批量 Agent…",
   "batchAgents.toastDone":
     "批量完成：成功 {ok} · soft-fail {soft} · 错误 {err} · 跳过 {skip}",
-
   "media.loadError": "应用内无法加载此媒体。",
   "media.openExternal": "用系统播放器打开",
   "media.loading": "正在加载媒体…",
@@ -8422,7 +8199,6 @@ const zh: Record<MessageKey, string> = {
   "media.err.unsupportedType": "此媒体类型暂无应用内预览。",
   "media.err.mediaServerUnavailable": "本地媒体服务不可用 — 请稍后重试。",
   "media.err.other": "应用内无法加载此媒体。",
-
   "office.loading": "正在渲染文档…",
   "office.renderFailed": "无法在应用内渲染此文档",
   "office.openExternal": "用外部应用打开",
@@ -8432,33 +8208,17 @@ const zh: Record<MessageKey, string> = {
   "office.prevPage": "上一页",
   "office.nextPage": "下一页",
   "office.pageOf": "{page} / {total}",
-
   "composer.placeholder": "随心输入",
   "composer.add": "添加",
   "composer.addFiles": "上传文件",
   "composer.planMode": "计划模式",
   "composer.planModeHint": "开启计划模式",
   "composer.skills": "技能",
-  "composer.skillsPicker": "技能",
   "composer.skillsEmpty": "未发现可调用的技能",
   "composer.skillsEmptyHint":
     "可在「扩展 → 插件市场」安装，或在「扩展 → 技能」中启用。",
   "composer.skillsLoadError": "无法加载技能",
   "composer.skillsLoading": "正在加载技能…",
-  "skillsPicker.aria": "为本条提示选择技能",
-  "skillsPicker.placeholder": "搜索技能…",
-  "skillsPicker.recent": "最近",
-  "skillsPicker.all": "全部技能",
-  "skillsPicker.loading": "正在加载技能…",
-  "skillsPicker.empty": "未安装可调用的技能",
-  "skillsPicker.emptyHint":
-    "可在「扩展 → 插件市场」安装，或在「扩展 → 技能」中启用。",
-  "skillsPicker.filterEmpty": "没有匹配的技能",
-  "skillsPicker.filterEmptyHint": "试试其他关键词，或清除筛选。",
-  "skillsPicker.hostOnly": "无法加载技能",
-  "skillsPicker.hostOnlyHint":
-    "技能需要桌面宿主与 Grok Build CLI。请检查「设置 → CLI / 运行时」。",
-  "skillsPicker.clearFilter": "清除筛选",
   "composer.goal": "目标",
   "composer.goalHint": "设置要持续追求的目标",
   "composer.goalPlaceholder": "描述你的目标，定义可衡量的成果，以获得最佳效果",
@@ -8569,20 +8329,6 @@ const zh: Record<MessageKey, string> = {
   "composer.queueEditEmpty": "消息不能为空",
   "composer.queueEmptyPreview": "（附件）",
   "composer.queueFilesCount": "{n} 个文件",
-  // Send-intent honesty (steer vs queue vs concurrent — pure classification)
-  "composer.intent.enqueue":
-    "发送会将跟进排入本会话队列，本轮结束后自动发送。要对进行中的任务插话，请对队列项使用「引导」。",
-  "composer.intent.enqueueShort": "排队跟进",
-  "composer.intent.steer":
-    "「引导」会向当前进行中的任务插入中途指示（不是排队跟进）。",
-  "composer.intent.foreignConcurrent":
-    "发送会在此开始并发工作 — 另一会话仍在运行。可用新对话分开草稿。",
-  "composer.intent.foreignShort": "发送（并发）",
-  "composer.intent.blockedPermission": "请先处理权限请求",
-  "composer.intent.openAsNewChat": "作为新对话打开",
-  "composer.intent.stripEnqueue": "跟进 — 本轮结束后发送",
-  "composer.intent.stripHold": "自动发送已暂停",
-  "composer.intent.stripSteerHint": "本轮结束后发送跟进 · 引导可中途插话",
   "composer.stop": "停止",
   "composer.noProject": "通用",
   "composer.noProjectWriteHint":
@@ -8600,13 +8346,13 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeTip": "切换 Git worktree / 分支",
   "composer.worktreeSwitched": "已切换到 worktree {name}（{branch}）",
   "composer.worktreeNew": "新建 worktree",
-  "composer.worktreeNewChat": "并行任务（worktree）",
+  "composer.worktreeNewChat": "新建 worktree 并开聊",
   "composer.worktreeNewTitle": "新建 Git worktree",
-  "composer.worktreeNewChatTitle": "并行任务（worktree）",
+  "composer.worktreeNewChatTitle": "新建 worktree 并开聊",
   "composer.worktreeNewHint":
     "创建关联 git worktree（默认 CLI 布局 ~/.grok/worktrees），并检出新分支。对齐 grok --worktree=name。",
   "composer.worktreeNewChatHint":
-    "创建关联 worktree，并以该目录为项目 cwd 开启新对话（写入会话 meta，侧栏显示 CLI/WT 标记）。主检出不受影响，适合并行工作。",
+    "创建关联 worktree，并以该目录为项目 cwd 开启新对话（写入会话 meta，侧栏显示 CLI/WT 标记）。",
   "composer.worktreeName": "名称",
   "composer.worktreeNamePlaceholder": "feat-login",
   "composer.worktreeLayout": "位置",
@@ -8619,14 +8365,6 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeRefInvalid":
     "起始点不能以 '-' 开头，也不能包含换行",
   "composer.worktreePathPreview": "路径：{path}",
-  "composer.worktreeFirstPrompt": "首条提示（可选）",
-  "composer.worktreeFirstPromptHint":
-    "开启新对话时使用 — 创建后填入输入框。",
-  "composer.worktreeFirstPromptPlaceholder":
-    "希望 Agent 在这个 worktree 里做什么？",
-  "composer.worktreeAutoSend": "打开后发送",
-  "composer.worktreeAutoSendHint":
-    "勾选后，新对话打开时自动发送首条提示（仅已信任项目）。默认关闭。",
   "composer.worktreeCreate": "创建",
   "composer.worktreeCreateChat": "创建并开聊",
   "composer.worktreeCreating": "正在创建…",
@@ -8636,13 +8374,6 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeNameRequired": "请输入 worktree 名称",
   "composer.worktreeNameInvalid":
     "仅允许字母、数字、'.'、'_'、'-'（不能含空格或斜杠）",
-  "composer.parallelTask": "并行任务（worktree）",
-  "composer.parallelTaskHostOnly": "并行任务需要在桌面应用窗口中操作。",
-  "composer.parallelTaskNoProject": "请先选择一个项目。",
-  "composer.parallelTaskUntrusted":
-    "请先信任该项目，再启动并行 worktree 任务。",
-  "composer.parallelTaskNotGit":
-    "当前文件夹不是 git 仓库（或 git 不可用）。",
   "composer.clearProject": "通用工作区",
   "composer.projectUntrusted": "尚未信任",
   "composer.projectBound": "会话已绑定到「{name}」",
@@ -8653,23 +8384,6 @@ const zh: Record<MessageKey, string> = {
   "composer.modelSearchPlaceholder": "搜索模型…",
   "composer.modelSearchEmpty": "没有匹配的模型",
   "composer.effort": "推理强度",
-  // Model / effort mid-session apply honesty (toast + menu footer)
-  "composer.apply.model.immediate": "模型已在当前 Agent 上生效（session/set_model）。",
-  "composer.apply.model.softRespawn": "模型将在重新连接后的下一条消息生效。",
-  "composer.apply.model.nextMessage": "模型已保存 — 下一条消息生效。",
-  "composer.apply.model.unsupported": "此模型变更无法在会话中途应用。",
-  "composer.apply.effort.immediate": "推理强度已立即生效。",
-  "composer.apply.effort.softRespawn":
-    "推理强度将在重新连接后的下一条消息生效（无 mid-session set_effort）。",
-  "composer.apply.effort.nextMessage": "推理强度已保存 — 下一条消息生效。",
-  "composer.apply.effort.unsupported": "此推理强度变更无法在会话中途应用。",
-  "composer.apply.error.setModelFailed": "无法在当前 Agent 上切换模型",
-  "composer.apply.error.softRespawnFailed": "无法按新设置重载 Agent",
-  "composer.apply.error.invalidModel": "无效模型",
-  "composer.apply.error.invalidEffort": "无效推理强度",
-  "composer.apply.error.disconnected": "Agent 未连接",
-  "composer.apply.error.busy": "Agent 回合进行中 — 本轮结束后生效",
-  "composer.apply.error.other": "无法应用模型或推理强度变更",
   "composer.mode": "模式",
   "composer.permission": "授权",
   "composer.access": "访问",
@@ -8731,12 +8445,10 @@ const zh: Record<MessageKey, string> = {
   "resources.browserReload": "刷新",
   "resources.browserFailed": "内置浏览器无法加载此页面。",
   "resources.browserIframeHint": "部分网站禁止 iframe 嵌入。请用「用系统应用打开」，或在桌面端用原生 WebView 浏览。",
-
   "effort.high": "高",
   "effort.medium": "中",
   "effort.low": "低",
   "effort.xhigh": "极高",
-  /** 与四档阶梯「极高」对齐（DeepSeek spawn id `max`）。 */
   "effort.max": "极高",
   "mode.agent": "Agent",
   "mode.plan": "Plan",
@@ -8772,7 +8484,6 @@ const zh: Record<MessageKey, string> = {
   "cliPermission.dontAsk": "dontAsk — 不弹窗直接拒绝",
   "cliPermission.bypassPermissions": "bypassPermissions — YOLO 完全访问",
   "cliPermission.plan": "plan — 产品「计划」模式（输入区切换）",
-
   "search.title": "搜索",
   "search.placeholder": "搜索会话、项目、操作或消息内容…",
   "search.projects": "项目",
@@ -8816,7 +8527,6 @@ const zh: Record<MessageKey, string> = {
     "命令面板排序：关键词（子串）或混合（关键词 + 标题/摘要本地词元重叠）。非云端嵌入，无 embedding API。范围芯片（全部/标题/内容）与「包含已归档」会在本浏览器记住。",
   "settings.sessionSearchRank.keyword": "关键词",
   "settings.sessionSearchRank.hybrid": "混合（本地词元）",
-
   "chatFind.placeholder": "在对话中查找…",
   "chatFind.prev": "上一个匹配",
   "chatFind.next": "下一个匹配",
@@ -8824,12 +8534,10 @@ const zh: Record<MessageKey, string> = {
   "chatFind.count": "{current} / {total}",
   "chatFind.noMatches": "无匹配",
   "chatFind.aria": "在对话中查找",
-
   "plan.waiting": "等待计划",
   "plan.ready": "计划待审阅",
   "plan.context": "上下文",
   "plan.empty": "（空 plan）",
-  /** PLAN-MODE-PRO — Resources → Plan 空状态 */
   "plan.emptyDisabledTitle": "计划模式已关闭",
   "plan.emptyDisabledHint":
     "请在 设置 → Agent 中开启「允许计划模式」，Agent 才能起草计划。仍可从历史查看已归档的计划。",
@@ -8853,20 +8561,6 @@ const zh: Record<MessageKey, string> = {
   "plan.reviseNoteDesc": "可填写给 Agent 的说明；留空则请求一般性修订。",
   "plan.reviseNotePlaceholder": "希望改什么？（可选）",
   "plan.reviseNoteSubmit": "发送修改请求",
-  /** Editable plan canvas (Resources → Plan before approve) */
-  "plan.edit": "编辑计划",
-  "plan.cancelEdit": "取消编辑",
-  "plan.requestWithDraft": "用草稿请求修改",
-  "plan.approveDirtyHint":
-    "你有未提交的计划修改。请先用草稿请求修改，或丢弃后再批准 Agent 的原计划。",
-  "plan.draftPlaceholder": "编辑计划 Markdown…",
-  "plan.draftAria": "计划草稿 Markdown",
-  "plan.discardTitle": "丢弃计划修改？",
-  "plan.discardMessage":
-    "本地修改将丢失。在请求修改或批准之前，仍以 Agent 原计划为准。",
-  "plan.discardConfirm": "丢弃修改",
-  "plan.draftEmpty": "计划草稿不能为空。",
-  "plan.draftTooLong": "计划草稿过长（上限约 20 万字符）。",
   "plan.phaseLabel": "思考 {n}",
   "plan.steps": "步骤",
   "plan.openInResources": "在资源中打开",
@@ -8895,8 +8589,6 @@ const zh: Record<MessageKey, string> = {
   "plan.historyDecisionApproved": "已批准",
   "plan.historyDecisionAbandoned": "已放弃",
   "plan.historyDecisionCompleted": "已完成",
-
-  // Sticky plan/goal bar
   "planBar.aria": "计划与目标状态",
   "planBar.goal": "目标进行中",
   "planBar.planMode": "计划模式",
@@ -8907,7 +8599,6 @@ const zh: Record<MessageKey, string> = {
   "planBar.current": "当前",
   "planBar.expand": "在资源中打开",
   "planBar.clearGoal": "关闭目标",
-
   "settings.title": "设置",
   "settings.backToApp": "返回应用",
   "settings.backToIndex": "返回设置列表",
@@ -9082,45 +8773,6 @@ const zh: Record<MessageKey, string> = {
     "保存会写入白名单键并 soft-respawn agent，使下一轮重新加载 config.toml。",
   "settings.privacy.apply.independentOnly":
     "仅在独立 agent-home 模式下可写。共享模式是对 ~/.grok 的只读探测。",
-  "settings.privacy.externalOtel": "外部 OpenTelemetry（企业）",
-  "settings.privacy.externalOtelDesc":
-    "CLI 双重 opt-in：将用量导出到客户自有 OTLP 采集器（GROK_EXTERNAL_OTEL + exporter）。与产品遥测、/privacy 编码数据无关；默认无内容（content-free）。未设置时本应用不会虚构为「关闭」，也从不写入采集器密钥。",
-  "settings.privacy.externalOtel.dualOptIn": "双重 opt-in",
-  "settings.privacy.externalOtel.status.off":
-    "外部 OTEL 已关闭（主开关明确为关）",
-  "settings.privacy.externalOtel.status.incomplete":
-    "双重 opt-in 不完整（仅有主开关或仅有 exporter）",
-  "settings.privacy.externalOtel.status.ready":
-    "外部 OTEL 就绪（主开关 + exporter）",
-  "settings.privacy.externalOtel.status.unknown":
-    "外部 OTEL 未设置 — 不宣称已关闭",
-  "settings.privacy.externalOtel.status.hostOnly":
-    "外部 OTEL 状态需要桌面应用",
-  "settings.privacy.externalOtel.unknownNotOff":
-    "「未设置」不等于「关闭」。缺失的 GROK_EXTERNAL_OTEL / exporter 保持未知——本应用不会把外部 OTEL 虚构为已禁用。",
-  "settings.privacy.externalOtel.incompleteHint":
-    "双重 opt-in 需要主开关（GROK_EXTERNAL_OTEL / otel_enabled）以及至少一个 exporter（otlp 或 console）。任一半单独启用都不会生效。",
-  "settings.privacy.externalOtel.check.master":
-    "主开关 — GROK_EXTERNAL_OTEL=1 或 [telemetry] otel_enabled = true",
-  "settings.privacy.externalOtel.check.exporter":
-    "Exporter — OTEL_METRICS_EXPORTER 或 OTEL_LOGS_EXPORTER = otlp | console",
-  "settings.privacy.externalOtel.check.contentFree":
-    "默认无内容 — 除非开启内容门控，否则不导出提示词、代码、路径或工具参数",
-  "settings.privacy.externalOtel.check.noAppSecrets":
-    "本应用从不写入 OTEL 密钥 — 采集器鉴权仅用 OTEL_EXPORTER_OTLP_HEADERS（不进 config.toml）",
-  "settings.privacy.externalOtel.check.independent":
-    "独立数据流 — 非产品遥测、非 /privacy 编码数据、不携带 SpaceXAI 凭证",
-  "settings.privacy.externalOtel.step.done": "已满足",
-  "settings.privacy.externalOtel.step.missing": "缺失",
-  "settings.privacy.externalOtel.step.unknown": "未知 / 未设置",
-  "settings.privacy.externalOtel.contentFree":
-    "CLI 默认导出无内容用量 schema。可选 OTEL_LOG_USER_PROMPTS / OTEL_LOG_TOOL_DETAILS 开启有限内容。",
-  "settings.privacy.externalOtel.noSecrets":
-    "本应用不写入 OTEL headers 或令牌。请仅在进程环境中配置采集器鉴权。",
-  "settings.privacy.externalOtel.sharedNote":
-    "共享模式下 App 隐私键为只读。外部 OTEL 由 CLI 进程通过环境变量 / [telemetry] otel_* 配置——本应用不会写入。",
-  "settings.privacy.externalOtel.copyEnv": "复制环境变量模板",
-  "settings.privacy.externalOtel.copied": "已复制",
   "settings.tab.remoteIm": "IM 通信",
   "settings.tab.phoneMirror": "手机镜像",
   "settings.searchResults": "匹配的设置",
@@ -9232,51 +8884,20 @@ const zh: Record<MessageKey, string> = {
   "settings.cliSessionsImportedN": "已导入 {n} 个会话",
   "settings.cliSessionsLoading": "正在查找 CLI 会话…",
   "settings.cliSessionsEmpty": "在当前 home 下未找到 CLI 会话。",
-  "settings.cliSessionsEmptyHint":
-    "在此 home 下运行 Grok Build，或若预期是终端 CLI 会话，请切换会话数据模式。",
-  "settings.cliSessionsEmptyCliMissing":
-    "未找到 Grok Build CLI — 暂无 CLI 会话可列出。",
-  "settings.cliSessionsEmptyCliMissingHint":
-    "请在「设置 → 运行时」安装或定位 CLI。安装后刷新可显示本地磁盘会话。",
-  "settings.cliSessionsEmptyError": "无法加载 CLI 会话。",
-  "settings.cliSessionsEmptyErrorHint": "请检查 GROK_HOME 路径与 CLI 安装，然后刷新。",
   "settings.cliSessionsMsgs": "{n} 条消息",
   "settings.cliSessionsLinked": "已关联",
   "settings.cliSessionsAgentId": "id {id}",
   "settings.cliSessionsCopyId": "复制 id",
   "settings.cliSessionsCopied": "已复制",
   "settings.cliSessionsFilterPlaceholder": "搜索摘要与首条提示…",
-  "settings.cliSessions.filterAll": "全部",
-  "settings.cliSessions.filterLinked": "已关联",
-  "settings.cliSessions.filterUnlinked": "未关联",
   "settings.cliSessionsFilterEmpty": "没有符合筛选条件的会话。",
-  "settings.cliSessionsFilterEmptyHint": "尝试其他关联筛选，或清除筛选。",
   "settings.cliSessionsSearching": "正在搜索 CLI 会话…",
   "settings.cliSessionsSearchEmpty": "没有符合搜索条件的 CLI 会话。",
-  "settings.cliSessionsSearchEmptyHint": "换个关键词，或清除搜索。",
-  "settings.cliSessions.clearFilters": "清除筛选",
   "settings.cliSessionsSearchViaCli":
     "来自 grok sessions search（摘要 + 首条提示）",
   "settings.cliSessionsSearchViaLocal":
     "本地磁盘搜索（标题、id、路径、首条提示）",
   "settings.cliSessionsSearchFallback": "CLI 搜索不可用 — 正在筛选本地列表",
-  "settings.cliSessions.err.cli_missing": "CLI 缺失",
-  "settings.cliSessions.err.cli_missingHint":
-    "请安装 Grok Build CLI，然后刷新列表。",
-  "settings.cliSessions.err.cli_unsupported": "CLI 不支持搜索",
-  "settings.cliSessions.err.cli_unsupportedHint":
-    "当前 CLI 可能没有 sessions search — 已改为筛选本地列表。",
-  "settings.cliSessions.err.timeout": "搜索超时",
-  "settings.cliSessions.err.timeoutHint": "请缩小关键词或刷新本地列表。",
-  "settings.cliSessions.err.host_only": "需要桌面应用",
-  "settings.cliSessions.err.host_onlyHint":
-    "CLI 会话发现仅在桌面应用中可用。",
-  "settings.cliSessions.err.permission": "权限不足",
-  "settings.cliSessions.err.permissionHint": "请检查 GROK_HOME 下的文件权限。",
-  "settings.cliSessions.err.other": "搜索失败",
-  "settings.cliSessions.err.otherHint": "请刷新后重试。",
-  "settings.cliSessionsImportPlan":
-    "将导入 {importable} / {selected}（跳过已关联 {skipped}）",
   "settings.cliSessionsDeleteRemoteOnly":
     "此结果在 GROK_HOME 下没有本地目录（仅远程）",
   "settings.cliSessionsSource": "扫描路径 {path}",
@@ -9320,14 +8941,6 @@ const zh: Record<MessageKey, string> = {
   "settings.compactionDetail.verbose": "详细",
   "settings.compactionDetail.help":
     "仅在压缩模式为「分段」时生效。CLI 默认为「详细」。",
-  "settings.compactionApply.softRespawn":
-    "更改模式或细节会 soft-respawn 已连接的 Agent，使下一条消息重新加载 --compaction-mode / --compaction-detail。",
-  "settings.compactionApply.nextSpawn":
-    "当前无 live Agent — 模式与细节在下次连接 / 启动时生效。",
-  "settings.compactionApply.unsupported":
-    "此 CLI 版本不接受压缩相关 flags（需要 0.2.117+）。仍可能设置环境变量；旧版 CLI soft-fail 并忽略未知 flags。",
-  "settings.compactionApply.note":
-    "已连接 Agent 时，更改模式或细节会 soft-respawn，使下一条消息重新加载 flags。无 live Agent 时设置等待下次连接。旧版 CLI soft-fail（不支持时省略 flags）。手动 /compact 是独立的 Agent 回合，不会改这些启动 flags。",
   "settings.twoPassCompaction": "双遍预热压缩",
   "settings.twoPassCompactionDesc":
     "开启后，Grok Build 可在主压缩前预热层次化双遍 compact（CLI 0.2.117+ 配置 two_pass_compaction_enabled 与 GROK_TWO_PASS_COMPACTION）。默认关闭。独立模式写入 agent-home config.toml；共享模式仅保留 App 设置（不改写 ~/.grok）。更改后 soft-respawn；旧版 CLI soft-fail（省略 env）。",
@@ -9406,57 +9019,6 @@ const zh: Record<MessageKey, string> = {
   "settings.memoryBrowser.searchEmptyHintHybridUnavailable":
     "没有关键词匹配。Agent 已配置 embedding，但应用内浏览器混合检索不可用（无 host CLI 路径）。不会在客户端伪造 embedding。",
   "settings.memoryBrowser.openEmbedSettings": "记忆 embedding 设置",
-  "settings.memoryOps": "记忆操作中心",
-  "settings.memoryOpsDesc":
-    "统一记忆浏览器、embedding 诚实状态与清除范围。应用内搜索仅为关键词 — 不会伪造 embedding。CLI 混合检索需配置 embedding 模型；无 host 搜索路径时浏览器混合检索不可用。",
-  "settings.memoryOps.modeLabel": "记忆搜索模式",
-  "settings.memoryOps.mode.appKeyword": "应用：关键词",
-  "settings.memoryOps.mode.cliHybrid": "CLI agent：混合",
-  "settings.memoryOps.mode.hybridUnavailable": "浏览器混合：不可用",
-  "settings.memoryOps.mode.memoryOff": "记忆：关闭",
-  "settings.memoryOps.hybridUnavailableHint":
-    "已为 agent 工具设置 embedding 模型，但应用内浏览器没有 host 混合检索 CLI（grok memory search）— 仅关键词扫描。不会伪造 embedding。",
-  "settings.memoryOps.openEmbed": "Embedding 设置",
-  "settings.memoryOps.presenceLabel": "Dream / Watcher 配置存在性",
-  "settings.memoryOps.dream": "Dream",
-  "settings.memoryOps.watcher": "Watcher",
-  "settings.memoryOps.presenceNote": "仅表示配置键是否设置 — 不是进程运行状态。",
-  "settings.memoryOps.clearLabel": "清除记忆范围",
-  "settings.memoryOps.clear.workspace": "清除工作区",
-  "settings.memoryOps.clear.session": "清除会话",
-  "settings.memoryOps.clear.all": "全部清除",
-  "settings.memoryOps.clear.busy": "清除中…",
-  "settings.memoryOps.clear.confirmTitle.workspace": "清除工作区记忆？",
-  "settings.memoryOps.clear.confirmTitle.session": "清除会话记忆？",
-  "settings.memoryOps.clear.confirmTitle.all": "清除全部记忆？",
-  "settings.memoryOps.clear.confirmMsg.workspace":
-    "对当前项目执行 grok memory clear --workspace（MEMORY.md、会话摘要、索引）。不会删除应用内聊天记录。此操作不可撤销。",
-  "settings.memoryOps.clear.confirmMsg.session":
-    "应用 host 尚不支持仅清除会话范围（CLI 无 session 作用域）。",
-  "settings.memoryOps.clear.confirmMsg.all":
-    "在当前 GROK_HOME 下执行 grok memory clear --all，将删除全局与工作区记忆文件。不会删除应用内聊天记录。此操作不可撤销。",
-  "settings.memoryOps.clear.done.workspace": "已清除工作区记忆",
-  "settings.memoryOps.clear.done.session": "已清除会话记忆",
-  "settings.memoryOps.clear.done.all": "已清除全部记忆",
-  "settings.memoryOps.clear.unavailable.session":
-    "host CLI 尚不支持仅清除会话范围。",
-  "settings.memoryOps.clear.unavailable.memoryOff":
-    "请先打开上方的「跨会话记忆」再清除。",
-  "settings.memoryOps.clear.unavailable.noCwd":
-    "请先打开项目以清除工作区记忆。",
-  "settings.memoryOps.clear.unavailable.host":
-    "应用 host 暂不支持此清除范围。",
-  "settings.memoryOps.empty.memoryOff": "记忆已关闭",
-  "settings.memoryOps.empty.memoryOffHint":
-    "请先打开上方的「跨会话记忆」以浏览文件与清除范围。",
-  "settings.memoryOps.empty.noProject": "未选择项目",
-  "settings.memoryOps.empty.noProjectHint":
-    "打开项目以匹配工作区记忆。全局 MEMORY.md 仍可能显示。",
-  "settings.memoryOps.empty.catalog": "尚无记忆文件",
-  "settings.memoryOps.empty.catalogHint":
-    "agent 写入 MEMORY.md、会话日志或索引后会出现文件。",
-  "settings.memoryOps.empty.hybridUnavailable":
-    "尚无记忆文件 · 浏览器混合检索不可用",
   "settings.memoryEmbed": "记忆 embedding（CLI 0.2.117）",
   "settings.memoryEmbedDesc":
     "从当前 GROK_HOME 的 config.toml 读取白名单 `[memory.*]` 键（embedding、search、MMR、dream、watcher）。缺失键保持未设置。独立 agent-home 可写入安全键并 soft-respawn；共享模式只读。应用内浏览器搜索始终为关键词，不会在客户端发明 embedding。",
@@ -9560,87 +9122,6 @@ const zh: Record<MessageKey, string> = {
   "settings.codebaseIndexing.save": "保存代码库索引",
   "settings.codebaseIndexing.saving": "保存中…",
   "settings.codebaseIndexing.needTauri": "代码库索引设置需要桌面应用。",
-  "settings.lspTools": "LSP 工具",
-  "settings.lspToolsDesc":
-    "如实展示当前 GROK_HOME config.toml 中的 Grok Build `[features].lsp_tools`。开启后向 CLI agent 暴露 lsp 工具——应用本身不运行语言服务器，也不显示实时诊断。独立 agent-home 可写入 bool 并 soft-respawn；共享模式只读。已知旧版 CLI 时 soft-fail。",
-  "settings.lspTools.path": "配置：{path}",
-  "settings.lspTools.loading": "正在加载 LSP 工具配置…",
-  "settings.lspTools.error": "无法加载或更新 LSP 工具配置",
-  "settings.lspTools.saved": "LSP 工具配置已保存（agent 已 soft-respawn）",
-  "settings.lspTools.sharedWarning":
-    "共享模式显示 ~/.grok/config.toml（只读探测）。切换到独立会话数据模式后，才能将 `[features].lsp_tools` 写入 App agent-home。",
-  "settings.lspTools.mode.independent": "独立（agent-home）",
-  "settings.lspTools.mode.shared": "共享（~/.grok）",
-  "settings.lspTools.missing": "文件尚不存在",
-  "settings.lspTools.writable": "可编辑",
-  "settings.lspTools.readOnly": "只读",
-  "settings.lspTools.presence.unset": "未设置",
-  "settings.lspTools.presence.on": "开",
-  "settings.lspTools.presence.off": "关",
-  "settings.lspTools.status.off": "关 — agent 无 lsp 工具",
-  "settings.lspTools.status.on": "开 — 仅 CLI agent 工具",
-  "settings.lspTools.status.unset": "未设置 — CLI 默认关闭",
-  "settings.lspTools.status.sharedReadonly": "共享只读",
-  "settings.lspTools.status.cliOld": "CLI 低于 {min}（soft-fail）",
-  "settings.lspTools.status.hostOnly": "需要桌面主机",
-  "settings.lspTools.chip.off": "关",
-  "settings.lspTools.chip.on": "开",
-  "settings.lspTools.chip.unset": "未设置",
-  "settings.lspTools.chip.sharedReadonly": "共享只读",
-  "settings.lspTools.chip.cliOld": "CLI < {min}",
-  "settings.lspTools.chip.hostOnly": "仅主机",
-  "settings.lspTools.chip.cliDefaultOff": "CLI 默认关",
-  "settings.lspTools.chip.noAppLsp": "应用：无 LSP 客户端",
-  "settings.lspTools.chip.noDiagnostics": "无实时诊断",
-  "settings.lspTools.cliUnknown": "CLI 版本未知（soft-fail）",
-  "settings.lspTools.enable": "启用 LSP 工具",
-  "settings.lspTools.enableDesc":
-    "开启后，若 agent 配置中已配置语言服务器，CLI agent 可使用 lsp 工具。关闭或未设置（CLI 默认）时 agent 无 lsp 工具。应用不会在此显示诊断列表。",
-  "settings.lspTools.unsetDefaultHint":
-    "键未设置 — CLI 默认关闭。切换一次即可将显式 bool 写入 config.toml。",
-  "settings.lspTools.empty.off": "关闭时，agent 无 lsp 工具。",
-  "settings.lspTools.empty.offHint":
-    "在独立 agent-home 中启用该标志，soft-respawn 后即可向 CLI agent 暴露 lsp 工具。",
-  "settings.lspTools.empty.on": "已开启：若已配置服务器，CLI agent 可使用 lsp 工具。",
-  "settings.lspTools.empty.onHint":
-    "应用尚未显示实时诊断——工具仅在 CLI agent 中运行。",
-  "settings.lspTools.empty.unset": "键未设置 — CLI 默认关闭（agent 无 lsp 工具）。",
-  "settings.lspTools.empty.unsetHint":
-    "切换一次即可写入显式的 `[features].lsp_tools` bool。",
-  "settings.lspTools.empty.sharedReadonly": "共享模式对此标志只读。",
-  "settings.lspTools.empty.sharedReadonlyHint":
-    "切换到独立会话数据模式后才能编辑 agent-home config.toml。",
-  "settings.lspTools.empty.cliOld":
-    "CLI 可能低于 {min}；可能忽略 lsp_tools（soft-fail）。",
-  "settings.lspTools.empty.cliOldHint":
-    "升级 Grok Build CLI 以获得文档化能力。仍可写入配置。",
-  "settings.lspTools.empty.hostOnly": "LSP 工具设置需要桌面应用。",
-  "settings.lspTools.empty.hostOnlyHint":
-    "打开 Tauri 桌面主机以读取或写入 agent-home 配置。",
-  "settings.lspTools.empty.noDiagnostics":
-    "应用内无实时诊断 — 仅在启用时提供 CLI agent 工具。",
-  "settings.lspTools.empty.noDiagnosticsHint":
-    "开启后，若已配置服务器，CLI agent 可使用 lsp 工具。此工作台不会虚构诊断列表。",
-  "settings.lspTools.banner.sharedReadonly":
-    "共享模式只读 — 切换到独立模式后才能写入 lsp_tools。",
-  "settings.lspTools.banner.cliOld":
-    "CLI 低于 {min} — 可能忽略该键（soft-fail）。",
-  "settings.lspTools.banner.hostOnly": "需要桌面主机。",
-  "settings.lspTools.banner.softRespawn":
-    "保存会写入 config.toml 并 soft-respawn agent，以便生效该标志。",
-  "settings.lspTools.banner.noAppLsp": "Grok App 本身不运行语言服务器。",
-  "settings.lspTools.banner.agentToolsOnly":
-    "仅在启用且已配置服务器时提供 CLI agent 工具。",
-  "settings.lspTools.banner.noDiagnostics": "应用尚未显示实时诊断。",
-  "settings.lspTools.refresh": "刷新",
-  "settings.lspTools.reset": "重置",
-  "settings.lspTools.save": "保存 LSP 工具",
-  "settings.lspTools.saving": "保存中…",
-  "settings.lspTools.needTauri": "LSP 工具设置需要桌面应用。",
-  "settings.lspTools.openConfigSection": "打开 agent 配置分区",
-  "settings.lspTools.copySummary": "复制状态摘要",
-  "settings.lspTools.copied": "已复制",
-  "settings.lspTools.copyFailed": "无法复制摘要到剪贴板",
   "settings.codebaseSearch": "项目代码库搜索",
   "settings.codebaseSearchDesc":
     "按路径/文件名和/或文件内容搜索当前项目。Host 优先使用 ripgrep，否则有上限地遍历。范围限制在已信任项目——仅关键词，不会虚构 embedding 或 CLI 代码图结果。",
@@ -9682,77 +9163,11 @@ const zh: Record<MessageKey, string> = {
   "settings.codebaseSearch.openResources": "资源",
   "settings.codebaseSearch.refresh": "刷新",
   "settings.codebaseSearch.clear": "清除",
-  "settings.codeGraph": "代码图",
-  "settings.codeGraphDesc":
-    "统一展示代码库索引（CLI 代码图）与应用内项目搜索（仅关键词）的诚实状态。不会虚构代码图或 embedding 命中。",
-  "settings.codeGraph.modeLabel": "代码图状态",
-  "settings.codeGraph.chip.appKeyword": "应用内搜索：关键词",
-  "settings.codeGraph.chip.cliGraph": "CLI 代码图：开",
-  "settings.codeGraph.chip.cliGraphDefaultOn": "CLI 代码图：默认开",
-  "settings.codeGraph.chip.graphUnavailable": "应用内图搜索：不可用",
-  "settings.codeGraph.chip.keywordOnly": "代码图：关",
-  "settings.codeGraph.chip.cliOld": "CLI 过旧，不支持代码图",
-  "settings.codeGraph.chip.noEmbeddings": "非 embedding",
-  "settings.codeGraph.mode.keywordOnly":
-    "代码库索引已关闭 — CLI 不会构建代码图。应用内项目搜索仍为关键词（rg/遍历）。",
-  "settings.codeGraph.mode.graphEnabledUnknown":
-    "代码库索引已开启，CLI 可能构建代码图；应用尚无法确认图就绪状态或返回图命中。",
-  "settings.codeGraph.mode.graphUnavailable":
-    "代码库索引对 CLI code-nav 已开启，但应用内项目搜索没有图 API — 结果仍仅为关键词。",
-  "settings.codeGraph.mode.cliOld":
-    "CLI 低于 {min} — 可能忽略 `[features].codebase_indexing`（soft-fail）。应用内搜索仍为关键词。",
-  "settings.codeGraph.mode.unsetDefaultOn":
-    "键未设置 — CLI 默认开启。应用不会虚构已写入的配置值；项目搜索仍为关键词。",
-  "settings.codeGraph.appSearchRemainsKeyword":
-    "在 Host 提供真正的图搜索 API 之前，应用内项目搜索保持关键词。CLI 图/code-nav 请另行启用索引。",
-  "settings.codeGraph.openIndexingSettings": "代码库索引设置",
-  "settings.codeGraph.openSearchSettings": "项目代码库搜索",
-  "settings.codeGraph.empty.cliOld": "CLI 过旧，不支持代码图索引",
-  "settings.codeGraph.empty.cliOldHint":
-    "请升级 Grok Build CLI 以使用 `[features].codebase_indexing`。应用内搜索仍仅为关键词。",
-  "settings.codeGraph.empty.unsetDefaultOn":
-    "代码库索引键未设置（CLI 默认开启）",
-  "settings.codeGraph.empty.unsetDefaultOnHint":
-    "切换一次可写入明确 bool。应用内搜索不使用代码图。",
-  "settings.codeGraph.empty.keywordOnly": "代码图索引已关闭",
-  "settings.codeGraph.empty.keywordOnlyHint":
-    "开启代码库索引以供 CLI code-nav。应用内项目搜索始终为关键词。",
-  "settings.codeGraph.empty.graphUnavailable":
-    "CLI 代码图可能已启用 — 应用内图搜索不可用",
-  "settings.codeGraph.empty.graphUnavailableHint":
-    "索引可帮助 CLI agent；此应用界面仅运行关键词（rg/遍历）项目搜索。",
-  "settings.codeGraph.empty.graphEnabledUnknown":
-    "CLI 代码图可能已启用 — 应用内状态未知",
-  "settings.codeGraph.empty.graphEnabledUnknownHint":
-    "应用不会探测图健康度，也不会虚构图命中。项目搜索仅为关键词。",
-  "settings.codeGraph.empty.searchKeywordIdle": "输入关键词以搜索此项目",
-  "settings.codeGraph.empty.searchKeywordIdleHint":
-    "结果为路径/名称或内容匹配 — 绝不会虚构代码图或 embedding 命中。",
-  "settings.codeGraph.empty.searchNoMatches": "无关键词匹配",
-  "settings.codeGraph.empty.searchNoMatchesHint":
-    "项目下无路径/名称或内容命中。这不是代码图或向量搜索。",
-  "settings.codeGraph.rebuild.availableNote": "Host 可重建代码图索引。",
-  "settings.codeGraph.rebuild.unavailableNote": "应用没有代码图的 Host 重建接口。",
-  "settings.codeGraph.rebuild.cliHint":
-    "若索引过期，请在 Grok Build CLI 提供相应命令时于 CLI 重建 — 本面板不会虚构重建按钮。",
   "settings.allowUnverifiedCli": "允许未校验的 CLI 安装",
   "settings.allowUnverifiedCliDesc":
-    "官方镜像通常不发布 SHA-256 校验文件——缺少校验为警告级风险（HTTPS 白名单 + 二进制探测），默认仍可安装。仅在设置了 GROK_CLI_REQUIRE_CHECKSUM=1 时需要开启此项以继续安装。已发布校验和不匹配时始终拒绝，且不可强制跳过。",
+    "官方镜像通常不发布 SHA-256 校验文件；缺少校验时默认仍可安装（HTTPS 白名单 + 二进制探测）。开启此项可在设置了 GROK_CLI_REQUIRE_CHECKSUM=1 时仍允许安装。校验和不一致始终拒绝。",
   "settings.cliChecksumVerified": "上次安装校验通过",
   "settings.cliChecksumUnverified": "上次安装未校验",
-  "cliTrust.grade.verified": "校验已通过",
-  "cliTrust.grade.missingSidecar": "无校验文件",
-  "cliTrust.grade.mismatch": "校验和不匹配",
-  "cliTrust.grade.unverifiedAllowed": "已允许未校验安装",
-  "cliTrust.grade.unknown": "校验状态未知",
-  "cliTrust.hint.missingSidecar":
-    "官方镜像当前未发布 SHA-256 校验文件。安装依赖 HTTPS 白名单 + 二进制探测，未经密码学校验。",
-  "cliTrust.hint.mismatch":
-    "已发布校验和与下载内容不一致，安装已拒绝——校验失败时不可强制跳过。",
-  "cliTrust.hint.unverifiedAllowed":
-    "在无已发布校验文件的情况下完成安装（逃生开关或默认「缺校验可装」策略）。",
-  "cliTrust.hint.unknown":
-    "尚无 App 托管安装的校验记录。手动或外部安装不评级。",
   "settings.cliPath": "CLI 路径",
   "settings.cliPathDesc": "Grok Build CLI 可执行文件路径",
   "settings.cliNotFound": "（未找到）",
@@ -9897,7 +9312,7 @@ const zh: Record<MessageKey, string> = {
   "agent.capacityRecycledToast":
     "已回收一个闲置的常驻 Agent 以腾出槽位 — 该会话下次发送时会重新连接。",
   "agent.dataModeRecycledToast":
-    "会话数据模式切换后已回收 Agent — 历史不会静默合并；下次发送将在新目录下重连。",
+    "数据模式切换后已重启 Agent — 下次发送将在新目录下重连。",
   "agent.softRespawnToast":
     "已按新设置重载 Agent — 下次发送将重新连接。",
   "agent.processLimitToast":
@@ -9966,42 +9381,6 @@ const zh: Record<MessageKey, string> = {
   "settings.askUserTimeout.60": "1 分钟",
   "settings.askUserTimeout.120": "2 分钟",
   "settings.askUserTimeout.300": "5 分钟",
-  // Ask-user 演示路径（设置 → 权限）— 仅准备设置；不编造 Agent 回合
-  "settings.askDemo.title": "Ask-user 演示路径",
-  "settings.askDemo.desc":
-    "建议步骤：无需四处寻找设置，即可对比 Ask 与 YOLO。应用只准备权限与示例提示词——真实问卷仍取决于模型与 CLI。",
-  "settings.askDemo.honesty":
-    "诚实说明：真正的 `ask_user_question` 取决于模型与 Grok Build CLI。应用不会自动发送提示词，也不会声称 Agent 一定会提问。",
-  "settings.askDemo.step.policyAsk": "将权限策略设为 Ask",
-  "settings.askDemo.step.policyAskHint": "使用产品 Ask，以便工具与提问可以弹出确认。",
-  "settings.askDemo.step.notYolo": "确保 YOLO / 一律核准已关闭",
-  "settings.askDemo.step.notYoloHint": "YOLO 会跳过确认，不适合作为 Ask 对比基线。",
-  "settings.askDemo.step.askUserEnabled": "保持向用户提问已启用",
-  "settings.askDemo.step.askUserEnabledHint":
-    "关闭「禁用向用户提问」（Agent 标签 / --no-ask-user），以允许问卷。",
-  "settings.askDemo.step.samplePrompt": "在对话中粘贴示例提示词（可选）",
-  "settings.askDemo.step.samplePromptHint":
-    "仅为建议措辞——请自行复制并发送。不保证 Agent 会提问。",
-  "settings.askDemo.chip.pass": "就绪",
-  "settings.askDemo.chip.fail": "需设置",
-  "settings.askDemo.chip.next": "建议",
-  "settings.askDemo.blocker.policy": "权限策略不是 Ask。",
-  "settings.askDemo.blocker.yolo": "YOLO / 一律核准已开启。",
-  "settings.askDemo.blocker.noAskUser": "向用户提问已禁用（--no-ask-user）。",
-  "settings.askDemo.apply": "应用推荐的 Ask 策略",
-  "settings.askDemo.applied": "已应用 Ask 策略并重新启用向用户提问。",
-  "settings.askDemo.appliedPolicyOnly": "已应用 Ask 策略。",
-  "settings.askDemo.copyPrompt": "复制示例提示词",
-  "settings.askDemo.copied": "示例提示词已复制——请自行粘贴到对话中。",
-  "settings.askDemo.copyFailed": "无法复制到剪贴板。",
-  "settings.askDemo.preview": "预览示例问卷",
-  "settings.askDemo.previewTitle": "演示问卷（非来自 Agent）",
-  "settings.askDemo.previewBanner":
-    "仅预览——此问卷由应用内置用于演示，并非实时 Agent 回合发出。",
-  "settings.askDemo.openDocs": "Ask-user 文档",
-  "settings.askDemo.openDocsFailed": "无法在浏览器中打开文档。",
-  "settings.askDemo.ready": "设置看起来已适合 Ask 路径演示。需要时再粘贴示例提示词。",
-  "settings.askDemo.blocked": "请先处理红色清单项，或点击「应用推荐的 Ask 策略」。",
   "settings.sandboxProfile": "沙箱配置",
   "settings.sandboxProfileDesc":
     "对 Agent 进程施加操作系统级文件系统/网络隔离（Linux Landlock / macOS Seatbelt）。在新启动 Agent 时生效——更改后请重连会话。可在项目菜单中为单个项目覆盖。",
@@ -10035,36 +9414,6 @@ const zh: Record<MessageKey, string> = {
     "此配置的子进程网络拦截仅在 Linux 生效；macOS 为 no-op（进程内工具仍可联网）。",
   "settings.sandbox.recommendedNote":
     "提示：日常使用推荐「工作区」配置。",
-  "settings.sandbox.openGuide": "打开沙箱指南",
-  "settings.sandbox.recommendedDaily": "日常使用推荐",
-  // Sandbox profile wizard (trust offer + Settings guide)
-  "sandboxWizard.title.trust": "选择沙箱配置",
-  "sandboxWizard.title.info": "沙箱配置指南",
-  "sandboxWizard.progress": "第 {n} / {total} 步 · {step}",
-  "sandboxWizard.step.intro": "为何使用沙箱",
-  "sandboxWizard.step.pick": "选择配置",
-  "sandboxWizard.step.confirm": "确认",
-  "sandboxWizard.next": "继续",
-  "sandboxWizard.back": "上一步",
-  "sandboxWizard.skip": "暂不设置",
-  "sandboxWizard.apply": "应用配置",
-  "sandboxWizard.intro.trust":
-    "你已信任此项目。可选为 Agent 进程设置操作系统级沙箱，使写入范围限制在工作区（及临时目录）。",
-  "sandboxWizard.intro.info":
-    "OS 沙箱配置限制 Agent 进程的写入能力。请按你对本机的使用方式选择配置。",
-  "sandboxWizard.reason.workspace":
-    "日常编程推荐：工作区 — 可读任意路径；写入限制为会话工作目录、~/.grok/ 与系统临时目录。网络允许。",
-  "sandboxWizard.honesty.platform":
-    "当前平台未文档化内核级 OS 沙箱强制（仅 macOS Seatbelt / Linux Landlock）。CLI 可能接受配置但 soft-fail 且无强制执行 — 请勿当作硬安全边界。",
-  "sandboxWizard.honesty.cliUnsupported":
-    "当前 CLI 过旧，不支持 --sandbox（需要 ≥ {min}）。配置可保存，但会 soft-fail（省略 flag）直至升级 Grok Build。",
-  "sandboxWizard.pick.lead":
-    "选择沙箱配置。日常使用推荐「工作区」。",
-  "sandboxWizard.recommendedBadge": "推荐",
-  "sandboxWizard.confirm.lead": "将「{profile}」应用为应用级沙箱配置？",
-  "sandboxWizard.confirm.respawnHint":
-    "在新启动 Agent 时生效——更改后请重连会话。仍可在项目菜单中为单个项目覆盖。",
-  "sandboxWizard.dontOfferAgain": "信任项目后不再提示",
   "settings.disableWebSearch": "禁用网页搜索与抓取",
   "settings.disableWebSearchDesc":
     "启动 Agent 时加上 --disable-web-search，移除 web_search / web_fetch 工具。更改后会 soft-respawn 已连接的 Agent。",
@@ -10087,7 +9436,6 @@ const zh: Record<MessageKey, string> = {
   "settings.disallowedTools.clear": "全部清除",
   "settings.disallowedTools.webCovered":
     "web_search / web_fetch 也受上方「禁用网页搜索」约束",
-    "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "允许子代理",
   "settings.subagentsEnabledDesc": "关闭时启动加上 --no-subagents，无法拉起嵌套 Agent / 任务。更改后 soft-respawn。",
   "settings.subagentWorktreeSnapshot": "子代理 worktree 快照",
@@ -10174,60 +9522,6 @@ const zh: Record<MessageKey, string> = {
   "settings.workflows.run.reason.empty": "空输出",
   "settings.workflows.run.reason.nonzero_exit": "非零退出",
   "settings.workflows.run.reason.soft_fail": "soft-fail",
-  "settings.workflows.authorHint":
-    "完整流水线请用 create-workflow 技能（/create-workflow）编写，或直接编辑 .rhai。本面板仅生成简短模板，并按名称 smoke/运行——不是可视化编辑器。",
-  "settings.workflows.reveal": "显示",
-  "settings.workflows.revealTitle": "在文件夹中显示工作流文件",
-  "settings.workflows.openEditor": "打开",
-  "settings.workflows.openEditorTitle": "在已配置的编辑器中打开工作流",
-  "settings.workflows.create": "从模板新建",
-  "settings.workflows.create.title": "从模板新建工作流",
-  "settings.workflows.create.hint":
-    "写入带纯字面量 meta 的最小 .rhai 脚手架。请用真实的 agent()/parallel() 步骤替换正文（见 create-workflow 技能）。",
-  "settings.workflows.create.name": "名称",
-  "settings.workflows.create.namePlaceholder": "review-changes",
-  "settings.workflows.create.namePreview": "将保存为 {name}.rhai",
-  "settings.workflows.create.scope": "作用域",
-  "settings.workflows.create.needProjectHint": "在工作台打开项目后即可使用项目作用域。",
-  "settings.workflows.create.needProject": "项目作用域需要当前项目路径。",
-  "settings.workflows.create.argsNote":
-    "可选：通过 workflow 工具启动时传入 args 对象（未传时 args 为 ()）。",
-  "settings.workflows.create.pathPreview": "路径：{path}",
-  "settings.workflows.create.submit": "创建",
-  "settings.workflows.create.creating": "创建中…",
-  "settings.workflows.create.created": "已创建工作流 {name}",
-  "settings.workflows.create.overwritten": "已覆盖工作流 {name}",
-  "settings.workflows.create.nameInvalid":
-    "请使用字母、数字、连字符或下划线（不要包含路径分隔符）。",
-  "settings.workflows.create.error": "无法创建工作流（soft-fail）。",
-  "settings.workflows.create.desktopOnly": "创建工作流需要桌面应用宿主。",
-  "settings.workflows.create.overwriteTitle": "覆盖工作流？",
-  "settings.workflows.create.overwriteBody":
-    "名为「{name}」的工作流已存在。要用模板脚手架覆盖吗？",
-  "settings.workflows.create.overwrite": "覆盖",
-  "settings.workflows.empty.no_workflows":
-    "在 ~/.grok/workflows 或当前项目的 .grok/workflows 下未找到 .rhai 工作流。可创建模板或使用 /create-workflow。",
-  "settings.workflows.empty.scan_soft_fail":
-    "无法扫描工作流目录（soft-fail）。磁盘上的路径可能仍然存在。",
-  "settings.workflows.empty.browser_only": "发现与创建工作流需要桌面应用宿主。",
-  "settings.workflows.empty.history_empty":
-    "尚无观察到的 smoke/运行结果。历史仅记录设置页 Smoke/运行结果（本地、已脱敏）。",
-  "settings.workflows.history": "最近运行",
-  "settings.workflows.history.show": "最近运行（{count}）",
-  "settings.workflows.history.hide": "隐藏最近运行",
-  "settings.workflows.history.honesty":
-    "仅本地记录设置页 smoke/运行结果（最多约 20 条）。不是实时 /workflows 仪表盘；不会虚构离线触发。",
-  "settings.workflows.history.filter": "筛选最近运行",
-  "settings.workflows.history.filter.all": "全部",
-  "settings.workflows.history.filterEmpty": "没有匹配此筛选的运行。",
-  "settings.workflows.history.outcome.ok": "ok",
-  "settings.workflows.history.outcome.error": "错误",
-  "settings.workflows.history.outcome.softFail": "soft-fail",
-  "settings.workflows.history.clear": "清空历史",
-  "settings.workflows.history.clearTitle": "清空最近运行？",
-  "settings.workflows.history.clearBody": "移除 {count} 条本地历史记录？此操作不可撤销。",
-  "settings.workflows.history.clearConfirm": "清空",
-  "settings.workflows.history.cleared": "已清空工作流运行历史",
   "settings.useLeader": "共享 Agent 后端（leader）",
   "settings.useLeaderDesc": "使用 --leader 让多个客户端共用一个后端进程；关闭则 --no-leader（默认）。更改后 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",
@@ -10779,8 +10073,6 @@ const zh: Record<MessageKey, string> = {
   "inspect.permissions.loaded": "已加载 {n}",
   "inspect.permissions.sources": "{n} 个来源",
   "inspect.permissions.managed": "托管设置已启用",
-
-  // Managed configuration (`grok setup`)
   "managedSetup.title": "托管配置安装",
   "managedSetup.desc":
     "拉取并安装组织托管配置（`grok setup`）。按步骤：CLI → 团队鉴权 → 可选预览 → 安装 → 校验本地签名产物。CLI 或 inspect 不可用时 soft-fail。",
@@ -10872,7 +10164,7 @@ const zh: Record<MessageKey, string> = {
   "settings.aboutApp": "关于 Grok App",
   "settings.checkUpdate": "检查更新",
   "settings.checkUpdateDesc":
-    "已签名的正式版可在应用内下载并安装更新。本地或未签名构建会改为打开 GitHub 发布页。智能体、语音、远程 IM 与镜像在安装成功前会继续运行。",
+    "已签名的正式版可在应用内下载并安装更新。本地或未签名构建会改为打开 GitHub 发布页。",
   "settings.checkUpdateChecking": "检查中…",
   "settings.checkUpdateLatest": "已是最新版本（{version}）。",
   "settings.checkUpdateAvailable":
@@ -10880,7 +10172,6 @@ const zh: Record<MessageKey, string> = {
   "settings.checkUpdateOpen": "打开发布页",
   "settings.checkUpdateDownload": "下载安装包",
   "settings.checkUpdateFailed": "检查失败：{error}",
-  "settings.autoUpdateIdle": "需要时再检查 — 尚无更新状态。",
   "settings.autoUpdateChecking": "正在检查更新…",
   "settings.autoUpdateUpToDate": "已是最新版本。",
   "settings.autoUpdateAvailable": "有新版本 {version}。",
@@ -10891,37 +10182,9 @@ const zh: Record<MessageKey, string> = {
   "settings.autoUpdateManualRequired":
     "有新版本 {version}。当前安装方式不支持应用内更新 — 请到发布页下载。",
   "settings.autoUpdateError": "更新失败：{error}",
-  "settings.autoUpdateBody.checking":
-    "正在连接已签名更新端点或 GitHub Releases…",
-  "settings.autoUpdateBody.downloading":
-    "正在下载已签名安装包。安装成功前智能体继续运行。",
-  "settings.autoUpdateBody.installing":
-    "正在暂存更新。智能体、语音、远程 IM 与镜像仅在安装准备成功后才会停止。",
-  "settings.autoUpdateBody.ready":
-    "准备好后可安装并重启。安装失败不会停止智能体。",
-  "settings.autoUpdateBody.manual":
-    "请打开发布页或下载本平台安装包。此构建不支持应用内静默安装。",
-  "settings.autoUpdateBody.agentsNote":
-    "智能体、语音、远程 IM 与镜像继续运行；仅在安装准备成功后才会停止。",
-  "settings.autoUpdateError.network":
-    "无法连接更新服务器。请检查网络或代理后重试。",
-  "settings.autoUpdateError.signature":
-    "更新包签名校验失败。请使用已签名正式版，或从 GitHub Releases 下载。",
-  "settings.autoUpdateError.pluginMissing":
-    "此构建未启用应用内更新（未签名或本地版）。请点「检查更新」打开 GitHub Releases。",
-  "settings.autoUpdateError.notReady":
-    "更新尚未就绪。请等待下载完成后再点「安装并重启」。",
-  "settings.autoUpdateError.hostOnly":
-    "应用更新仅在桌面端可用，浏览器预览中不可用。",
-  "settings.autoUpdateError.other":
-    "更新失败。你仍可打开发布页并手动安装。",
   "settings.autoUpdateChannelSilent": "更新通道：应用内（已签名正式版）",
   "settings.autoUpdateChannelManual":
     "更新通道：GitHub 下载（未签名 / 本地构建）",
-  "settings.autoUpdateChannelUnsupported":
-    "更新通道：手动安装（此安装包类型不支持自动更新）",
-  "settings.autoUpdateChannelHostOnly":
-    "更新通道：仅桌面端（此处不可用）",
   "settings.close": "关闭",
   "settings.sharedConfirm":
     "切换到共享 ~/.grok？数据不会静默合并，请确认。",
@@ -10929,31 +10192,6 @@ const zh: Record<MessageKey, string> = {
   "settings.modeShared": "共享（~/.grok）",
   "settings.sessionModeHelp":
     "独立模式会话存在应用目录；共享模式使用 CLI 主目录，与终端共用会话。两种模式均可导入 CLI 会话；独立模式扫描的是 agent-home（不一定是 ~/.grok）。",
-  "settings.sessionDataMode.status": "当前：{modeLabel} · Agent 主目录 {path}",
-  "settings.sessionDataMode.independentNote":
-    "独立模式使用 {path}。可写入 agent 配置的应用设置作用于此目录；不会改写 CLI 的 ~/.grok。",
-  "settings.sessionDataMode.confirm.intro":
-    "将会话数据主目录从 {fromHome} 切换到 {toHome}？\n历史不会合并。在线 Agent 将被回收。",
-  "settings.sessionDataMode.risk.homesDiffer":
-    "Agent 主目录会变更 — 重连只使用新目录",
-  "settings.sessionDataMode.risk.noSilentMerge":
-    "不会静默合并：独立与共享两套历史保持分离",
-  "settings.sessionDataMode.risk.recycleAgents":
-    "将立即回收全部 live / background / parked Agent 进程",
-  "settings.sessionDataMode.risk.sharedWithCli":
-    "共享模式使用 ~/.grok — 与终端 Grok Build CLI 同一会话列表",
-  "settings.sessionDataMode.risk.noConfigRewrite":
-    "应用不会在共享模式下改写 CLI 的密钥 / config.toml（隐私、供应商等）",
-  "settings.sessionDataMode.risk.conflictPossible":
-    "App 与 CLI 同时写入时可能冲突；若报错请锁定或重试",
-  "settings.sessionDataMode.risk.leaveShared":
-    "离开共享：应用回到独立 agent-home；终端 CLI 的 ~/.grok 保持不变",
-  "settings.sessionDataMode.banner.sharedWithCli":
-    "与 CLI 共享：Agent 主目录为 ~/.grok（与终端 Grok Build 同一会话列表）。",
-  "settings.sessionDataMode.banner.noRewriteSecrets":
-    "共享模式下应用拒绝改写 agent 密钥 / config.toml — 需要应用代写配置时请改用独立模式。",
-  "settings.sessionDataMode.banner.conflictPossible":
-    "App 与 CLI 同时写同一会话索引可能冲突 — 跨模式不会静默合并历史。",
   "settings.tabOfficial": "官方账户",
   "settings.tabProviders": "自定义提供商",
   "settings.tabExtras": "拓展",
@@ -10963,7 +10201,6 @@ const zh: Record<MessageKey, string> = {
     "添加 OpenAI 兼容中转（CPA、sub2api、自建等）。密钥仅保存在本机。",
   "settings.tabExtrasHint":
     "自定义主模型下的官方工具注入（MCP official-aux），以及是否同时加载其它扩展 MCP。",
-
   "modelAux.title": "辅助模型路由",
   "modelAux.desc":
     "主模型负责对话与工具决策；侧任务可指到更强的多模态模型（类似 Hermes 的 auxiliary 槽）。只写入 [models] 任务键，绝不改主路由。",
@@ -11024,17 +10261,7 @@ const zh: Record<MessageKey, string> = {
   "settings.openTarget": "打开文件方式",
   "settings.openTargetDesc": "资源面板中打开路径时的默认应用",
   "settings.openFinder": "访达 / 资源管理器",
-  "settings.openTargetEmpty":
-    "未检测到代码编辑器 — 访达/资源管理器仍可用。安装 VS Code、Cursor 等编辑器后即可在此打开文件。",
-  "settings.openTargetPreferredMissing":
-    "首选编辑器未安装或未检测到。在重新选择之前将使用访达/资源管理器。",
-
   "prov.emptyTitle": "暂无提供商",
-  "prov.empty.hostOnly":
-    "自定义提供商需要桌面端应用（Tauri）。请在 Grok App 中添加中转。",
-  "prov.empty.noCustom":
-    "暂无自定义中转 — 可添加 OpenAI 兼容提供商，或使用上方的官方 Grok。",
-  "prov.empty.loadError": "无法加载提供商列表。请先修复上方宿主错误后重试。",
   "prov.detailEmpty": "选择左侧提供商，或添加新的。",
   "prov.new": "添加提供商",
   "prov.edit": "编辑",
@@ -11108,26 +10335,8 @@ const zh: Record<MessageKey, string> = {
     "提供商已保存，Agent 已重载 — 下一条消息使用新配置（无需重启应用）。",
   "prov.savedApplyFailed":
     "提供商已写入磁盘，但即时应用失败（{detail}）。可先发一条消息；若对话仍不可用再重启应用。",
-  "prov.apply.softRespawn":
-    "提供商已保存，Agent 已重载 — 下一条消息使用新配置（无需重启应用）。",
-  "prov.apply.savedDiskOnly":
-    "提供商已写入磁盘。用「使用」激活（或在输入框选择）后才会切换路由。",
-  "prov.apply.hostOnly": "修改提供商需要桌面端应用。请在 Grok App 中保存中转。",
   "prov.err.saveTimeout":
     "保存耗时过长。配置可能已写入 — 请关闭后重新打开此面板；若对话不可用再重启应用。",
-  "prov.err.validation":
-    "无法保存：提供商字段无效（id、URL、Key 或模型）。请检查表单后重试。",
-  "prov.err.network": "无法保存：网络或宿主 IPC 错误。请检查连接后重试。",
-  "prov.err.hostOnly": "保存提供商需要桌面端应用（Tauri）。",
-  "prov.err.other": "无法保存提供商（{detail}）。",
-  "prov.ping.err.timeout": "探测超时。请检查 Base URL 与网络后重试。",
-  "prov.ping.err.network":
-    "无法连接提供商端点（网络/DNS/TLS）。请检查 Base URL。",
-  "prov.ping.err.auth": "提供商拒绝了密钥（401/403）。请更新 API Key 后重试。",
-  "prov.ping.err.hostOnly": "拉取模型 / 探测需要桌面端应用。",
-  "prov.ping.err.invalidUrl":
-    "Base URL 无效。请使用完整的 https://…/v1 根地址。",
-  "prov.ping.err.other": "无法探测提供商（{detail}）。",
   "prov.confirmDelete": "删除提供商「{id}」？",
   "prov.loading": "加载中…",
   "prov.err.needBase": "请填写 Base URL。",
@@ -11148,7 +10357,6 @@ const zh: Record<MessageKey, string> = {
   "prov.officialAuxWithUserMcp": "同时加载扩展 MCP",
   "prov.officialAuxWithUserMcpDesc":
     "注入开启时一并启动你配置的其它 MCP（Playwright 等）。默认关闭，保证 official-aux 立刻可用。",
-
   "prov.officialApiKey": "官方 xAI API Key",
   "prov.officialKeyPh": "xai-…",
   "prov.officialKeySave": "保存密钥",
@@ -11195,7 +10403,6 @@ const zh: Record<MessageKey, string> = {
   "common.confirm": "确认",
   "common.save": "保存",
   "common.dismiss": "关闭",
-
   "account.section.profile": "官方账户",
   "account.section.runtime": "CLI 运行时",
   "account.signedIn": "已登录",
@@ -11288,7 +10495,6 @@ const zh: Record<MessageKey, string> = {
   "account.importChatBtn": "选择文件…",
   "account.importChatOk": "已导入「{title}」",
   "account.importChatFailed": "导入失败",
-
   "onboarding.welcome": "欢迎使用 Grok",
   "onboarding.body": "MIT · 非 xAI 官方。选择一种账户方式，或跳过先进壳。",
   "onboarding.official": "登录官方 / Official key",
@@ -11303,7 +10509,6 @@ const zh: Record<MessageKey, string> = {
   "onboarding.importCliHint": "通过已有 CLI auth 使用 cached_token",
   "onboarding.skip": "跳过",
   "onboarding.continue": "继续",
-
   "setup.title": "欢迎使用 Grok",
   "setup.subtitle": "MIT · 非官方 · 本机 Grok Build 桌面指挥台",
   "setup.step.runtime": "运行时",
@@ -11388,7 +10593,6 @@ const zh: Record<MessageKey, string> = {
   "setup.error.accountHint": "可暂时跳过，稍后在设置中登录或配置服务商。",
   "setup.error.cancelled": "已取消",
   "setup.networkHint": "网络异常 — 可换镜像或使用手动命令。",
-
   "doctor.title": "Doctor",
   "doctor.close": "关闭",
   "doctor.rerun": "重新检查",
@@ -11519,204 +10723,6 @@ const zh: Record<MessageKey, string> = {
   "doctor.finding.fixId": "修复 id",
   "doctor.finding.destructive": "破坏性",
   "doctor.finding.noDetail": "无更多详情。",
-
-  // Platform capability matrix (mac / Windows / Linux honesty)
-  "doctor.platformMatrix.title": "平台能力矩阵",
-  "doctor.platformMatrix.hint":
-    "如实展示本安装在 macOS / Windows / Linux 上的能力说明：路径探测、沙箱内核、窗口装饰、更新路径、媒体环回。补充 Windows 日用清单，不编造探测结果。",
-  "doctor.platformMatrix.col.capability": "能力",
-  "doctor.platformMatrix.col.status": "状态",
-  "doctor.platformMatrix.col.detail": "说明",
-  "doctor.platformMatrix.row.platform": "平台",
-  "doctor.platformMatrix.row.cliPathProbe": "CLI 路径探测",
-  "doctor.platformMatrix.row.sandboxEnforcement": "沙箱内核",
-  "doctor.platformMatrix.row.windowChrome": "窗口装饰",
-  "doctor.platformMatrix.row.autoUpdate": "应用自动更新",
-  "doctor.platformMatrix.row.mediaLoopback": "媒体环回",
-  "doctor.platformMatrix.status.pass": "通过",
-  "doctor.platformMatrix.status.warn": "警告",
-  "doctor.platformMatrix.status.na": "不适用",
-  "doctor.platformMatrix.status.unknown": "未知",
-  "doctor.platformMatrix.msg.platform.mac": "macOS（已检测）。",
-  "doctor.platformMatrix.msg.platform.win": "Windows（已检测）。",
-  "doctor.platformMatrix.msg.platform.linux": "Linux（已检测）。",
-  "doctor.platformMatrix.msg.platform.unknown":
-    "未能识别平台 — 能力说明可能不完整。",
-  "doctor.platformMatrix.msg.cli.found": "路径探测已解析到 Grok Build CLI 二进制。",
-  "doctor.platformMatrix.msg.cli.missing":
-    "路径探测未找到 Grok Build 二进制 — 请安装或在 设置 → 运行环境 中指定路径。",
-  "doctor.platformMatrix.msg.cli.unknown":
-    "CLI 路径探测结果尚不可用（请重新运行 Doctor）。",
-  "doctor.platformMatrix.msg.sandbox.off":
-    "沙箱隔离已关闭 — 未请求内核强制。",
-  "doctor.platformMatrix.msg.sandbox.macSeatbelt":
-    "macOS Seatbelt：开启隔离时 CLI 文档支持 OS 沙箱强制。",
-  "doctor.platformMatrix.msg.sandbox.linuxLandlock":
-    "Linux Landlock：开启隔离时 CLI 文档支持 OS 沙箱强制。",
-  "doctor.platformMatrix.msg.sandbox.winSoftFail":
-    "Windows：CLI 可能接受沙箱配置但 soft-fail、无内核强制 — 请勿当作硬安全边界。",
-  "doctor.platformMatrix.msg.sandbox.platformSoft":
-    "此平台 OS 沙箱强制 soft-fail（CLI 可能在无隔离情况下继续运行）。",
-  "doctor.platformMatrix.msg.sandbox.unknown":
-    "此平台的沙箱内核支持未知。",
-  "doctor.platformMatrix.msg.chrome.macOverlay":
-    "macOS Overlay 标题栏 + 交通灯（tauri.macos.conf）。",
-  "doctor.platformMatrix.msg.chrome.winFrameless":
-    "Windows 无边框自绘窗控（最小化 / 最大化 / 关闭）— tauri.windows.conf。",
-  "doctor.platformMatrix.msg.chrome.linuxDecorated":
-    "Linux 使用标准窗口装饰（基础 tauri.conf）。",
-  "doctor.platformMatrix.msg.chrome.unknown":
-    "此平台的窗口装饰布局未分类。",
-  "doctor.platformMatrix.msg.update.silent":
-    "已签名发行路径：支持应用内静默自动更新。",
-  "doctor.platformMatrix.msg.update.manual":
-    "手动 / GitHub 更新路径（本地、未签名或插件关闭）— 打开 Releases；不宣称静默安装。",
-  "doctor.platformMatrix.msg.update.unsupported":
-    "此安装包类型不支持静默自动更新（例如 Linux .deb/.rpm）— 请手动下载。",
-  "doctor.platformMatrix.msg.update.hostOnly":
-    "未在桌面应用宿主中运行 — 自动更新不适用。",
-  "doctor.platformMatrix.msg.update.unknown":
-    "更新通道尚未报告 — 请勿假定静默安装。",
-  "doctor.platformMatrix.msg.media.loopback":
-    "本地媒体走环回 HTTP（127.0.0.1）并经 path-scope 白名单 — 产品路径不用 raw media://。",
-  "doctor.platformMatrix.msg.media.unavailable":
-    "媒体环回端点不可用 — 宿主媒体服务就绪前预览可能 soft-fail。",
-  "doctor.platformMatrix.msg.media.unknown":
-    "此平台的媒体环回能力未分类。",
-  // Windows day-use acceptance checklist (Doctor / Reliability)
-  "doctor.windowsDayuse.title": "Windows 日常验收",
-  "doctor.windowsDayuse.lead":
-    "面向 Windows 日常使用的验收清单。App 可自动探测部分项，其余保持手动。未探测时不会臆造 SmartScreen / 未签名状态。",
-  "doctor.windowsDayuse.notTarget":
-    "macOS / Linux 不是本清单目标平台 — 项显示为 N/A。请在 Windows 构建上验证安装、CLI、带空格路径与镜像日常使用。",
-  "doctor.windowsDayuse.summary":
-    "{pass} 通过 · {fail} 失败 · {manual} 手动 · {na} 不适用",
-  "doctor.windowsDayuse.copy": "复制清单",
-  "doctor.windowsDayuse.copied": "已复制清单",
-  "doctor.windowsDayuse.copyFail": "无法复制清单",
-  "doctor.windowsDayuse.docs": "验收文档",
-  "doctor.windowsDayuse.platform.win": "Windows",
-  "doctor.windowsDayuse.platform.mac": "macOS",
-  "doctor.windowsDayuse.platform.linux": "Linux",
-  "doctor.windowsDayuse.platform.other": "其他",
-  "doctor.windowsDayuse.status.pass": "通过",
-  "doctor.windowsDayuse.status.fail": "失败",
-  "doctor.windowsDayuse.status.manual": "手动",
-  "doctor.windowsDayuse.status.na": "不适用",
-  "doctor.windowsDayuse.item.installPath": "安装路径（Release / SmartScreen）",
-  "doctor.windowsDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
-  "doctor.windowsDayuse.item.projectSpaces": "带空格的项目路径",
-  "doctor.windowsDayuse.item.singleAttachment": "单次粘贴附件",
-  "doctor.windowsDayuse.item.appUpdateCheck": "检查更新（关于）",
-  "doctor.windowsDayuse.item.mirrorReadonly": "手机镜像默认只读",
-  "doctor.windowsDayuse.detail.na": "当前平台不适用。",
-  "doctor.windowsDayuse.detail.installPath.manual":
-    "从 GitHub Release 安装（setup.exe 或便携 zip）。未签名时 SmartScreen 可能提示 — App 在未探测时不会臆造该状态。",
-  "doctor.windowsDayuse.detail.installPath.pass": "安装签名探测为已签名 / 通过。",
-  "doctor.windowsDayuse.detail.installPath.fail": "安装签名探测为未签名或被拦截。",
-  "doctor.windowsDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
-  "doctor.windowsDayuse.detail.cliFound.fail":
-    "未找到 CLI — 打开 Setup 或 设置 → 运行时 安装 / 设置路径。",
-  "doctor.windowsDayuse.detail.cliFound.manual":
-    "CLI 探测尚未就绪 — 重新运行 Doctor 或打开 Setup。",
-  "doctor.windowsDayuse.detail.projectSpaces.pass":
-    "受信任项目路径包含空格（不应再出现控制台闪烁风暴）。",
-  "doctor.windowsDayuse.detail.projectSpaces.fail":
-    "尚无受信任项目 — 请添加并信任一个文件夹（路径可含空格）。",
-  "doctor.windowsDayuse.detail.projectSpaces.manual":
-    "已有受信任项目；若尚未验证，请用含空格路径再测一次。",
-  "doctor.windowsDayuse.detail.singleAttachment.manual":
-    "手动：完成一次工具对话，粘贴一张截图 — 确认只有单个附件（App 无法自动证明粘贴）。",
-  "doctor.windowsDayuse.detail.appUpdateCheck.pass":
-    "可用的更新检查路径（应用内或 GitHub 手动）。",
-  "doctor.windowsDayuse.detail.appUpdateCheck.fail":
-    "此构建不支持更新检查 — 请试 设置 → 关于。",
-  "doctor.windowsDayuse.detail.appUpdateCheck.manual":
-    "打开 设置 → 关于 → 检查更新（有新版本则下载安装包）。",
-  "doctor.windowsDayuse.detail.mirrorReadonly.pass":
-    "手机镜像为只读（写入关闭）— 默认姿态。",
-  "doctor.windowsDayuse.detail.mirrorReadonly.fail":
-    "手机镜像写入已开启 — 日常验收期望只读；可在 远程控制 → 镜像 关闭写入。",
-  "doctor.windowsDayuse.detail.mirrorReadonly.manual":
-    "镜像状态未知 — 打开 远程控制 → 镜像；日常验收期望只读启动 + 可重新生成链接。",
-  "doctor.windowsDayuse.link.about": "关于 / 更新",
-  "doctor.windowsDayuse.link.mirror": "镜像",
-  "doctor.windowsDayuse.link.setup": "Setup / CLI",
-  "doctor.windowsDayuse.link.runtime": "运行时",
-  "settings.runtime.platformTip": "平台",
-  "settings.runtime.platformTipDesc":
-    "用于界面文案的操作系统探测（文件管理器、日常验收清单）。Windows 构建可在 Doctor 中查看 day-use 验收卡片。",
-  "doctor.linuxDayuse.title": "Linux 日常验收",
-  "doctor.linuxDayuse.lead":
-    "面向 Linux 日常使用的验收清单。App 可自动探测部分项，其余保持手动。未探测时不会臆造 Landlock、托盘自启或 Wayland/X11 状态。",
-  "doctor.linuxDayuse.notTarget":
-    "macOS / Windows 不是本清单目标平台 — 项显示为 N/A。请在 Linux 构建上验证 CLI、带空格路径、沙箱 Landlock、托盘与显示服务器日常使用。",
-  "doctor.linuxDayuse.summary":
-    "{pass} 通过 · {fail} 失败 · {warn} 警告 · {manual} 手动 · {na} 不适用",
-  "doctor.linuxDayuse.copy": "复制清单",
-  "doctor.linuxDayuse.copied": "已复制清单",
-  "doctor.linuxDayuse.copyFail": "无法复制清单",
-  "doctor.linuxDayuse.docs": "验收文档",
-  "doctor.linuxDayuse.platform.win": "Windows",
-  "doctor.linuxDayuse.platform.mac": "macOS",
-  "doctor.linuxDayuse.platform.linux": "Linux",
-  "doctor.linuxDayuse.platform.other": "其他",
-  "doctor.linuxDayuse.status.pass": "通过",
-  "doctor.linuxDayuse.status.fail": "失败",
-  "doctor.linuxDayuse.status.manual": "手动",
-  "doctor.linuxDayuse.status.warn": "警告",
-  "doctor.linuxDayuse.status.na": "不适用",
-  "doctor.linuxDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
-  "doctor.linuxDayuse.item.pathSpaces": "带空格的项目路径",
-  "doctor.linuxDayuse.item.sandboxLandlock": "沙箱 → Landlock 强制",
-  "doctor.linuxDayuse.item.trayAutostart": "托盘 / 自启动",
-  "doctor.linuxDayuse.item.waylandX11": "Wayland / X11 会话",
-  "doctor.linuxDayuse.item.appUpdateCheck": "检查更新（关于）",
-  "doctor.linuxDayuse.detail.na": "当前平台不适用。",
-  "doctor.linuxDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
-  "doctor.linuxDayuse.detail.cliFound.fail":
-    "未找到 CLI — 打开 Setup 或 设置 → 运行时 安装 / 设置路径。",
-  "doctor.linuxDayuse.detail.cliFound.manual":
-    "CLI 探测尚未就绪 — 重新运行 Doctor 或打开 Setup。",
-  "doctor.linuxDayuse.detail.pathSpaces.pass": "受信任项目路径包含空格。",
-  "doctor.linuxDayuse.detail.pathSpaces.fail":
-    "尚无受信任项目 — 请添加并信任一个文件夹（路径可含空格）。",
-  "doctor.linuxDayuse.detail.pathSpaces.manual":
-    "已有受信任项目；若尚未验证，请用含空格路径再测一次。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.na":
-    "沙箱配置文件为关闭 — Landlock 强制不适用。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.warn":
-    "沙箱配置文件非关闭。在 Linux 上内核强制为 Landlock（Seatbelt 仅限 macOS）。未探测时 App 不会重新验证 Landlock。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.pass":
-    "Landlock 探测报告：所选沙箱配置文件的强制已生效。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.fail":
-    "Landlock 探测报告：沙箱非关闭但强制未生效。",
-  "doctor.linuxDayuse.detail.sandboxLandlock.manual":
-    "沙箱配置未知 — 打开 设置 → 通用 → 权限 设置配置文件。关闭 = 不适用；非关闭 = Linux 上为 Landlock。",
-  "doctor.linuxDayuse.detail.trayAutostart.pass": "托盘 / 自启动探测为已启用。",
-  "doctor.linuxDayuse.detail.trayAutostart.fail": "托盘 / 自启动探测为未启用。",
-  "doctor.linuxDayuse.detail.trayAutostart.manual":
-    "手动：若依赖托盘图标与桌面自启动，请自行确认。未探测时 App 不会臆造状态。",
-  "doctor.linuxDayuse.detail.waylandX11.pass":
-    "显示服务器探测报告为 Wayland 或 X11。",
-  "doctor.linuxDayuse.detail.waylandX11.fail":
-    "显示服务器探测报告既非 Wayland 也非 X11。",
-  "doctor.linuxDayuse.detail.waylandX11.manual":
-    "未探测时状态未知 — 请手动确认 Wayland 或 X11，以便排查合成器相关问题。",
-  "doctor.linuxDayuse.detail.appUpdateCheck.pass":
-    "可用的更新检查路径（应用内或 GitHub 手动）。",
-  "doctor.linuxDayuse.detail.appUpdateCheck.fail":
-    "此构建不支持更新检查 — 请试 设置 → 关于。",
-  "doctor.linuxDayuse.detail.appUpdateCheck.manual":
-    "打开 设置 → 关于 → 检查更新（有新版本则下载安装包）。",
-  "doctor.linuxDayuse.link.about": "关于 / 更新",
-  "doctor.linuxDayuse.link.setup": "Setup / CLI",
-  "doctor.linuxDayuse.link.runtime": "运行时",
-  "doctor.linuxDayuse.link.sandbox": "沙箱",
-  "settings.runtime.platformTip": "平台",
-  "settings.runtime.platformTipDesc":
-    "用于界面文案的操作系统探测（文件管理器、日常验收清单）。Linux 构建可在 Doctor 中查看 day-use 验收卡片。",
-
   "reliability.title": "可靠性",
   "reliability.close": "关闭可靠性中心",
   "reliability.lead":
@@ -11762,43 +10768,6 @@ const zh: Record<MessageKey, string> = {
     "汇总忙碌会话、卡顿信号、最近错误卡片与工具审计账本；可导出支持包。",
   "reliability.supportZipHint":
     "脱敏后的 Doctor 报告、近期日志与卡顿时间线快照（不含密钥）。",
-  "reliability.supportZip.confirmTitle": "导出支持包？",
-  "reliability.supportZip.confirmMessage":
-    "请先核对下方脱敏清单。支持包绝不会包含密钥、登录凭据或 API Key。",
-  "reliability.supportZip.confirmAction": "导出支持包",
-  "reliability.supportZip.checklistTitle": "将包含的部分（已脱敏）",
-  "reliability.supportZip.secretsNever":
-    "绝不会包含密钥（无 secrets.json、账户登录或原始 API Key）。",
-  "reliability.supportZip.redacted": "已脱敏",
-  "reliability.supportZip.whenAvailable": "主机上存在时才写入",
-  "reliability.supportZip.sectionOmitted": "本次不包含",
-  "reliability.supportZip.auditNotIncluded":
-    "工具审计账本不在此压缩包内 — 请改用「审计」导出。",
-  "reliability.supportZip.manifestPreview": "文本清单预览",
-  "reliability.supportZip.section.doctor": "Doctor 报告（doctor.json）",
-  "reliability.supportZip.section.doctorHint":
-    "健康检查；界面未传入时由主机重新生成（仅路径，无密钥）。",
-  "reliability.supportZip.section.settings": "应用设置（settings.json）",
-  "reliability.supportZip.section.settingsHint":
-    "仅当本机存在设置文件时写入；密钥已脱敏。",
-  "reliability.supportZip.section.meta": "应用 / 系统元数据（meta.json）",
-  "reliability.supportZip.section.metaHint":
-    "版本、系统架构、会话与项目数量 — 不含含密钥路径。",
-  "reliability.supportZip.section.stall": "卡顿时间线（stall-timeline.json）",
-  "reliability.supportZip.section.stallHint":
-    "仅在有可靠性中心卡顿信号时写入结构化快照。",
-  "reliability.supportZip.section.logs": "近期日志（logs/）",
-  "reliability.supportZip.section.logsHint":
-    "主机上存在时才写入近期日志；限大小并脱敏 — 绝不虚构日志。",
-  "reliability.supportZip.section.readme": "README.txt",
-  "reliability.supportZip.section.readmeHint": "给接收方的压缩包内容说明。",
-  "reliability.supportZip.emptyHostOnly": "支持包需要桌面应用",
-  "reliability.supportZip.emptyHostOnlyHint":
-    "导出仅在 Tauri 主机上运行 — 请在桌面版 Grok App 中生成脱敏支持包。",
-  "reliability.supportZip.failHostOnly": "支持包需要桌面应用（浏览器中不可用）",
-  "reliability.supportZip.failCancel": "已取消导出支持包",
-  "reliability.supportZip.failIo": "无法写入支持包（磁盘或权限）",
-  "reliability.supportZip.failEmpty": "当前没有可诚实写入支持包的内容",
   "reliability.goal.title": "目标编排",
   "reliability.goal.count": "{count}",
   "reliability.goal.lead":
@@ -11818,19 +10787,8 @@ const zh: Record<MessageKey, string> = {
   "reliability.goal.copySummary": "复制摘要",
   "reliability.goal.copied": "已复制目标摘要",
   "reliability.goal.copyFail": "无法复制目标摘要",
-  "reliability.goal.clearTimeline": "清空时间线",
-  "reliability.goal.clearConfirmTitle": "清空目标时间线？",
-  "reliability.goal.clearConfirmMessage":
-    "从本应用本地环形缓冲中移除 {count} 条 goal_updated 事件？不会停止 CLI 目标系统，也不会关闭输入框 /goal 模式。",
-  "reliability.goal.clearConfirmAction": "清空时间线",
-  "reliability.goal.clearDone": "已清空 {count} 条本地目标事件",
-  "reliability.goal.emptySessionMismatch": "当前会话没有目标事件",
-  "reliability.goal.emptySessionMismatchHint":
-    "其他会话已观察到 goal_updated。可打开可靠性中心查看完整本地时间线，或在本对话中使用 /goal。",
-  "reliability.goal.openReliability": "打开可靠性中心",
-  "reliability.goal.sessionMenuAria": "目标编排操作",
   "reliability.goal.sessionChip": "目标 · {phase}",
-  "reliability.goal.sessionChipAria": "最近目标阶段 {phase}。打开目标操作菜单。",
+  "reliability.goal.sessionChipAria": "最近目标阶段 {phase}。打开可靠性中心。",
   "reliability.goal.phase.planner": "规划",
   "reliability.goal.phase.strategist": "策略",
   "reliability.goal.phase.classifier": "分类器",
@@ -11839,7 +10797,6 @@ const zh: Record<MessageKey, string> = {
   "reliability.goal.phase.worker": "执行",
   "reliability.goal.phase.status": "状态",
   "reliability.goal.phase.unknown": "目标",
-
   "reliability.audit.title": "工具审计账本",
   "reliability.audit.count": "{count}",
   "reliability.audit.empty": "尚无审计记录。",
@@ -11884,7 +10841,6 @@ const zh: Record<MessageKey, string> = {
   "reliability.audit.unknownSession": "无会话",
   "reliability.audit.outcome.ok": "成功",
   "reliability.audit.outcome.err": "失败",
-
   "costRollup.title": "费用汇总",
   "costRollup.settingsDesc":
     "按项目或会话与日期汇总已知 token 用量（来自实时 usage 与会话 journal，若有）。可按项目/会话筛选、导出纯文本摘要，或清除本机样本环。仅为估算 — 非账单。",
@@ -11946,7 +10902,6 @@ const zh: Record<MessageKey, string> = {
   "costRollup.exportWindow": "窗口：近 {days} 天",
   "costRollup.exportEmpty": "当前筛选下没有可导出的已知用量。",
   "costRollup.invoiceNote": "非账单级精度。",
-
   "smj.title": "流式 Messages JSON",
   "smj.settingsDesc":
     "解析并预览无头模式 `--output-format streaming-messages-json` NDJSON（Anthropic Messages 线格式；CLI 0.2.117+）。",
@@ -12033,14 +10988,12 @@ const zh: Record<MessageKey, string> = {
     "导入捕获、粘贴 NDJSON，或运行软门控 headless 探测。",
   "streamAcpNdjson.softGateNote":
     "仅当 CLI ≥ {min} 时探测才会加上 --output-format streaming-json；旧版本会省略该标志。",
-
   "conn.idle": "空闲",
   "conn.connecting": "连接中",
   "conn.ready": "就绪",
   "conn.streaming": "工作中",
   "conn.permission": "等待授权",
   "conn.disconnected": "已断开",
-
   "shortcuts.title": "键盘快捷键",
   "shortcuts.close": "关闭",
   "shortcuts.search": "搜索会话 / 项目",
@@ -12057,7 +11010,6 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.send": "发送消息",
   "shortcuts.help": "显示快捷键",
   "shortcuts.voice": "开关语音输入",
-
   "tutorial.menu": "产品导览",
   "tutorial.replay": "重新播放产品导览",
   "tutorial.replayDesc":
@@ -12096,7 +11048,6 @@ const zh: Record<MessageKey, string> = {
     "选择已信任的项目，新建对话并发起目标。可随时从账户菜单、「设置 → 关于」、命令面板或 /tutorial 重播本导览。",
   "slash.tutorial": "产品导览",
   "slash.tutorialDesc": "打开可选的应用内产品导览",
-
   "session.copyMd": "复制对话为 Markdown",
   "session.copyMdDone": "已复制对话为 Markdown",
   "session.copyMdFail": "无法复制对话",
@@ -12176,9 +11127,8 @@ const zh: Record<MessageKey, string> = {
   "session.tracesTitle": "最近的 trace",
   "session.tracesDesc":
     "会话 trace 导出的本地历史（仅路径）。可在文件夹中显示或复制路径 — 大文件不会加载进应用。",
-  "session.tracesEmpty": "还没有导出过 trace",
-  "session.tracesEmptyHint":
-    "在有 agent 会话的对话菜单中选择「仅本地导出」或「导出并上传」。仅保存路径 — 不会把归档加载进应用。",
+  "session.tracesEmpty":
+    "还没有导出过 trace。在有 agent 会话的对话菜单中选择「仅本地导出」或「导出并上传」。",
   "session.tracesReveal": "在文件夹中显示",
   "session.tracesCopyPath": "复制路径",
   "session.tracesCopied": "路径已复制",
@@ -12186,19 +11136,11 @@ const zh: Record<MessageKey, string> = {
   "session.tracesClearAll": "全部清除",
   "session.tracesClearConfirmTitle": "清除 trace 历史？",
   "session.tracesClearConfirmMessage":
-    "将从列表中移除 {count} 条最近的 trace 导出路径。磁盘上的归档文件不会被删除。",
+    "将从列表中移除全部最近的 trace 导出路径。磁盘上的归档文件不会被删除。",
   "session.tracesClearConfirmAction": "全部清除",
   "session.tracesSearch": "按标题或路径筛选…",
   "session.tracesEmptyFilter": "没有匹配的 trace",
-  "session.tracesEmptyFilterHint": "试试其他关键词，或切换「全部 / 本地 / 已上传」筛选。",
-  "session.tracesClearFilters": "清除筛选",
-  "session.tracesFilterAria": "Trace 导出范围",
-  "session.tracesFilter.all": "全部",
-  "session.tracesFilter.local": "本地",
-  "session.tracesFilter.uploaded": "已上传",
   "session.tracesUploadedBadge": "已上传",
-  "session.tracesUploadedBadgeTitle":
-    "导出所报告的上传状态（仅路径 — 不保存远程 URL）",
   "session.exportBundle": "导出完整诊断包",
   "session.exportBundleDone": "诊断包已保存",
   "session.exportBundleFail": "诊断包导出失败",
@@ -12225,21 +11167,18 @@ const zh: Record<MessageKey, string> = {
   "session.exportSizeHint": "预估大小：{size}",
   "session.emptyRunToast":
     "本轮没有可见回复也没有调用工具就结束了。若任务未完成可回复「继续」；也可从会话菜单导出诊断包反馈。",
-
   "empty.noProjectTitle": "尚未打开项目",
   "empty.noProjectHint": "从侧栏添加文件夹，以便带上下文开始工作。",
   "empty.noChatsTitle": "还没有会话",
   "empty.noChatsHint": "开始对话后会显示在侧栏。",
   "empty.disconnectedTitle": "Agent 已断开",
   "empty.disconnectedHint": "重新连接以继续此会话，或新建一个。",
-
   "notify.turnDoneTitle": "Grok 已完成一轮",
   "notify.turnDoneBody": "会话已就绪，可继续输入。",
   "notify.permissionTitle": "需要授权",
   "notify.permissionBody": "Agent 正在等待你的批准。",
   "notify.askUserTitle": "Agent 提问",
   "notify.askUserBody": "Agent 正在等待你的回答。",
-
   "slash.section.commands": "命令",
   "slash.section.skills": "技能",
   "slash.empty": "没有匹配的命令或技能",
@@ -12308,24 +11247,6 @@ const zh: Record<MessageKey, string> = {
   "slash.compactAfterUnknown": "用量未知时无法估算",
   "slash.compactEstimateHint":
     "压缩后估值为所选预设的粗略保留比例（~），非模型精确分词。应用内聊天记录不会被改写。",
-  "slash.compactApply.nextTurn":
-    "确认后立即以 Agent 回合发送 /compact。当前进程上的模式/细节会用于此次压缩。",
-  "slash.compactApply.softRespawn":
-    "模式/细节变更会 soft-respawn Agent — 下一条消息重新加载压缩 flags。",
-  "slash.compactApply.unsupported":
-    "此 CLI 可能忽略 --compaction-mode / --compaction-detail（需要 0.2.117+）。已连接时 /compact 仍按 Agent 默认运行。",
-  "slash.compactApply.idle":
-    "尚无 live Agent — 请先连接。压缩模式/细节等待下次启动；之后 /compact 作为回合执行。",
-  "slash.compactApply.modeOnly":
-    "此次压缩使用的模式：{mode}（启动 flags；更改会 soft-respawn 已连接 Agent）。",
-  "slash.compactApply.modeDetail":
-    "压缩模式 {mode}，分段细节 {detail}（启动 flags；更改会 soft-respawn 已连接 Agent）。",
-  "slash.compactApply.savingsKnown":
-    "上次已知压缩：{before} → {after} tokens（节省 {saved}）。非估算。",
-  "slash.compactApply.savingsUnknown":
-    "在 Agent 上报压缩前后 token 数之前无法计算节省量。上方「压缩后（估）」仅为粗略保留比例猜测。",
-  "slash.compactApply.presetNote":
-    "强度预设仅用于填充 /compact 的保留备注模板 — CLI 无 light/standard/aggressive 参数。",
   "compact.bannerAuto": "上下文已自动压缩",
   "compact.bannerManual": "上下文已压缩",
   "compact.tokensRange": "{before} → {after} tokens",
@@ -12445,7 +11366,6 @@ const zh: Record<MessageKey, string> = {
   "slash.yoloDesc": "切换始终批准（YOLO）权限",
   "slash.yoloOn": "已开启始终批准",
   "slash.yoloOff": "已关闭始终批准",
-
   "statusModal.title": "会话状态",
   "statusModal.sessionId": "会话 ID",
   "statusModal.agentSessionId": "Agent 会话",
@@ -12455,7 +11375,6 @@ const zh: Record<MessageKey, string> = {
   "statusModal.policy": "权限",
   "statusModal.project": "项目",
   "statusModal.messages": "消息数",
-
   "mcpModal.title": "MCP 服务器",
   "mcpModal.hint":
     "由 Grok Build inspect 发现的服务器。可在「设置 → 扩展」中启用/禁用；已启用的服务器会注入新会话。",
@@ -12535,8 +11454,6 @@ const zh: Record<MessageKey, string> = {
   "mcpModal.oauth.noCliHelper":
     "没有无头的 `grok mcp oauth` 命令 — 授权需交互（TUI）或通过诊断提供的浏览器 URL。应用不会将客户端密钥写入日志。",
   "mcpModal.oauth.unknownServer": "服务器",
-
-  // MCP OAuth recovery wizard
   "mcpOauth.wizard.progress": "第 {n} / {total} 步",
   "mcpOauth.wizard.next": "继续",
   "mcpOauth.wizard.back": "上一步",
@@ -12577,8 +11494,6 @@ const zh: Record<MessageKey, string> = {
   "mcpOauth.wizard.soft.openUrlFailed": "无法打开 URL",
   "mcpOauth.wizard.soft.doctorFailed": "诊断刷新失败",
   "mcpOauth.wizard.soft.stillNeedsAuth": "仍需 OAuth",
-
-  // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":
     "管理本机插件、技能与 MCP。插件为用户全局；有当前项目时技能/MCP 以该目录为范围。",
   "ext.refresh": "刷新",
@@ -12890,18 +11805,6 @@ const zh: Record<MessageKey, string> = {
     "将移除本机保存的 {count} 条最近 hook 活动记录，此操作不可撤销。",
   "ext.hooks.activity.clearConfirmOk": "清空",
   "ext.hooks.activity.sourceDebug": "试跑",
-  "ext.hooks.activity.export": "导出脱敏…",
-  "ext.hooks.activity.exportHint":
-    "将当前筛选的活动列表下载为脱敏 JSON（不含密钥）",
-  "ext.hooks.activity.copySummary": "复制摘要",
-  "ext.hooks.activity.copySummaryHint":
-    "将当前筛选的活动列表复制为脱敏纯文本",
-  "ext.hooks.activity.exportCopied": "已复制 {count} 条脱敏记录",
-  "ext.hooks.activity.exportDownloaded": "已下载 {count} 条脱敏记录",
-  "ext.hooks.activity.exportEmpty": "当前筛选下没有可导出的活动。",
-  "ext.hooks.activity.exportCopyFailed": "无法复制摘要（剪贴板被拦截）",
-  "ext.hooks.activity.exportDownloadFailed": "无法下载活动导出",
-  "ext.hooks.activity.exportFailed": "活动导出失败",
   "ext.hooks.try.hookName": "Hook 名称",
   "ext.hooks.try.hookNamePlaceholder": "可选 — 选择或输入文件名",
   "ext.hooks.try.eventType": "事件类型",
@@ -13083,7 +11986,6 @@ const zh: Record<MessageKey, string> = {
   "ext.market.err.hint.hostOnly": "请在桌面应用（Tauri）中管理插件。",
   "ext.market.err.hint.hostError": "Host 调用失败 — 见详情。",
   "ext.market.err.hint.other": "意外结果 — 见详情后重试。",
-
   "ext.agents.title": "Agents",
   "ext.agents.desc":
     "供 CLI `--agent` 使用的 Agent 定义文件（用户 GROK_HOME 与项目 `.grok/agents`）。可创建模板、在编辑器中修改，之后在 设置 → Agent → 首选 Agent 中为新会话选用。",
@@ -13117,8 +12019,7 @@ const zh: Record<MessageKey, string> = {
   "ext.agents.reveal": "在访达中显示",
   "ext.agents.openUser": "打开用户目录",
   "ext.agents.openProject": "打开项目目录",
-
-"error.needTauri": "需要在 Tauri 窗口中选择目录",
+  "error.needTauri": "需要在 Tauri 窗口中选择目录",
   "common.comingSoon": "即将推出",
   "common.local": "本地",
   "common.close": "关闭",
@@ -13137,7 +12038,6 @@ const zh: Record<MessageKey, string> = {
   "perm.hintSession": "本会话内同类操作不再询问。",
   "perm.hintDeny": "阻止本次操作并告知 Agent。",
   "perm.autoDenyCountdown": "{seconds} 秒后自动拒绝",
-
   "askUser.title": "Agent 提问",
   "askUser.submit": "提交",
   "askUser.cancel": "忽略",
@@ -13145,7 +12045,6 @@ const zh: Record<MessageKey, string> = {
   "askUser.freeTextHint": "或输入自定义回答",
   "askUser.multiHint": "可多选",
   "askUser.autoCancelCountdown": "{seconds} 秒后自动忽略",
-
   "message.interjectionTag": "引导",
   "message.copy": "复制",
   "message.copied": "已复制",
@@ -13340,31 +12239,6 @@ const zh: Record<MessageKey, string> = {
   "automations.history.clearBody":
     "将删除本机已观察到的运行列表，且无法撤销。已安排任务本身不受影响。",
   "automations.history.clearConfirm": "清空",
-  "automations.inbox.section": "收件箱",
-  "automations.inbox.desc":
-    "本进程内观察到的调度运行审阅队列。可在已知时打开关联会话、在任务仍存在时重试，或标记已读。",
-  "automations.inbox.processBound":
-    "仅在 Grok 应用打开或收起到托盘期间记录运行。完全退出后不会虚构离线运行——重新打开后若尚未触发，收件箱为空是正常的。",
-  "automations.inbox.search": "搜索收件箱",
-  "automations.inbox.filterAria": "按结果筛选收件箱",
-  "automations.inbox.empty": "暂无收件箱条目。",
-  "automations.inbox.emptyFiltered": "没有匹配该筛选或搜索的运行。",
-  "automations.inbox.emptyProcessBound":
-    "暂无观察到的运行。当本进程内调度触发或你使用「立即运行」时会写入——完全退出后的离线触发不会出现。",
-  "automations.inbox.openSession": "打开会话",
-  "automations.inbox.openProject": "打开项目",
-  "automations.inbox.runNow": "立即运行",
-  "automations.inbox.markRead": "标为已读",
-  "automations.inbox.markAllRead": "全部标为已读",
-  "automations.inbox.clear": "清空收件箱",
-  "automations.inbox.clearTitle": "清空收件箱历史？",
-  "automations.inbox.clearBody":
-    "将删除本机已观察到的运行列表与已读标记，且无法撤销。已安排任务本身不受影响。",
-  "automations.inbox.clearConfirm": "清空",
-  "automations.inbox.unreadCount": "{n} 条未读",
-  "automations.inbox.sessionMissing":
-    "该会话已不存在，可能在运行后被删除。",
-  "automations.inbox.projectMissing": "该项目已不存在。",
   "automations.oneshot.title": "一次性触发已安排任务",
   "automations.oneshot.desc":
     "托盘驻留可在进程存活期间持续检查。完全退出后，可用 {flag}（应用数据目录中的助手脚本 {script}）最多触发一个到期任务（无需完整交互界面），然后退出。",
@@ -13390,8 +12264,6 @@ const zh: Record<MessageKey, string> = {
   "automations.connectFailed": "已安排任务无法连接 Agent：{detail}",
   "automations.msgTag": "已安排",
   "remoteIm.msgTag": "远程 IM",
-
-  // System tray / menu-bar (native; Rust mirror in tray_i18n.rs — keep in sync)
   "tray.recent": "最近",
   "tray.noRecent": "暂无最近会话",
   "tray.untitled": "未命名",
@@ -13406,7 +12278,6 @@ const zh: Record<MessageKey, string> = {
   "tray.usageWithReset": "额度  ·  剩余 {pct}%  ·  {time}",
   "tray.usagePct": "额度  ·  剩余 {pct}%",
   "tray.usageUnknown": "额度  ·  —",
-  // Remote mirror — Connect panel (desktop) + phone chrome
   "mirror.connect": "连接设备",
   "mirror.connectTitle": "连接手机",
   "mirror.connectHint":
@@ -13533,7 +12404,6 @@ const zh: Record<MessageKey, string> = {
   "mirror.chrome.signedOut": "主机未登录",
   "mirror.unsupported": "此操作需在桌面端完成",
   "mirror.desktopOnly": "请在桌面应用中使用",
-
   "phone.menu": "会话",
   "phone.account": "账户",
   "phone.toolsTitle": "工具",
@@ -13583,32 +12453,6 @@ const zh: Record<MessageKey, string> = {
     "该 worktree 有本地修改（或已锁定）。是否强制移除并删除目录？",
   "composer.worktreeRemoveCurrentWarn":
     "当前正在使用此 worktree。移除后会话将切换到主 worktree。",
-  "composer.worktreeCompare": "与 main 对比…",
-  "composer.worktreeCompareTip": "列出相对主 worktree 的差异文件（不合并）",
-  "composer.worktreeCompareTitle": "与 main 对比",
-  "composer.worktreeCompareHint":
-    "只读文件列表，来自 git diff --name-status（相对 main 的三方差异）。选择性应用 / 合并不在本功能范围内。",
-  "composer.worktreeCompareRange": "{base}...{other}",
-  "composer.worktreeCompareLoading": "正在对比…",
-  "composer.worktreeCompareEmpty": "工作树一致 — 无文件差异。",
-  "composer.worktreeCompareFailed": "无法对比 worktree",
-  "composer.worktreeCompareNeedProject": "请先打开项目文件夹再对比",
-  "composer.worktreeCompareOnMain":
-    "当前已在主 worktree — 请切换到关联 worktree 后再对比",
-  "composer.worktreeCompareSamePath": "对比路径相同",
-  "composer.worktreeCompareNotGit": "不是 git 仓库（或未安装 git）",
-  "composer.worktreeCompareMissingPath": "worktree 路径缺失",
-  "composer.worktreeCompareChipAdded": "+{n} 新增",
-  "composer.worktreeCompareChipModified": "~{n} 修改",
-  "composer.worktreeCompareChipDeleted": "−{n} 删除",
-  "composer.worktreeCompareChipRenamed": "→{n} 重命名",
-  "composer.worktreeCompareChipOther": "?{n} 其他",
-  "composer.worktreeCompareChipTotal": "{n} 个文件",
-  "composer.worktreeCompareCopyPath": "复制路径",
-  "composer.worktreeCompareReveal": "在文件管理器中显示",
-  "composer.worktreeComparePathCopied": "已复制路径",
-  "composer.worktreeCompareOverflow":
-    "显示 {shown}/{total} — 另有 {n} 条未列出",
   "composer.worktreeShip": "发布…",
   "composer.worktreeShipTip": "推送分支并创建 GitHub Pull Request",
   "composer.worktreeShipTitle": "发布分支",
@@ -13739,51 +12583,30 @@ const zh: Record<MessageKey, string> = {
   "settings.configTomlEdit.needTauri":
     "配置编辑需要桌面应用（Tauri host）。",
   "settings.permissionRules": "Permission rules",
-  "settings.permissionRulesAdd": "添加规则",
-  "settings.permissionRulesAddWorking": "保存中…",
-  "settings.permissionRulesDesc": "写入 agent config.toml 的紧凑 allow / deny / ask 模式（deny 优先于 ask 优先于 allow）。示例：Bash(git *)、Read(src/**)、Edit。保存后软重启 agent，下一轮加载新规则。",
-  "settings.permissionRulesEmpty": "还没有规则 — 在下方添加一条模式。",
-  "settings.permissionRulesEmptyHint":
-    "可先加一条安全的 git allow、危险 shell 的 deny，或编辑类的 ask。保存后会软重启 agent。",
-  "settings.permissionRulesFilterEmpty": "没有规则匹配当前筛选。",
-  "settings.permissionRulesFilterEmptyHint":
-    "清除筛选，或换一个模式子串再试。",
-  "settings.permissionRulesFilterPlaceholder": "筛选规则…",
-  "settings.permissionRulesFilterClear": "清除筛选",
-  "settings.permissionRulesCountsAria":
-    "规则计数：拒绝 {deny}，询问 {ask}，允许 {allow}",
-  "settings.permissionRulesError": "无法更新权限规则",
-  "settings.permissionRulesLoading": "正在加载规则…",
-  "settings.permissionRulesPath": "配置：{path}",
-  "settings.permissionRulesPlaceholder": "例如 Bash(git *)",
-  "settings.permissionRulesRemove": "移除",
-  "settings.permissionRulesRemoveConfirm": "从 config.toml 移除 {action} 规则「{rule}」？",
-  "settings.permissionRulesRemoveTitle": "移除权限规则",
+  "settings.permissionRulesAdd": "Add rule",
+  "settings.permissionRulesAddWorking": "Saving…",
+  "settings.permissionRulesDesc": "Compact allow / deny / ask patterns in agent config.toml (deny wins over ask over allow). Examples: Bash(git *), Read(src/**), Edit. Changes soft-respawn the agent so the next turn reloads rules.",
+  "settings.permissionRulesEmpty": "No rules yet — add a pattern below.",
+  "settings.permissionRulesError": "Could not update permission rules",
+  "settings.permissionRulesLoading": "Loading rules…",
+  "settings.permissionRulesPath": "Config: {path}",
+  "settings.permissionRulesPlaceholder": "e.g. Bash(git *)",
+  "settings.permissionRulesRemove": "Remove",
+  "settings.permissionRulesRemoveConfirm": "Remove {action} rule “{rule}” from config.toml?",
+  "settings.permissionRulesRemoveTitle": "Remove permission rule",
   "settings.preferredAgentDesc": "Preferred agent definition for new sessions",
-  "settings.permissionRulesAction.allow": "允许",
-  "settings.permissionRulesAction.deny": "拒绝",
-  "settings.permissionRulesAction.ask": "询问",
+  "settings.permissionRulesAction.allow": "Allow",
+  "settings.permissionRulesAction.deny": "Deny",
+  "settings.permissionRulesAction.ask": "Ask",
   "settings.permissionRulesSim": "试算工具调用",
   "settings.permissionRulesSimDesc":
     "按当前规则模拟决策（deny > ask > allow）。仅预览，不写入配置。",
   "settings.permissionRulesSimPlaceholder": "例如 Bash(git status)",
-  "settings.permissionRulesSimSamples": "示例工具调用",
   "settings.permissionRulesSimResult.allow": "将允许",
   "settings.permissionRulesSimResult.deny": "将拒绝",
   "settings.permissionRulesSimResult.ask": "将询问",
   "settings.permissionRulesSimResult.none": "无匹配规则",
-  "settings.permissionRulesSimHonesty.allow":
-    "预览：首条匹配的 allow 规则将允许此调用。真实 agent 仍受模式 / 内置策略约束。",
-  "settings.permissionRulesSimHonesty.deny":
-    "预览：deny 规则优先（deny > ask > allow）。真实 agent 将拦截此调用。",
-  "settings.permissionRulesSimHonesty.ask":
-    "预览：命中 ask 规则 — agent 会在执行前询问。",
-  "settings.permissionRulesSimHonesty.none":
-    "预览：无紧凑规则匹配。回落到权限模式与内置策略 — 不会自动放行。",
   "settings.permissionRulesSimMatched": "命中：{rule}",
-  "settings.permissionRulesSimCopy": "复制匹配摘要",
-  "settings.permissionRulesSimCopied": "已复制",
-  "settings.permissionRulesSimCopyFailed": "无法复制匹配摘要",
   "voice.mockReady": "模拟语音已就绪",
   "voice.ready": "语音已就绪",
   "voice.micDenied": "麦克风权限被拒绝",
@@ -13840,75 +12663,9 @@ const zh: Record<MessageKey, string> = {
   "voice.sendTranscriptNeedSpeech":
     "需要主机提供的用户或助手发言后才能发送。",
   "voice.transcriptSent": "转写已发送到当前会话",
-  "voice.center.toolIdle": "当前没有 Build 工具在运行",
-  "voice.center.chipDelegated": "语音",
-  "voice.center.keepAgentsOn":
-    "结束后保留编码会话：开 — 结束实时语音不会停止已委派的 Agent。",
-  "voice.center.keepAgentsOff":
-    "结束后保留编码会话：关 — 结束实时语音可能会停止由语音拉起的会话。",
-  "voice.center.endNote.keepAgents":
-    "停止会结束语音并取消进行中的主机工具；编码会话会保留。",
-  "voice.center.endNote.keepRunning":
-    "停止会结束语音；正在运行的委派编码会话会继续保留。",
-  "voice.center.endNote.cancelDelegates":
-    "停止会结束语音、取消进行中的工具，并停止委派的编码会话。",
-  "voice.center.endNote.stopOnly":
-    "停止会结束语音并取消进行中的主机工具。",
-  "voice.center.empty.noAuth":
-    "实时语音需要 Grok 鉴权（CLI 登录或官方 API key）。尚无语音转写。",
-  "voice.center.empty.noMic":
-    "麦克风不可用。在主机推送文本之前转写保持为空 — 不会伪造 STT。",
-  "voice.center.empty.transcriptWithDelegates":
-    "尚无语音转写（仅主机推送）。上方已列出委派的编码会话。",
   "settings.preferredAgent.default": "default",
   "settings.preferredAgent.source.bundled": "bundled",
   "settings.preferredAgent.source.builtin": "Built-in",
-  // Settings → General → Agent → Agents & Personas console
-  "settings.agentsPersonas.title": "Agents 与 Personas",
-  "settings.agentsPersonas.desc":
-    "浏览内置、用户与项目级 agent 定义，以及磁盘上发现的 personas（与 CLI `/config-agents` 根目录一致）。不会凭空编造 persona — 仅列出真实文件。首选 agent 作用于新会话。",
-  "settings.agentsPersonas.tab.agents": "Agents",
-  "settings.agentsPersonas.tab.personas": "Personas",
-  "settings.agentsPersonas.searchPlaceholder": "按名称、来源或路径筛选…",
-  "settings.agentsPersonas.refresh": "刷新",
-  "settings.agentsPersonas.loading": "加载中…",
-  "settings.agentsPersonas.clearFilter": "清除筛选",
-  "settings.agentsPersonas.open": "打开",
-  "settings.agentsPersonas.reveal": "在访达中显示",
-  "settings.agentsPersonas.openUserAgents": "打开用户 agents 目录",
-  "settings.agentsPersonas.openProjectAgents": "打开项目 agents 目录",
-  "settings.agentsPersonas.openUserPersonas": "打开用户 personas 目录",
-  "settings.agentsPersonas.openProjectPersonas": "打开项目 personas 目录",
-  "settings.agentsPersonas.browsePersonas": "浏览 personas 目录",
-  "settings.agentsPersonas.needProjectHint":
-    "请先在工作台选择项目，以管理项目级定义。",
-  "settings.agentsPersonas.agentsEmpty": "未发现 agent 定义",
-  "settings.agentsPersonas.agentsEmptyHint":
-    "目录加载后始终列出内置 agent。可在 ~/.grok/agents 或项目 `.grok/agents` 添加 `*.md`，或在「扩展 → Agents」新建。",
-  "settings.agentsPersonas.personasEmpty": "未发现 personas",
-  "settings.agentsPersonas.personasEmptyHint":
-    "Personas 为 ~/.grok/personas 或项目 `.grok/personas` 下的 `*.toml` / `*.md`。应用不会编造 persona 名称 — 请用 CLI 或打开目录添加文件。",
-  "settings.agentsPersonas.filterEmpty": "没有符合筛选条件的项",
-  "settings.agentsPersonas.filterEmptyHint": "清除筛选以查看完整列表。",
-  "settings.agentsPersonas.hostOnly": "请在桌面应用中列出 agents 与 personas",
-  "settings.agentsPersonas.hostOnlyHint":
-    "文件系统发现需要 Tauri 主机。内置名称仍可能来自目录，以便首选 agent 诚实展示。",
-  "settings.agentsPersonas.noProject": "未打开项目",
-  "settings.agentsPersonas.noProjectHint":
-    "打开工作台项目以列出项目级 agents 与 personas。",
-  "settings.agentsPersonas.error": "无法加载 agents 与 personas",
-  "settings.agentsPersonas.builtinNoPath": "内置 · 无定义文件路径",
-  "settings.agentsPersonas.setPreferred": "设为首选",
-  "settings.agentsPersonas.preferredBadge": "首选",
-  "settings.agentsPersonas.preferredDefault":
-    "首选 agent：默认（CLI）— 新会话不传 `--agent`。",
-  "settings.agentsPersonas.preferredCurrent":
-    "首选 agent：{name} · {source}",
-  "settings.agentsPersonas.preferredMissing":
-    "首选 agent “{name}” 不在目录中",
-  "settings.agentsPersonas.preferredMissingHint":
-    "可能已重命名或删除。请另选 agent 或默认（CLI）。在更改前，启动仍会使用已保存的名称。",
-  // Remote control (settings section id: remote_im)
   "settings.nav.remoteIm": "远程控制",
   "settings.remoteIm.sidebarAria": "IM 通信渠道",
   "settings.remoteIm.bridgeOverview": "Bridge 总览",
@@ -14447,6 +13204,757 @@ const zh: Record<MessageKey, string> = {
   "settings.remoteIm.resilience.errorKind.crash": "异常退出 / 崩溃",
   "settings.remoteIm.resilience.errorKind.config": "配置",
   "settings.remoteIm.resilience.errorKind.unknown": "未知",
+  "settings.remoteIm.cmd.project": "列出 / 绑定已信任项目（新会话）",
+  "settings.remoteIm.cmd.resume": "列出 / 恢复 App 历史会话",
+  "settings.remoteIm.cmd.new": "新会话，保持项目",
+  "settings.remoteIm.cmd.status": "查看绑定状态",
+  "settings.remoteIm.cmd.context": "查看当前会话上下文用量",
+  "settings.remoteIm.cmd.compact": "压缩当前 agent 会话上下文",
+  "settings.remoteIm.cmd.help": "欢迎与命令帮助",
+  "settings.remoteIm.cmd.whoami": "查看发送者 id",
+  "settings.remoteIm.cmd.stop": "中断当前任务",
+  "settings.remoteIm.cmd.account": "查看已保存账号与 SuperGrok 剩余额度",
+  "settings.remoteIm.cmd.switch": "按序号或标签切换当前 Grok 账号",
+  "settings.remoteIm.bridge.telegramNativeCommands":
+    "Telegram：Bridge 启动后会注册原生 / 命令菜单；/p、/r、/account 的结果可通过可翻页的行内按钮选择。",
+  "settings.remoteIm.channel.feishu": "飞书",
+  "settings.remoteIm.channel.lark": "Lark",
+  "settings.remoteIm.channel.dingtalk": "钉钉",
+  "settings.remoteIm.channel.wecom": "企业微信",
+  "settings.remoteIm.channel.weixin": "微信个人",
+  "settings.remoteIm.channel.wpsXiezuo": "WPS 协作",
+  "settings.remoteIm.channel.weibo": "微博",
+  "settings.remoteIm.channel.qq": "QQ（OneBot）",
+  "settings.remoteIm.channel.qqbot": "QQ 官方机器人",
+  "settings.remoteIm.channel.telegram": "Telegram",
+  "settings.remoteIm.channel.slack": "Slack",
+  "settings.remoteIm.channel.discord": "Discord",
+  "settings.remoteIm.channel.matrix": "Matrix",
+  "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.wpsAgentspace": "WPS 数字员工",
+  "ui.errorBoundary.title": "此视图渲染出错",
+  "ui.errorBoundary.body":
+    "聊天区域无法显示。磁盘上的会话仍保留 — 可重试或切换会话。",
+  "ui.errorBoundary.retry": "重试",
+  "prHub.title": "Pull requests",
+  "prHub.desc":
+    "通过 GitHub CLI（`gh pr list`）列出当前项目的打开 PR。展开可查看 CI 检查与近期讨论评论。若缺少 gh/git 或非仓库，则软失败提示。",
+  "prHub.refresh": "刷新",
+  "prHub.refreshing": "刷新中…",
+  "prHub.loading": "正在加载 Pull requests…",
+  "prHub.count": "{n} 个打开",
+  "prHub.empty": "没有打开的 Pull request",
+  "prHub.emptyBody": "该仓库当前没有打开的 PR（或不符合默认筛选）。",
+  "prHub.needProject": "未选择项目",
+  "prHub.needProjectBody": "在工作台选择项目文件夹后，可列出其 GitHub Pull requests。",
+  "prHub.needTauri": "PR 中心需要 Grok 桌面窗口。",
+  "prHub.needGh": "未找到 GitHub CLI",
+  "prHub.needGhBody":
+    "请安装 GitHub CLI（`gh`）并登录（`gh auth login`）。PATH 需包含 `gh`（桌面应用也会搜索 `~/.grok/bin` 与常见安装路径）。",
+  "prHub.needGit": "未找到 git",
+  "prHub.needGitBody": "请安装 git，并确保桌面应用的 PATH 可找到它。",
+  "prHub.notGit": "不是 git 仓库",
+  "prHub.notGitBody": "当前项目文件夹不在 git 工作树内。",
+  "prHub.unavailable": "无法列出 Pull requests",
+  "prHub.unavailableBody": "gh pr list 失败。请检查登录、远程仓库与网络。",
+  "prHub.error": "PR 中心错误",
+  "prHub.open": "打开",
+  "prHub.openInBrowser": "在浏览器中打开 Pull request",
+  "prHub.openConversation": "打开讨论",
+  "prHub.openCheck": "打开检查详情",
+  "prHub.draft": "草稿",
+  "prHub.mergeable": "可合并",
+  "prHub.conflicting": "有冲突",
+  "prHub.mergeableUnknown": "合并状态未知",
+  "prHub.author": "作者 {name}",
+  "prHub.untitled": "（无标题）",
+  "prHub.expandDetails": "显示检查与评论",
+  "prHub.collapseDetails": "隐藏检查与评论",
+  "prHub.expandChecks": "显示 CI 检查",
+  "prHub.collapseChecks": "隐藏 CI 检查",
+  "prHub.checks.title": "CI 检查",
+  "prHub.checks.colName": "名称",
+  "prHub.checks.colState": "状态",
+  "prHub.checks.none": "无检查",
+  "prHub.checks.loading": "正在加载检查…",
+  "prHub.checks.failed": "无法加载检查",
+  "prHub.comments.title": "近期评论",
+  "prHub.comments.loading": "正在加载评论…",
+  "prHub.comments.failed": "无法加载评论",
+  "prHub.comments.none": "暂无评论",
+  "prHub.comments.comment": "评论",
+  "prHub.comments.review": "审查",
+  "prHub.comments.open": "打开评论",
+  "prHub.comments.unknownAuthor": "未知",
+  "prHub.comments.emptyBody": "（无正文）",
+  "prHub.review.approved": "已批准",
+  "prHub.review.changesRequested": "请求修改",
+  "prHub.review.commented": "已评论",
+  "prHub.review.dismissed": "已驳回",
+  "changes.comment": "评论",
+  "changes.commentTip": "针对此变更块写审阅备注，并插入到对话输入框",
+  "changes.commentModalTitle": "评论变更块",
+  "changes.commentModalDesc": "「{name}」· 第 {n} 块。将结构化提示写入输入框，不会自动发送。",
+  "changes.commentPlaceholder": "希望代理如何修改或解释此变更？",
+  "changes.commentInsert": "插入到对话",
+  "changes.commentInsertedToast": "审阅备注已写入输入框",
+  "changes.commentErrorEmpty": "请先填写简短审阅备注",
+  "changes.commentErrorTooLong": "备注过长（最多约 4000 字符）",
+  "changes.commentErrorGeneric": "无法生成对话提示",
+  "prHub.checks.fixCi": "用 Grok 修复",
+  "prHub.checks.fixCiTitle":
+    "将修复 CI 的草稿插入输入框（不会自动发送）",
+  "prHub.comments.askGrok": "问 Grok",
+  "prHub.comments.askGrokTitle":
+    "将关于此评论的草稿插入输入框（不会自动发送）",
+  "prHub.draftInsertedToast": "草稿已插入输入框",
+  "dashboard.peek.label": "会话详情",
+  "dashboard.peek.expand": "展开 {title} 的详情",
+  "dashboard.peek.collapse": "收起 {title} 的详情",
+  "dashboard.peek.status": "状态",
+  "dashboard.peek.tool": "工具",
+  "dashboard.peek.noTool": "无运行中的工具",
+  "dashboard.peek.project": "项目",
+  "dashboard.peek.model": "模型",
+  "dashboard.peek.activity": "更新",
+  "dashboard.peek.openChat": "打开对话",
+  "dashboard.dispatch.title": "派发新 Agent",
+  "dashboard.dispatch.projectLabel": "已信任项目",
+  "dashboard.dispatch.promptPlaceholder": "新会话的提示词…",
+  "dashboard.dispatch.button": "派发",
+  "dashboard.dispatch.buttonTitle":
+    "在所选项目新建对话、填入提示词并发送",
+  "dashboard.dispatch.noTrusted":
+    "还没有已信任项目。请先在侧栏信任一个项目后再派发。",
+  "dashboard.dispatch.emptyPrompt": "请输入要派发的提示词。",
+  "dashboard.dispatch.noProject": "请先选择一个已信任项目。",
+  "dashboard.dispatch.untrusted": "该项目尚未信任。请先信任后再派发。",
+  "dashboard.dispatch.started": "已派发到 {name}",
+  "composer.worktreeFirstPrompt": "首条提示（可选）",
+  "composer.worktreeFirstPromptHint":
+    "开启新对话时使用 — 创建后填入输入框。",
+  "composer.worktreeFirstPromptPlaceholder":
+    "希望 Agent 在这个 worktree 里做什么？",
+  "composer.worktreeAutoSend": "打开后发送",
+  "composer.worktreeAutoSendHint":
+    "勾选后，新对话打开时自动发送首条提示（仅已信任项目）。默认关闭。",
+  "composer.parallelTask": "并行任务（worktree）",
+  "composer.parallelTaskHostOnly": "并行任务需要在桌面应用窗口中操作。",
+  "composer.parallelTaskNoProject": "请先选择一个项目。",
+  "composer.parallelTaskUntrusted":
+    "请先信任该项目，再启动并行 worktree 任务。",
+  "composer.parallelTaskNotGit":
+    "当前文件夹不是 git 仓库（或 git 不可用）。",
+  "plan.edit": "编辑计划",
+  "plan.cancelEdit": "取消编辑",
+  "plan.requestWithDraft": "用草稿请求修改",
+  "plan.approveDirtyHint":
+    "你有未提交的计划修改。请先用草稿请求修改，或丢弃后再批准 Agent 的原计划。",
+  "plan.draftPlaceholder": "编辑计划 Markdown…",
+  "plan.draftAria": "计划草稿 Markdown",
+  "plan.discardTitle": "丢弃计划修改？",
+  "plan.discardMessage":
+    "本地修改将丢失。在请求修改或批准之前，仍以 Agent 原计划为准。",
+  "plan.discardConfirm": "丢弃修改",
+  "plan.draftEmpty": "计划草稿不能为空。",
+  "plan.draftTooLong": "计划草稿过长（上限约 20 万字符）。",
+  "composer.intent.enqueue":
+    "发送会将跟进排入本会话队列，本轮结束后自动发送。要对进行中的任务插话，请对队列项使用「引导」。",
+  "composer.intent.enqueueShort": "排队跟进",
+  "composer.intent.steer":
+    "「引导」会向当前进行中的任务插入中途指示（不是排队跟进）。",
+  "composer.intent.foreignConcurrent":
+    "发送会在此开始并发工作 — 另一会话仍在运行。可用新对话分开草稿。",
+  "composer.intent.foreignShort": "发送（并发）",
+  "composer.intent.blockedPermission": "请先处理权限请求",
+  "composer.intent.openAsNewChat": "作为新对话打开",
+  "composer.intent.stripEnqueue": "跟进 — 本轮结束后发送",
+  "composer.intent.stripHold": "自动发送已暂停",
+  "composer.intent.stripSteerHint": "本轮结束后发送跟进 · 引导可中途插话",
+  "resources.agents": "Agents",
+  "resources.agentsShow": "显示 Agents 侧栏",
+  "resources.agentsHide": "隐藏 Agents 侧栏",
+  "agentsRail.noTasks": "本轮暂无 Agent 任务",
+  "agentsRail.busyHint":
+    "会话正在工作 — 工具步骤与嵌套子代理会在启动后出现在这里。",
+  "agentsRail.idleHint":
+    "当本对话运行工具或拉起子代理时，任务树会显示在这里，无需打开浮动任务面板。",
+  "agentsRail.filterEmpty": "没有符合筛选条件的任务",
+  "agentsRail.filterEmptyHint": "清除搜索或换一个状态筛选以查看更多任务。",
+  "reliability.goal.clearTimeline": "清空时间线",
+  "reliability.goal.clearConfirmTitle": "清空目标时间线？",
+  "reliability.goal.clearConfirmMessage":
+    "从本应用本地环形缓冲中移除 {count} 条 goal_updated 事件？不会停止 CLI 目标系统，也不会关闭输入框 /goal 模式。",
+  "reliability.goal.clearConfirmAction": "清空时间线",
+  "reliability.goal.clearDone": "已清空 {count} 条本地目标事件",
+  "reliability.goal.emptySessionMismatch": "当前会话没有目标事件",
+  "reliability.goal.emptySessionMismatchHint":
+    "其他会话已观察到 goal_updated。可打开可靠性中心查看完整本地时间线，或在本对话中使用 /goal。",
+  "reliability.goal.openReliability": "打开可靠性中心",
+  "reliability.goal.sessionMenuAria": "目标编排操作",
+  "dashboard.openBoard": "看板视图",
+  "dashboard.openBoardTitle":
+    "按状态分列查看会话（需你处理 / 运行中 / 空闲 / 完成）",
+  "taskBoard.title": "会话任务看板",
+  "taskBoard.hint":
+    "按应用内会话与本地 live 状态分列 — 非 CI/云端。点击卡片打开该对话。",
+  "taskBoard.open": "会话任务看板",
+  "taskBoard.searchPlaceholder": "筛选会话…",
+  "taskBoard.projectSearchPlaceholder": "按项目筛选…",
+  "taskBoard.includeArchived": "含已归档",
+  "taskBoard.includeArchivedTitle": "在「完成」列显示已归档的空闲会话",
+  "taskBoard.columnsLabel": "会话状态列",
+  "taskBoard.column.needsYou": "需你处理",
+  "taskBoard.column.running": "运行中",
+  "taskBoard.column.idle": "空闲",
+  "taskBoard.column.done": "完成",
+  "taskBoard.column.error": "异常",
+  "taskBoard.columnEmpty": "暂无会话",
+  "taskBoard.empty": "暂无会话",
+  "taskBoard.emptyHint":
+    "开始对话或等待 Agent 回合 — 会话会按状态出现在这里。",
+  "taskBoard.filterEmpty": "没有符合筛选条件的会话",
+  "taskBoard.filterEmptyHint": "清空搜索或勾选「含已归档」以查看更多会话。",
+  "taskBoard.clearFilters": "清除筛选",
+  "taskBoard.totalCount": "{n} 个会话",
+  "settings.agentsPersonas.title": "Agents 与 Personas",
+  "settings.agentsPersonas.desc":
+    "浏览内置、用户与项目级 agent 定义，以及磁盘上发现的 personas（与 CLI `/config-agents` 根目录一致）。不会凭空编造 persona — 仅列出真实文件。首选 agent 作用于新会话。",
+  "settings.agentsPersonas.tab.agents": "Agents",
+  "settings.agentsPersonas.tab.personas": "Personas",
+  "settings.agentsPersonas.searchPlaceholder": "按名称、来源或路径筛选…",
+  "settings.agentsPersonas.refresh": "刷新",
+  "settings.agentsPersonas.loading": "加载中…",
+  "settings.agentsPersonas.clearFilter": "清除筛选",
+  "settings.agentsPersonas.open": "打开",
+  "settings.agentsPersonas.reveal": "在访达中显示",
+  "settings.agentsPersonas.openUserAgents": "打开用户 agents 目录",
+  "settings.agentsPersonas.openProjectAgents": "打开项目 agents 目录",
+  "settings.agentsPersonas.openUserPersonas": "打开用户 personas 目录",
+  "settings.agentsPersonas.openProjectPersonas": "打开项目 personas 目录",
+  "settings.agentsPersonas.browsePersonas": "浏览 personas 目录",
+  "settings.agentsPersonas.needProjectHint":
+    "请先在工作台选择项目，以管理项目级定义。",
+  "settings.agentsPersonas.agentsEmpty": "未发现 agent 定义",
+  "settings.agentsPersonas.agentsEmptyHint":
+    "目录加载后始终列出内置 agent。可在 ~/.grok/agents 或项目 `.grok/agents` 添加 `*.md`，或在「扩展 → Agents」新建。",
+  "settings.agentsPersonas.personasEmpty": "未发现 personas",
+  "settings.agentsPersonas.personasEmptyHint":
+    "Personas 为 ~/.grok/personas 或项目 `.grok/personas` 下的 `*.toml` / `*.md`。应用不会编造 persona 名称 — 请用 CLI 或打开目录添加文件。",
+  "settings.agentsPersonas.filterEmpty": "没有符合筛选条件的项",
+  "settings.agentsPersonas.filterEmptyHint": "清除筛选以查看完整列表。",
+  "settings.agentsPersonas.hostOnly": "请在桌面应用中列出 agents 与 personas",
+  "settings.agentsPersonas.hostOnlyHint":
+    "文件系统发现需要 Tauri 主机。内置名称仍可能来自目录，以便首选 agent 诚实展示。",
+  "settings.agentsPersonas.noProject": "未打开项目",
+  "settings.agentsPersonas.noProjectHint":
+    "打开工作台项目以列出项目级 agents 与 personas。",
+  "settings.agentsPersonas.error": "无法加载 agents 与 personas",
+  "settings.agentsPersonas.builtinNoPath": "内置 · 无定义文件路径",
+  "settings.agentsPersonas.setPreferred": "设为首选",
+  "settings.agentsPersonas.preferredBadge": "首选",
+  "settings.agentsPersonas.preferredDefault":
+    "首选 agent：默认（CLI）— 新会话不传 `--agent`。",
+  "settings.agentsPersonas.preferredCurrent":
+    "首选 agent：{name} · {source}",
+  "settings.agentsPersonas.preferredMissing":
+    "首选 agent “{name}” 不在目录中",
+  "settings.agentsPersonas.preferredMissingHint":
+    "可能已重命名或删除。请另选 agent 或默认（CLI）。在更改前，启动仍会使用已保存的名称。",
+  "composer.worktreeCompare": "与 main 对比…",
+  "composer.worktreeCompareTip": "列出相对主 worktree 的差异文件（不合并）",
+  "composer.worktreeCompareTitle": "与 main 对比",
+  "composer.worktreeCompareHint":
+    "只读文件列表，来自 git diff --name-status（相对 main 的三方差异）。选择性应用 / 合并不在本功能范围内。",
+  "composer.worktreeCompareRange": "{base}...{other}",
+  "composer.worktreeCompareLoading": "正在对比…",
+  "composer.worktreeCompareEmpty": "工作树一致 — 无文件差异。",
+  "composer.worktreeCompareFailed": "无法对比 worktree",
+  "composer.worktreeCompareNeedProject": "请先打开项目文件夹再对比",
+  "composer.worktreeCompareOnMain":
+    "当前已在主 worktree — 请切换到关联 worktree 后再对比",
+  "composer.worktreeCompareSamePath": "对比路径相同",
+  "composer.worktreeCompareNotGit": "不是 git 仓库（或未安装 git）",
+  "composer.worktreeCompareMissingPath": "worktree 路径缺失",
+  "composer.worktreeCompareChipAdded": "+{n} 新增",
+  "composer.worktreeCompareChipModified": "~{n} 修改",
+  "composer.worktreeCompareChipDeleted": "−{n} 删除",
+  "composer.worktreeCompareChipRenamed": "→{n} 重命名",
+  "composer.worktreeCompareChipOther": "?{n} 其他",
+  "composer.worktreeCompareChipTotal": "{n} 个文件",
+  "composer.worktreeCompareCopyPath": "复制路径",
+  "composer.worktreeCompareReveal": "在文件管理器中显示",
+  "composer.worktreeComparePathCopied": "已复制路径",
+  "composer.worktreeCompareOverflow":
+    "显示 {shown}/{total} — 另有 {n} 条未列出",
+  "settings.workflows.authorHint":
+    "完整流水线请用 create-workflow 技能（/create-workflow）编写，或直接编辑 .rhai。本面板仅生成简短模板，并按名称 smoke/运行——不是可视化编辑器。",
+  "settings.workflows.reveal": "显示",
+  "settings.workflows.revealTitle": "在文件夹中显示工作流文件",
+  "settings.workflows.openEditor": "打开",
+  "settings.workflows.openEditorTitle": "在已配置的编辑器中打开工作流",
+  "settings.workflows.create": "从模板新建",
+  "settings.workflows.create.title": "从模板新建工作流",
+  "settings.workflows.create.hint":
+    "写入带纯字面量 meta 的最小 .rhai 脚手架。请用真实的 agent()/parallel() 步骤替换正文（见 create-workflow 技能）。",
+  "settings.workflows.create.name": "名称",
+  "settings.workflows.create.namePlaceholder": "review-changes",
+  "settings.workflows.create.namePreview": "将保存为 {name}.rhai",
+  "settings.workflows.create.scope": "作用域",
+  "settings.workflows.create.needProjectHint": "在工作台打开项目后即可使用项目作用域。",
+  "settings.workflows.create.needProject": "项目作用域需要当前项目路径。",
+  "settings.workflows.create.argsNote":
+    "可选：通过 workflow 工具启动时传入 args 对象（未传时 args 为 ()）。",
+  "settings.workflows.create.pathPreview": "路径：{path}",
+  "settings.workflows.create.submit": "创建",
+  "settings.workflows.create.creating": "创建中…",
+  "settings.workflows.create.created": "已创建工作流 {name}",
+  "settings.workflows.create.overwritten": "已覆盖工作流 {name}",
+  "settings.workflows.create.nameInvalid":
+    "请使用字母、数字、连字符或下划线（不要包含路径分隔符）。",
+  "settings.workflows.create.error": "无法创建工作流（soft-fail）。",
+  "settings.workflows.create.desktopOnly": "创建工作流需要桌面应用宿主。",
+  "settings.workflows.create.overwriteTitle": "覆盖工作流？",
+  "settings.workflows.create.overwriteBody":
+    "名为「{name}」的工作流已存在。要用模板脚手架覆盖吗？",
+  "settings.workflows.create.overwrite": "覆盖",
+  "settings.workflows.empty.no_workflows":
+    "在 ~/.grok/workflows 或当前项目的 .grok/workflows 下未找到 .rhai 工作流。可创建模板或使用 /create-workflow。",
+  "settings.workflows.empty.scan_soft_fail":
+    "无法扫描工作流目录（soft-fail）。磁盘上的路径可能仍然存在。",
+  "settings.workflows.empty.browser_only": "发现与创建工作流需要桌面应用宿主。",
+  "settings.workflows.empty.history_empty":
+    "尚无观察到的 smoke/运行结果。历史仅记录设置页 Smoke/运行结果（本地、已脱敏）。",
+  "settings.workflows.history": "最近运行",
+  "settings.workflows.history.show": "最近运行（{count}）",
+  "settings.workflows.history.hide": "隐藏最近运行",
+  "settings.workflows.history.honesty":
+    "仅本地记录设置页 smoke/运行结果（最多约 20 条）。不是实时 /workflows 仪表盘；不会虚构离线触发。",
+  "settings.workflows.history.filter": "筛选最近运行",
+  "settings.workflows.history.filter.all": "全部",
+  "settings.workflows.history.filterEmpty": "没有匹配此筛选的运行。",
+  "settings.workflows.history.outcome.ok": "ok",
+  "settings.workflows.history.outcome.error": "错误",
+  "settings.workflows.history.outcome.softFail": "soft-fail",
+  "settings.workflows.history.clear": "清空历史",
+  "settings.workflows.history.clearTitle": "清空最近运行？",
+  "settings.workflows.history.clearBody": "移除 {count} 条本地历史记录？此操作不可撤销。",
+  "settings.workflows.history.clearConfirm": "清空",
+  "settings.workflows.history.cleared": "已清空工作流运行历史",
+  "automations.inbox.section": "收件箱",
+  "automations.inbox.desc":
+    "本进程内观察到的调度运行审阅队列。可在已知时打开关联会话、在任务仍存在时重试，或标记已读。",
+  "automations.inbox.processBound":
+    "仅在 Grok 应用打开或收起到托盘期间记录运行。完全退出后不会虚构离线运行——重新打开后若尚未触发，收件箱为空是正常的。",
+  "automations.inbox.search": "搜索收件箱",
+  "automations.inbox.filterAria": "按结果筛选收件箱",
+  "automations.inbox.empty": "暂无收件箱条目。",
+  "automations.inbox.emptyFiltered": "没有匹配该筛选或搜索的运行。",
+  "automations.inbox.emptyProcessBound":
+    "暂无观察到的运行。当本进程内调度触发或你使用「立即运行」时会写入——完全退出后的离线触发不会出现。",
+  "automations.inbox.openSession": "打开会话",
+  "automations.inbox.openProject": "打开项目",
+  "automations.inbox.runNow": "立即运行",
+  "automations.inbox.markRead": "标为已读",
+  "automations.inbox.markAllRead": "全部标为已读",
+  "automations.inbox.clear": "清空收件箱",
+  "automations.inbox.clearTitle": "清空收件箱历史？",
+  "automations.inbox.clearBody":
+    "将删除本机已观察到的运行列表与已读标记，且无法撤销。已安排任务本身不受影响。",
+  "automations.inbox.clearConfirm": "清空",
+  "automations.inbox.unreadCount": "{n} 条未读",
+  "automations.inbox.sessionMissing":
+    "该会话已不存在，可能在运行后被删除。",
+  "automations.inbox.projectMissing": "该项目已不存在。",
+  "settings.sandbox.openGuide": "打开沙箱指南",
+  "settings.sandbox.recommendedDaily": "日常使用推荐",
+  "sandboxWizard.title.trust": "选择沙箱配置",
+  "sandboxWizard.title.info": "沙箱配置指南",
+  "sandboxWizard.progress": "第 {n} / {total} 步 · {step}",
+  "sandboxWizard.step.intro": "为何使用沙箱",
+  "sandboxWizard.step.pick": "选择配置",
+  "sandboxWizard.step.confirm": "确认",
+  "sandboxWizard.next": "继续",
+  "sandboxWizard.back": "上一步",
+  "sandboxWizard.skip": "暂不设置",
+  "sandboxWizard.apply": "应用配置",
+  "sandboxWizard.intro.trust":
+    "你已信任此项目。可选为 Agent 进程设置操作系统级沙箱，使写入范围限制在工作区（及临时目录）。",
+  "sandboxWizard.intro.info":
+    "OS 沙箱配置限制 Agent 进程的写入能力。请按你对本机的使用方式选择配置。",
+  "sandboxWizard.reason.workspace":
+    "日常编程推荐：工作区 — 可读任意路径；写入限制为会话工作目录、~/.grok/ 与系统临时目录。网络允许。",
+  "sandboxWizard.honesty.platform":
+    "当前平台未文档化内核级 OS 沙箱强制（仅 macOS Seatbelt / Linux Landlock）。CLI 可能接受配置但 soft-fail 且无强制执行 — 请勿当作硬安全边界。",
+  "sandboxWizard.honesty.cliUnsupported":
+    "当前 CLI 过旧，不支持 --sandbox（需要 ≥ {min}）。配置可保存，但会 soft-fail（省略 flag）直至升级 Grok Build。",
+  "sandboxWizard.pick.lead":
+    "选择沙箱配置。日常使用推荐「工作区」。",
+  "sandboxWizard.recommendedBadge": "推荐",
+  "sandboxWizard.confirm.lead": "将「{profile}」应用为应用级沙箱配置？",
+  "sandboxWizard.confirm.respawnHint":
+    "在新启动 Agent 时生效——更改后请重连会话。仍可在项目菜单中为单个项目覆盖。",
+  "sandboxWizard.dontOfferAgain": "信任项目后不再提示",
+  "voice.center.toolIdle": "当前没有 Build 工具在运行",
+  "voice.center.chipDelegated": "语音",
+  "voice.center.keepAgentsOn":
+    "结束后保留编码会话：开 — 结束实时语音不会停止已委派的 Agent。",
+  "voice.center.keepAgentsOff":
+    "结束后保留编码会话：关 — 结束实时语音可能会停止由语音拉起的会话。",
+  "voice.center.endNote.keepAgents":
+    "停止会结束语音并取消进行中的主机工具；编码会话会保留。",
+  "voice.center.endNote.keepRunning":
+    "停止会结束语音；正在运行的委派编码会话会继续保留。",
+  "voice.center.endNote.cancelDelegates":
+    "停止会结束语音、取消进行中的工具，并停止委派的编码会话。",
+  "voice.center.endNote.stopOnly":
+    "停止会结束语音并取消进行中的主机工具。",
+  "voice.center.empty.noAuth":
+    "实时语音需要 Grok 鉴权（CLI 登录或官方 API key）。尚无语音转写。",
+  "voice.center.empty.noMic":
+    "麦克风不可用。在主机推送文本之前转写保持为空 — 不会伪造 STT。",
+  "voice.center.empty.transcriptWithDelegates":
+    "尚无语音转写（仅主机推送）。上方已列出委派的编码会话。",
+  "settings.codeGraph": "代码图",
+  "settings.codeGraphDesc":
+    "统一展示代码库索引（CLI 代码图）与应用内项目搜索（仅关键词）的诚实状态。不会虚构代码图或 embedding 命中。",
+  "settings.codeGraph.modeLabel": "代码图状态",
+  "settings.codeGraph.chip.appKeyword": "应用内搜索：关键词",
+  "settings.codeGraph.chip.cliGraph": "CLI 代码图：开",
+  "settings.codeGraph.chip.cliGraphDefaultOn": "CLI 代码图：默认开",
+  "settings.codeGraph.chip.graphUnavailable": "应用内图搜索：不可用",
+  "settings.codeGraph.chip.keywordOnly": "代码图：关",
+  "settings.codeGraph.chip.cliOld": "CLI 过旧，不支持代码图",
+  "settings.codeGraph.chip.noEmbeddings": "非 embedding",
+  "settings.codeGraph.mode.keywordOnly":
+    "代码库索引已关闭 — CLI 不会构建代码图。应用内项目搜索仍为关键词（rg/遍历）。",
+  "settings.codeGraph.mode.graphEnabledUnknown":
+    "代码库索引已开启，CLI 可能构建代码图；应用尚无法确认图就绪状态或返回图命中。",
+  "settings.codeGraph.mode.graphUnavailable":
+    "代码库索引对 CLI code-nav 已开启，但应用内项目搜索没有图 API — 结果仍仅为关键词。",
+  "settings.codeGraph.mode.cliOld":
+    "CLI 低于 {min} — 可能忽略 `[features].codebase_indexing`（soft-fail）。应用内搜索仍为关键词。",
+  "settings.codeGraph.mode.unsetDefaultOn":
+    "键未设置 — CLI 默认开启。应用不会虚构已写入的配置值；项目搜索仍为关键词。",
+  "settings.codeGraph.appSearchRemainsKeyword":
+    "在 Host 提供真正的图搜索 API 之前，应用内项目搜索保持关键词。CLI 图/code-nav 请另行启用索引。",
+  "settings.codeGraph.openIndexingSettings": "代码库索引设置",
+  "settings.codeGraph.openSearchSettings": "项目代码库搜索",
+  "settings.codeGraph.empty.cliOld": "CLI 过旧，不支持代码图索引",
+  "settings.codeGraph.empty.cliOldHint":
+    "请升级 Grok Build CLI 以使用 `[features].codebase_indexing`。应用内搜索仍仅为关键词。",
+  "settings.codeGraph.empty.unsetDefaultOn":
+    "代码库索引键未设置（CLI 默认开启）",
+  "settings.codeGraph.empty.unsetDefaultOnHint":
+    "切换一次可写入明确 bool。应用内搜索不使用代码图。",
+  "settings.codeGraph.empty.keywordOnly": "代码图索引已关闭",
+  "settings.codeGraph.empty.keywordOnlyHint":
+    "开启代码库索引以供 CLI code-nav。应用内项目搜索始终为关键词。",
+  "settings.codeGraph.empty.graphUnavailable":
+    "CLI 代码图可能已启用 — 应用内图搜索不可用",
+  "settings.codeGraph.empty.graphUnavailableHint":
+    "索引可帮助 CLI agent；此应用界面仅运行关键词（rg/遍历）项目搜索。",
+  "settings.codeGraph.empty.graphEnabledUnknown":
+    "CLI 代码图可能已启用 — 应用内状态未知",
+  "settings.codeGraph.empty.graphEnabledUnknownHint":
+    "应用不会探测图健康度，也不会虚构图命中。项目搜索仅为关键词。",
+  "settings.codeGraph.empty.searchKeywordIdle": "输入关键词以搜索此项目",
+  "settings.codeGraph.empty.searchKeywordIdleHint":
+    "结果为路径/名称或内容匹配 — 绝不会虚构代码图或 embedding 命中。",
+  "settings.codeGraph.empty.searchNoMatches": "无关键词匹配",
+  "settings.codeGraph.empty.searchNoMatchesHint":
+    "项目下无路径/名称或内容命中。这不是代码图或向量搜索。",
+  "settings.codeGraph.rebuild.availableNote": "Host 可重建代码图索引。",
+  "settings.codeGraph.rebuild.unavailableNote": "应用没有代码图的 Host 重建接口。",
+  "settings.codeGraph.rebuild.cliHint":
+    "若索引过期，请在 Grok Build CLI 提供相应命令时于 CLI 重建 — 本面板不会虚构重建按钮。",
+  "composer.apply.model.immediate": "模型已在当前 Agent 上生效（session/set_model）。",
+  "composer.apply.model.softRespawn": "模型将在重新连接后的下一条消息生效。",
+  "composer.apply.model.nextMessage": "模型已保存 — 下一条消息生效。",
+  "composer.apply.model.unsupported": "此模型变更无法在会话中途应用。",
+  "composer.apply.effort.immediate": "推理强度已立即生效。",
+  "composer.apply.effort.softRespawn":
+    "推理强度将在重新连接后的下一条消息生效（无 mid-session set_effort）。",
+  "composer.apply.effort.nextMessage": "推理强度已保存 — 下一条消息生效。",
+  "composer.apply.effort.unsupported": "此推理强度变更无法在会话中途应用。",
+  "composer.apply.error.setModelFailed": "无法在当前 Agent 上切换模型",
+  "composer.apply.error.softRespawnFailed": "无法按新设置重载 Agent",
+  "composer.apply.error.invalidModel": "无效模型",
+  "composer.apply.error.invalidEffort": "无效推理强度",
+  "composer.apply.error.disconnected": "Agent 未连接",
+  "composer.apply.error.busy": "Agent 回合进行中 — 本轮结束后生效",
+  "composer.apply.error.other": "无法应用模型或推理强度变更",
+  "composer.skillsPicker": "技能",
+  "skillsPicker.aria": "为本条提示选择技能",
+  "skillsPicker.placeholder": "搜索技能…",
+  "skillsPicker.recent": "最近",
+  "skillsPicker.all": "全部技能",
+  "skillsPicker.loading": "正在加载技能…",
+  "skillsPicker.empty": "未安装可调用的技能",
+  "skillsPicker.emptyHint":
+    "可在「扩展 → 插件市场」安装，或在「扩展 → 技能」中启用。",
+  "skillsPicker.filterEmpty": "没有匹配的技能",
+  "skillsPicker.filterEmptyHint": "试试其他关键词，或清除筛选。",
+  "skillsPicker.hostOnly": "无法加载技能",
+  "skillsPicker.hostOnlyHint":
+    "技能需要桌面宿主与 Grok Build CLI。请检查「设置 → CLI / 运行时」。",
+  "skillsPicker.clearFilter": "清除筛选",
+  "settings.memoryOps": "记忆操作中心",
+  "settings.memoryOpsDesc":
+    "统一记忆浏览器、embedding 诚实状态与清除范围。应用内搜索仅为关键词 — 不会伪造 embedding。CLI 混合检索需配置 embedding 模型；无 host 搜索路径时浏览器混合检索不可用。",
+  "settings.memoryOps.modeLabel": "记忆搜索模式",
+  "settings.memoryOps.mode.appKeyword": "应用：关键词",
+  "settings.memoryOps.mode.cliHybrid": "CLI agent：混合",
+  "settings.memoryOps.mode.hybridUnavailable": "浏览器混合：不可用",
+  "settings.memoryOps.mode.memoryOff": "记忆：关闭",
+  "settings.memoryOps.hybridUnavailableHint":
+    "已为 agent 工具设置 embedding 模型，但应用内浏览器没有 host 混合检索 CLI（grok memory search）— 仅关键词扫描。不会伪造 embedding。",
+  "settings.memoryOps.openEmbed": "Embedding 设置",
+  "settings.memoryOps.presenceLabel": "Dream / Watcher 配置存在性",
+  "settings.memoryOps.dream": "Dream",
+  "settings.memoryOps.watcher": "Watcher",
+  "settings.memoryOps.presenceNote": "仅表示配置键是否设置 — 不是进程运行状态。",
+  "settings.memoryOps.clearLabel": "清除记忆范围",
+  "settings.memoryOps.clear.workspace": "清除工作区",
+  "settings.memoryOps.clear.session": "清除会话",
+  "settings.memoryOps.clear.all": "全部清除",
+  "settings.memoryOps.clear.busy": "清除中…",
+  "settings.memoryOps.clear.confirmTitle.workspace": "清除工作区记忆？",
+  "settings.memoryOps.clear.confirmTitle.session": "清除会话记忆？",
+  "settings.memoryOps.clear.confirmTitle.all": "清除全部记忆？",
+  "settings.memoryOps.clear.confirmMsg.workspace":
+    "对当前项目执行 grok memory clear --workspace（MEMORY.md、会话摘要、索引）。不会删除应用内聊天记录。此操作不可撤销。",
+  "settings.memoryOps.clear.confirmMsg.session":
+    "应用 host 尚不支持仅清除会话范围（CLI 无 session 作用域）。",
+  "settings.memoryOps.clear.confirmMsg.all":
+    "在当前 GROK_HOME 下执行 grok memory clear --all，将删除全局与工作区记忆文件。不会删除应用内聊天记录。此操作不可撤销。",
+  "settings.memoryOps.clear.done.workspace": "已清除工作区记忆",
+  "settings.memoryOps.clear.done.session": "已清除会话记忆",
+  "settings.memoryOps.clear.done.all": "已清除全部记忆",
+  "settings.memoryOps.clear.unavailable.session":
+    "host CLI 尚不支持仅清除会话范围。",
+  "settings.memoryOps.clear.unavailable.memoryOff":
+    "请先打开上方的「跨会话记忆」再清除。",
+  "settings.memoryOps.clear.unavailable.noCwd":
+    "请先打开项目以清除工作区记忆。",
+  "settings.memoryOps.clear.unavailable.host":
+    "应用 host 暂不支持此清除范围。",
+  "settings.memoryOps.empty.memoryOff": "记忆已关闭",
+  "settings.memoryOps.empty.memoryOffHint":
+    "请先打开上方的「跨会话记忆」以浏览文件与清除范围。",
+  "settings.memoryOps.empty.noProject": "未选择项目",
+  "settings.memoryOps.empty.noProjectHint":
+    "打开项目以匹配工作区记忆。全局 MEMORY.md 仍可能显示。",
+  "settings.memoryOps.empty.catalog": "尚无记忆文件",
+  "settings.memoryOps.empty.catalogHint":
+    "agent 写入 MEMORY.md、会话日志或索引后会出现文件。",
+  "settings.memoryOps.empty.hybridUnavailable":
+    "尚无记忆文件 · 浏览器混合检索不可用",
+  "settings.lspTools": "LSP 工具",
+  "settings.lspToolsDesc":
+    "如实展示当前 GROK_HOME config.toml 中的 Grok Build `[features].lsp_tools`。开启后向 CLI agent 暴露 lsp 工具——应用本身不运行语言服务器，也不显示实时诊断。独立 agent-home 可写入 bool 并 soft-respawn；共享模式只读。已知旧版 CLI 时 soft-fail。",
+  "settings.lspTools.path": "配置：{path}",
+  "settings.lspTools.loading": "正在加载 LSP 工具配置…",
+  "settings.lspTools.error": "无法加载或更新 LSP 工具配置",
+  "settings.lspTools.saved": "LSP 工具配置已保存（agent 已 soft-respawn）",
+  "settings.lspTools.sharedWarning":
+    "共享模式显示 ~/.grok/config.toml（只读探测）。切换到独立会话数据模式后，才能将 `[features].lsp_tools` 写入 App agent-home。",
+  "settings.lspTools.mode.independent": "独立（agent-home）",
+  "settings.lspTools.mode.shared": "共享（~/.grok）",
+  "settings.lspTools.missing": "文件尚不存在",
+  "settings.lspTools.writable": "可编辑",
+  "settings.lspTools.readOnly": "只读",
+  "settings.lspTools.presence.unset": "未设置",
+  "settings.lspTools.presence.on": "开",
+  "settings.lspTools.presence.off": "关",
+  "settings.lspTools.status.off": "关 — agent 无 lsp 工具",
+  "settings.lspTools.status.on": "开 — 仅 CLI agent 工具",
+  "settings.lspTools.status.unset": "未设置 — CLI 默认关闭",
+  "settings.lspTools.status.sharedReadonly": "共享只读",
+  "settings.lspTools.status.cliOld": "CLI 低于 {min}（soft-fail）",
+  "settings.lspTools.status.hostOnly": "需要桌面主机",
+  "settings.lspTools.chip.off": "关",
+  "settings.lspTools.chip.on": "开",
+  "settings.lspTools.chip.unset": "未设置",
+  "settings.lspTools.chip.sharedReadonly": "共享只读",
+  "settings.lspTools.chip.cliOld": "CLI < {min}",
+  "settings.lspTools.chip.hostOnly": "仅主机",
+  "settings.lspTools.chip.cliDefaultOff": "CLI 默认关",
+  "settings.lspTools.chip.noAppLsp": "应用：无 LSP 客户端",
+  "settings.lspTools.chip.noDiagnostics": "无实时诊断",
+  "settings.lspTools.cliUnknown": "CLI 版本未知（soft-fail）",
+  "settings.lspTools.enable": "启用 LSP 工具",
+  "settings.lspTools.enableDesc":
+    "开启后，若 agent 配置中已配置语言服务器，CLI agent 可使用 lsp 工具。关闭或未设置（CLI 默认）时 agent 无 lsp 工具。应用不会在此显示诊断列表。",
+  "settings.lspTools.unsetDefaultHint":
+    "键未设置 — CLI 默认关闭。切换一次即可将显式 bool 写入 config.toml。",
+  "settings.lspTools.empty.off": "关闭时，agent 无 lsp 工具。",
+  "settings.lspTools.empty.offHint":
+    "在独立 agent-home 中启用该标志，soft-respawn 后即可向 CLI agent 暴露 lsp 工具。",
+  "settings.lspTools.empty.on": "已开启：若已配置服务器，CLI agent 可使用 lsp 工具。",
+  "settings.lspTools.empty.onHint":
+    "应用尚未显示实时诊断——工具仅在 CLI agent 中运行。",
+  "settings.lspTools.empty.unset": "键未设置 — CLI 默认关闭（agent 无 lsp 工具）。",
+  "settings.lspTools.empty.unsetHint":
+    "切换一次即可写入显式的 `[features].lsp_tools` bool。",
+  "settings.lspTools.empty.sharedReadonly": "共享模式对此标志只读。",
+  "settings.lspTools.empty.sharedReadonlyHint":
+    "切换到独立会话数据模式后才能编辑 agent-home config.toml。",
+  "settings.lspTools.empty.cliOld":
+    "CLI 可能低于 {min}；可能忽略 lsp_tools（soft-fail）。",
+  "settings.lspTools.empty.cliOldHint":
+    "升级 Grok Build CLI 以获得文档化能力。仍可写入配置。",
+  "settings.lspTools.empty.hostOnly": "LSP 工具设置需要桌面应用。",
+  "settings.lspTools.empty.hostOnlyHint":
+    "打开 Tauri 桌面主机以读取或写入 agent-home 配置。",
+  "settings.lspTools.empty.noDiagnostics":
+    "应用内无实时诊断 — 仅在启用时提供 CLI agent 工具。",
+  "settings.lspTools.empty.noDiagnosticsHint":
+    "开启后，若已配置服务器，CLI agent 可使用 lsp 工具。此工作台不会虚构诊断列表。",
+  "settings.lspTools.banner.sharedReadonly":
+    "共享模式只读 — 切换到独立模式后才能写入 lsp_tools。",
+  "settings.lspTools.banner.cliOld":
+    "CLI 低于 {min} — 可能忽略该键（soft-fail）。",
+  "settings.lspTools.banner.hostOnly": "需要桌面主机。",
+  "settings.lspTools.banner.softRespawn":
+    "保存会写入 config.toml 并 soft-respawn agent，以便生效该标志。",
+  "settings.lspTools.banner.noAppLsp": "Grok App 本身不运行语言服务器。",
+  "settings.lspTools.banner.agentToolsOnly":
+    "仅在启用且已配置服务器时提供 CLI agent 工具。",
+  "settings.lspTools.banner.noDiagnostics": "应用尚未显示实时诊断。",
+  "settings.lspTools.refresh": "刷新",
+  "settings.lspTools.reset": "重置",
+  "settings.lspTools.save": "保存 LSP 工具",
+  "settings.lspTools.saving": "保存中…",
+  "settings.lspTools.needTauri": "LSP 工具设置需要桌面应用。",
+  "settings.lspTools.openConfigSection": "打开 agent 配置分区",
+  "settings.lspTools.copySummary": "复制状态摘要",
+  "settings.lspTools.copied": "已复制",
+  "settings.lspTools.copyFailed": "无法复制摘要到剪贴板",
+  "message.copyLink": "复制链接",
+  "message.linkCopied": "链接已复制",
+  "message.deepLinkMissing": "此对话中未找到该消息",
+  "batchAgents.downloadSummary": "下载 .txt",
+  "batchAgents.downloaded": "已下载",
+  "batchAgents.exportEmpty": "暂无批量结果可导出。",
+  "batchAgents.exportFailed": "无法导出结果。",
+  "batchAgents.templatesLabel": "提示词模板",
+  "batchAgents.tpl.codeReview.title": "代码审查",
+  "batchAgents.tpl.codeReview.body":
+    "审查本仓库近期变更。指出风险、缺失测试与未完成工作，并给出具体文件路径。对不确定处保持诚实——不要编造发现。",
+  "batchAgents.tpl.fixTests.title": "修复测试",
+  "batchAgents.tpl.fixTests.body":
+    "找出本仓库失败或不稳定的测试，用最小改动修复，并汇报仍失败的项。若未实际跑测试，不要声称已通过。",
+  "batchAgents.tpl.summarize.title": "总结仓库",
+  "batchAgents.tpl.summarize.body":
+    "总结本仓库用途、目录结构与当前风险或未完成 TODO。优先依据树中证据，避免臆测。",
+  "batchAgents.eligibilitySummary":
+    "可运行 {ready} · 不合格 {skip}（已选 {selected}）",
+  "batchAgents.eligibilityNone": "当前选择中没有可运行的项目。",
+  "batchAgents.status.okEmpty": "成功（无详情）",
+  "batchAgents.status.partial": "部分",
+  "settings.sessionDataMode.status": "当前：{modeLabel} · Agent 主目录 {path}",
+  "settings.sessionDataMode.independentNote":
+    "独立模式使用 {path}。可写入 agent 配置的应用设置作用于此目录；不会改写 CLI 的 ~/.grok。",
+  "settings.sessionDataMode.confirm.intro":
+    "将会话数据主目录从 {fromHome} 切换到 {toHome}？\n历史不会合并。在线 Agent 将被回收。",
+  "settings.sessionDataMode.risk.homesDiffer":
+    "Agent 主目录会变更 — 重连只使用新目录",
+  "settings.sessionDataMode.risk.noSilentMerge":
+    "不会静默合并：独立与共享两套历史保持分离",
+  "settings.sessionDataMode.risk.recycleAgents":
+    "将立即回收全部 live / background / parked Agent 进程",
+  "settings.sessionDataMode.risk.sharedWithCli":
+    "共享模式使用 ~/.grok — 与终端 Grok Build CLI 同一会话列表",
+  "settings.sessionDataMode.risk.noConfigRewrite":
+    "应用不会在共享模式下改写 CLI 的密钥 / config.toml（隐私、供应商等）",
+  "settings.sessionDataMode.risk.conflictPossible":
+    "App 与 CLI 同时写入时可能冲突；若报错请锁定或重试",
+  "settings.sessionDataMode.risk.leaveShared":
+    "离开共享：应用回到独立 agent-home；终端 CLI 的 ~/.grok 保持不变",
+  "settings.sessionDataMode.banner.sharedWithCli":
+    "与 CLI 共享：Agent 主目录为 ~/.grok（与终端 Grok Build 同一会话列表）。",
+  "settings.sessionDataMode.banner.noRewriteSecrets":
+    "共享模式下应用拒绝改写 agent 密钥 / config.toml — 需要应用代写配置时请改用独立模式。",
+  "settings.sessionDataMode.banner.conflictPossible":
+    "App 与 CLI 同时写同一会话索引可能冲突 — 跨模式不会静默合并历史。",
+  "settings.autoUpdateIdle": "需要时再检查 — 尚无更新状态。",
+  "settings.autoUpdateBody.checking":
+    "正在连接已签名更新端点或 GitHub Releases…",
+  "settings.autoUpdateBody.downloading":
+    "正在下载已签名安装包。安装成功前智能体继续运行。",
+  "settings.autoUpdateBody.installing":
+    "正在暂存更新。智能体、语音、远程 IM 与镜像仅在安装准备成功后才会停止。",
+  "settings.autoUpdateBody.ready":
+    "准备好后可安装并重启。安装失败不会停止智能体。",
+  "settings.autoUpdateBody.manual":
+    "请打开发布页或下载本平台安装包。此构建不支持应用内静默安装。",
+  "settings.autoUpdateBody.agentsNote":
+    "智能体、语音、远程 IM 与镜像继续运行；仅在安装准备成功后才会停止。",
+  "settings.autoUpdateError.network":
+    "无法连接更新服务器。请检查网络或代理后重试。",
+  "settings.autoUpdateError.signature":
+    "更新包签名校验失败。请使用已签名正式版，或从 GitHub Releases 下载。",
+  "settings.autoUpdateError.pluginMissing":
+    "此构建未启用应用内更新（未签名或本地版）。请点「检查更新」打开 GitHub Releases。",
+  "settings.autoUpdateError.notReady":
+    "更新尚未就绪。请等待下载完成后再点「安装并重启」。",
+  "settings.autoUpdateError.hostOnly":
+    "应用更新仅在桌面端可用，浏览器预览中不可用。",
+  "settings.autoUpdateError.other":
+    "更新失败。你仍可打开发布页并手动安装。",
+  "settings.autoUpdateChannelUnsupported":
+    "更新通道：手动安装（此安装包类型不支持自动更新）",
+  "settings.autoUpdateChannelHostOnly":
+    "更新通道：仅桌面端（此处不可用）",
+  "cliTrust.grade.verified": "校验已通过",
+  "cliTrust.grade.missingSidecar": "无校验文件",
+  "cliTrust.grade.mismatch": "校验和不匹配",
+  "cliTrust.grade.unverifiedAllowed": "已允许未校验安装",
+  "cliTrust.grade.unknown": "校验状态未知",
+  "cliTrust.hint.missingSidecar":
+    "官方镜像当前未发布 SHA-256 校验文件。安装依赖 HTTPS 白名单 + 二进制探测，未经密码学校验。",
+  "cliTrust.hint.mismatch":
+    "已发布校验和与下载内容不一致，安装已拒绝——校验失败时不可强制跳过。",
+  "cliTrust.hint.unverifiedAllowed":
+    "在无已发布校验文件的情况下完成安装（逃生开关或默认「缺校验可装」策略）。",
+  "cliTrust.hint.unknown":
+    "尚无 App 托管安装的校验记录。手动或外部安装不评级。",
+  "settings.askDemo.title": "Ask-user 演示路径",
+  "settings.askDemo.desc":
+    "建议步骤：无需四处寻找设置，即可对比 Ask 与 YOLO。应用只准备权限与示例提示词——真实问卷仍取决于模型与 CLI。",
+  "settings.askDemo.honesty":
+    "诚实说明：真正的 `ask_user_question` 取决于模型与 Grok Build CLI。应用不会自动发送提示词，也不会声称 Agent 一定会提问。",
+  "settings.askDemo.step.policyAsk": "将权限策略设为 Ask",
+  "settings.askDemo.step.policyAskHint": "使用产品 Ask，以便工具与提问可以弹出确认。",
+  "settings.askDemo.step.notYolo": "确保 YOLO / 一律核准已关闭",
+  "settings.askDemo.step.notYoloHint": "YOLO 会跳过确认，不适合作为 Ask 对比基线。",
+  "settings.askDemo.step.askUserEnabled": "保持向用户提问已启用",
+  "settings.askDemo.step.askUserEnabledHint":
+    "关闭「禁用向用户提问」（Agent 标签 / --no-ask-user），以允许问卷。",
+  "settings.askDemo.step.samplePrompt": "在对话中粘贴示例提示词（可选）",
+  "settings.askDemo.step.samplePromptHint":
+    "仅为建议措辞——请自行复制并发送。不保证 Agent 会提问。",
+  "settings.askDemo.chip.pass": "就绪",
+  "settings.askDemo.chip.fail": "需设置",
+  "settings.askDemo.chip.next": "建议",
+  "settings.askDemo.blocker.policy": "权限策略不是 Ask。",
+  "settings.askDemo.blocker.yolo": "YOLO / 一律核准已开启。",
+  "settings.askDemo.blocker.noAskUser": "向用户提问已禁用（--no-ask-user）。",
+  "settings.askDemo.apply": "应用推荐的 Ask 策略",
+  "settings.askDemo.applied": "已应用 Ask 策略并重新启用向用户提问。",
+  "settings.askDemo.appliedPolicyOnly": "已应用 Ask 策略。",
+  "settings.askDemo.copyPrompt": "复制示例提示词",
+  "settings.askDemo.copied": "示例提示词已复制——请自行粘贴到对话中。",
+  "settings.askDemo.copyFailed": "无法复制到剪贴板。",
+  "settings.askDemo.preview": "预览示例问卷",
+  "settings.askDemo.previewTitle": "演示问卷（非来自 Agent）",
+  "settings.askDemo.previewBanner":
+    "仅预览——此问卷由应用内置用于演示，并非实时 Agent 回合发出。",
+  "settings.askDemo.openDocs": "Ask-user 文档",
+  "settings.askDemo.openDocsFailed": "无法在浏览器中打开文档。",
+  "settings.askDemo.ready": "设置看起来已适合 Ask 路径演示。需要时再粘贴示例提示词。",
+  "settings.askDemo.blocked": "请先处理红色清单项，或点击「应用推荐的 Ask 策略」。",
   "settings.remoteIm.security.title": "安全运维",
   "settings.remoteIm.security.subtitle": "远程安全检查清单",
   "settings.remoteIm.security.lead":
@@ -14513,103 +14021,413 @@ const zh: Record<MessageKey, string> = {
   "settings.remoteIm.security.yoloConfirmBody":
     "远程 YOLO 会让 IM 回合在无常规桌面权限流程的情况下自动批准工具。请仅与严格的 allow-from 列表一起使用。确认启用？",
   "settings.remoteIm.security.yoloConfirmOk": "启用 YOLO",
-  "settings.remoteIm.cmd.project": "列出 / 绑定已信任项目（新会话）",
-  "settings.remoteIm.cmd.resume": "列出 / 恢复 App 历史会话",
-  "settings.remoteIm.cmd.new": "新会话，保持项目",
-  "settings.remoteIm.cmd.status": "查看绑定状态",
-  "settings.remoteIm.cmd.context": "查看当前会话上下文用量",
-  "settings.remoteIm.cmd.compact": "压缩当前 agent 会话上下文",
-  "settings.remoteIm.cmd.help": "欢迎与命令帮助",
-  "settings.remoteIm.cmd.whoami": "查看发送者 id",
-  "settings.remoteIm.cmd.stop": "中断当前任务",
-  "settings.remoteIm.cmd.account": "查看已保存账号与 SuperGrok 剩余额度",
-  "settings.remoteIm.cmd.switch": "按序号或标签切换当前 Grok 账号",
-  "settings.remoteIm.bridge.telegramNativeCommands":
-    "Telegram：Bridge 启动后会注册原生 / 命令菜单；/p、/r、/account 的结果可通过可翻页的行内按钮选择。",
-  "settings.remoteIm.channel.feishu": "飞书",
-  "settings.remoteIm.channel.lark": "Lark",
-  "settings.remoteIm.channel.dingtalk": "钉钉",
-  "settings.remoteIm.channel.wecom": "企业微信",
-  "settings.remoteIm.channel.weixin": "微信个人",
-  "settings.remoteIm.channel.wpsXiezuo": "WPS 协作",
-  "settings.remoteIm.channel.weibo": "微博",
-  "settings.remoteIm.channel.qq": "QQ（OneBot）",
-  "settings.remoteIm.channel.qqbot": "QQ 官方机器人",
-  "settings.remoteIm.channel.telegram": "Telegram",
-  "settings.remoteIm.channel.slack": "Slack",
-  "settings.remoteIm.channel.discord": "Discord",
-  "settings.remoteIm.channel.matrix": "Matrix",
-  "settings.remoteIm.channel.line": "LINE",
-  "settings.remoteIm.channel.wpsAgentspace": "WPS 数字员工",
-
-  "ui.errorBoundary.title": "此视图渲染出错",
-  "ui.errorBoundary.body":
-    "聊天区域无法显示。磁盘上的会话仍保留 — 可重试或切换会话。",
-  "ui.errorBoundary.retry": "重试",
-
-  // GitHub PR hub
-  "prHub.title": "Pull requests",
-  "prHub.desc":
-    "通过 GitHub CLI（`gh pr list`）列出当前项目的打开 PR。展开可查看 CI 检查与近期讨论评论。若缺少 gh/git 或非仓库，则软失败提示。",
-  "prHub.refresh": "刷新",
-  "prHub.refreshing": "刷新中…",
-  "prHub.loading": "正在加载 Pull requests…",
-  "prHub.count": "{n} 个打开",
-  "prHub.empty": "没有打开的 Pull request",
-  "prHub.emptyBody": "该仓库当前没有打开的 PR（或不符合默认筛选）。",
-  "prHub.needProject": "未选择项目",
-  "prHub.needProjectBody": "在工作台选择项目文件夹后，可列出其 GitHub Pull requests。",
-  "prHub.needTauri": "PR 中心需要 Grok 桌面窗口。",
-  "prHub.needGh": "未找到 GitHub CLI",
-  "prHub.needGhBody":
-    "请安装 GitHub CLI（`gh`）并登录（`gh auth login`）。PATH 需包含 `gh`（桌面应用也会搜索 `~/.grok/bin` 与常见安装路径）。",
-  "prHub.needGit": "未找到 git",
-  "prHub.needGitBody": "请安装 git，并确保桌面应用的 PATH 可找到它。",
-  "prHub.notGit": "不是 git 仓库",
-  "prHub.notGitBody": "当前项目文件夹不在 git 工作树内。",
-  "prHub.unavailable": "无法列出 Pull requests",
-  "prHub.unavailableBody": "gh pr list 失败。请检查登录、远程仓库与网络。",
-  "prHub.error": "PR 中心错误",
-  "prHub.open": "打开",
-  "prHub.openInBrowser": "在浏览器中打开 Pull request",
-  "prHub.openConversation": "打开讨论",
-  "prHub.openCheck": "打开检查详情",
-  "prHub.draft": "草稿",
-  "prHub.mergeable": "可合并",
-  "prHub.conflicting": "有冲突",
-  "prHub.mergeableUnknown": "合并状态未知",
-  "prHub.author": "作者 {name}",
-  "prHub.untitled": "（无标题）",
-  "prHub.expandDetails": "显示检查与评论",
-  "prHub.collapseDetails": "隐藏检查与评论",
-  "prHub.expandChecks": "显示 CI 检查",
-  "prHub.collapseChecks": "隐藏 CI 检查",
-  "prHub.checks.title": "CI 检查",
-  "prHub.checks.colName": "名称",
-  "prHub.checks.colState": "状态",
-  "prHub.checks.none": "无检查",
-  "prHub.checks.loading": "正在加载检查…",
-  "prHub.checks.failed": "无法加载检查",
-  "prHub.checks.fixCi": "用 Grok 修复",
-  "prHub.checks.fixCiTitle":
-    "将修复 CI 的草稿插入输入框（不会自动发送）",
-  "prHub.comments.title": "近期评论",
-  "prHub.comments.loading": "正在加载评论…",
-  "prHub.comments.failed": "无法加载评论",
-  "prHub.comments.none": "暂无评论",
-  "prHub.comments.comment": "评论",
-  "prHub.comments.review": "审查",
-  "prHub.comments.open": "打开评论",
-  "prHub.comments.unknownAuthor": "未知",
-  "prHub.comments.emptyBody": "（无正文）",
-  "prHub.comments.askGrok": "问 Grok",
-  "prHub.comments.askGrokTitle":
-    "将关于此评论的草稿插入输入框（不会自动发送）",
-  "prHub.draftInsertedToast": "草稿已插入输入框",
-  "prHub.review.approved": "已批准",
-  "prHub.review.changesRequested": "请求修改",
-  "prHub.review.commented": "已评论",
-  "prHub.review.dismissed": "已驳回",
+  "reliability.supportZip.confirmTitle": "导出支持包？",
+  "reliability.supportZip.confirmMessage":
+    "请先核对下方脱敏清单。支持包绝不会包含密钥、登录凭据或 API Key。",
+  "reliability.supportZip.confirmAction": "导出支持包",
+  "reliability.supportZip.checklistTitle": "将包含的部分（已脱敏）",
+  "reliability.supportZip.secretsNever":
+    "绝不会包含密钥（无 secrets.json、账户登录或原始 API Key）。",
+  "reliability.supportZip.redacted": "已脱敏",
+  "reliability.supportZip.whenAvailable": "主机上存在时才写入",
+  "reliability.supportZip.sectionOmitted": "本次不包含",
+  "reliability.supportZip.auditNotIncluded":
+    "工具审计账本不在此压缩包内 — 请改用「审计」导出。",
+  "reliability.supportZip.manifestPreview": "文本清单预览",
+  "reliability.supportZip.section.doctor": "Doctor 报告（doctor.json）",
+  "reliability.supportZip.section.doctorHint":
+    "健康检查；界面未传入时由主机重新生成（仅路径，无密钥）。",
+  "reliability.supportZip.section.settings": "应用设置（settings.json）",
+  "reliability.supportZip.section.settingsHint":
+    "仅当本机存在设置文件时写入；密钥已脱敏。",
+  "reliability.supportZip.section.meta": "应用 / 系统元数据（meta.json）",
+  "reliability.supportZip.section.metaHint":
+    "版本、系统架构、会话与项目数量 — 不含含密钥路径。",
+  "reliability.supportZip.section.stall": "卡顿时间线（stall-timeline.json）",
+  "reliability.supportZip.section.stallHint":
+    "仅在有可靠性中心卡顿信号时写入结构化快照。",
+  "reliability.supportZip.section.logs": "近期日志（logs/）",
+  "reliability.supportZip.section.logsHint":
+    "主机上存在时才写入近期日志；限大小并脱敏 — 绝不虚构日志。",
+  "reliability.supportZip.section.readme": "README.txt",
+  "reliability.supportZip.section.readmeHint": "给接收方的压缩包内容说明。",
+  "reliability.supportZip.emptyHostOnly": "支持包需要桌面应用",
+  "reliability.supportZip.emptyHostOnlyHint":
+    "导出仅在 Tauri 主机上运行 — 请在桌面版 Grok App 中生成脱敏支持包。",
+  "reliability.supportZip.failHostOnly": "支持包需要桌面应用（浏览器中不可用）",
+  "reliability.supportZip.failCancel": "已取消导出支持包",
+  "reliability.supportZip.failIo": "无法写入支持包（磁盘或权限）",
+  "reliability.supportZip.failEmpty": "当前没有可诚实写入支持包的内容",
+  "doctor.platformMatrix.title": "平台能力矩阵",
+  "doctor.platformMatrix.hint":
+    "如实展示本安装在 macOS / Windows / Linux 上的能力说明：路径探测、沙箱内核、窗口装饰、更新路径、媒体环回。补充 Windows 日用清单，不编造探测结果。",
+  "doctor.platformMatrix.col.capability": "能力",
+  "doctor.platformMatrix.col.status": "状态",
+  "doctor.platformMatrix.col.detail": "说明",
+  "doctor.platformMatrix.row.platform": "平台",
+  "doctor.platformMatrix.row.cliPathProbe": "CLI 路径探测",
+  "doctor.platformMatrix.row.sandboxEnforcement": "沙箱内核",
+  "doctor.platformMatrix.row.windowChrome": "窗口装饰",
+  "doctor.platformMatrix.row.autoUpdate": "应用自动更新",
+  "doctor.platformMatrix.row.mediaLoopback": "媒体环回",
+  "doctor.platformMatrix.status.pass": "通过",
+  "doctor.platformMatrix.status.warn": "警告",
+  "doctor.platformMatrix.status.na": "不适用",
+  "doctor.platformMatrix.status.unknown": "未知",
+  "doctor.platformMatrix.msg.platform.mac": "macOS（已检测）。",
+  "doctor.platformMatrix.msg.platform.win": "Windows（已检测）。",
+  "doctor.platformMatrix.msg.platform.linux": "Linux（已检测）。",
+  "doctor.platformMatrix.msg.platform.unknown":
+    "未能识别平台 — 能力说明可能不完整。",
+  "doctor.platformMatrix.msg.cli.found": "路径探测已解析到 Grok Build CLI 二进制。",
+  "doctor.platformMatrix.msg.cli.missing":
+    "路径探测未找到 Grok Build 二进制 — 请安装或在 设置 → 运行环境 中指定路径。",
+  "doctor.platformMatrix.msg.cli.unknown":
+    "CLI 路径探测结果尚不可用（请重新运行 Doctor）。",
+  "doctor.platformMatrix.msg.sandbox.off":
+    "沙箱隔离已关闭 — 未请求内核强制。",
+  "doctor.platformMatrix.msg.sandbox.macSeatbelt":
+    "macOS Seatbelt：开启隔离时 CLI 文档支持 OS 沙箱强制。",
+  "doctor.platformMatrix.msg.sandbox.linuxLandlock":
+    "Linux Landlock：开启隔离时 CLI 文档支持 OS 沙箱强制。",
+  "doctor.platformMatrix.msg.sandbox.winSoftFail":
+    "Windows：CLI 可能接受沙箱配置但 soft-fail、无内核强制 — 请勿当作硬安全边界。",
+  "doctor.platformMatrix.msg.sandbox.platformSoft":
+    "此平台 OS 沙箱强制 soft-fail（CLI 可能在无隔离情况下继续运行）。",
+  "doctor.platformMatrix.msg.sandbox.unknown":
+    "此平台的沙箱内核支持未知。",
+  "doctor.platformMatrix.msg.chrome.macOverlay":
+    "macOS Overlay 标题栏 + 交通灯（tauri.macos.conf）。",
+  "doctor.platformMatrix.msg.chrome.winFrameless":
+    "Windows 无边框自绘窗控（最小化 / 最大化 / 关闭）— tauri.windows.conf。",
+  "doctor.platformMatrix.msg.chrome.linuxDecorated":
+    "Linux 使用标准窗口装饰（基础 tauri.conf）。",
+  "doctor.platformMatrix.msg.chrome.unknown":
+    "此平台的窗口装饰布局未分类。",
+  "doctor.platformMatrix.msg.update.silent":
+    "已签名发行路径：支持应用内静默自动更新。",
+  "doctor.platformMatrix.msg.update.manual":
+    "手动 / GitHub 更新路径（本地、未签名或插件关闭）— 打开 Releases；不宣称静默安装。",
+  "doctor.platformMatrix.msg.update.unsupported":
+    "此安装包类型不支持静默自动更新（例如 Linux .deb/.rpm）— 请手动下载。",
+  "doctor.platformMatrix.msg.update.hostOnly":
+    "未在桌面应用宿主中运行 — 自动更新不适用。",
+  "doctor.platformMatrix.msg.update.unknown":
+    "更新通道尚未报告 — 请勿假定静默安装。",
+  "doctor.platformMatrix.msg.media.loopback":
+    "本地媒体走环回 HTTP（127.0.0.1）并经 path-scope 白名单 — 产品路径不用 raw media://。",
+  "doctor.platformMatrix.msg.media.unavailable":
+    "媒体环回端点不可用 — 宿主媒体服务就绪前预览可能 soft-fail。",
+  "doctor.platformMatrix.msg.media.unknown":
+    "此平台的媒体环回能力未分类。",
+  "settings.privacy.externalOtel": "外部 OpenTelemetry（企业）",
+  "settings.privacy.externalOtelDesc":
+    "CLI 双重 opt-in：将用量导出到客户自有 OTLP 采集器（GROK_EXTERNAL_OTEL + exporter）。与产品遥测、/privacy 编码数据无关；默认无内容（content-free）。未设置时本应用不会虚构为「关闭」，也从不写入采集器密钥。",
+  "settings.privacy.externalOtel.dualOptIn": "双重 opt-in",
+  "settings.privacy.externalOtel.status.off":
+    "外部 OTEL 已关闭（主开关明确为关）",
+  "settings.privacy.externalOtel.status.incomplete":
+    "双重 opt-in 不完整（仅有主开关或仅有 exporter）",
+  "settings.privacy.externalOtel.status.ready":
+    "外部 OTEL 就绪（主开关 + exporter）",
+  "settings.privacy.externalOtel.status.unknown":
+    "外部 OTEL 未设置 — 不宣称已关闭",
+  "settings.privacy.externalOtel.status.hostOnly":
+    "外部 OTEL 状态需要桌面应用",
+  "settings.privacy.externalOtel.unknownNotOff":
+    "「未设置」不等于「关闭」。缺失的 GROK_EXTERNAL_OTEL / exporter 保持未知——本应用不会把外部 OTEL 虚构为已禁用。",
+  "settings.privacy.externalOtel.incompleteHint":
+    "双重 opt-in 需要主开关（GROK_EXTERNAL_OTEL / otel_enabled）以及至少一个 exporter（otlp 或 console）。任一半单独启用都不会生效。",
+  "settings.privacy.externalOtel.check.master":
+    "主开关 — GROK_EXTERNAL_OTEL=1 或 [telemetry] otel_enabled = true",
+  "settings.privacy.externalOtel.check.exporter":
+    "Exporter — OTEL_METRICS_EXPORTER 或 OTEL_LOGS_EXPORTER = otlp | console",
+  "settings.privacy.externalOtel.check.contentFree":
+    "默认无内容 — 除非开启内容门控，否则不导出提示词、代码、路径或工具参数",
+  "settings.privacy.externalOtel.check.noAppSecrets":
+    "本应用从不写入 OTEL 密钥 — 采集器鉴权仅用 OTEL_EXPORTER_OTLP_HEADERS（不进 config.toml）",
+  "settings.privacy.externalOtel.check.independent":
+    "独立数据流 — 非产品遥测、非 /privacy 编码数据、不携带 SpaceXAI 凭证",
+  "settings.privacy.externalOtel.step.done": "已满足",
+  "settings.privacy.externalOtel.step.missing": "缺失",
+  "settings.privacy.externalOtel.step.unknown": "未知 / 未设置",
+  "settings.privacy.externalOtel.contentFree":
+    "CLI 默认导出无内容用量 schema。可选 OTEL_LOG_USER_PROMPTS / OTEL_LOG_TOOL_DETAILS 开启有限内容。",
+  "settings.privacy.externalOtel.noSecrets":
+    "本应用不写入 OTEL headers 或令牌。请仅在进程环境中配置采集器鉴权。",
+  "settings.privacy.externalOtel.sharedNote":
+    "共享模式下 App 隐私键为只读。外部 OTEL 由 CLI 进程通过环境变量 / [telemetry] otel_* 配置——本应用不会写入。",
+  "settings.privacy.externalOtel.copyEnv": "复制环境变量模板",
+  "settings.privacy.externalOtel.copied": "已复制",
+  "doctor.windowsDayuse.title": "Windows 日常验收",
+  "doctor.windowsDayuse.lead":
+    "面向 Windows 日常使用的验收清单。App 可自动探测部分项，其余保持手动。未探测时不会臆造 SmartScreen / 未签名状态。",
+  "doctor.windowsDayuse.notTarget":
+    "macOS / Linux 不是本清单目标平台 — 项显示为 N/A。请在 Windows 构建上验证安装、CLI、带空格路径与镜像日常使用。",
+  "doctor.windowsDayuse.summary":
+    "{pass} 通过 · {fail} 失败 · {manual} 手动 · {na} 不适用",
+  "doctor.windowsDayuse.copy": "复制清单",
+  "doctor.windowsDayuse.copied": "已复制清单",
+  "doctor.windowsDayuse.copyFail": "无法复制清单",
+  "doctor.windowsDayuse.docs": "验收文档",
+  "doctor.windowsDayuse.platform.win": "Windows",
+  "doctor.windowsDayuse.platform.mac": "macOS",
+  "doctor.windowsDayuse.platform.linux": "Linux",
+  "doctor.windowsDayuse.platform.other": "其他",
+  "doctor.windowsDayuse.status.pass": "通过",
+  "doctor.windowsDayuse.status.fail": "失败",
+  "doctor.windowsDayuse.status.manual": "手动",
+  "doctor.windowsDayuse.status.na": "不适用",
+  "doctor.windowsDayuse.item.installPath": "安装路径（Release / SmartScreen）",
+  "doctor.windowsDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
+  "doctor.windowsDayuse.item.projectSpaces": "带空格的项目路径",
+  "doctor.windowsDayuse.item.singleAttachment": "单次粘贴附件",
+  "doctor.windowsDayuse.item.appUpdateCheck": "检查更新（关于）",
+  "doctor.windowsDayuse.item.mirrorReadonly": "手机镜像默认只读",
+  "doctor.windowsDayuse.detail.na": "当前平台不适用。",
+  "doctor.windowsDayuse.detail.installPath.manual":
+    "从 GitHub Release 安装（setup.exe 或便携 zip）。未签名时 SmartScreen 可能提示 — App 在未探测时不会臆造该状态。",
+  "doctor.windowsDayuse.detail.installPath.pass": "安装签名探测为已签名 / 通过。",
+  "doctor.windowsDayuse.detail.installPath.fail": "安装签名探测为未签名或被拦截。",
+  "doctor.windowsDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
+  "doctor.windowsDayuse.detail.cliFound.fail":
+    "未找到 CLI — 打开 Setup 或 设置 → 运行时 安装 / 设置路径。",
+  "doctor.windowsDayuse.detail.cliFound.manual":
+    "CLI 探测尚未就绪 — 重新运行 Doctor 或打开 Setup。",
+  "doctor.windowsDayuse.detail.projectSpaces.pass":
+    "受信任项目路径包含空格（不应再出现控制台闪烁风暴）。",
+  "doctor.windowsDayuse.detail.projectSpaces.fail":
+    "尚无受信任项目 — 请添加并信任一个文件夹（路径可含空格）。",
+  "doctor.windowsDayuse.detail.projectSpaces.manual":
+    "已有受信任项目；若尚未验证，请用含空格路径再测一次。",
+  "doctor.windowsDayuse.detail.singleAttachment.manual":
+    "手动：完成一次工具对话，粘贴一张截图 — 确认只有单个附件（App 无法自动证明粘贴）。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.pass":
+    "可用的更新检查路径（应用内或 GitHub 手动）。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.fail":
+    "此构建不支持更新检查 — 请试 设置 → 关于。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.manual":
+    "打开 设置 → 关于 → 检查更新（有新版本则下载安装包）。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.pass":
+    "手机镜像为只读（写入关闭）— 默认姿态。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.fail":
+    "手机镜像写入已开启 — 日常验收期望只读；可在 远程控制 → 镜像 关闭写入。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.manual":
+    "镜像状态未知 — 打开 远程控制 → 镜像；日常验收期望只读启动 + 可重新生成链接。",
+  "doctor.windowsDayuse.link.about": "关于 / 更新",
+  "doctor.windowsDayuse.link.mirror": "镜像",
+  "doctor.windowsDayuse.link.setup": "Setup / CLI",
+  "doctor.windowsDayuse.link.runtime": "运行时",
+  "settings.runtime.platformTip": "平台",
+  "settings.runtime.platformTipDesc":
+    "用于界面文案的操作系统探测（文件管理器、日常验收清单）。Windows 构建可在 Doctor 中查看 day-use 验收卡片。",
+  "settings.permissionRulesEmptyHint":
+    "可先加一条安全的 git allow、危险 shell 的 deny，或编辑类的 ask。保存后会软重启 agent。",
+  "settings.permissionRulesFilterEmpty": "没有规则匹配当前筛选。",
+  "settings.permissionRulesFilterEmptyHint":
+    "清除筛选，或换一个模式子串再试。",
+  "settings.permissionRulesFilterPlaceholder": "筛选规则…",
+  "settings.permissionRulesFilterClear": "清除筛选",
+  "settings.permissionRulesCountsAria":
+    "规则计数：拒绝 {deny}，询问 {ask}，允许 {allow}",
+  "settings.permissionRulesSimSamples": "示例工具调用",
+  "settings.permissionRulesSimHonesty.allow":
+    "预览：首条匹配的 allow 规则将允许此调用。真实 agent 仍受模式 / 内置策略约束。",
+  "settings.permissionRulesSimHonesty.deny":
+    "预览：deny 规则优先（deny > ask > allow）。真实 agent 将拦截此调用。",
+  "settings.permissionRulesSimHonesty.ask":
+    "预览：命中 ask 规则 — agent 会在执行前询问。",
+  "settings.permissionRulesSimHonesty.none":
+    "预览：无紧凑规则匹配。回落到权限模式与内置策略 — 不会自动放行。",
+  "settings.permissionRulesSimCopy": "复制匹配摘要",
+  "settings.permissionRulesSimCopied": "已复制",
+  "settings.permissionRulesSimCopyFailed": "无法复制匹配摘要",
+  "resources.openErr.noEditor":
+    "没有可用的代码编辑器。请安装编辑器，或在设置中选择访达/资源管理器。",
+  "resources.openErr.notFound": "找不到该文件 — 可能已被移动或删除。",
+  "resources.openErr.pathDenied": "无法打开此路径（权限或白名单限制）。",
+  "resources.openErr.hostOnly": "在编辑器中打开需要桌面端应用。",
+  "resources.openErr.cancelled": "已取消打开。",
+  "resources.openErr.other": "无法在编辑器中打开。",
+  "resources.revealErr.notFound": "找不到该路径 — 无法在文件管理器中显示。",
+  "resources.revealErr.pathDenied": "无法显示此路径（权限或白名单限制）。",
+  "resources.revealErr.hostOnly": "在文件管理器中显示需要桌面端应用。",
+  "resources.revealErr.cancelled": "已取消显示。",
+  "resources.revealErr.other": "无法在文件管理器中显示。",
+  "settings.openTargetEmpty":
+    "未检测到代码编辑器 — 访达/资源管理器仍可用。安装 VS Code、Cursor 等编辑器后即可在此打开文件。",
+  "settings.openTargetPreferredMissing":
+    "首选编辑器未安装或未检测到。在重新选择之前将使用访达/资源管理器。",
+  "settings.compactionApply.softRespawn":
+    "更改模式或细节会 soft-respawn 已连接的 Agent，使下一条消息重新加载 --compaction-mode / --compaction-detail。",
+  "settings.compactionApply.nextSpawn":
+    "当前无 live Agent — 模式与细节在下次连接 / 启动时生效。",
+  "settings.compactionApply.unsupported":
+    "此 CLI 版本不接受压缩相关 flags（需要 0.2.117+）。仍可能设置环境变量；旧版 CLI soft-fail 并忽略未知 flags。",
+  "settings.compactionApply.note":
+    "已连接 Agent 时，更改模式或细节会 soft-respawn，使下一条消息重新加载 flags。无 live Agent 时设置等待下次连接。旧版 CLI soft-fail（不支持时省略 flags）。手动 /compact 是独立的 Agent 回合，不会改这些启动 flags。",
+  "slash.compactApply.nextTurn":
+    "确认后立即以 Agent 回合发送 /compact。当前进程上的模式/细节会用于此次压缩。",
+  "slash.compactApply.softRespawn":
+    "模式/细节变更会 soft-respawn Agent — 下一条消息重新加载压缩 flags。",
+  "slash.compactApply.unsupported":
+    "此 CLI 可能忽略 --compaction-mode / --compaction-detail（需要 0.2.117+）。已连接时 /compact 仍按 Agent 默认运行。",
+  "slash.compactApply.idle":
+    "尚无 live Agent — 请先连接。压缩模式/细节等待下次启动；之后 /compact 作为回合执行。",
+  "slash.compactApply.modeOnly":
+    "此次压缩使用的模式：{mode}（启动 flags；更改会 soft-respawn 已连接 Agent）。",
+  "slash.compactApply.modeDetail":
+    "压缩模式 {mode}，分段细节 {detail}（启动 flags；更改会 soft-respawn 已连接 Agent）。",
+  "slash.compactApply.savingsKnown":
+    "上次已知压缩：{before} → {after} tokens（节省 {saved}）。非估算。",
+  "slash.compactApply.savingsUnknown":
+    "在 Agent 上报压缩前后 token 数之前无法计算节省量。上方「压缩后（估）」仅为粗略保留比例猜测。",
+  "slash.compactApply.presetNote":
+    "强度预设仅用于填充 /compact 的保留备注模板 — CLI 无 light/standard/aggressive 参数。",
+  "doctor.linuxDayuse.title": "Linux 日常验收",
+  "doctor.linuxDayuse.lead":
+    "面向 Linux 日常使用的验收清单。App 可自动探测部分项，其余保持手动。未探测时不会臆造 Landlock、托盘自启或 Wayland/X11 状态。",
+  "doctor.linuxDayuse.notTarget":
+    "macOS / Windows 不是本清单目标平台 — 项显示为 N/A。请在 Linux 构建上验证 CLI、带空格路径、沙箱 Landlock、托盘与显示服务器日常使用。",
+  "doctor.linuxDayuse.summary":
+    "{pass} 通过 · {fail} 失败 · {warn} 警告 · {manual} 手动 · {na} 不适用",
+  "doctor.linuxDayuse.copy": "复制清单",
+  "doctor.linuxDayuse.copied": "已复制清单",
+  "doctor.linuxDayuse.copyFail": "无法复制清单",
+  "doctor.linuxDayuse.docs": "验收文档",
+  "doctor.linuxDayuse.platform.win": "Windows",
+  "doctor.linuxDayuse.platform.mac": "macOS",
+  "doctor.linuxDayuse.platform.linux": "Linux",
+  "doctor.linuxDayuse.platform.other": "其他",
+  "doctor.linuxDayuse.status.pass": "通过",
+  "doctor.linuxDayuse.status.fail": "失败",
+  "doctor.linuxDayuse.status.manual": "手动",
+  "doctor.linuxDayuse.status.warn": "警告",
+  "doctor.linuxDayuse.status.na": "不适用",
+  "doctor.linuxDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
+  "doctor.linuxDayuse.item.pathSpaces": "带空格的项目路径",
+  "doctor.linuxDayuse.item.sandboxLandlock": "沙箱 → Landlock 强制",
+  "doctor.linuxDayuse.item.trayAutostart": "托盘 / 自启动",
+  "doctor.linuxDayuse.item.waylandX11": "Wayland / X11 会话",
+  "doctor.linuxDayuse.item.appUpdateCheck": "检查更新（关于）",
+  "doctor.linuxDayuse.detail.na": "当前平台不适用。",
+  "doctor.linuxDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
+  "doctor.linuxDayuse.detail.cliFound.fail":
+    "未找到 CLI — 打开 Setup 或 设置 → 运行时 安装 / 设置路径。",
+  "doctor.linuxDayuse.detail.cliFound.manual":
+    "CLI 探测尚未就绪 — 重新运行 Doctor 或打开 Setup。",
+  "doctor.linuxDayuse.detail.pathSpaces.pass": "受信任项目路径包含空格。",
+  "doctor.linuxDayuse.detail.pathSpaces.fail":
+    "尚无受信任项目 — 请添加并信任一个文件夹（路径可含空格）。",
+  "doctor.linuxDayuse.detail.pathSpaces.manual":
+    "已有受信任项目；若尚未验证，请用含空格路径再测一次。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.na":
+    "沙箱配置文件为关闭 — Landlock 强制不适用。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.warn":
+    "沙箱配置文件非关闭。在 Linux 上内核强制为 Landlock（Seatbelt 仅限 macOS）。未探测时 App 不会重新验证 Landlock。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.pass":
+    "Landlock 探测报告：所选沙箱配置文件的强制已生效。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.fail":
+    "Landlock 探测报告：沙箱非关闭但强制未生效。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.manual":
+    "沙箱配置未知 — 打开 设置 → 通用 → 权限 设置配置文件。关闭 = 不适用；非关闭 = Linux 上为 Landlock。",
+  "doctor.linuxDayuse.detail.trayAutostart.pass": "托盘 / 自启动探测为已启用。",
+  "doctor.linuxDayuse.detail.trayAutostart.fail": "托盘 / 自启动探测为未启用。",
+  "doctor.linuxDayuse.detail.trayAutostart.manual":
+    "手动：若依赖托盘图标与桌面自启动，请自行确认。未探测时 App 不会臆造状态。",
+  "doctor.linuxDayuse.detail.waylandX11.pass":
+    "显示服务器探测报告为 Wayland 或 X11。",
+  "doctor.linuxDayuse.detail.waylandX11.fail":
+    "显示服务器探测报告既非 Wayland 也非 X11。",
+  "doctor.linuxDayuse.detail.waylandX11.manual":
+    "未探测时状态未知 — 请手动确认 Wayland 或 X11，以便排查合成器相关问题。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.pass":
+    "可用的更新检查路径（应用内或 GitHub 手动）。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.fail":
+    "此构建不支持更新检查 — 请试 设置 → 关于。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.manual":
+    "打开 设置 → 关于 → 检查更新（有新版本则下载安装包）。",
+  "doctor.linuxDayuse.link.about": "关于 / 更新",
+  "doctor.linuxDayuse.link.setup": "Setup / CLI",
+  "doctor.linuxDayuse.link.runtime": "运行时",
+  "doctor.linuxDayuse.link.sandbox": "沙箱",
+  "session.tracesEmptyHint":
+    "在有 agent 会话的对话菜单中选择「仅本地导出」或「导出并上传」。仅保存路径 — 不会把归档加载进应用。",
+  "session.tracesEmptyFilterHint": "试试其他关键词，或切换「全部 / 本地 / 已上传」筛选。",
+  "session.tracesClearFilters": "清除筛选",
+  "session.tracesFilterAria": "Trace 导出范围",
+  "session.tracesFilter.all": "全部",
+  "session.tracesFilter.local": "本地",
+  "session.tracesFilter.uploaded": "已上传",
+  "session.tracesUploadedBadgeTitle":
+    "导出所报告的上传状态（仅路径 — 不保存远程 URL）",
+  "prov.empty.hostOnly":
+    "自定义提供商需要桌面端应用（Tauri）。请在 Grok App 中添加中转。",
+  "prov.empty.noCustom":
+    "暂无自定义中转 — 可添加 OpenAI 兼容提供商，或使用上方的官方 Grok。",
+  "prov.empty.loadError": "无法加载提供商列表。请先修复上方宿主错误后重试。",
+  "prov.apply.softRespawn":
+    "提供商已保存，Agent 已重载 — 下一条消息使用新配置（无需重启应用）。",
+  "prov.apply.savedDiskOnly":
+    "提供商已写入磁盘。用「使用」激活（或在输入框选择）后才会切换路由。",
+  "prov.apply.hostOnly": "修改提供商需要桌面端应用。请在 Grok App 中保存中转。",
+  "prov.err.validation":
+    "无法保存：提供商字段无效（id、URL、Key 或模型）。请检查表单后重试。",
+  "prov.err.network": "无法保存：网络或宿主 IPC 错误。请检查连接后重试。",
+  "prov.err.hostOnly": "保存提供商需要桌面端应用（Tauri）。",
+  "prov.err.other": "无法保存提供商（{detail}）。",
+  "prov.ping.err.timeout": "探测超时。请检查 Base URL 与网络后重试。",
+  "prov.ping.err.network":
+    "无法连接提供商端点（网络/DNS/TLS）。请检查 Base URL。",
+  "prov.ping.err.auth": "提供商拒绝了密钥（401/403）。请更新 API Key 后重试。",
+  "prov.ping.err.hostOnly": "拉取模型 / 探测需要桌面端应用。",
+  "prov.ping.err.invalidUrl":
+    "Base URL 无效。请使用完整的 https://…/v1 根地址。",
+  "prov.ping.err.other": "无法探测提供商（{detail}）。",
+  "ext.hooks.activity.export": "导出脱敏…",
+  "ext.hooks.activity.exportHint":
+    "将当前筛选的活动列表下载为脱敏 JSON（不含密钥）",
+  "ext.hooks.activity.copySummary": "复制摘要",
+  "ext.hooks.activity.copySummaryHint":
+    "将当前筛选的活动列表复制为脱敏纯文本",
+  "ext.hooks.activity.exportCopied": "已复制 {count} 条脱敏记录",
+  "ext.hooks.activity.exportDownloaded": "已下载 {count} 条脱敏记录",
+  "ext.hooks.activity.exportEmpty": "当前筛选下没有可导出的活动。",
+  "ext.hooks.activity.exportCopyFailed": "无法复制摘要（剪贴板被拦截）",
+  "ext.hooks.activity.exportDownloadFailed": "无法下载活动导出",
+  "ext.hooks.activity.exportFailed": "活动导出失败",
+  "settings.cliSessionsEmptyHint":
+    "在此 home 下运行 Grok Build，或若预期是终端 CLI 会话，请切换会话数据模式。",
+  "settings.cliSessionsEmptyCliMissing":
+    "未找到 Grok Build CLI — 暂无 CLI 会话可列出。",
+  "settings.cliSessionsEmptyCliMissingHint":
+    "请在「设置 → 运行时」安装或定位 CLI。安装后刷新可显示本地磁盘会话。",
+  "settings.cliSessionsEmptyError": "无法加载 CLI 会话。",
+  "settings.cliSessionsEmptyErrorHint": "请检查 GROK_HOME 路径与 CLI 安装，然后刷新。",
+  "settings.cliSessions.filterAll": "全部",
+  "settings.cliSessions.filterLinked": "已关联",
+  "settings.cliSessions.filterUnlinked": "未关联",
+  "settings.cliSessionsFilterEmptyHint": "尝试其他关联筛选，或清除筛选。",
+  "settings.cliSessionsSearchEmptyHint": "换个关键词，或清除搜索。",
+  "settings.cliSessions.clearFilters": "清除筛选",
+  "settings.cliSessions.err.cli_missing": "CLI 缺失",
+  "settings.cliSessions.err.cli_missingHint":
+    "请安装 Grok Build CLI，然后刷新列表。",
+  "settings.cliSessions.err.cli_unsupported": "CLI 不支持搜索",
+  "settings.cliSessions.err.cli_unsupportedHint":
+    "当前 CLI 可能没有 sessions search — 已改为筛选本地列表。",
+  "settings.cliSessions.err.timeout": "搜索超时",
+  "settings.cliSessions.err.timeoutHint": "请缩小关键词或刷新本地列表。",
+  "settings.cliSessions.err.host_only": "需要桌面应用",
+  "settings.cliSessions.err.host_onlyHint":
+    "CLI 会话发现仅在桌面应用中可用。",
+  "settings.cliSessions.err.permission": "权限不足",
+  "settings.cliSessions.err.permissionHint": "请检查 GROK_HOME 下的文件权限。",
+  "settings.cliSessions.err.other": "搜索失败",
+  "settings.cliSessions.err.otherHint": "请刷新后重试。",
+  "settings.cliSessionsImportPlan":
+    "将导入 {importable} / {selected}（跳过已关联 {skipped}）",
+  "settings.section.agent": "代理",
 };
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {

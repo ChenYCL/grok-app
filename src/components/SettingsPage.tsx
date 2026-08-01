@@ -55,6 +55,7 @@ import {
   resolveSessionDataModeBanner,
   sessionDataModeHomeLabel,
 } from "@/lib/sessionDataMode";
+import {
   cliTrustChipClass,
   gradeFromLastInstall,
   resolveCliTrustBanner,
@@ -271,7 +272,6 @@ import {
   type ClassifiedProbeResult,
 } from "@/lib/networkProxy";
 import { AccountPanel } from "@/components/AccountPanel";
-import { OfficialAuxPanel } from "@/components/OfficialAuxPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
@@ -3774,8 +3774,6 @@ export function SettingsPage({
                     onOpenInResources={onOpenProjectFileInResources}
                   />
                 </div>
-                  onError={(msg) => showSettingsToast(msg, 3200)}
-                />
               </div>
               <div
                 className={
@@ -6386,9 +6384,7 @@ export function SettingsPage({
               id={
                 activeTab === "providers"
                   ? "settings-anchor-account-providers"
-                  : activeTab === "extras"
-                    ? "settings-anchor-account-extras"
-                    : "settings-anchor-account-official"
+                  : "settings-anchor-account-official"
               }
             >
               <div className="settings-seg settings-seg--lg" role="presentation">
@@ -6426,30 +6422,10 @@ export function SettingsPage({
                 >
                   {t("settings.tabProviders")}
                 </button>
-                <button
-                  type="button"
-                  role="tab"
-                  className={
-                    "settings-seg__btn" +
-                    (activeTab === "extras" ? " is-on" : "")
-                  }
-                  aria-selected={activeTab === "extras"}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setSectionTab("extras");
-                  }}
-                >
-                  {t("settings.tabExtras")}
-                </button>
               </div>
               {activeTab === "providers" ? (
                 <p className="settings-account-tabs__hint">
                   {t("settings.tabProvidersHint")}
-                </p>
-              ) : activeTab === "extras" ? (
-                <p className="settings-account-tabs__hint">
-                  {t("settings.tabExtrasHint")}
                 </p>
               ) : (
                 <p className="settings-account-tabs__hint">
@@ -6468,19 +6444,6 @@ export function SettingsPage({
                   )
                 }
                 onProvidersChanged={onProvidersChanged}
-                onProviderActivated={onProviderActivated}
-                onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2800)}
-              />
-            ) : activeTab === "extras" ? (
-              <OfficialAuxPanel
-                locale={resolveLocale(locale)}
-                officialAvailable={
-                  !!(
-                    account?.profile?.signedIn ||
-                    account?.cliAuthPresent ||
-                    account?.hasOfficialKey
-                  )
-                }
                 onProviderActivated={onProviderActivated}
                 onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2800)}
               />

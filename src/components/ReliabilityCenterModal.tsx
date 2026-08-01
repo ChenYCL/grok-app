@@ -598,28 +598,6 @@ export function ReliabilityCenterModal({
     }
   }, [goalOrchView.events, t]);
 
-  const requestClearGoalOrch = useCallback(() => {
-    if (!onClearGoalOrchEvents) return;
-    const plan = planClearGoalOrchEvents(goalOrchEvents);
-    if (plan.cleared <= 0) return;
-    if (shouldConfirmClearGoalOrch(plan.cleared)) {
-      setConfirmClearGoalOrch(true);
-      return;
-    }
-    onClearGoalOrchEvents();
-    setStatusMsg(t("reliability.goal.clearDone", { count: plan.cleared }));
-  }, [goalOrchEvents, onClearGoalOrchEvents, t]);
-
-  const doClearGoalOrch = useCallback(() => {
-    if (!onClearGoalOrchEvents) return;
-    const plan = planClearGoalOrchEvents(goalOrchEvents);
-    onClearGoalOrchEvents();
-    setConfirmClearGoalOrch(false);
-    setGoalPhaseFilter("all");
-    setStatusMsg(t("reliability.goal.clearDone", { count: plan.cleared }));
-  }, [goalOrchEvents, onClearGoalOrchEvents, t]);
-
-  const onSupportZip = useCallback(async () => {
   /** Honest support-zip plan (never invents stall/logs/secrets). */
   const supportPlan: SupportBundleExportPlan = useMemo(() => {
     const hasStall = view.stalls.signals.length > 0;
@@ -649,7 +627,7 @@ export function ReliabilityCenterModal({
     [supportPlan],
   );
 
-  const onSupportZipRequest = useCallback(() => {
+  const doSupportZipRequest = useCallback(() => {
     setStatusMsg(null);
     setErrorMsg(null);
     if (supportEmpty) {
@@ -668,6 +646,27 @@ export function ReliabilityCenterModal({
     }
     setConfirmSupportZip(true);
   }, [supportEmpty, t, busy]);
+
+  const requestClearGoalOrch = useCallback(() => {
+    if (!onClearGoalOrchEvents) return;
+    const plan = planClearGoalOrchEvents(goalOrchEvents);
+    if (plan.cleared <= 0) return;
+    if (shouldConfirmClearGoalOrch(plan.cleared)) {
+      setConfirmClearGoalOrch(true);
+      return;
+    }
+    onClearGoalOrchEvents();
+    setStatusMsg(t("reliability.goal.clearDone", { count: plan.cleared }));
+  }, [goalOrchEvents, onClearGoalOrchEvents, t]);
+
+  const doClearGoalOrch = useCallback(() => {
+    if (!onClearGoalOrchEvents) return;
+    const plan = planClearGoalOrchEvents(goalOrchEvents);
+    onClearGoalOrchEvents();
+    setConfirmClearGoalOrch(false);
+    setGoalPhaseFilter("all");
+    setStatusMsg(t("reliability.goal.clearDone", { count: plan.cleared }));
+  }, [goalOrchEvents, onClearGoalOrchEvents, t]);
 
   const doSupportZip = useCallback(async () => {
     setConfirmSupportZip(false);
@@ -1432,7 +1431,7 @@ export function ReliabilityCenterModal({
             type="button"
             className="btn btn--ghost btn--sm"
             disabled={!!busy || !canSupportBundleExport({ isHost: api.isTauri() })}
-            onClick={onSupportZipRequest}
+            onClick={doSupportZipRequest}
             title={t("reliability.supportZipHint")}
             data-testid="reliab-support-zip"
           >
@@ -1489,13 +1488,8 @@ export function ReliabilityCenterModal({
           })}
         </p>
       </GlassModal>
+
       <GlassModal
-        open={confirmClearGoalOrch}
-        onClose={() => setConfirmClearGoalOrch(false)}
-        title={t("reliability.goal.clearConfirmTitle")}
-        size="sm"
-        closeLabel={t("common.cancel")}
-        titleId="reliab-goal-clear-title"
         open={confirmSupportZip}
         onClose={() => setConfirmSupportZip(false)}
         title={t("reliability.supportZip.confirmTitle")}
@@ -1507,18 +1501,12 @@ export function ReliabilityCenterModal({
             <button
               type="button"
               className="btn btn--ghost"
-              onClick={() => setConfirmClearGoalOrch(false)}
               onClick={() => setConfirmSupportZip(false)}
             >
               {t("common.cancel")}
             </button>
             <button
               type="button"
-              className="btn btn--danger"
-              onClick={doClearGoalOrch}
-              data-testid="reliab-goal-clear-confirm"
-            >
-              {t("reliability.goal.clearConfirmAction")}
               className="btn btn--solid"
               onClick={() => void doSupportZip()}
               disabled={!!busy}
@@ -1529,11 +1517,6 @@ export function ReliabilityCenterModal({
           </>
         }
       >
-        <p className="app-dialog__msg" style={{ margin: 0, padding: "12px 16px" }}>
-          {t("reliability.goal.clearConfirmMessage", {
-            count: clearGoalOrchPlan.cleared,
-          })}
-        </p>
         <div
           className="app-dialog__msg"
           style={{ margin: 0, padding: "12px 16px" }}
@@ -1615,6 +1598,41 @@ export function ReliabilityCenterModal({
           </details>
         </div>
       </GlassModal>
+
+      <GlassModal
+        open={confirmClearGoalOrch}
+        onClose={() => setConfirmClearGoalOrch(false)}
+        title={t("reliability.goal.clearConfirmTitle")}
+        size="sm"
+        closeLabel={t("common.cancel")}
+        titleId="reliab-goal-clear-title"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setConfirmClearGoalOrch(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={doClearGoalOrch}
+              data-testid="reliab-goal-clear-confirm"
+            >
+              {t("reliability.goal.clearConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg" style={{ margin: 0, padding: "12px 16px" }}>
+          {t("reliability.goal.clearConfirmMessage", {
+            count: clearGoalOrchPlan.cleared,
+          })}
+        </p>
+      </GlassModal>
+
       {clearAuditPortal}
     </div>
   );

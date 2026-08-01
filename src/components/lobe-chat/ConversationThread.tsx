@@ -1214,14 +1214,7 @@ export function ConversationThread({
                 (m.toolCallId || "").trim() ||
                 (m.id.startsWith("tool-") ? m.id.slice(5) : "");
               // Use woven list — parent `messages` may lag display-layer weave.
-              // Host vision/X: also hide journal row when family already inlined.
-              if (
-                tcid &&
-                isToolInlinedInAssistants(wovenMessages, tcid, {
-                  toolKind: m.toolKind,
-                  title: m.content || m.toolKind,
-                })
-              ) {
+              if (tcid && isToolInlinedInAssistants(wovenMessages, tcid)) {
                 return virtualized ? (
                   <div
                     key={m.id}
@@ -1503,11 +1496,8 @@ export function ConversationThread({
               const isFindHit = !!findHitMessageIds?.has(m.id);
               const isFindCurrent = findActive?.messageId === m.id;
               const isNodeFocus = focusMessageId === m.id;
-              // Hide regenerate while session is busy (host vision/X wait, stream).
               const canRegenError =
-                !!onRegenerateAssistant &&
-                regenerableAssistantId === m.id &&
-                !!canRegenerate;
+                !!onRegenerateAssistant && regenerableAssistantId === m.id;
               // Codex-style soft notice — muted pill, no red box.
               return wrap(
                 <div
@@ -1814,11 +1804,8 @@ export function ConversationThread({
                 actions={(() => {
                   if (m.streaming) return null;
                   const showCopy = !!m.content.trim();
-                  // Hide regen during busy turns (host side-channel wait / stream).
                   const showRegen =
-                    !!onRegenerateAssistant &&
-                    regenerableAssistantId === m.id &&
-                    !!canRegenerate;
+                    !!onRegenerateAssistant && regenerableAssistantId === m.id;
                   if (!showCopy && !showRegen) return null;
                   const deepLink =
                     sessionId != null

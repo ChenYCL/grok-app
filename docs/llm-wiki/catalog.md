@@ -6,8 +6,6 @@
 
 **UI 只展示官方真正可用的模型。服务商是后端渠道，只在设置 → 账户 → 自定义提供商切换。**
 
-**官方工具注入**（DeepSeek 等自定义主模型）：设置 → 账户 → **拓展** →「注入官方工具能力」。MCP `official-aux` 经隔离 `grok -p` 提供 `web_search` / 全部 `x_*` / 识图。详见 [model-routing.md](./model-routing.md)。
-
 | 来源 | 说明 |
 |------|------|
 | `models_cache.json` | CLI 官方目录 |
