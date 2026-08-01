@@ -385,7 +385,6 @@ fn kill_tracked(pid: u32, pgid: Option<i32>) {
             std::thread::sleep(Duration::from_millis(200));
             let _ = libc_kill(-g, 9);
             let _ = libc_waitpid(pid as i32);
-            return;
         }
     }
     #[cfg(windows)]

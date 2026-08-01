@@ -4,6 +4,7 @@
 //! We take an exclusive lock around read-modify-write of index files so the
 //! index is not half-written, and use temp+rename for atomic replace.
 
+#![allow(dead_code)] // residual-clippy: is_lock_busy helper
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -44,6 +45,7 @@ pub fn lock_exclusive(target: &Path) -> Result<ExclusiveLock, String> {
     }
     let file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&path)
@@ -160,6 +162,7 @@ mod tests {
         // Second lock should fail quickly if we shrink wait — use direct try.
         let file = OpenOptions::new()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(lock_path_for(&path))

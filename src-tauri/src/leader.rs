@@ -8,6 +8,7 @@
 //! The app may spawn a background leader and track its PID for stop; externally
 //! started leaders are still visible via socket probe + `leader list`.
 
+#![allow(dead_code)] // residual-clippy: mask_secret
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Mutex;
@@ -502,7 +503,6 @@ fn kill_tracked(pid: u32, pgid: Option<i32>) {
             let _ = libc_kill(-g, 9);
             // Reap best-effort (if we are parent — usually not after setsid)
             let _ = libc_waitpid(pid as i32);
-            return;
         }
     }
     #[cfg(windows)]

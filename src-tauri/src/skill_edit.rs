@@ -8,6 +8,7 @@
 //!
 //! Vendor/bundled/plugin trees are not allowlisted. Path traversal is rejected.
 
+#![allow(dead_code)] // residual-clippy: path_under_root helper
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;

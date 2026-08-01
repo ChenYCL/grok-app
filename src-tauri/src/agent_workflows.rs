@@ -17,6 +17,7 @@
 //!
 //! No visual workflow editor. Shared mode never rewrites `~/.grok/config.toml`.
 
+#![allow(dead_code)] // residual-clippy: normalize_enabled
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -26,7 +27,6 @@ use crate::agent_home_config::{set_top_level_bool, update_config_toml_if_indepen
 use serde::Serialize;
 
 use crate::cli_probe;
-use crate::paths::{agent_config_toml, ensure_app_dirs};
 use crate::process_util;
 use crate::proxy;
 use crate::store;
@@ -257,6 +257,7 @@ pub struct WorkflowRunResult {
     pub invoke_path: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_soft_fail(
     reason: &str,
     workflow_name: &str,
@@ -323,11 +324,10 @@ pub fn sanitize_workflow_name(raw: &str) -> Result<String, String> {
             if !out.ends_with('_') {
                 out.push('_');
             }
-        } else if ch == '-' || ch.is_whitespace() || ch == '.' {
-            if !out.is_empty() && !out.ends_with('-') && !out.ends_with('_') {
+        } else if (ch == '-' || ch.is_whitespace() || ch == '.')
+            && !out.is_empty() && !out.ends_with('-') && !out.ends_with('_') {
                 out.push('-');
             }
-        }
         // else drop
     }
     while out.ends_with('-') || out.ends_with('_') {

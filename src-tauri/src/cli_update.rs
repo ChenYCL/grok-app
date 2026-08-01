@@ -190,9 +190,7 @@ fn extract_json_object(s: &str) -> Option<&str> {
     }
     // Walk lines; prefer the last line that looks like a JSON object.
     s.lines()
-        .map(str::trim)
-        .filter(|l| l.starts_with('{') && l.ends_with('}'))
-        .last()
+        .map(str::trim).rfind(|l| l.starts_with('{') && l.ends_with('}'))
         .or_else(|| {
             let start = s.find('{')?;
             let end = s.rfind('}')?;

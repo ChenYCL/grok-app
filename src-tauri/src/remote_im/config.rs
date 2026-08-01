@@ -1,5 +1,6 @@
 //! Persist Remote IM channel instances under ~/.grok-app/remote/.
 
+#![allow(dead_code)] // residual-clippy: bridge path helpers
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -115,9 +116,7 @@ pub fn save_instance(
     write_secrets_map(&all)?;
 
     saved.has_credentials = has || inst.has_credentials;
-    if saved.has_credentials && saved.enabled {
-        saved.status = "configured".into();
-    } else if saved.has_credentials {
+    if saved.has_credentials {
         saved.status = "configured".into();
     } else {
         saved.status = "unconfigured".into();

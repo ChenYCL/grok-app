@@ -1,5 +1,6 @@
 //! Per-scope IM session binding (project + agent session id), disk-persisted.
 
+#![allow(dead_code)] // residual-clippy: ephemeral/reset session API
 use super::control_plane::ScopeBinding;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};

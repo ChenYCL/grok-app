@@ -13,7 +13,7 @@
 //! - Shared mode is read-only against the live `~/.grok/config.toml`.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -175,15 +175,13 @@ pub fn extract_codebase_indexing_preview(text: &str) -> String {
         }
         if in_features {
             // Keep only the codebase_indexing assignment (and blank lines around it).
-            if trimmed.starts_with("codebase_indexing")
+            if (trimmed.starts_with("codebase_indexing")
                 || trimmed.is_empty()
-                || trimmed.starts_with('#')
-            {
-                if trimmed.starts_with("codebase_indexing") || !out.is_empty() {
+                || trimmed.starts_with('#'))
+                && (trimmed.starts_with("codebase_indexing") || !out.is_empty()) {
                     out.push_str(line);
                     out.push('\n');
                 }
-            }
         }
     }
     // If we only got the header with no key, still return the header when key missing? Keep empty.
@@ -310,6 +308,7 @@ pub fn save_codebase_indexing(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_app_home(label: &str) -> PathBuf {

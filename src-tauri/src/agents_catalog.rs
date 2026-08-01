@@ -9,6 +9,7 @@
 //! Scaffold: create a SKILL-like `{Name}.md` under the active agent home or
 //! project `.grok/agents` (path-scoped; no overwrite unless `force`).
 
+#![allow(dead_code)] // residual-clippy: spawn cli arg helpers
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -155,10 +156,9 @@ pub fn agent_name_from_file_name(file_name: &str) -> Option<String> {
     let lower = base.to_ascii_lowercase();
     let stem = if let Some(s) = lower.strip_suffix(".markdown") {
         &base[..s.len()]
-    } else if let Some(s) = lower.strip_suffix(".md") {
-        &base[..s.len()]
     } else {
-        return None;
+        let s = lower.strip_suffix(".md")?;
+        &base[..s.len()]
     };
     let stem = stem.trim();
     if stem.is_empty() || stem.eq_ignore_ascii_case("readme") {
@@ -196,7 +196,7 @@ fn scan_agent_dir(dir: &Path) -> Vec<(String, PathBuf)> {
             out.push((name, path));
         }
     }
-    out.sort_by(|a, b| a.0.to_ascii_lowercase().cmp(&b.0.to_ascii_lowercase()));
+    out.sort_by_key(|a| a.0.to_ascii_lowercase());
     out
 }
 
@@ -328,7 +328,7 @@ pub struct AgentsScaffoldResult {
 /// Mirrors `src/lib/agentsDiscovery.ts` `sanitizeAgentFileStemName`.
 pub fn sanitize_agent_file_stem_name(raw: &str) -> Result<String, String> {
     // Collapse whitespace runs to a single hyphen (no leading hyphen from spaces).
-    let mut name = {
+    let name = {
         let trimmed = raw.trim();
         let mut out = String::with_capacity(trimmed.len());
         let mut prev_hyphen = false;

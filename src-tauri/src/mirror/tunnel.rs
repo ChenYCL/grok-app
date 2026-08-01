@@ -5,6 +5,7 @@
 //! Stop tears down the process group and any managed container so no orphan
 //! tunnel keeps the mirror reachable (REQUIREMENT known pitfall).
 
+#![allow(dead_code)] // residual-clippy: public_url field/method
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -555,7 +556,7 @@ pub fn extract_trycloudflare_url(line: &str) -> Option<String> {
             .find(|c: char| c.is_whitespace() || c == '|' || c == '"' || c == '\'')
             .unwrap_or(rest.len());
         let candidate = rest[..end]
-            .trim_end_matches(|c: char| matches!(c, ')' | ']' | '.' | ',' | ';' ));
+            .trim_end_matches([')', ']', '.', ',', ';']);
         if candidate.contains("trycloudflare.com") || candidate.contains("cfargotunnel.com") {
             return Some(candidate.to_string());
         }

@@ -38,7 +38,6 @@ mod media_tests;
 mod stall_tests;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use parking_lot::Mutex;
 

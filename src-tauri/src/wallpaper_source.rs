@@ -1,6 +1,7 @@
 //! Wallpaper source: X search + Imagine generate via headless Grok CLI,
 //! plus allowlisted media download into the app wallpaper library.
 
+#![allow(dead_code)] // residual-clippy: kind_from_mime
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -226,7 +227,7 @@ fn ext_from_mime_or_url(mime: &str, url: &str) -> String {
         return "webm".into();
     }
     if let Ok(u) = url::Url::parse(url) {
-        if let Some(seg) = u.path_segments().and_then(|s| s.last()) {
+        if let Some(seg) = u.path_segments().and_then(|mut s| s.next_back()) {
             if let Some(dot) = seg.rfind('.') {
                 let e = &seg[dot + 1..];
                 if e.len() <= 5 && e.chars().all(|c| c.is_ascii_alphanumeric()) {
@@ -729,10 +730,7 @@ pub async fn probe_image_reachable(client: &reqwest::Client, url: &str) -> bool 
             return false;
         }
     }
-    match resp.bytes().await {
-        Ok(b) if b.len() >= 32 => true,
-        _ => false,
-    }
+    matches!(resp.bytes().await, Ok(b) if b.len() >= 32)
 }
 
 /// Drop items whose fullUrl cannot be fetched as an image.
@@ -1229,7 +1227,7 @@ pub fn library_list(limit: Option<u32>) -> Result<Vec<WallpaperLibraryEntry>, St
     let limit = limit.unwrap_or(48).clamp(1, 200) as usize;
     let mut all: Vec<WallpaperLibraryEntry> = Vec::new();
     collect_library(&root, &root, &mut all);
-    all.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
+    all.sort_by_key(|b| std::cmp::Reverse(b.modified_ms));
     all.truncate(limit);
     for e in &all {
         crate::path_scope::grant_path(Path::new(&e.path));

@@ -13,19 +13,12 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::Mutex as AsyncMutex;
 
+#[derive(Default)]
 struct RuntimeSlot {
     handle: Option<RuntimeHandle>,
     connected: Vec<ConnectedChannelDto>,
 }
 
-impl Default for RuntimeSlot {
-    fn default() -> Self {
-        Self {
-            handle: None,
-            connected: vec![],
-        }
-    }
-}
 
 fn runtime_slot() -> &'static AsyncMutex<RuntimeSlot> {
     static SLOT: OnceLock<AsyncMutex<RuntimeSlot>> = OnceLock::new();
@@ -224,12 +217,8 @@ impl BridgeRuntime {
                 tracing::error!(error = %e, "remote_im: bridge start failed");
                 self.last_error = Some(e.clone());
                 *self.running.lock() = false;
-                let kind = classify_rim_error(&e);
-                *self.phase.lock() = if kind == RimErrorKind::RateLimit {
-                    "error".into()
-                } else {
-                    "error".into()
-                };
+                let _kind = classify_rim_error(&e);
+                *self.phase.lock() = "error".into();
                 Err(e)
             }
         }

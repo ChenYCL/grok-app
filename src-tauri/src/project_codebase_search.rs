@@ -336,7 +336,7 @@ fn search_file_content(path: &Path, query_lower: &str, query_len: usize) -> Opti
     let mut buf = vec![0u8; to_read];
     let n = f.read(&mut buf).ok()?;
     buf.truncate(n);
-    if buf.iter().any(|&b| b == 0) {
+    if buf.contains(&0) {
         return None;
     }
     let text = String::from_utf8_lossy(&buf);
@@ -682,7 +682,7 @@ pub fn search_project_codebase(
             let (mut hits, truncated, _) =
                 walk_search(&canonical, "", "name", limit, false, true);
             // Prefer recently modified when listing without a filter.
-            hits.sort_by(|a, b| b.mtime_ms.cmp(&a.mtime_ms));
+            hits.sort_by_key(|b| std::cmp::Reverse(b.mtime_ms));
             if hits.len() > limit {
                 hits.truncate(limit);
             }
@@ -714,15 +714,10 @@ pub fn search_project_codebase(
     let want_name = mode == "name" || mode == "all";
     let want_content = mode == "content" || mode == "all";
 
-    let mut engine = "walk".to_string();
-    let mut hits: Vec<CodebaseSearchHit> = Vec::new();
-    let mut truncated = false;
-
-    if want_content {
+    let (engine, hits, truncated) = if want_content {
         if let Some((rg_hits, rg_trunc)) = try_rg_content(&canonical, q, limit) {
-            engine = "rg".to_string();
-            hits = rg_hits;
-            truncated = rg_trunc;
+            let mut hits = rg_hits;
+            let mut truncated = rg_trunc;
 
             // When mode is `all`, also add name-only matches not already present.
             if want_name {
@@ -755,22 +750,19 @@ pub fn search_project_codebase(
                     truncated = true;
                 }
             }
+            ("rg".to_string(), hits, truncated)
         } else {
             // Walk fallback for content (+ name when mode all).
             let (walk_hits, walk_trunc, _) =
                 walk_search(&canonical, q, mode, limit, want_content, want_name);
-            engine = "walk".to_string();
-            hits = walk_hits;
-            truncated = walk_trunc;
+            ("walk".to_string(), walk_hits, walk_trunc)
         }
     } else {
         // name only
         let (walk_hits, walk_trunc, _) =
             walk_search(&canonical, q, "name", limit, false, true);
-        engine = "walk".to_string();
-        hits = walk_hits;
-        truncated = walk_trunc;
-    }
+        ("walk".to_string(), walk_hits, walk_trunc)
+    };
 
     CodebaseSearchResult {
         hits,

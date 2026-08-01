@@ -492,9 +492,7 @@ async fn execute_tool(
                 .and_then(|x| x.as_bool())
                 == Some(true)
             {
-                payload.as_object_mut().map(|o| {
-                    o.insert("status".into(), json!("permission_pending"));
-                });
+                if let Some(o) = payload.as_object_mut() { o.insert("status".into(), json!("permission_pending")); }
                 set_active_tool(host, app, Some(name), Some("permission_pending"));
             }
             emit_tool_event(app, payload.clone());
@@ -675,7 +673,7 @@ async fn execute_tool_inner(
             let live = mgr.snapshot();
             let state_str = format!("{:?}", live.state).to_lowercase();
             // Prefer serde snake_case via json round-trip for honesty.
-            let state_json = serde_json::to_value(&live.state)
+            let state_json = serde_json::to_value(live.state)
                 .ok()
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or(state_str);
@@ -713,6 +711,7 @@ async fn execute_tool_inner(
     Ok(out)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_realtime_loop(
     host: Arc<VoiceHost>,
     app: AppHandle,

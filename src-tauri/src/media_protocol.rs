@@ -317,7 +317,7 @@ fn request_origin_allowed(request: &Request<Vec<u8>>) -> bool {
         // No Origin: same-document / <img>/<video> loads from the main webview.
         return true;
     };
-    allowed_origins().iter().any(|o| *o == origin)
+    allowed_origins().contains(&origin)
 }
 
 fn cors_origin_header(request: &Request<Vec<u8>>) -> Option<&'static str> {

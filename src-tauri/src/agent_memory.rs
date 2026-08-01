@@ -3,6 +3,7 @@
 //! CLI: `--experimental-memory` / `--no-memory`, `GROK_MEMORY`, `[memory] enabled`,
 //! `grok memory clear`.
 
+#![allow(dead_code)] // residual-clippy: search helpers
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -388,11 +389,10 @@ pub fn extract_project_path_hints(text: &str) -> Vec<String> {
             }
         }
         // Fallback: first absolute path-looking token on early lines.
-        if t.starts_with('/') || (t.len() > 2 && t.as_bytes()[1] == b':' && t.as_bytes()[0].is_ascii_alphabetic()) {
-            if t.len() > 2 && !out.iter().any(|x| x == t) {
+        if (t.starts_with('/') || (t.len() > 2 && t.as_bytes()[1] == b':' && t.as_bytes()[0].is_ascii_alphabetic()))
+            && t.len() > 2 && !out.iter().any(|x| x == t) {
                 out.push(t.to_string());
             }
-        }
     }
     out
 }
@@ -556,7 +556,7 @@ fn read_preview_text(path: &Path, kind: &str) -> String {
     let n = f.read(&mut buf).unwrap_or(0);
     buf.truncate(n);
     // Skip obvious binary.
-    if buf.iter().any(|&b| b == 0) {
+    if buf.contains(&0) {
         return String::new();
     }
     let text = String::from_utf8_lossy(&buf);
@@ -1012,7 +1012,7 @@ fn search_file_content(path: &Path, query_lower: &str, query_len: usize) -> Opti
     let mut buf = vec![0u8; to_read];
     let n = f.read(&mut buf).ok()?;
     buf.truncate(n);
-    if buf.iter().any(|&b| b == 0) {
+    if buf.contains(&0) {
         return None;
     }
     let text = String::from_utf8_lossy(&buf);
@@ -1387,7 +1387,10 @@ mod tests {
     #[test]
     fn app_search_kind_honesty_no_cli_hybrid() {
         // CLI 0.2.117: no host hybrid path — never invent hybrid for App browser.
-        assert!(!CLI_MEMORY_HYBRID_SEARCH_AVAILABLE);
+        #[allow(clippy::assertions_on_constants)]
+        {
+            assert!(!CLI_MEMORY_HYBRID_SEARCH_AVAILABLE);
+        }
         assert_eq!(resolve_app_memory_search_kind(false), "keyword");
         assert_eq!(
             resolve_app_memory_search_kind(true),

@@ -1,6 +1,7 @@
 //! Pure control-plane transitions for Remote IM (/p /r / bind / resume).
 //! Network-free and unit-tested against production functions.
 
+#![allow(dead_code)] // residual-clippy: CLI arg builders for future grok turn variants
 use super::context::{ContextCompactSnapshot, ContextUsageSnapshot};
 use super::types::TrustedProject;
 use serde::{Deserialize, Serialize};
@@ -220,7 +221,7 @@ pub fn pick_project<'a>(
             let _ = rest;
         }
     }
-    if let Some((num, _)) = q_raw.split_once(|c: char| c == '.' || c == '．' || c == '、') {
+    if let Some((num, _)) = q_raw.split_once(['.', '．', '、']) {
         if let Ok(n) = num.trim().parse::<usize>() {
             if n >= 1 && n <= projects.len() {
                 return Some(&projects[n - 1]);
@@ -629,7 +630,7 @@ fn build_telegram_selection_card(
         .filter_map(|(label, action)| {
             let callback_data = encode_compact_card_action(&action);
             // Telegram rejects the whole message if any callback_data exceeds 64 bytes.
-            if callback_data.as_bytes().len() > 64 {
+            if callback_data.len() > 64 {
                 return None;
             }
             Some(serde_json::json!([{
@@ -1104,7 +1105,7 @@ mod tests {
             .as_str()
             .unwrap();
         assert_eq!(callback, "project:p1");
-        assert!(callback.as_bytes().len() <= 64);
+        assert!(callback.len() <= 64);
     }
 
     #[test]

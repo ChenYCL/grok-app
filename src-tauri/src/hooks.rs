@@ -3,6 +3,7 @@
 //! Management is list / reveal / open-folder only — no visual JSON editor.
 //! Hook file format lives in the Grok Build user guide (`10-hooks.md`).
 
+#![allow(dead_code)] // residual-clippy: join_hooks_path helper
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;

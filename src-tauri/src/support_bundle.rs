@@ -101,7 +101,7 @@ pub fn write_support_bundle(
                 Some((modified, p))
             })
             .collect();
-        entries.sort_by(|a, b| b.0.cmp(&a.0));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.0));
         for (i, (_mtime, path)) in entries.into_iter().take(MAX_LOG_FILES).enumerate() {
             let name = path
                 .file_name()
@@ -510,7 +510,7 @@ fn append_app_logs(
             Some((modified, p))
         })
         .collect();
-    entries.sort_by(|a, b| b.0.cmp(&a.0));
+    entries.sort_by_key(|b| std::cmp::Reverse(b.0));
     for (i, (_mtime, path)) in entries.into_iter().take(MAX_LOG_FILES).enumerate() {
         let name = path
             .file_name()
@@ -535,7 +535,7 @@ fn append_agent_session_files(
 ) -> Result<(), String> {
     let mut files: Vec<(SystemTime, PathBuf, String)> = Vec::new();
     collect_agent_files(agent_dir, agent_dir, &mut files, 0)?;
-    files.sort_by(|a, b| b.0.cmp(&a.0));
+    files.sort_by_key(|b| std::cmp::Reverse(b.0));
 
     let mut total: u64 = 0;
     let mut count = 0usize;

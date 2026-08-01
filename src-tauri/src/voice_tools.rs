@@ -1,6 +1,7 @@
 //! Host tools exposed to the live voice model for agent delegation.
 //! Pure definitions + argument parsing (testable without network).
 
+#![allow(dead_code)] // residual-clippy: normalize_tool_status
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 

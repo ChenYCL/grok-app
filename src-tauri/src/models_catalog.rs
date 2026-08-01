@@ -105,6 +105,7 @@ fn parse_reasoning_efforts(body: &serde_json::Value) -> Vec<ReasoningEffort> {
         .collect()
 }
 
+#[allow(clippy::type_complexity)]
 fn read_models_cache(
     path: &PathBuf,
 ) -> Option<(

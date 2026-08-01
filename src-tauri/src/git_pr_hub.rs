@@ -414,7 +414,7 @@ fn parse_json_value(stdout: &str) -> Result<serde_json::Value, String> {
         return Err("empty JSON".into());
     }
     let start = trimmed
-        .find(|c| c == '[' || c == '{')
+        .find(['[', '{'])
         .ok_or_else(|| "no JSON object/array".to_string())?;
     serde_json::from_str(&trimmed[start..]).map_err(|e| format!("invalid JSON: {e}"))
 }
@@ -692,7 +692,7 @@ pub fn merge_pr_comments(
 ) -> Vec<GitPrCommentEntry> {
     let mut seen = std::collections::HashSet::new();
     let mut merged = Vec::new();
-    for c in comments.into_iter().chain(reviews.into_iter()) {
+    for c in comments.into_iter().chain(reviews) {
         if c.id.is_empty() || !seen.insert(c.id.clone()) {
             continue;
         }
@@ -710,6 +710,7 @@ pub fn merge_pr_comments(
 }
 
 /// Pure parse for `gh pr view --json comments,reviews,url,number`.
+#[allow(clippy::type_complexity)]
 pub fn parse_gh_pr_comments_json(
     stdout: &str,
 ) -> Result<(Vec<GitPrCommentEntry>, Option<String>, Option<u64>), String> {

@@ -1,5 +1,6 @@
 //! Feishu / Lark long-connection (WS) + REST outbound — pure Rust.
 
+#![allow(dead_code)] // residual-clippy: download_message_resource
 use super::super::outbound::{http_client, opt_str, secret_or_opt};
 use super::super::pb_frame::{decode_frame, encode_frame, Frame, Header};
 use super::super::types::{ChannelInstance, IncomingMessage};
@@ -79,6 +80,7 @@ async fn run_once(
     ping_iv.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     // fragment cache: message_id -> (sum, parts)
+    #[allow(clippy::type_complexity)]
     let mut fragments: HashMap<String, (usize, Vec<Option<Vec<u8>>>)> = HashMap::new();
 
     loop {
@@ -242,6 +244,7 @@ async fn run_once(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn merge_payload(
     fragments: &mut HashMap<String, (usize, Vec<Option<Vec<u8>>>)>,
     headers: &HashMap<String, String>,
@@ -706,36 +709,6 @@ fn preprocess_feishu_markdown(md: &str) -> String {
     out
 }
 
-#[cfg(test)]
-mod md_tests {
-    use super::*;
-
-    #[test]
-    fn plain_text_stays_text_type() {
-        let (ty, body) = build_reply_payload("hello world");
-        assert_eq!(ty, "text");
-        assert!(body.contains("hello world"));
-    }
-
-    #[test]
-    fn markdown_uses_interactive_card() {
-        let (ty, body) = build_reply_payload("**bold** and\n```rs\nfn main(){}\n```");
-        assert_eq!(ty, "interactive");
-        assert!(body.contains("markdown"));
-        assert!(body.contains("schema"));
-    }
-
-    #[test]
-    fn many_tables_use_post() {
-        let mut s = String::new();
-        for i in 0..6 {
-            s.push_str(&format!("| H{i} |\n|---|\n| v |\n\n"));
-        }
-        let (ty, _) = build_reply_payload(&s);
-        assert_eq!(ty, "post");
-    }
-}
-
 fn receive_id_type(id: &str) -> &'static str {
     if id.starts_with("ou_") || id.starts_with("on_") {
         "open_id"
@@ -847,9 +820,7 @@ pub fn card_action_to_content(event: &Value) -> Option<String> {
         let probe = event
             .pointer("/event/action/value")
             .or_else(|| event.pointer("/action/value"));
-        if probe.is_none() {
-            return None;
-        }
+        probe?;
     }
     let value = event
         .pointer("/event/action/value")
@@ -891,3 +862,34 @@ pub fn card_action_ids(event: &Value) -> (String, String) {
     };
     (chat_id, sender)
 }
+
+#[cfg(test)]
+mod md_tests {
+    use super::*;
+
+    #[test]
+    fn plain_text_stays_text_type() {
+        let (ty, body) = build_reply_payload("hello world");
+        assert_eq!(ty, "text");
+        assert!(body.contains("hello world"));
+    }
+
+    #[test]
+    fn markdown_uses_interactive_card() {
+        let (ty, body) = build_reply_payload("**bold** and\n```rs\nfn main(){}\n```");
+        assert_eq!(ty, "interactive");
+        assert!(body.contains("markdown"));
+        assert!(body.contains("schema"));
+    }
+
+    #[test]
+    fn many_tables_use_post() {
+        let mut s = String::new();
+        for i in 0..6 {
+            s.push_str(&format!("| H{i} |\n|---|\n| v |\n\n"));
+        }
+        let (ty, _) = build_reply_payload(&s);
+        assert_eq!(ty, "post");
+    }
+}
+

@@ -16,6 +16,7 @@
 //! Never writes official `auth.json` into the main agent-home while a custom
 //! relay is active (OIDC pollution).
 
+#![allow(dead_code)] // residual-clippy: x_search / aux helpers retained for tests and future host wiring
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -426,7 +427,6 @@ No repo edits. Prefer built-in tools. Keep the final answer concise and complete
                 AcpEvent::Stream {
                     kind,
                     text,
-                    done: _,
                     ..
                 } => {
                     if text.is_empty() {
@@ -1732,11 +1732,10 @@ pub fn extract_topic_entity_from_context(prior: &str) -> Option<String> {
         // Prefer CamelCase / mixed or known-looking brands
         let has_upper = t.chars().any(|c| c.is_ascii_uppercase());
         let has_digit = t.chars().any(|c| c.is_ascii_digit());
-        if has_upper || has_digit || t.len() >= 5 {
-            if !candidates.iter().any(|c| c.eq_ignore_ascii_case(t)) {
+        if (has_upper || has_digit || t.len() >= 5)
+            && !candidates.iter().any(|c| c.eq_ignore_ascii_case(t)) {
                 candidates.push(t.to_string());
             }
-        }
     }
     // Prefer the last (most recent) strong candidate
     if let Some(c) = candidates.last() {
@@ -1762,11 +1761,10 @@ pub fn extract_topic_entity_from_context(prior: &str) -> Option<String> {
                     })
                     .collect();
                 let entity = entity.trim();
-                if entity.chars().count() >= 2 && entity.chars().count() <= 20 {
-                    if !query_needs_coref(entity) && entity != "信息" && entity != "资讯" {
+                if entity.chars().count() >= 2 && entity.chars().count() <= 20
+                    && !query_needs_coref(entity) && entity != "信息" && entity != "资讯" {
                         return Some(entity.to_string());
                     }
-                }
             }
         }
     }

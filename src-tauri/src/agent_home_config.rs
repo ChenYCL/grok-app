@@ -7,6 +7,7 @@
 //! Pure TOML helpers are line-oriented upserts (no full parse) so unrelated
 //! sections and secrets stay intact.
 
+#![allow(dead_code)] // residual-clippy: generic toml get/set helpers
 use std::fs;
 use std::path::PathBuf;
 
@@ -47,11 +48,10 @@ fn bool_lit(v: bool) -> &'static str {
 
 fn finish_join(original: &str, lines: &[String]) -> String {
     let mut joined = lines.join("\n");
-    if original.ends_with('\n') || original.is_empty() {
-        if !joined.ends_with('\n') {
+    if (original.ends_with('\n') || original.is_empty())
+        && !joined.ends_with('\n') {
             joined.push('\n');
         }
-    }
     joined
 }
 
@@ -346,7 +346,6 @@ mod tests {
         assert_eq!(again.matches("workflows_enabled").count(), 1);
     }
 
-    #[test]
     #[test]
     fn ensure_compat_mcp_disabled_sets_both() {
         let t = ensure_compat_mcp_disabled("");

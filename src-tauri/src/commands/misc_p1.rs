@@ -132,6 +132,7 @@ pub async fn memory_embed_config_get(
 /// Write allowlisted memory embedding keys into agent-home config.toml only
 /// (independent mode). Soft-respawns so the next turn reloads the agent profile.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn memory_embed_config_set(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
@@ -208,6 +209,7 @@ pub async fn agent_config_edit_get(
 /// Write allowlisted keys into agent-home config.toml only (independent mode).
 /// Soft-respawns so the next turn reloads profile.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn agent_config_edit_set(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
@@ -880,17 +882,17 @@ pub async fn process_budget_snapshot(
 pub async fn audit_ledger_list(
     limit: Option<u32>,
 ) -> Result<Vec<crate::audit_ledger::AuditLedgerEntry>, String> {
-    Ok(tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || {
         crate::audit_ledger::list_recent(limit)
     })
     .await
-    .map_err(|e| format!("audit_ledger_list: {e}"))?)
+    .map_err(|e| format!("audit_ledger_list: {e}"))
 }
 
 /// Clear the on-disk audit ledger (`{app_data}/audit/tool_ledger.jsonl`).
 #[tauri::command]
 pub async fn audit_ledger_clear() -> Result<serde_json::Value, String> {
-    tauri::async_runtime::spawn_blocking(|| crate::audit_ledger::clear_ledger())
+    tauri::async_runtime::spawn_blocking(crate::audit_ledger::clear_ledger)
         .await
         .map_err(|e| format!("audit_ledger_clear: {e}"))??;
     Ok(serde_json::json!({ "ok": true }))

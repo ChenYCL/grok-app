@@ -606,12 +606,11 @@ pub fn save_agent_config_edit(patch: &AgentConfigEditPatch) -> Result<AgentConfi
             s.permission_policy = policy.to_string();
             settings_dirty = true;
         }
-    } else if patch.yolo == Some(true) {
-        if s.permission_policy != "always_approve" {
+    } else if patch.yolo == Some(true)
+        && s.permission_policy != "always_approve" {
             s.permission_policy = "always_approve".into();
             settings_dirty = true;
         }
-    }
     if let Some(en) = patch.subagents_enabled {
         if s.subagents_enabled != en {
             s.subagents_enabled = en;

@@ -317,7 +317,7 @@ fn grpc_web_trailer_fields(data: &[u8]) -> std::collections::BTreeMap<String, St
         }
         if flags & 0x80 != 0 {
             if let Ok(text) = std::str::from_utf8(&data[start..end]) {
-                for line in text.split(|c| c == '\n' || c == '\r') {
+                for line in text.split(['\n', '\r']) {
                     if line.is_empty() {
                         continue;
                     }

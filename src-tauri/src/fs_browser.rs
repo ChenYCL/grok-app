@@ -1,6 +1,7 @@
 //! Project-scoped filesystem browser for the right-pane resource viewer.
 //! All paths are resolved under an explicit project root (no escape).
 
+#![allow(dead_code)] // residual-clippy: MAX_BINARY_BYTES const
 use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
@@ -62,6 +63,7 @@ fn file_mtime_ms(path: &Path) -> u64 {
         .unwrap_or(0)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn ok_result(
     path: &Path,
     relative_path: String,
@@ -250,7 +252,7 @@ fn xml_to_plain(xml: &str) -> String {
             // Paragraph / break markers → newline
             let rest: String = chars.clone().take(12).collect();
             let lower = rest.to_ascii_lowercase();
-            if lower.starts_with("w:p ")
+            if (lower.starts_with("w:p ")
                 || lower.starts_with("w:p>")
                 || lower.starts_with("/w:p>")
                 || lower.starts_with("w:br")
@@ -259,12 +261,10 @@ fn xml_to_plain(xml: &str) -> String {
                 || lower.starts_with("/text:p")
                 || lower.starts_with("a:p ")
                 || lower.starts_with("a:p>")
-                || lower.starts_with("/a:p")
-            {
-                if !out.ends_with('\n') {
+                || lower.starts_with("/a:p"))
+                && !out.ends_with('\n') {
                     out.push('\n');
                 }
-            }
             continue;
         }
         if c == '>' {
@@ -1062,7 +1062,7 @@ fn find_one_suffix(root: &Path, suffix: &str) -> Option<PathBuf> {
     // (template layouts often share the same 2-segment tail).
     let max_visits: usize = if is_basename { 50_000 } else { 30_000 };
 
-    let is_priority = |name: &str| priority.iter().any(|p| *p == name);
+    let is_priority = |name: &str| priority.contains(&name);
 
     let matches_file = |path: &Path, file_name: &str| -> bool {
         if is_basename {

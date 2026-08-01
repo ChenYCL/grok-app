@@ -13,6 +13,7 @@
 //! GET http://127.0.0.1:{port}/v1/media?t={token}&p={urlencode(abs_path)}
 //! ```
 
+#![allow(dead_code)] // residual-clippy: url helper variants
 use std::io::{Read, Seek, SeekFrom};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -208,7 +209,7 @@ fn request_origin_allowed(headers: &HeaderMap) -> bool {
         .and_then(|v| v.to_str().ok())
     {
         None => true, // same-document / <img>/<video> from main webview
-        Some(origin) => allowed_origins().iter().any(|o| *o == origin),
+        Some(origin) => allowed_origins().contains(&origin),
     }
 }
 

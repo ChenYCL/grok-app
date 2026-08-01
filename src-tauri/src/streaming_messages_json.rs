@@ -106,7 +106,6 @@ pub fn probe_streaming_messages_json(
     include_partial: bool,
 ) -> StreamingMessagesJsonProbeResult {
     let started = Instant::now();
-    let include_partial = include_partial;
     let settings = store::load_settings();
     let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
 
@@ -245,11 +244,7 @@ pub fn probe_streaming_messages_json(
             "streaming-messages-json probe empty after non-zero exit"
         );
         // Older CLI rejecting the flag → treat as soft fail.
-        let reason = if supported.is_none() {
-            "spawn_failed"
-        } else {
-            "spawn_failed"
-        };
+        let reason = "spawn_failed";
         return soft_fail(
             reason,
             Some(cli_path),

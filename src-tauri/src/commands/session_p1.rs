@@ -349,7 +349,7 @@ pub fn open_http_url(url: &str) -> Result<(), String> {
             .arg(url)
             .status()
             .map_err(|e| e.to_string())?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(target_os = "windows")]
     {

@@ -16,7 +16,7 @@
 //!   point users at CLI `/privacy` instead of a fake App toggle.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -336,6 +336,7 @@ pub fn save_privacy_config(patch: &PrivacyConfigPatch) -> Result<PrivacyConfigSn
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_app_home(label: &str) -> PathBuf {

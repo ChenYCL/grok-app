@@ -13,6 +13,7 @@
 //! so the next agent process reloads config. Older CLIs that ignore the key
 //! soft-fail.
 
+#![allow(dead_code)] // residual-clippy: normalize_enabled
 use crate::agent_home_config::{set_top_level_bool, update_config_toml_if_independent};
 
 pub const CONFIG_KEY: &str = "auto_wake_enabled";

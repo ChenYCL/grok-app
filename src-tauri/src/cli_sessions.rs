@@ -5,6 +5,7 @@
 //!   - summary.json — title, timestamps, cwd
 //!   - chat_history.jsonl — line-delimited messages
 
+#![allow(dead_code)] // residual-clippy: pick_latest helper
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -970,7 +971,7 @@ fn read_summary_bits(
         .generated_title
         .or(parsed.session_summary)
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| format!("CLI {}", &agent_id.chars().take(8).collect::<String>()));
+        .unwrap_or_else(|| format!("CLI {}", agent_id.chars().take(8).collect::<String>()));
     let cwd = parsed
         .info
         .as_ref()
@@ -1499,11 +1500,10 @@ fn is_strict_cli_session_dir(path: &Path, sessions_root: &Path, agent_id: &str) 
         match c {
             std::path::Component::Normal(os) => {
                 // First segment is percent-encoded cwd; second must be agent id.
-                if depth == 1 {
-                    if os.to_str() != Some(name) {
+                if depth == 1
+                    && os.to_str() != Some(name) {
                         return false;
                     }
-                }
                 depth += 1;
                 if depth > 2 {
                     return false;

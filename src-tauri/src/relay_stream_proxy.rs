@@ -400,11 +400,11 @@ async fn proxy_request(req: Request) -> Result<Response, String> {
             .bytes()
             .await
             .map_err(|e| format!("upstream body: {e}"))?;
-        return Ok(Response::builder()
+        return Response::builder()
             .status(status)
             .header(header::CONTENT_TYPE, content_type.as_str())
             .body(Body::from(bytes))
-            .map_err(|e| e.to_string())?);
+            .map_err(|e| e.to_string());
     }
 
     // Byte pending holds incomplete UTF-8 across chunk boundaries; line_buf is
@@ -446,12 +446,12 @@ async fn proxy_request(req: Request) -> Result<Response, String> {
         }
     };
 
-    Ok(Response::builder()
+    Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, "text/event-stream")
         .header(header::CACHE_CONTROL, "no-cache")
         .body(Body::from_stream(filtered))
-        .map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
 }
 
 fn filter_request_headers(src: &HeaderMap) -> HeaderMap {

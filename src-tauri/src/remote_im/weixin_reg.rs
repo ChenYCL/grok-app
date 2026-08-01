@@ -1,5 +1,6 @@
 //! Weixin personal (ilink) QR login — mirrors cc-connect weixin setup.
 
+#![allow(dead_code)] // residual-clippy: scan/verify helpers for multi-channel reg
 use super::{ScanBeginDto, ScanPollDto};
 use serde::Deserialize;
 use serde_json::Value;
@@ -25,7 +26,7 @@ struct QrState {
 static QR_STATE: Mutex<Option<QrState>> = Mutex::new(None);
 
 #[derive(Debug, Deserialize)]
-struct BotQrResponse {
+pub(crate) struct BotQrResponse {
     #[serde(default, rename = "qrcode")]
     qrcode: String,
     #[serde(default, rename = "qrcode_img_content")]

@@ -13,6 +13,7 @@
 //! `rules`) are left untouched. Writes target the active GROK_HOME for the
 //! current `session_data_mode` (agent-home or `~/.grok`).
 
+#![allow(dead_code)] // residual-clippy: rule mutate helpers
 use std::fs;
 use std::path::PathBuf;
 

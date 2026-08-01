@@ -1,6 +1,7 @@
 //! Real ACP client: spawn `grok agent stdio`, JSON-RPC line framing.
 //! Default production transport. Mock only when GROK_APP_ACP=mock.
 
+#![allow(dead_code)] // residual-clippy: spawn-flag helpers and unused field reads kept for protocol parity
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -1972,6 +1973,7 @@ pub fn parse_usage_update(kind: &str, update: &Value) -> Option<AcpEvent> {
 }
 
 /// Parse compact-related sessionUpdate → (trigger, before, after, summary, note)
+#[allow(clippy::type_complexity)]
 fn parse_context_compact_update(
     kind: &str,
     update: &Value,
@@ -3996,7 +3998,7 @@ pub fn should_abort_provider_retry(attempt: u32, max_retries: u32, status: &str)
     {
         return true;
     }
-    let cap = max_retries.min(HOST_PROVIDER_MAX_RETRIES).max(1);
+    let cap = max_retries.clamp(1, HOST_PROVIDER_MAX_RETRIES);
     // Soft-fail statuses: wait until we are near the cap so mid-stream flaps
     // (common on 中转) get more reconnect room before the turn is killed.
     if status.contains("fail") || status == "error" {

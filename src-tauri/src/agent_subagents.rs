@@ -3,6 +3,7 @@
 //! CLI: `--no-subagents`, `GROK_SUBAGENTS`, `[subagents] enabled`.
 //! Enabled by default; when App setting is off, force-disable at spawn.
 
+#![allow(dead_code)] // residual-clippy: force disable helper
 use std::fs;
 
 use crate::paths::{agent_config_toml, ensure_app_dirs};

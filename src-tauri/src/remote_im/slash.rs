@@ -231,7 +231,7 @@ mod tests {
             parse_slash("/r"),
             Some(BuiltinCommand::Resume { query: None })
         );
-        assert!(matches!(parse_slash("hi"), None));
+        assert!(parse_slash("hi").is_none());
     }
 
     #[test]

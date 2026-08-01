@@ -3,11 +3,11 @@
 #[tauri::command]
 pub async fn providers_cc_switch_scan(
 ) -> Result<crate::cc_switch_import::CcSwitchScanResult, String> {
-    Ok(tauri::async_runtime::spawn_blocking(
+    tauri::async_runtime::spawn_blocking(
         crate::cc_switch_import::scan_cc_switch_providers,
     )
     .await
-    .map_err(|e| e.to_string())?)
+    .map_err(|e| e.to_string())
 }
 
 /// Import selected CC Switch Grok Build providers into App custom providers.
@@ -104,6 +104,7 @@ pub async fn providers_activate(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn providers_upsert(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,

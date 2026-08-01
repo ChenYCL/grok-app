@@ -4,6 +4,7 @@
 //! Billing is best-effort HTTP (same field shape as CLI `/usage` / billing extension).
 //! Heatmap + call logs are derived from local CLI session signals (and optional app journal).
 
+#![allow(dead_code)] // residual-clippy: billing helpers not yet wired in UI path
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -730,7 +731,7 @@ fn jwt_payload_unverified(token: &str) -> Option<Value> {
     }
     let payload_b64 = parts[1];
     let mut s = payload_b64.replace('-', "+").replace('_', "/");
-    while s.len() % 4 != 0 {
+    while !s.len().is_multiple_of(4) {
         s.push('=');
     }
     use base64::Engine;
@@ -967,7 +968,7 @@ fn local_usage_from_roots(
         }
     }
 
-    logs.sort_by(|a, b| b.0.cmp(&a.0));
+    logs.sort_by_key(|b| std::cmp::Reverse(b.0));
     logs.truncate(log_limit);
     let call_logs: Vec<CallLogEntry> = logs.into_iter().map(|(_, e)| e).collect();
 
@@ -1323,7 +1324,7 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
     // tokio::process lets us race this against the Cancel notifier.
     let mut cmd = tokio::process::Command::new(&cli);
     cmd.arg("login")
-        .arg(&arg)
+        .arg(arg)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     // Login may open a browser; still hide the console flash on Windows.
@@ -1457,11 +1458,10 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
     let mut device_code = None;
     for line in combined.lines() {
         let t = line.trim();
-        if t.starts_with("http://") || t.starts_with("https://") {
-            if device_url.is_none() {
+        if (t.starts_with("http://") || t.starts_with("https://"))
+            && device_url.is_none() {
                 device_url = Some(t.to_string());
             }
-        }
         // Common patterns: "code: ABCD-EFGH" / "enter code ABCD"
         if let Some(rest) = t
             .strip_prefix("code:")

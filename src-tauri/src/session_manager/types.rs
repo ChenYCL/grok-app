@@ -7,7 +7,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 
 use crate::acp_client::{AcpClient, StreamKind};
-use crate::error::{AgentError, AgentErrorCode};
+use crate::error::AgentError;
 use crate::journal_throttle::JournalWriteThrottle;
 use crate::mock_acp::MockStreamHandle;
 use crate::permission::{PermissionPolicy, SessionAllowCache};
@@ -150,7 +150,7 @@ pub(super) struct PendingStreamEmit {
     pub(super) first_at: Instant,
 }
 
-pub(super) struct LiveSession {
+pub(crate) struct LiveSession {
     pub(super) app_session_id: String,
     /// Stable id for the agent process / event pump (not the App session id).
     pub(super) process_id: ProcessId,
@@ -233,7 +233,7 @@ pub(super) struct LiveSession {
 }
 
 /// Ready agent process parked while another App session is focused (I01/I02).
-pub(super) struct ParkedAgent {
+pub(crate) struct ParkedAgent {
     pub(super) process_id: ProcessId,
     pub(super) app_session_id: String,
     pub(super) meta: SessionMeta,
@@ -839,7 +839,6 @@ pub(super) fn append_journal_attachment_refs(
         }
         if !added && !lines.is_empty() {
             lines.push(String::new());
-            added = true;
         }
         lines.push(format!("@{path}"));
         added = true;

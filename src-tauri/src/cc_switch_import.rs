@@ -220,11 +220,11 @@ fn cc_switch_store_path() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         let home = process_util::user_home();
-        return Some(
+        Some(
             home.join("Library/Application Support")
                 .join(STORE_APP_ID)
                 .join(STORE_FILE),
-        );
+        )
     }
     #[cfg(target_os = "windows")]
     {

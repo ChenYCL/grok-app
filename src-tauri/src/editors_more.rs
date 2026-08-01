@@ -193,10 +193,13 @@ fn open_git_gui(id: &str, abs: &str) -> Result<(), String> {
             "github-desktop" => "GitHub Desktop",
             _ => id,
         };
-        return open_with_mac_app(app, &root_s);
+        open_with_mac_app(app, &root_s)
     }
 
-    Err(format!("{id} not found"))
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err(format!("{id} not found"))
+    }
 }
 
 /// Open file (optional line) in the resolved editor / terminal / git GUI, or OS default.

@@ -3,6 +3,7 @@
 //! Pure helpers are unit-tested; SessionManager applies them at runtime.
 //! Process budget snapshots expose live / background / parked occupancy for UI.
 
+#![allow(dead_code)] // residual-clippy: capacity helpers
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
@@ -148,6 +149,7 @@ impl ProcessBudgetSnapshot {
     }
 
     /// Build from raw bucket counts + optional id lists (ids clamped to counts).
+    #[allow(clippy::too_many_arguments)]
     pub fn from_counts(
         live: u32,
         background: u32,

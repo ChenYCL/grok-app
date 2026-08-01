@@ -1,5 +1,6 @@
 //! Unified outbound reply router for all channel types (Rust HTTP / WS clients).
 
+#![allow(dead_code)] // residual-clippy: test helpers and unused channel send paths
 use parking_lot::RwLock;
 use serde_json::json;
 use std::collections::HashMap;

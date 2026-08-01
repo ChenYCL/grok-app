@@ -206,9 +206,7 @@ pub fn extract_tag_from_release_url(url: &str) -> Option<String> {
         return None;
     }
     // Basic sanity: must look like a version tag
-    if parse_semver(tag).is_none() {
-        return None;
-    }
+    parse_semver(tag)?;
     Some(tag.to_string())
 }
 

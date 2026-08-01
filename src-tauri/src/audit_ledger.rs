@@ -6,6 +6,7 @@
 //! retention (7 / 30 / 90 / unlimited) prunes on write, rotate, or explicit
 //! prune. Export can filter by event, session, and date range.
 
+#![allow(dead_code)] // residual-clippy: retention/export helpers
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -419,7 +420,7 @@ fn maybe_rotate_locked(path: &std::path::Path) -> Result<(), String> {
     let reader = BufReader::new(file);
     let mut lines: Vec<String> = reader
         .lines()
-        .filter_map(|r| r.ok())
+        .map_while(Result::ok)
         .filter(|l| !l.trim().is_empty())
         .collect();
     if lines.len() <= ROTATE_KEEP_LINES / 2 {

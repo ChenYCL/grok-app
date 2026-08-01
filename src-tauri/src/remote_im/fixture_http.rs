@@ -44,6 +44,7 @@ impl FixtureState {
     }
 
     /// Append one more response for a path (creates route if missing).
+    #[allow(dead_code)]
     pub fn push_route(&self, path_contains: &str, status: u16, body: impl Into<String>) {
         self.routes
             .lock()

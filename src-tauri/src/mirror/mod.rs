@@ -690,16 +690,14 @@ mod tests {
             .send()
             .await;
         // Server may be gone (connection error) or still draining with non-OK.
-        match after {
-            Ok(r) => {
-                let code = r.status().as_u16();
-                assert!(
-                    code == 401 || code == 404 || code == 502 || code >= 500,
-                    "unexpected status after stop: {code}"
-                );
-            }
-            Err(_) => {} // connection refused after shutdown is fine
+        if let Ok(r) = after {
+            let code = r.status().as_u16();
+            assert!(
+                code == 401 || code == 404 || code == 502 || code >= 500,
+                "unexpected status after stop: {code}"
+            );
         }
+        // connection refused after shutdown is fine
     }
 
     /// Placeholder HTML (missing dist/index.html) must carry no-store Cache-Control

@@ -2,7 +2,7 @@
 
 use std::sync::Mutex;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -688,7 +688,7 @@ pub fn take_store_quarantine() -> Option<String> {
     LAST_STORE_QUARANTINE.lock().ok().and_then(|mut g| g.take())
 }
 
-fn write_json<T: Serialize>(path: &PathBuf, value: &T) -> Result<(), String> {
+fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let s = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
     // Exclusive lock + temp rename so shared-mode / dual-instance writes do not
     // leave a half-written index (E06).
@@ -1609,11 +1609,11 @@ pub fn truncate_through_user_prompt(
 
 /// Fork a session: new journal + meta, same project.
 ///
-/// By default the fork has **no** `agent_session_id` (next connect → `session/new`
-/// + journal bootstrap). When `fork_agent_session` is true and the source has an
+/// By default the fork has **no** `agent_session_id` (next connect uses `session/new`
+/// and journal bootstrap). When `fork_agent_session` is true and the source has an
 /// agent id, the fork carries that id with `fork_agent_session=true` so the next
-/// connect uses CLI `--fork-session` semantics (ACP `session/fork` → new agent id,
-/// full parent context, source agent session left untouched).
+/// connect uses CLI `--fork-session` semantics (ACP `session/fork` produces a new
+/// agent id with full parent context; the source agent session is left untouched).
 ///
 /// `through_user_prompt_index`: when set, copy only through that user turn (inclusive).
 pub fn fork_session(
@@ -1789,7 +1789,7 @@ pub struct AutomationInput {
 pub fn load_automations() -> Vec<Automation> {
     let _ = ensure_app_dirs();
     let mut list: Vec<Automation> = read_json(&automations_file());
-    list.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    list.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
     list
 }
 
@@ -2452,8 +2452,10 @@ mod tests {
 
     #[test]
     fn agents_json_round_trips_camel_case() {
-        let mut s = AppSettings::default();
-        s.agents_json = r#"{"reviewer":{"prompt":"x"}}"#.into();
+        let s = AppSettings {
+            agents_json: r#"{"reviewer":{"prompt":"x"}}"#.into(),
+            ..AppSettings::default()
+        };
         let json = serde_json::to_string(&s).expect("serialize");
         assert!(json.contains("\"agentsJson\""));
         let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
@@ -2493,8 +2495,10 @@ mod tests {
 
     #[test]
     fn disallowed_tools_round_trips_camel_case() {
-        let mut s = AppSettings::default();
-        s.disallowed_tools = vec!["web_search".into(), "write".into()];
+        let s = AppSettings {
+            disallowed_tools: vec!["web_search".into(), "write".into()],
+            ..AppSettings::default()
+        };
         let json = serde_json::to_string(&s).expect("serialize");
         assert!(json.contains("\"disallowedTools\""));
         let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
@@ -2512,8 +2516,10 @@ mod tests {
 
     #[test]
     fn allowed_tools_round_trips_camel_case() {
-        let mut s = AppSettings::default();
-        s.allowed_tools = vec!["web_search".into(), "write".into()];
+        let s = AppSettings {
+            allowed_tools: vec!["web_search".into(), "write".into()],
+            ..AppSettings::default()
+        };
         let json = serde_json::to_string(&s).expect("serialize");
         assert!(json.contains("\"allowedTools\""));
         let back: AppSettings = serde_json::from_str(&json).expect("deserialize");

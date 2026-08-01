@@ -62,10 +62,9 @@ fn clean_llm_title(raw: &str) -> Option<String> {
             || lower.starts_with("usage:")
             || lower.starts_with("{")
     };
-    if let Some(line) = t.lines().map(str::trim).find(|l| !skip_line(l)) {
+    {
+        let line = t.lines().map(str::trim).find(|l| !skip_line(l))?;
         t = line.to_string();
-    } else {
-        return None;
     }
     for _ in 0..3 {
         if (t.starts_with('"') && t.ends_with('"'))

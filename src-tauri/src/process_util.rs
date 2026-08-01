@@ -1,5 +1,6 @@
 //! Cross-platform process / path helpers (Windows GUI spawn, home dir, PATH).
 
+#![allow(dead_code)] // residual-clippy: tokio_command helper
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
@@ -110,7 +111,7 @@ pub fn looks_runnable(path: &Path) -> bool {
         if let Ok(meta) = std::fs::metadata(path) {
             return meta.permissions().mode() & 0o111 != 0;
         }
-        return false;
+        false
     }
     #[cfg(not(unix))]
     {

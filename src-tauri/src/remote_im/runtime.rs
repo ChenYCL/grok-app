@@ -1,5 +1,6 @@
 //! In-process multi-channel Remote IM runtime (Rust only).
 
+#![allow(dead_code)] // residual-clippy: runtime holder fields
 use super::channels;
 use super::config;
 use super::engine::Engine;

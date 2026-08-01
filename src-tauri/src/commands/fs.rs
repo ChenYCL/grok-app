@@ -60,7 +60,7 @@ pub async fn save_temp_attachment(
     // Accept data-URL prefix if present
     let b64 = raw
         .split(',')
-        .last()
+        .next_back()
         .unwrap_or(raw)
         .trim();
     let bytes = base64::engine::general_purpose::STANDARD
@@ -114,7 +114,7 @@ pub async fn save_temp_attachment(
 /// Returns `None` when the clipboard has no image.
 #[tauri::command]
 pub async fn clipboard_paste_image() -> Result<Option<PathEntry>, String> {
-    tauri::async_runtime::spawn_blocking(|| clipboard_paste_image_sync())
+    tauri::async_runtime::spawn_blocking(clipboard_paste_image_sync)
         .await
         .map_err(|e| format!("clipboard task: {e}"))?
 }
@@ -310,11 +310,8 @@ fn sanitize_attachment_name(suggested: Option<&str>, ext: &str) -> String {
         .and_then(|e| e.to_str())
         .map(|e| e.eq_ignore_ascii_case(ext))
         .unwrap_or(false);
-    if has_ext {
-        format!("{cleaned}.{ext}")
-    } else {
-        format!("{cleaned}.{ext}")
-    }
+    let _ = has_ext;
+    format!("{cleaned}.{ext}")
 }
 
 /// Classify dropped / picked paths for drag-drop UX (file vs folder).

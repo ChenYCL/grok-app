@@ -325,7 +325,7 @@ fn build_project_inspect_summary(
             let Some(name) = name else { continue };
             let source = item
                 .get("source")
-                .map(|s| skill_source_label(s))
+                .map(skill_source_label)
                 .filter(|s| s != "unknown");
             mcp.push(serde_json::json!({
                 "name": name,

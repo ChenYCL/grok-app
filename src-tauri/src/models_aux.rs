@@ -6,6 +6,7 @@
 //! **Safety:** only touches those four keys under `[models]`. Never mutates
 //! `[models].default`, never activates provider routes, never rewrites auth.json.
 
+#![allow(dead_code)] // residual-clippy: prompt-rewrite / spawn-env helpers retained for routing experiments
 use serde::{Deserialize, Serialize};
 
 use crate::agent_home_config::{
@@ -174,7 +175,7 @@ pub fn apply_slot(text: &str, key: &str, value: Option<&str>) -> String {
     if !AUX_KEYS.contains(&key) {
         return text.to_string();
     }
-    match value.and_then(|v| normalize_slot_value(v)) {
+    match value.and_then(normalize_slot_value) {
         Some(v) => set_table_string(text, "models", key, &v),
         None => remove_table_key(text, "models", key),
     }

@@ -1,5 +1,6 @@
 //! Shared types for the in-process Remote IM runtime.
 
+#![allow(dead_code)] // residual-clippy: DTO fields for protocol completeness
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;

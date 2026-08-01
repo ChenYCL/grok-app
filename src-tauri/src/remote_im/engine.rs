@@ -1,5 +1,6 @@
 //! Message engine: ACL, slash commands, Grok turns, project/session bind.
 
+#![allow(dead_code)] // residual-clippy: ephemeral engine API
 use super::app_sessions;
 use super::control_plane::{
     self, apply_project_pick, apply_session_pick, binding_after_agent_turn, channel_uses_cards,

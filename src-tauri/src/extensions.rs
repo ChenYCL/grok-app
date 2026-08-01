@@ -5,6 +5,7 @@
 //! `session/new` / `session/load`. Independent mode also mirrors `enabled`
 //! flags into agent-home `config.toml`.
 
+#![allow(dead_code)] // residual-clippy: enable-map merge helpers
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -601,10 +602,9 @@ pub fn parse_mcp_list_json(raw: &str) -> Option<Vec<McpServerDef>> {
         a.clone()
     } else if let Some(a) = v.get("servers").and_then(|x| x.as_array()) {
         a.clone()
-    } else if let Some(a) = v.get("mcpServers").and_then(|x| x.as_array()) {
-        a.clone()
     } else {
-        return None;
+        let a = v.get("mcpServers").and_then(|x| x.as_array())?;
+        a.clone()
     };
 
     let mut out = Vec::with_capacity(arr.len());
@@ -1710,7 +1710,7 @@ enabled = true
         let chrome = defs.iter().find(|d| d.name == "chrome-devtools").unwrap();
         assert_eq!(chrome.command.as_deref(), Some("/usr/local/bin/npx"));
         assert_eq!(
-            chrome.args.as_ref().map(|a| a.as_slice()),
+            chrome.args.as_deref(),
             Some(
                 [
                     "-y".to_string(),
@@ -1762,13 +1762,13 @@ args = ["-m", "gamma"]
         assert_eq!(names, vec!["alpha", "beta", "gamma"], "{defs:?}");
         let beta = defs.iter().find(|d| d.name == "beta").unwrap();
         assert_eq!(
-            beta.args.as_ref().map(|a| a.as_slice()),
+            beta.args.as_deref(),
             Some(["server.js".to_string()].as_slice())
         );
         // alpha 的坏 buffer 被丢弃，不能吃到 beta 的 args。
         let alpha = defs.iter().find(|d| d.name == "alpha").unwrap();
         assert_ne!(
-            alpha.args.as_ref().map(|a| a.as_slice()),
+            alpha.args.as_deref(),
             Some(["server.js".to_string()].as_slice())
         );
     }

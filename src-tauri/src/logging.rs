@@ -6,6 +6,7 @@
 //! Panic messages are written **synchronously** (in addition to the non-blocking
 //! file sink) so `abort()` after a Rust panic still leaves a diagnostic trail.
 
+#![allow(dead_code)] // residual-clippy: logs_dir helper
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::OnceLock;

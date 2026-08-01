@@ -173,9 +173,10 @@ fn parse_compact(kind: &str, update: &Value) -> Option<ContextCompactSnapshot> {
         || (title_lower.contains("compact") && !title_lower.contains("auto"))
     {
         "manual"
-    } else if trigger_raw.eq_ignore_ascii_case("auto") || kind.contains("auto") {
-        "auto"
-    } else if trigger_raw.is_empty() {
+    } else if trigger_raw.eq_ignore_ascii_case("auto")
+        || kind.contains("auto")
+        || trigger_raw.is_empty()
+    {
         "auto"
     } else {
         trigger_raw
@@ -308,7 +309,7 @@ pub fn format_tokens(tokens: u64) -> String {
     let raw = tokens.to_string();
     let mut out = String::with_capacity(raw.len() + raw.len() / 3);
     for (index, ch) in raw.chars().enumerate() {
-        if index > 0 && (raw.len() - index) % 3 == 0 {
+        if index > 0 && (raw.len() - index).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);

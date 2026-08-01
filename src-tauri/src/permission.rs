@@ -1,5 +1,6 @@
 //! Permission scope_key rules (§17.3) + session allow cache.
 
+#![allow(dead_code)] // residual-clippy: request struct / cache clear
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
@@ -7,8 +8,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PermissionPolicy {
     /// Grok Build `default` — ask every tool that needs approval (unless session cache hits).
+    #[default]
     Ask,
     AllowOnce,
     AllowForSession,
@@ -23,11 +26,6 @@ pub enum PermissionPolicy {
     AlwaysApprove,
 }
 
-impl Default for PermissionPolicy {
-    fn default() -> Self {
-        Self::Ask
-    }
-}
 
 impl PermissionPolicy {
     pub fn parse(s: &str) -> Self {

@@ -1,5 +1,6 @@
 //! Live credential validation per channel (no mock).
 
+#![allow(dead_code)] // residual-clippy: format validators
 use super::config;
 use super::TestConnectionDto;
 use std::collections::HashMap;
@@ -337,7 +338,7 @@ async fn test_telegram(
             // On successful getMe, push native BotFather-style command menu.
             if ok {
                 if let Err(e) =
-                    super::channels::telegram::register_native_commands(&client, &token).await
+                    super::channels::telegram::register_native_commands(&client, token).await
                 {
                     message = format!("{message} (commands_menu: {e})");
                 } else {
@@ -966,10 +967,9 @@ fn sample_bot() -> String {
         format!("{}-{}-{}", "xoxb", "TEST", "not-a-real-token-xx")
     }
 
-fn sample_app() -> String {
+    fn sample_app() -> String {
         format!("{}-{}-{}-{}", "xapp", "1", "TEST", "not-a-real-token-xx")
     }
-    use super::*;
 
     #[test]
     fn merge_creds_reads_app_id_from_options() {

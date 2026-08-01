@@ -146,7 +146,7 @@ pub fn parse_cli_worktree_list_json(stdout: &str, home: &Path) -> Result<Vec<Cli
     }
     // Tolerate leading log noise: take first `[` or `{`.
     let json_start = trimmed
-        .find(|c| c == '[' || c == '{')
+        .find(['[', '{'])
         .ok_or_else(|| "cli worktree list: no JSON object/array".to_string())?;
     let slice = &trimmed[json_start..];
     let value: serde_json::Value = serde_json::from_str(slice)
@@ -530,7 +530,7 @@ fn split_stats_kv(line: &str) -> Option<(String, String)> {
     let (left, right) = t.split_once(':')?;
     let key = left
         .trim()
-        .trim_start_matches(|c: char| c == '-' || c == '•' || c == '*')
+        .trim_start_matches(['-', '•', '*'])
         .trim()
         .to_ascii_lowercase()
         .replace('_', " ")
@@ -621,15 +621,14 @@ fn apply_stats_kv(stats: &mut CliWorktreeDbStats, key: &str, val: &str) {
                 stats.dead = parse_first_u64(val);
             }
         }
-        "db size" | "size" | "database size" | "file size" => {
-            if stats.db_size.is_none() {
+        "db size" | "size" | "database size" | "file size"
+            if stats.db_size.is_none() => {
                 let cleaned = val.trim().to_string();
                 if !cleaned.is_empty() {
                     stats.db_size = Some(cleaned.clone());
                     stats.db_size_bytes = parse_human_size_bytes(&cleaned);
                 }
             }
-        }
         _ => {}
     }
 }
@@ -680,8 +679,7 @@ pub fn parse_cli_worktree_db_stats_json(stdout: &str) -> Result<CliWorktreeDbSta
             let key = k
                 .trim()
                 .to_ascii_lowercase()
-                .replace('_', " ")
-                .replace('-', " ");
+                .replace(['_', '-'], " ");
             let val = if let Some(s) = v.as_str() {
                 s.to_string()
             } else if let Some(n) = v.as_u64() {
@@ -700,11 +698,10 @@ pub fn parse_cli_worktree_db_stats_json(stdout: &str) -> Result<CliWorktreeDbSta
             };
             apply_stats_kv(&mut stats, &key, &val);
             // Direct camelCase / snake aliases for size fields
-            if key == "dbsize" || key == "db size bytes" || key == "size bytes" {
-                if stats.db_size_bytes.is_none() {
+            if (key == "dbsize" || key == "db size bytes" || key == "size bytes")
+                && stats.db_size_bytes.is_none() {
                     stats.db_size_bytes = parse_first_u64(&val);
                 }
-            }
         }
     }
     Ok(stats)
@@ -769,11 +766,10 @@ pub fn parse_cli_worktree_db_rebuild_text(stdout: &str) -> (Option<u64>, Option<
                         registered = parse_first_u64(&val);
                     }
                 }
-                "already tracked" | "already" | "tracked" | "unchanged" => {
-                    if already.is_none() {
+                "already tracked" | "already" | "tracked" | "unchanged"
+                    if already.is_none() => {
                         already = parse_first_u64(&val);
                     }
-                }
                 _ => {}
             }
         }
@@ -981,7 +977,7 @@ fn list_cli_worktrees_blocking(
                 available: false,
                 worktrees: vec![],
                 reason: Some(e.chars().take(240).collect()),
-                cli_found: e.to_ascii_lowercase().contains("not found") == false,
+                cli_found: !e.to_ascii_lowercase().contains("not found"),
                 source: Some("none".into()),
             };
         }

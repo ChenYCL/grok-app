@@ -4,6 +4,7 @@
 //! long answers. Buffer per turn and flush on a short timer, char budget,
 //! phase boundary, or terminal `done`.
 
+#![allow(dead_code)] // residual-clippy: normalize bounds helpers
 use std::time::{Duration, Instant};
 
 /// Default coalesce window (ms) before a non-forced flush.

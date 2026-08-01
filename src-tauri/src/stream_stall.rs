@@ -11,6 +11,7 @@
 //! terminal — cancel the hung `session/prompt` and Ready the UI instead of
 //! waiting the full hard window (model streams that die mid-answer after tools).
 
+#![allow(dead_code)] // residual-clippy: legacy stall emit helper
 use std::time::{Duration, Instant};
 
 /// Soft silence window default (settings `streamStallSeconds`).
@@ -165,6 +166,7 @@ pub fn should_auto_end_maybe_done(
 ///
 /// - Journal already has a terminal step for this id → safe to drop anytime after silence.
 /// - Otherwise only after `TOOL_ORPHAN_SECONDS` without updates (leak recovery).
+///
 /// Host helper: prune if journal already terminal **or** aged out with no updates.
 pub fn should_prune_open_tool_id(
     last_update: Instant,

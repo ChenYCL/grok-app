@@ -70,7 +70,7 @@ pub async fn dispatch(
     mgr: Option<&Arc<SessionManager>>,
 ) -> Result<Value, RpcError> {
     // Read-only sessions can observe but not drive the agent.
-    if host.is_read_only() && WRITE_METHODS.iter().any(|m| *m == method) {
+    if host.is_read_only() && WRITE_METHODS.contains(&method) {
         return Err(RpcError::unsupported("mirror is in read-only mode"));
     }
 

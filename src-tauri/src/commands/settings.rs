@@ -313,6 +313,7 @@ pub async fn composer_prefs_resolve(
 
 /// Persist composer fields at the configured memory scope + apply live.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn composer_prefs_set(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
@@ -627,13 +628,7 @@ pub async fn provider_ping() -> Result<serde_json::Value, String> {
             }
             Err(e) => {
                 let msg = e.to_string();
-                let class = if msg.contains("dns") || msg.contains("resolve") {
-                    "NETWORK_PROVIDER"
-                } else if msg.contains("timeout") {
-                    "NETWORK_PROVIDER"
-                } else {
-                    "NETWORK_PROVIDER"
-                };
+                let class = "NETWORK_PROVIDER";
                 Ok(serde_json::json!({
                     "ok": false,
                     "class": class,
