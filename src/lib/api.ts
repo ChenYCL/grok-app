@@ -99,16 +99,20 @@ export async function sessionConnect(opts?: {
  *   flows: Host re-focuses that chat (background/parked → live) before
  *   prompting, so a concurrent connect cannot deliver the turn to another chat.
  *   Fails with `CONNECT_FAILED` when the chat has no warm agent process.
+ * @param attachments Optional local file/image cards persisted on the user journal
+ *   row so history reloads AttachmentCard UI (agent text still includes `@path`).
  */
 export async function sessionSend(
   text: string,
   displayText?: string | null,
   sessionId?: string | null,
+  attachments?: { path: string; name: string; isDir?: boolean }[] | null,
 ): Promise<SessionSnapshot> {
   return invoke("session_send", {
     text,
     displayText: displayText ?? null,
     sessionId: sessionId ?? null,
+    attachments: attachments?.length ? attachments : null,
   });
 }
 

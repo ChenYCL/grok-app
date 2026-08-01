@@ -5251,6 +5251,7 @@ impl SessionManager {
         app: AppHandle,
         text: String,
         display_text: Option<String>,
+        attachments: Option<Vec<MessageAttachmentStored>>,
         session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let text = text.trim().to_string();
@@ -5262,6 +5263,9 @@ impl SessionManager {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| text.clone());
+        // User file/image cards — separate from display text so history can re-render
+        // AttachmentCard without requiring @path lines in the bubble body.
+        let journal_attachments = attachments.filter(|items| !items.is_empty());
 
         // Serialize against connect for the whole focus + turn-open window, so
         // the slot cannot move between the target check and `begin_stream`.
@@ -5354,6 +5358,7 @@ impl SessionManager {
 
             // persist user message (display form for skill chips on reload)
             // Journal stores the user-facing turn only — not the bootstrap wrapper.
+            // Attachments are structured so history reloads image/file cards.
             let _ = store::append_message(
                 &s.app_session_id,
                 ChatMessageStored {
@@ -5363,7 +5368,7 @@ impl SessionManager {
                     thought: None,
                     created_at: chrono::Utc::now(),
                     is_error: false,
-                    attachments: None,
+                    attachments: journal_attachments.clone(),
                     marker: None,
                 },
             );

@@ -200,9 +200,10 @@ fn is_likely_binary_name(name: &str) -> bool {
 }
 
 /// Case-insensitive name / relative-path match (pure).
+/// Empty query matches every file (used for `@` recent-file listing).
 pub fn codebase_name_matches(name: &str, relative_path: &str, query_lower: &str) -> bool {
     if query_lower.is_empty() {
-        return false;
+        return true;
     }
     name.to_ascii_lowercase().contains(query_lower)
         || relative_path.to_ascii_lowercase().contains(query_lower)
@@ -674,7 +675,31 @@ pub fn search_project_codebase(
         );
     }
 
+    // Empty query: name mode lists recent files (composer `@` panel).
+    // Content / all still soft-fail so we never full-scan on blank.
     if !should_run_codebase_search(q) {
+        if mode == "name" {
+            let (mut hits, truncated, _) =
+                walk_search(&canonical, "", "name", limit, false, true);
+            // Prefer recently modified when listing without a filter.
+            hits.sort_by(|a, b| b.mtime_ms.cmp(&a.mtime_ms));
+            if hits.len() > limit {
+                hits.truncate(limit);
+            }
+            return CodebaseSearchResult {
+                hits,
+                project_path: canonical.to_string_lossy().to_string(),
+                project_path_exists: true,
+                project_is_dir: true,
+                query: String::new(),
+                mode: mode.to_string(),
+                limit,
+                truncated,
+                engine: "walk".into(),
+                search_kind: "keyword".into(),
+                soft_fail: None,
+            };
+        }
         return empty_result(
             &canonical.to_string_lossy(),
             "",
@@ -843,6 +868,22 @@ mod tests {
         let r = search_project_codebase(dir.to_str().unwrap(), "   ", Some("all"), Some(10));
         assert_eq!(r.soft_fail.as_deref(), Some("empty_query"));
         assert!(r.hits.is_empty());
+        assert_eq!(r.search_kind, "keyword");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn empty_name_query_lists_files() {
+        let dir = make_tmp("list");
+        fs::write(dir.join("alpha.txt"), "a").unwrap();
+        fs::write(dir.join("beta.txt"), "b").unwrap();
+        let r = search_project_codebase(dir.to_str().unwrap(), "", Some("name"), Some(10));
+        assert!(r.soft_fail.is_none(), "soft_fail={:?}", r.soft_fail);
+        assert!(
+            r.hits.iter().any(|h| h.name == "alpha.txt"),
+            "hits={:?}",
+            r.hits
+        );
         assert_eq!(r.search_kind, "keyword");
         let _ = fs::remove_dir_all(&dir);
     }

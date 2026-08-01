@@ -261,7 +261,7 @@ pub async fn dispatch(
             // Pass the id through so Host re-focuses if another chat stole the
             // live slot between connect and send.
             let snap = mgr
-                .send_message(app, text, display_text, target)
+                .send_message(app, text, display_text, None, target)
                 .await
                 .map_err(RpcError::host)?;
             Ok(serde_json::to_value(snap).map_err(|e| RpcError::host(e.to_string()))?)

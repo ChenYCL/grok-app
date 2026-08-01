@@ -414,7 +414,7 @@ async fn run_one(
     }
 
     let prompt = format!("[Scheduled: {}]\n\n{}", auto.title, auto.prompt);
-    mgr.send_message(app.clone(), prompt, None, Some(session_id.clone()))
+    mgr.send_message(app.clone(), prompt, None, None, Some(session_id.clone()))
         .await
         .map_err(|e| format!("send failed: {e}"))?;
 

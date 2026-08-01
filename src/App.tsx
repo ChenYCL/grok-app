@@ -180,8 +180,6 @@ import {
   applyToolEvent,
   applyTurnError,
   applyTurnMarker,
-  parseCompactContent,
-  parseToolStepContent,
   canSend,
   canType,
   clearPriorTurnStreaming,
@@ -192,9 +190,7 @@ import {
   presentErrorBanner,
   snapshotOutgoingMessages,
   type ErrorBannerView,
-  buildSegmentsFromLegacy,
   weaveToolsIntoAssistantSegments,
-  splitThoughtPhases,
   truncateBeforeLastUser,
   truncateThroughUserPrompt,
   canRewindToUserPrompt,
@@ -613,10 +609,18 @@ import {
   collectSessionRelativeMediaRefs,
   isImagePath,
   mergeAttachments,
-  mergeMessageAttachments,
-  parseAttachmentsFromContent,
   type Attachment,
 } from "@/lib/attachments";
+import { mapStoredMessagesToChat } from "@/lib/mapStoredMessages";
+import {
+  detectAtQueryFromEditor,
+  rankAtFileHits,
+  removeAtTokenFromDraft,
+} from "@/lib/atFileQuery";
+import {
+  ComposerAtPanel,
+  type ComposerAtFileEntry,
+} from "@/components/ComposerAtPanel";
 import {
   formatAttachErrorMessage,
   isAttachPayloadTooLarge,
@@ -629,7 +633,6 @@ import { fileKey as clipboardFileKey } from "@/lib/clipboardPaste";
 import {
   applySkillAtSlash,
   isDraftEmpty,
-  hydrateDisplayContent,
   detectSlashQueryFromEditor,
   parseStoredContent,
   serializeForAgent,
@@ -1615,6 +1618,25 @@ export default function App() {
   /** Kind chip for slash / + palette (`all` | mode | action | prompt | skill). */
   const [slashKindFilter, setSlashKindFilter] =
     useState<SlashKindFilter>("all");
+  /**
+   * Live `@` file token (rAF, same source as slash).
+   * Suppressed while slash/plus menu is open (slash wins).
+   */
+  const [liveAt, setLiveAt] = useState<{
+    present: boolean;
+    query: string;
+    start: number;
+    end: number;
+  }>({ present: false, query: "", start: 0, end: 0 });
+  const liveAtRef = useRef(liveAt);
+  liveAtRef.current = liveAt;
+  const atDismissedSigRef = useRef<string | null>(null);
+  const [atActiveIndex, setAtActiveIndex] = useState(0);
+  const [atEntries, setAtEntries] = useState<ComposerAtFileEntry[]>([]);
+  const [atLoading, setAtLoading] = useState(false);
+  const [atSoftFail, setAtSoftFail] = useState<string | null>(null);
+  const atPanelRef = useRef<HTMLDivElement>(null);
+  const atSearchGenRef = useRef(0);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMcpModal, setShowMcpModal] = useState(false);
   const [showCompactModal, setShowCompactModal] = useState(false);
@@ -5177,65 +5199,8 @@ export default function App() {
                   messagesBySessionRef.current.delete(sid);
                   const stored = await api.sessionMessages(sid);
                   if (cancelled || viewingSessionIdRef.current !== sid) return;
-                  const mapped: ChatMessage[] = stored.map((m) => {
-                    const parsed = parseAttachmentsFromContent(m.content);
-                    const rawContent =
-                      parsed.text ||
-                      (parsed.attachments.length ? "" : m.content);
-                    const content =
-                      m.role === "user"
-                        ? hydrateDisplayContent(rawContent)
-                        : rawContent;
-                    const rawMarker =
-                      (m as { marker?: string }).marker || undefined;
-                    const marker =
-                      rawMarker ||
-                      (m.role === "tool" && content.startsWith("context_compact")
-                        ? "context_compact"
-                        : m.role === "tool" && content.startsWith("tool_step|")
-                          ? "tool_step"
-                          : m.role === "tool" &&
-                              content.startsWith("turn_cancelled")
-                            ? "turn_cancelled"
-                            : undefined);
-                    const toolParsed =
-                      marker === "tool_step"
-                        ? parseToolStepContent(content)
-                        : null;
-                    const role = m.role as "user" | "assistant" | "tool";
-                    let displayContent = toolParsed?.title || content;
-                    if (role === "assistant" && displayContent) {
-                      displayContent =
-                        extractAutomationPayload(displayContent).cleanText;
-                    }
-                    const thoughtPhases = splitThoughtPhases(m.thought);
-                    return {
-                      id: m.id,
-                      role,
-                      content: displayContent,
-                      thought: m.thought ?? undefined,
-                      thoughtPhases,
-                      segments:
-                        role === "assistant"
-                          ? buildSegmentsFromLegacy(
-                              displayContent,
-                              m.thought,
-                              thoughtPhases,
-                            )
-                          : undefined,
-                      isError: m.isError || undefined,
-                      createdAt: m.createdAt || undefined,
-                      marker,
-                      toolCallId: m.id.startsWith("tool-")
-                        ? m.id.slice(5)
-                        : undefined,
-                      toolKind: toolParsed?.kind,
-                      toolStatus: toolParsed?.status,
-                      toolDetail: toolParsed?.detail,
-                      toolPath: toolParsed?.path,
-                      streaming: false,
-                    };
-                  });
+                  // Same mapper as openSession — keep attachments on IM reload.
+                  const mapped = mapStoredMessagesToChat(stored);
                   const woven = weaveToolsIntoAssistantSegments(mapped);
                   messagesBySessionRef.current.set(sid, woven);
                   setMessages(woven);
@@ -5578,74 +5543,7 @@ export default function App() {
 
     try {
       const stored = await api.sessionMessages(s.id);
-      let mapped: ChatMessage[] = stored.map((m) => {
-        const parsed = parseAttachmentsFromContent(m.content);
-        const storedAtts: Attachment[] = (m.attachments ?? []).map((a) => ({
-          path: a.path,
-          name: a.name || a.path.split(/[/\\]/).pop() || a.path,
-          isDir: !!a.isDir,
-        }));
-        // @path lines (user) + persisted image_gen cards + absolute paths in text
-        const attachments = mergeMessageAttachments(
-          mergeAttachments(parsed.attachments, storedAtts),
-          m.content,
-        );
-        const rawContent =
-          parsed.text || (parsed.attachments.length ? "" : m.content);
-        // User turns: restore [[skill:]] chips from agent-form `/name` history.
-        const content =
-          m.role === "user" ? hydrateDisplayContent(rawContent) : rawContent;
-        const rawMarker = (m as { marker?: string }).marker || undefined;
-        const marker =
-          rawMarker ||
-          (m.role === "tool" && content.startsWith("context_compact")
-            ? "context_compact"
-            : m.role === "tool" && content.startsWith("tool_step|")
-              ? "tool_step"
-              : m.role === "tool" && content.startsWith("turn_cancelled")
-                ? "turn_cancelled"
-                : undefined);
-        const compactMeta =
-          marker === "context_compact"
-            ? parseCompactContent(content) || undefined
-            : undefined;
-        const toolParsed =
-          marker === "tool_step" ? parseToolStepContent(content) : null;
-        const role = m.role as "user" | "assistant" | "tool";
-        let displayContent = toolParsed?.title || content;
-        // Never show silent automation fence to the user on reload.
-        if (role === "assistant" && displayContent) {
-          displayContent = extractAutomationPayload(displayContent).cleanText;
-        }
-        const thoughtPhases = splitThoughtPhases(m.thought);
-        return {
-          id: m.id,
-          role,
-          content: displayContent,
-          thought: m.thought ?? undefined,
-          thoughtPhases,
-          // Reconstruct interleaved timeline for reload (first phase → body → rest).
-          segments:
-            role === "assistant"
-              ? buildSegmentsFromLegacy(
-                  displayContent,
-                  m.thought,
-                  thoughtPhases,
-                )
-              : undefined,
-          isError: m.isError || undefined,
-          attachments,
-          createdAt: m.createdAt || undefined,
-          marker,
-          compactMeta: compactMeta ?? undefined,
-          toolCallId: m.id.startsWith("tool-") ? m.id.slice(5) : undefined,
-          toolKind: toolParsed?.kind,
-          toolStatus: toolParsed?.status,
-          toolDetail: toolParsed?.detail,
-          toolPath: toolParsed?.path,
-          streaming: false,
-        };
-      });
+      let mapped: ChatMessage[] = mapStoredMessagesToChat(stored);
       // Short paths like `images/1.jpg` → agent session dir → image cards
       if (api.isTauri()) {
         const rels = collectSessionRelativeMediaRefs(mapped);
@@ -8718,7 +8616,7 @@ export default function App() {
       // warm connect racing this send cannot deliver it to another chat — and
       // a mid-send "new chat" still lets this turn complete.
       try {
-        await api.sessionSend(agentText, storedDisplay, sessionId);
+        await api.sessionSend(agentText, storedDisplay, sessionId, att);
       } catch (sendErr) {
         // Host refuses rather than misroute when the chat lost its process
         // (idle recycle / crash while `liveHost` still looked ready).
@@ -8729,7 +8627,7 @@ export default function App() {
           force: true,
         });
         if (reconnected !== sessionId) throw sendErr;
-        await api.sessionSend(agentText, storedDisplay, sessionId);
+        await api.sessionSend(agentText, storedDisplay, sessionId, att);
       }
       // Keep liveMap busy for this session if the user already left the thread.
       setLiveMap((prev) =>
@@ -9748,6 +9646,50 @@ export default function App() {
           setSlashQuery((q) => (q == null ? q : null));
         }
       }
+      // @ file mention — suppressed while slash/plus is open.
+      let atNext: {
+        present: boolean;
+        query: string;
+        start: number;
+        end: number;
+      } = {
+        present: false,
+        query: "",
+        start: 0,
+        end: 0,
+      };
+      if (!next.present && !showComposerPlusRef.current) {
+        const atDetected = detectAtQueryFromEditor(el);
+        if (atDetected) {
+          atNext = {
+            present: true,
+            query: atDetected.query,
+            start: atDetected.start,
+            end: atDetected.end,
+          };
+          if (atDismissedSigRef.current != null) {
+            const sig = `${atNext.start}:${atNext.query}`;
+            if (sig === atDismissedSigRef.current) {
+              atNext = { present: false, query: "", start: 0, end: 0 };
+            } else {
+              atDismissedSigRef.current = null;
+            }
+          }
+        } else {
+          atDismissedSigRef.current = null;
+        }
+      }
+      const prevAt = liveAtRef.current;
+      if (
+        prevAt.present !== atNext.present ||
+        prevAt.query !== atNext.query ||
+        prevAt.start !== atNext.start ||
+        prevAt.end !== atNext.end
+      ) {
+        liveAtRef.current = atNext;
+        setLiveAt(atNext);
+        if (atNext.present) setAtActiveIndex(0);
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -9772,6 +9714,119 @@ export default function App() {
     estHeight: 220,
     gap: 8,
     deps: [slashFilterQuery, composerMenuEntries.length],
+  });
+
+  const atMenuOpen = liveAt.present && !composerMenuOpen;
+  const closeAtMenu = useCallback(() => {
+    const live = liveAtRef.current;
+    if (live.present) {
+      atDismissedSigRef.current = `${live.start}:${live.query}`;
+    }
+    const cleared = { present: false, query: "", start: 0, end: 0 };
+    liveAtRef.current = cleared;
+    setLiveAt(cleared);
+    setAtEntries([]);
+    setAtSoftFail(null);
+    setAtLoading(false);
+  }, []);
+
+  const applyAtFile = useCallback(
+    (entry: ComposerAtFileEntry) => {
+      const live = liveAtRef.current;
+      if (live.present) {
+        setDraft((d) => removeAtTokenFromDraft(d, live.start, live.end));
+      }
+      const cleared = { present: false, query: "", start: 0, end: 0 };
+      liveAtRef.current = cleared;
+      setLiveAt(cleared);
+      setAtEntries([]);
+      setAtSoftFail(null);
+      setAttachments((prev) =>
+        mergeAttachments(prev, [
+          {
+            path: entry.path,
+            name: entry.name || entry.path.split(/[/\\]/).pop() || entry.path,
+            isDir: !!entry.isDir,
+          },
+        ]),
+      );
+      requestComposerFocus();
+    },
+    [requestComposerFocus],
+  );
+
+  // Debounced project file search for @ panel.
+  useEffect(() => {
+    if (!atMenuOpen) return;
+    const projectPath = activeProject?.path?.trim() || "";
+    if (!projectPath) {
+      setAtEntries([]);
+      setAtSoftFail("no_project");
+      setAtLoading(false);
+      return;
+    }
+    if (!api.isTauri()) {
+      setAtEntries([]);
+      setAtSoftFail("need_tauri");
+      setAtLoading(false);
+      return;
+    }
+    const gen = ++atSearchGenRef.current;
+    setAtLoading(true);
+    const q = liveAt.query;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await api.projectCodebaseSearch({
+            projectPath,
+            query: q,
+            mode: "name",
+            limit: 40,
+          });
+          if (gen !== atSearchGenRef.current) return;
+          if (res.softFail) {
+            setAtSoftFail(res.softFail);
+            setAtEntries([]);
+          } else {
+            setAtSoftFail(null);
+            const hits: ComposerAtFileEntry[] = rankAtFileHits(
+              (res.hits ?? []).map((h) => ({
+                path: h.path,
+                name: h.name,
+                relativePath: h.relativePath,
+                mtimeMs: h.mtimeMs,
+              })),
+              q,
+            );
+            setAtEntries(hits);
+          }
+        } catch (e) {
+          if (gen !== atSearchGenRef.current) return;
+          setAtSoftFail("host_error");
+          setAtEntries([]);
+        } finally {
+          if (gen === atSearchGenRef.current) setAtLoading(false);
+        }
+      })();
+    }, q.trim() ? 180 : 80);
+    return () => {
+      window.clearTimeout(t);
+    };
+  }, [atMenuOpen, liveAt.query, activeProject?.path]);
+
+  const { pos: composerAtPos, style: composerAtStyle } = useFloatingMenu({
+    open: atMenuOpen,
+    triggerRef: composerShellRef,
+    panelRef: atPanelRef,
+    roots: [composerShellRef, composerInputRef, atPanelRef],
+    onClose: closeAtMenu,
+    placement: "up",
+    fitContent: false,
+    matchTriggerWidth: true,
+    minWidth: 280,
+    estHeight: 220,
+    gap: 8,
+    deps: [liveAt.query, atEntries.length],
   });
 
   const sessionPromptHistory = useMemo(
@@ -11531,59 +11586,7 @@ export default function App() {
         // Refresh UI from truncated journal.
         if (viewingSessionIdRef.current === sessionId) {
           const stored = await api.sessionMessages(sessionId);
-          const mapped: ChatMessage[] = stored.map((m) => {
-            const content = m.content || "";
-            const rawMarker = m.marker || undefined;
-            const marker =
-              rawMarker ||
-              (m.role === "tool" && content.startsWith("tool_step|")
-                ? "tool_step"
-                : m.role === "tool" && content.startsWith("context_compact")
-                  ? "context_compact"
-                  : m.role === "tool" && content.startsWith("turn_cancelled")
-                    ? "turn_cancelled"
-                    : undefined);
-            const toolParsed =
-              marker === "tool_step" ? parseToolStepContent(content) : null;
-            const role = m.role as "user" | "assistant" | "tool";
-            let displayContent = toolParsed?.title || content;
-            if (role === "assistant" && displayContent) {
-              displayContent =
-                extractAutomationPayload(displayContent).cleanText;
-            }
-            const thoughtPhases = splitThoughtPhases(m.thought);
-            return {
-              id: m.id,
-              role,
-              content: displayContent,
-              thought: m.thought ?? undefined,
-              thoughtPhases,
-              segments:
-                role === "assistant"
-                  ? buildSegmentsFromLegacy(
-                      displayContent,
-                      m.thought,
-                      thoughtPhases,
-                    )
-                  : undefined,
-              isError: m.isError || undefined,
-              marker,
-              createdAt: m.createdAt || undefined,
-              toolCallId: m.id.startsWith("tool-")
-                ? m.id.slice(5)
-                : undefined,
-              toolKind: toolParsed?.kind,
-              toolStatus: toolParsed?.status,
-              toolDetail: toolParsed?.detail,
-              toolPath: toolParsed?.path,
-              attachments: (m.attachments ?? []).map((a) => ({
-                path: a.path,
-                name: a.name || a.path.split(/[/\\]/).pop() || a.path,
-                isDir: !!a.isDir,
-              })),
-              streaming: false,
-            };
-          });
+          const mapped = mapStoredMessagesToChat(stored);
           const woven = weaveToolsIntoAssistantSegments(mapped);
           const kept = truncateThroughUserPrompt(woven, targetPromptIndex);
           const finalMsgs =
@@ -15921,7 +15924,7 @@ export default function App() {
             });
         }
 
-        await api.sessionSend(agentText, storedDisplay, sessionId);
+        await api.sessionSend(agentText, storedDisplay, sessionId, att);
         if (storedDisplay.trim()) {
           setRecentPromptHistory(
             recordRecentPrompt({
@@ -19395,21 +19398,34 @@ export default function App() {
                 </div>
               </div>
             ) : null}
+            {(() => {
+              const showWelcomeProjectRow =
+                welcomeSession && !phoneLayout && !!activeProject;
+              const showChangesChips =
+                !phoneLayout &&
+                (!!sessionChangesSummary || !!gitDirtySummary);
+              const showContextBar =
+                showWelcomeProjectRow || showChangesChips;
+              return (
             <div
               className={
                 "composer-stack" +
-                (welcomeSession && !phoneLayout && activeProject
-                  ? " composer-stack--with-context"
-                  : "")
+                (showContextBar ? " composer-stack--with-context" : "")
               }
             >
-            {/* New session + project bound: project + branch/worktree above input.
-                Hidden entirely when no project is selected. */}
-            {welcomeSession && !phoneLayout && activeProject ? (
+            {/* Project/branch (new session) + session/workspace change chips.
+                Hidden entirely when the bar would be empty. */}
+            {showContextBar ? (
               <div
                 className="composer__context-bar"
-                aria-label={tr("composer.pickProject")}
+                aria-label={
+                  showWelcomeProjectRow
+                    ? tr("composer.pickProject")
+                    : tr("changes.chipAria")
+                }
               >
+                {showWelcomeProjectRow && activeProject ? (
+                  <>
                 <ComposerProjectMenu
                   variant="context"
                   activeProject={
@@ -19538,6 +19554,99 @@ export default function App() {
                       });
                     }}
                   />
+                ) : null}
+                  </>
+                ) : null}
+                {showChangesChips ? (
+                  <div className="composer__context-changes">
+                    {sessionChangesSummary ? (
+                      <Tip label={tr("changes.chipTip")}>
+                        <button
+                          type="button"
+                          className="composer__context-item composer__context-item--changes"
+                          data-testid="session-changes-chip"
+                          aria-label={
+                            sessionChangesSummary.mode === "diff"
+                              ? `${tr("changes.chipAria")}: ${tr(
+                                  "changes.chipDiff",
+                                  {
+                                    a: String(
+                                      sessionChangesSummary.addedLines ?? 0,
+                                    ),
+                                    d: String(
+                                      sessionChangesSummary.removedLines ?? 0,
+                                    ),
+                                  },
+                                )}`
+                              : `${tr("changes.chipAria")}: ${tr(
+                                  "changes.chipFiles",
+                                  {
+                                    n: String(sessionChangesSummary.fileCount),
+                                  },
+                                )}`
+                          }
+                          onClick={() => {
+                            openAsidePane();
+                            setResourceOpenTarget({ type: "changes" });
+                          }}
+                        >
+                          <IconFileDiff size={14} aria-hidden />
+                          <span className="composer__context-label chip__label--nums">
+                            {sessionChangesSummary.mode === "diff"
+                              ? tr("changes.chipDiff", {
+                                  a: String(
+                                    sessionChangesSummary.addedLines ?? 0,
+                                  ),
+                                  d: String(
+                                    sessionChangesSummary.removedLines ?? 0,
+                                  ),
+                                })
+                              : tr("changes.chipFiles", {
+                                  n: String(sessionChangesSummary.fileCount),
+                                })}
+                          </span>
+                        </button>
+                      </Tip>
+                    ) : null}
+                    {gitDirtySummary ? (
+                      <Tip label={tr("changes.workspace.chipTip")}>
+                        <button
+                          type="button"
+                          className="composer__context-item composer__context-item--git-dirty"
+                          data-testid="git-dirty-chip"
+                          aria-label={`${tr("changes.workspace.chipAria")}: ${tr(
+                            "changes.workspace.chip",
+                            { n: String(gitDirtySummary.count) },
+                          )}`}
+                          onClick={() => {
+                            const path = activeProject?.path?.trim() || "";
+                            if (
+                              api.isTauri() &&
+                              !isMirrorClient() &&
+                              path
+                            ) {
+                              openAsidePane();
+                              setResourceOpenTarget({ type: "changes" });
+                            } else if (path) {
+                              showToast(
+                                tr("changes.workspace.toastPath", {
+                                  path,
+                                }),
+                                4000,
+                              );
+                            }
+                          }}
+                        >
+                          <IconGitBranch size={14} aria-hidden />
+                          <span className="composer__context-label chip__label--nums">
+                            {tr("changes.workspace.chip", {
+                              n: String(gitDirtySummary.count),
+                            })}
+                          </span>
+                        </button>
+                      </Tip>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -19767,6 +19876,28 @@ export default function App() {
                   />,
                   document.body,
                 )}
+              {atMenuOpen &&
+                composerAtPos &&
+                typeof document !== "undefined" &&
+                createPortal(
+                  <ComposerAtPanel
+                    open
+                    panelRef={atPanelRef}
+                    locale={locale}
+                    entries={atEntries}
+                    filterQuery={liveAt.query}
+                    loading={atLoading}
+                    softFail={atSoftFail}
+                    activeIndex={atActiveIndex}
+                    onActiveIndexChange={setAtActiveIndex}
+                    onSelect={applyAtFile}
+                    style={{
+                      ...composerAtStyle,
+                      zIndex: 10050,
+                    }}
+                  />,
+                  document.body,
+                )}
               {promptHistoryOpen &&
                 promptHistoryPos &&
                 typeof document !== "undefined" &&
@@ -19876,6 +20007,39 @@ export default function App() {
                     (e.nativeEvent as KeyboardEvent).keyCode === 229
                   ) {
                     return;
+                  }
+                  if (atMenuOpen) {
+                    const n = atEntries.length;
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      if (!n) return;
+                      setAtActiveIndex((i) => (i + 1) % n);
+                      return;
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      if (!n) return;
+                      setAtActiveIndex((i) => (i - 1 + n) % n);
+                      return;
+                    }
+                    if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
+                      e.preventDefault();
+                      if (!n) return;
+                      const entry =
+                        atEntries[
+                          Math.min(
+                            Math.max(0, atActiveIndex),
+                            Math.max(0, n - 1),
+                          )
+                        ];
+                      if (entry) applyAtFile(entry);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      closeAtMenu();
+                      return;
+                    }
                   }
                   if (composerMenuOpen) {
                     // Ref = same array the panel renders (never desync).
@@ -20270,94 +20434,6 @@ export default function App() {
                         setShowCompactModal(true);
                       }}
                     />
-                    {sessionChangesSummary ? (
-                      <Tip label={tr("changes.chipTip")}>
-                        <button
-                          type="button"
-                          className="chip chip--changes"
-                          data-testid="session-changes-chip"
-                          aria-label={
-                            sessionChangesSummary.mode === "diff"
-                              ? `${tr("changes.chipAria")}: ${tr(
-                                  "changes.chipDiff",
-                                  {
-                                    a: String(
-                                      sessionChangesSummary.addedLines ?? 0,
-                                    ),
-                                    d: String(
-                                      sessionChangesSummary.removedLines ?? 0,
-                                    ),
-                                  },
-                                )}`
-                              : `${tr("changes.chipAria")}: ${tr(
-                                  "changes.chipFiles",
-                                  {
-                                    n: String(sessionChangesSummary.fileCount),
-                                  },
-                                )}`
-                          }
-                          onClick={() => {
-                            openAsidePane();
-                            setResourceOpenTarget({ type: "changes" });
-                          }}
-                        >
-                          <IconFileDiff size={14} aria-hidden />
-                          <span className="chip__label chip__label--nums">
-                            {sessionChangesSummary.mode === "diff"
-                              ? tr("changes.chipDiff", {
-                                  a: String(
-                                    sessionChangesSummary.addedLines ?? 0,
-                                  ),
-                                  d: String(
-                                    sessionChangesSummary.removedLines ?? 0,
-                                  ),
-                                })
-                              : tr("changes.chipFiles", {
-                                  n: String(sessionChangesSummary.fileCount),
-                                })}
-                          </span>
-                        </button>
-                      </Tip>
-                    ) : null}
-                    {gitDirtySummary ? (
-                      <Tip label={tr("changes.workspace.chipTip")}>
-                        <button
-                          type="button"
-                          className="chip chip--git-dirty"
-                          data-testid="git-dirty-chip"
-                          aria-label={`${tr("changes.workspace.chipAria")}: ${tr(
-                            "changes.workspace.chip",
-                            { n: String(gitDirtySummary.count) },
-                          )}`}
-                          onClick={() => {
-                            const path = activeProject?.path?.trim() || "";
-                            // Desktop Resources pane: open Changes. Otherwise toast path.
-                            if (
-                              api.isTauri() &&
-                              !isMirrorClient() &&
-                              path
-                            ) {
-                              openAsidePane();
-                              setResourceOpenTarget({ type: "changes" });
-                            } else if (path) {
-                              showToast(
-                                tr("changes.workspace.toastPath", {
-                                  path,
-                                }),
-                                4000,
-                              );
-                            }
-                          }}
-                        >
-                          <IconGitBranch size={14} aria-hidden />
-                          <span className="chip__label chip__label--nums">
-                            {tr("changes.workspace.chip", {
-                              n: String(gitDirtySummary.count),
-                            })}
-                          </span>
-                        </button>
-                      </Tip>
-                    ) : null}
                   </>
                 ) : null}
                 {showComposerDraftStats &&
@@ -20503,6 +20579,8 @@ export default function App() {
               </div>
             </div>
             </div>
+              );
+            })()}
           </div>
           </div>
           </>

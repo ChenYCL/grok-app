@@ -616,6 +616,7 @@ async fn execute_tool_inner(
                 app.clone(),
                 args.prompt.clone(),
                 None,
+                None,
                 Some(meta.id.clone()),
             )
             .await?;
@@ -647,6 +648,7 @@ async fn execute_tool_inner(
             mgr.send_message(
                 app.clone(),
                 args.prompt.clone(),
+                None,
                 None,
                 args.session_id.clone(),
             )

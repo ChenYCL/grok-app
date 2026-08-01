@@ -49,6 +49,8 @@ pub async fn session_connect(
 
 /// Send a turn. `text` goes to the agent; optional `display_text` is stored in the journal
 /// (skill chips as `[[skill:name]]`) so history can re-render tags.
+/// Optional `attachments` are persisted on the user journal row so history can
+/// re-show image/file cards (agent text still carries `@path` via the FE prompt).
 ///
 /// `session_id` binds the turn to a chat so a concurrent connect cannot route it
 /// into whichever session happens to hold the live slot. Omitting it keeps the
@@ -59,9 +61,11 @@ pub async fn session_send(
     mgr: State<'_, Arc<SessionManager>>,
     text: String,
     display_text: Option<String>,
+    attachments: Option<Vec<store::MessageAttachmentStored>>,
     session_id: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.send_message(app, text, display_text, session_id).await
+    mgr.send_message(app, text, display_text, attachments, session_id)
+        .await
 }
 
 /// Inject guidance into the active turn without cancelling the running prompt.

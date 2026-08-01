@@ -9683,6 +9683,27 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   color: var(--text-secondary);
 }
 
+/* Session / workspace change chips live in the context bar (not the input). */
+.composer__context-changes {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.composer__context-item--changes,
+.composer__context-item--git-dirty {
+  cursor: pointer;
+  max-width: none;
+}
+
+.composer__context-item--changes .chip__label--nums,
+.composer__context-item--git-dirty .chip__label--nums {
+  font-variant-numeric: tabular-nums;
+}
+
 [data-theme="light"] .composer__context-bar {
   background: color-mix(in srgb, var(--bg-elevated) 70%, #eef0f3);
   border-color: color-mix(in srgb, var(--border-subtle) 80%, transparent);
@@ -11542,6 +11563,11 @@ html[data-composer-min-rows="8"] .composer__input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.composer-plus__filter-q--muted {
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .composer-plus__filter-count {
