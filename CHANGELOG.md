@@ -11,6 +11,11 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+#### Composer & chat
+- **Skills task-level picker**: composer toolbar button opens a search + **recent** (localStorage ring, max 12) + host catalog list for the next prompt; pick inserts `[[skill:name]]` chip tokens (never invents skill rows). Soft empty states: no skills / filter empty / host-only CLI gap. Pure `skillsTaskPicker` helpers + tests; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
