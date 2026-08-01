@@ -74,7 +74,6 @@ import {
 } from "@/lib/allowedTools";
 import { detectAppPlatform } from "@/lib/appPlatform";
 import {
-  RECOMMENDED_SANDBOX_PROFILE,
   SANDBOX_MIN_CLI,
   childNetworkRestrictApplies,
   sandboxIsolationActive,
@@ -691,6 +690,8 @@ export interface SettingsPageProps {
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
+  /** Open sandbox profile guide wizard (GlassModal). */
+  onOpenSandboxWizard?: () => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -1329,6 +1330,7 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  onOpenSandboxWizard,
   maxAgentTurns = 0,
   onMaxAgentTurns,
   backgroundWaitPolicy = "wait",
@@ -2763,10 +2765,20 @@ export function SettingsPage({
                   <div className="settings-row__desc" style={{ marginTop: 8 }}>
                     {t(sandboxProfileHelpKey(sandboxProfile || "off"))}
                   </div>
-                  {sandboxProfile === RECOMMENDED_SANDBOX_PROFILE ||
-                  (sandboxProfile || "off") === "off" ? (
-                    <div className="settings-row__hint" style={{ marginTop: 6 }}>
-                      {t("settings.sandbox.recommendedNote")}
+                  <div className="settings-row__hint" style={{ marginTop: 6 }}>
+                    {t("settings.sandbox.recommendedDaily")}
+                    {" — "}
+                    {t("settings.sandbox.recommendedNote")}
+                  </div>
+                  {onOpenSandboxWizard ? (
+                    <div style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={onOpenSandboxWizard}
+                      >
+                        {t("settings.sandbox.openGuide")}
+                      </button>
                     </div>
                   ) : null}
                   {(() => {

@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Sandbox profile wizard on project trust**: after trusting a project (when the global profile is still Off), optional GlassModal guide recommends **Workspace** for daily use, lets pick off / workspace / read-only / strict / devbox (danger note on off/devbox), and applies via Settings. Settings → sandbox row shows “Recommended for daily use” + **Open sandbox guide**. Windows / old-CLI honesty banners (soft-fail). Soft localStorage dismiss. Pure `sandboxWizard` helpers + tests; en/zh/zh-TW; no `window.confirm`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

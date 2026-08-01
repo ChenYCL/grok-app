@@ -2077,6 +2077,36 @@ export const zhTW: Record<MessageKey, string> = {
     "此設定檔的子行程網路攔截僅在 Linux 生效；macOS 為 no-op（行程內工具仍可連網）。",
   "settings.sandbox.recommendedNote":
     "提示：日常使用推薦「工作區」設定檔。",
+  "settings.sandbox.openGuide": "開啟沙箱指南",
+  "settings.sandbox.recommendedDaily": "日常使用推薦",
+  // Sandbox profile wizard (trust offer + Settings guide)
+  "sandboxWizard.title.trust": "選擇沙箱設定檔",
+  "sandboxWizard.title.info": "沙箱設定檔指南",
+  "sandboxWizard.progress": "第 {n} / {total} 步 · {step}",
+  "sandboxWizard.step.intro": "為何使用沙箱",
+  "sandboxWizard.step.pick": "選擇設定檔",
+  "sandboxWizard.step.confirm": "確認",
+  "sandboxWizard.next": "繼續",
+  "sandboxWizard.back": "上一步",
+  "sandboxWizard.skip": "暫不設定",
+  "sandboxWizard.apply": "套用設定檔",
+  "sandboxWizard.intro.trust":
+    "你已信任此專案。可選為 Agent 行程設定作業系統級沙箱，使寫入範圍限制在工作區（及暫存目錄）。",
+  "sandboxWizard.intro.info":
+    "OS 沙箱設定檔限制 Agent 行程的寫入能力。請依你對本機的使用方式選擇設定檔。",
+  "sandboxWizard.reason.workspace":
+    "日常程式設計推薦：工作區 — 可讀任意路徑；寫入限制為工作階段工作目錄、~/.grok/ 與系統暫存目錄。網路允許。",
+  "sandboxWizard.honesty.platform":
+    "目前平台未文件化核心級 OS 沙箱強制（僅 macOS Seatbelt / Linux Landlock）。CLI 可能接受設定但 soft-fail 且無強制執行 — 請勿當作硬性安全邊界。",
+  "sandboxWizard.honesty.cliUnsupported":
+    "目前 CLI 過舊，不支援 --sandbox（需要 ≥ {min}）。設定可儲存，但會 soft-fail（省略 flag）直至升級 Grok Build。",
+  "sandboxWizard.pick.lead":
+    "選擇沙箱設定檔。日常使用推薦「工作區」。",
+  "sandboxWizard.recommendedBadge": "推薦",
+  "sandboxWizard.confirm.lead": "將「{profile}」套用為應用程式級沙箱設定檔？",
+  "sandboxWizard.confirm.respawnHint":
+    "在新啟動 Agent 時生效——變更後請重新連線工作階段。仍可在專案選單中為單一專案覆寫。",
+  "sandboxWizard.dontOfferAgain": "信任專案後不再提示",
   "settings.disableWebSearch": "停用網頁搜尋與抓取",
   "settings.disableWebSearchDesc":
     "啟動 Agent 時加上 --disable-web-search，移除 web_search / web_fetch 工具。變更後會 soft-respawn 已連線的 Agent。",

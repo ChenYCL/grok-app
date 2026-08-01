@@ -2201,6 +2201,36 @@ const en = {
     "Child-process network blocking for this profile is enforced on Linux only; on macOS it is a no-op (in-process tools still have network).",
   "settings.sandbox.recommendedNote":
     "Tip: Workspace is the recommended everyday profile.",
+  "settings.sandbox.openGuide": "Open sandbox guide",
+  "settings.sandbox.recommendedDaily": "Recommended for daily use",
+  // Sandbox profile wizard (trust offer + Settings guide)
+  "sandboxWizard.title.trust": "Choose a sandbox profile",
+  "sandboxWizard.title.info": "Sandbox profile guide",
+  "sandboxWizard.progress": "Step {n} of {total} · {step}",
+  "sandboxWizard.step.intro": "Why sandbox",
+  "sandboxWizard.step.pick": "Pick a profile",
+  "sandboxWizard.step.confirm": "Confirm",
+  "sandboxWizard.next": "Continue",
+  "sandboxWizard.back": "Back",
+  "sandboxWizard.skip": "Not now",
+  "sandboxWizard.apply": "Apply profile",
+  "sandboxWizard.intro.trust":
+    "You trusted this project. Optionally set an OS-level sandbox for agent processes so writes stay scoped to the workspace (and temp).",
+  "sandboxWizard.intro.info":
+    "OS sandbox profiles limit what the agent process can write. Pick a profile that matches how you use this machine.",
+  "sandboxWizard.reason.workspace":
+    "Recommended for daily coding: Workspace — read anywhere; write limited to the session working directory, ~/.grok/, and system temp. Network allowed.",
+  "sandboxWizard.honesty.platform":
+    "On this platform, kernel OS sandbox enforcement is not documented (macOS Seatbelt / Linux Landlock only). The CLI may accept the profile but soft-fail without enforcement — not a hard security boundary.",
+  "sandboxWizard.honesty.cliUnsupported":
+    "This CLI is too old for --sandbox (needs ≥ {min}). The profile can be saved, but the flag is omitted (soft-fail) until you upgrade Grok Build.",
+  "sandboxWizard.pick.lead":
+    "Select a sandbox profile. Workspace is recommended for everyday use.",
+  "sandboxWizard.recommendedBadge": "Recommended",
+  "sandboxWizard.confirm.lead": "Apply “{profile}” as the app sandbox profile?",
+  "sandboxWizard.confirm.respawnHint":
+    "Takes effect when a new agent starts — reconnect the session after changing. Projects can still override this from the project menu.",
+  "sandboxWizard.dontOfferAgain": "Don’t offer this after trusting projects",
   "settings.disableWebSearch": "Disable web search & fetch",
   "settings.disableWebSearchDesc":
     "Spawn agents with --disable-web-search so web_search and web_fetch tools are unavailable. Live agents soft-respawn when this changes.",
@@ -8231,6 +8261,36 @@ const zh: Record<MessageKey, string> = {
     "此配置的子进程网络拦截仅在 Linux 生效；macOS 为 no-op（进程内工具仍可联网）。",
   "settings.sandbox.recommendedNote":
     "提示：日常使用推荐「工作区」配置。",
+  "settings.sandbox.openGuide": "打开沙箱指南",
+  "settings.sandbox.recommendedDaily": "日常使用推荐",
+  // Sandbox profile wizard (trust offer + Settings guide)
+  "sandboxWizard.title.trust": "选择沙箱配置",
+  "sandboxWizard.title.info": "沙箱配置指南",
+  "sandboxWizard.progress": "第 {n} / {total} 步 · {step}",
+  "sandboxWizard.step.intro": "为何使用沙箱",
+  "sandboxWizard.step.pick": "选择配置",
+  "sandboxWizard.step.confirm": "确认",
+  "sandboxWizard.next": "继续",
+  "sandboxWizard.back": "上一步",
+  "sandboxWizard.skip": "暂不设置",
+  "sandboxWizard.apply": "应用配置",
+  "sandboxWizard.intro.trust":
+    "你已信任此项目。可选为 Agent 进程设置操作系统级沙箱，使写入范围限制在工作区（及临时目录）。",
+  "sandboxWizard.intro.info":
+    "OS 沙箱配置限制 Agent 进程的写入能力。请按你对本机的使用方式选择配置。",
+  "sandboxWizard.reason.workspace":
+    "日常编程推荐：工作区 — 可读任意路径；写入限制为会话工作目录、~/.grok/ 与系统临时目录。网络允许。",
+  "sandboxWizard.honesty.platform":
+    "当前平台未文档化内核级 OS 沙箱强制（仅 macOS Seatbelt / Linux Landlock）。CLI 可能接受配置但 soft-fail 且无强制执行 — 请勿当作硬安全边界。",
+  "sandboxWizard.honesty.cliUnsupported":
+    "当前 CLI 过旧，不支持 --sandbox（需要 ≥ {min}）。配置可保存，但会 soft-fail（省略 flag）直至升级 Grok Build。",
+  "sandboxWizard.pick.lead":
+    "选择沙箱配置。日常使用推荐「工作区」。",
+  "sandboxWizard.recommendedBadge": "推荐",
+  "sandboxWizard.confirm.lead": "将「{profile}」应用为应用级沙箱配置？",
+  "sandboxWizard.confirm.respawnHint":
+    "在新启动 Agent 时生效——更改后请重连会话。仍可在项目菜单中为单个项目覆盖。",
+  "sandboxWizard.dontOfferAgain": "信任项目后不再提示",
   "settings.disableWebSearch": "禁用网页搜索与抓取",
   "settings.disableWebSearchDesc":
     "启动 Agent 时加上 --disable-web-search，移除 web_search / web_fetch 工具。更改后会 soft-respawn 已连接的 Agent。",
