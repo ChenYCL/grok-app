@@ -927,6 +927,15 @@ import {
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
 import type { ComposerModelPick } from "@/lib/composerModelGroups";
+import {
+  buildApplyFooterNote,
+  buildApplyHonestyBanner,
+  classifyModelEffortError,
+  modelEffortErrorMessageKey,
+  resolveEffortApplyEffect,
+  resolveModelApplyEffect,
+  sessionHasLiveAgent,
+} from "@/lib/modelEffortApply";
 import { resolveProviderBrandId } from "@/lib/providerPresets";
 import {
   ProviderBrandIcon,
@@ -12085,6 +12094,94 @@ export default function App() {
     if (next !== effort) setEffort(next);
   }, [activeEffortCatalog, effort]);
 
+  /** Live ACP attached → model set_model / effort soft-respawn honesty. */
+  const composerHasLiveAgent = sessionHasLiveAgent(session.state);
+  /** Host ACP supports session/set_model when running under Tauri. */
+  const composerSupportsSetModel = api.isTauri();
+
+  const notifyModelApplyHonesty = useCallback(
+    (nextModelId: string) => {
+      const effect = resolveModelApplyEffect({
+        hasLiveAgent: sessionHasLiveAgent(session.state),
+        supportsSetModel: composerSupportsSetModel,
+      });
+      const banner = buildApplyHonestyBanner({
+        kind: "model",
+        effect,
+        modelId: nextModelId,
+      });
+      showToast(tr(banner.messageKey as MessageKey, banner.vars), 3200);
+    },
+    [session.state, composerSupportsSetModel, showToast, tr],
+  );
+
+  const notifyEffortApplyHonesty = useCallback(
+    (nextEffortId: string) => {
+      const effect = resolveEffortApplyEffect({
+        hasLiveAgent: sessionHasLiveAgent(session.state),
+      });
+      const banner = buildApplyHonestyBanner({
+        kind: "effort",
+        effect,
+        effortId: nextEffortId,
+      });
+      showToast(tr(banner.messageKey as MessageKey, banner.vars), 3200);
+    },
+    [session.state, showToast, tr],
+  );
+
+  const handleComposerEffortChange = useCallback(
+    (v: string) => {
+      if (!isValidEffort(v, channelEffortOptions ?? undefined)) return;
+      if (v === effort) return;
+      setEffort(v);
+      notifyEffortApplyHonesty(v);
+      void api
+        .composerPrefsSet({
+          projectId: activeProject?.id ?? null,
+          sessionId: session.sessionId ?? null,
+          effort: v,
+        })
+        .catch((e) => {
+          const kind = classifyModelEffortError(e);
+          const key = modelEffortErrorMessageKey(kind);
+          const detail = String(e).trim();
+          showToast(
+            detail
+              ? `${tr(key as MessageKey)}: ${detail}`
+              : tr(key as MessageKey),
+            4000,
+          );
+        });
+    },
+    [
+      channelEffortOptions,
+      effort,
+      notifyEffortApplyHonesty,
+      activeProject?.id,
+      session.sessionId,
+      showToast,
+      tr,
+    ],
+  );
+
+  const modelApplyFooter = useMemo(() => {
+    const note = buildApplyFooterNote({
+      kind: "model",
+      hasLiveAgent: composerHasLiveAgent,
+      supportsSetModel: composerSupportsSetModel,
+    });
+    return note ? tr(note.messageKey as MessageKey, note.vars) : null;
+  }, [composerHasLiveAgent, composerSupportsSetModel, tr]);
+
+  const effortApplyFooter = useMemo(() => {
+    const note = buildApplyFooterNote({
+      kind: "effort",
+      hasLiveAgent: composerHasLiveAgent,
+    });
+    return note ? tr(note.messageKey as MessageKey, note.vars) : null;
+  }, [composerHasLiveAgent, tr]);
+
   const handleModelPick = useCallback(
     async (pick: ComposerModelPick) => {
       if (modelPickBusy) return;
@@ -12096,6 +12193,7 @@ export default function App() {
             await refreshProviderRoute();
           }
           if (!isValidModelId(pick.modelId, availableModels)) return;
+          const modelChanged = pick.modelId !== modelId;
           setModelId(pick.modelId);
           // DeepSeek 4-tier → Grok 3-tier (low→low, high→medium, xhigh/max→high).
           setEffort((prev) =>
@@ -12105,13 +12203,24 @@ export default function App() {
               channelEffortOptions ?? undefined,
             ),
           );
+          if (modelChanged) notifyModelApplyHonesty(pick.modelId);
           void api
             .composerPrefsSet({
               projectId: activeProject?.id ?? null,
               sessionId: session.sessionId ?? null,
               modelId: pick.modelId,
             })
-            .catch((e) => showToast(String(e), 4000));
+            .catch((e) => {
+              const kind = classifyModelEffortError(e);
+              const key = modelEffortErrorMessageKey(kind);
+              const detail = String(e).trim();
+              showToast(
+                detail
+                  ? `${tr(key as MessageKey)}: ${detail}`
+                  : tr(key as MessageKey),
+                4000,
+              );
+            });
         } else {
           if (!api.isTauri()) return;
           const provider = customProviders.find(
@@ -12161,15 +12270,25 @@ export default function App() {
               channelEffortOptions ?? GROK_BUILD_EFFORTS,
             ),
           );
+          notifyModelApplyHonesty(pick.modelId);
         }
       } catch (e) {
-        showToast(String(e), 4000);
+        const kind = classifyModelEffortError(e);
+        const key = modelEffortErrorMessageKey(kind);
+        const detail = String(e).trim();
+        showToast(
+          detail
+            ? `${tr(key as MessageKey)}: ${detail}`
+            : tr(key as MessageKey),
+          4000,
+        );
       } finally {
         setModelPickBusy(false);
       }
     },
     [
       modelPickBusy,
+      modelId,
       providerActiveSource,
       providerActiveId,
       availableModels,
@@ -12180,6 +12299,7 @@ export default function App() {
       showToast,
       tr,
       channelEffortOptions,
+      notifyModelApplyHonesty,
     ],
   );
   const liveBrandKind = useMemo(
@@ -19988,6 +20108,10 @@ export default function App() {
                       activeSource={providerActiveSource}
                       activeProviderId={providerActiveId}
                       channelEfforts={channelEffortOptions}
+                      applyNotes={{
+                        model: modelApplyFooter,
+                        effort: effortApplyFooter,
+                      }}
                       labels={{
                         model: tr("composer.model"),
                         modelGroupOfficial: tr("composer.modelGroupOfficial"),
@@ -20006,23 +20130,7 @@ export default function App() {
                       onModelPick={(pick) => {
                         void handleModelPick(pick);
                       }}
-                      onEffort={(v) => {
-                        if (
-                          !isValidEffort(
-                            v,
-                            channelEffortOptions ?? undefined,
-                          )
-                        )
-                          return;
-                        setEffort(v);
-                        void api
-                          .composerPrefsSet({
-                            projectId: activeProject?.id ?? null,
-                            sessionId: session.sessionId ?? null,
-                            effort: v,
-                          })
-                          .catch((e) => showToast(String(e), 4000));
-                      }}
+                      onEffort={handleComposerEffortChange}
                     />
                     <ComposerAccessMenu
                       mode={mode}
@@ -20523,20 +20631,7 @@ export default function App() {
             onModelPick={(pick) => {
               void handleModelPick(pick);
             }}
-            onEffort={(v) => {
-              if (
-                !isValidEffort(v, channelEffortOptions ?? undefined)
-              )
-                return;
-              setEffort(v);
-              void api
-                .composerPrefsSet({
-                  projectId: activeProject?.id ?? null,
-                  sessionId: session.sessionId ?? null,
-                  effort: v,
-                })
-                .catch((e) => showToast(String(e), 4000));
-            }}
+            onEffort={handleComposerEffortChange}
             onMode={(v) => {
               setMode(v);
               if (v === "plan") setGoalMode(false);

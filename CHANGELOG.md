@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Composer model / effort apply honesty**: after changing model or reasoning in the composer menus, a short toast states when it takes effect (immediate `session/set_model` · soft-respawn next message · next message when idle). Nested model/effort lists show a live-agent footer note; prefs errors are classified (set_model / soft-respawn / invalid / disconnected / busy). Pure `modelEffortApply` helpers + tests; en/zh/zh-TW. Spawn flags unchanged.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

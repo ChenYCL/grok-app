@@ -230,6 +230,14 @@ export interface ComposerModelMenuProps {
   onModelPick?: (pick: ComposerModelPick) => void;
   onModel?: (id: string) => void;
   onEffort: (id: string) => void;
+  /**
+   * Apply-path honesty when a live agent is attached (e.g. soft-respawn /
+   * immediate set_model). Shown as a footer note in nested lists when set.
+   */
+  applyNotes?: {
+    model?: string | null;
+    effort?: string | null;
+  };
 }
 
 function effortI18n(labels: ComposerModelMenuProps["labels"]) {
@@ -264,6 +272,7 @@ export function ComposerModelMenu({
   onModelPick,
   onModel,
   onEffort,
+  applyNotes,
 }: ComposerModelMenuProps) {
   const [nested, setNested] = useState<Nested>(null);
   const [modelQuery, setModelQuery] = useState("");
@@ -533,6 +542,16 @@ export function ComposerModelMenu({
                 </button>
               );
             })}
+          {nested === "model" && applyNotes?.model ? (
+            <div className="cmm__apply-note" role="note">
+              {applyNotes.model}
+            </div>
+          ) : null}
+          {nested === "effort" && applyNotes?.effort ? (
+            <div className="cmm__apply-note" role="note">
+              {applyNotes.effort}
+            </div>
+          ) : null}
         </div>
       )}
     </MenuShell>
