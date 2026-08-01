@@ -917,6 +917,7 @@ import {
 } from "@/lib/app/sidebarModels";
 import type { ContextMenuState } from "@/lib/app/appDialogTypes";
 import { useSessionRuntime } from "@/hooks/useSessionRuntime";
+import { sessionTranscriptStore } from "@/lib/sessionTranscriptStore";
 import { useComposerController } from "@/hooks/useComposerController";
 import { useAppDialogs } from "@/hooks/useAppDialogs";
 import { useSessionHostEvents } from "@/hooks/useSessionHostEvents";
@@ -10112,11 +10113,27 @@ export function AppWorkbench() {
    * Historical tool_step rows are not rendered in the transcript, so matching
    * them would land on invisible hits.
    */
+  const [chatFindLiveTick, setChatFindLiveTick] = useState(0);
+  useEffect(() => {
+    if (!showChatFind) return;
+    let raf = 0;
+    const unsub = sessionTranscriptStore.subscribeContent(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setChatFindLiveTick((n) => n + 1));
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      unsub();
+    };
+  }, [showChatFind]);
+
   const chatFindMatches = useMemo((): ChatFindMatch[] => {
     if (!showChatFind) return [];
+    void chatFindLiveTick;
+    const live = sessionTranscriptStore.getMessages();
     return findChatMatches(
       chatFindQuery,
-      messages
+      live
         .filter((m) => m.role === "user" || m.role === "assistant")
         .map((m) => ({
           id: m.id,
@@ -10125,7 +10142,7 @@ export function AppWorkbench() {
           marker: m.marker,
         })),
     );
-  }, [showChatFind, chatFindQuery, messages]);
+  }, [showChatFind, chatFindQuery, chatFindLiveTick, messages]);
 
   const chatFindHitIds = useMemo(() => {
     const s = new Set<string>();
