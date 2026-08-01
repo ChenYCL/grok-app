@@ -126,15 +126,20 @@ export function useSessionRuntime(opts?: {
     [patchStore],
   );
 
+  /**
+   * Prefer the store Set identity when host does not inject an extra id —
+   * keeps sidebar memo/`busyIds.has` stable across unrelated shell re-renders.
+   */
   const busyIds = useMemo(() => {
-    const set = new Set(busyIdsFromStore);
     if (
-      liveHost.sessionId &&
-      isSessionLiveStreaming(liveHost.state) &&
-      !set.has(liveHost.sessionId)
+      !liveHost.sessionId ||
+      !isSessionLiveStreaming(liveHost.state) ||
+      busyIdsFromStore.has(liveHost.sessionId)
     ) {
-      set.add(liveHost.sessionId);
+      return busyIdsFromStore;
     }
+    const set = new Set(busyIdsFromStore);
+    set.add(liveHost.sessionId);
     return set;
   }, [busyIdsFromStore, liveHost.sessionId, liveHost.state]);
 

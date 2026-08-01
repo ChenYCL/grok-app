@@ -17,4 +17,12 @@ describe("useSessionLiveMap helpers", () => {
     );
     expect([...peekBusySessionIds()]).toEqual(["a"]);
   });
+
+  it("busyKey lists session ids for useIsSessionBusy", () => {
+    sessionLiveMapStore.setMap((prev) =>
+      projectHostIntoLiveMap(prev, { sessionId: "x", state: "streaming" }),
+    );
+    const key = sessionLiveMapStore.getBusySnapshot().busyKey;
+    expect(key.split("\0")).toContain("x");
+  });
 });
