@@ -20594,6 +20594,7 @@ export default function App() {
         open={showDoctor}
         onClose={() => setShowDoctor(false)}
         locale={locale}
+        sandboxProfile={sandboxProfile}
         onConfirm={({ title, message, confirmLabel, danger, onConfirm }) => {
           setAppDialog({
             kind: "confirm",

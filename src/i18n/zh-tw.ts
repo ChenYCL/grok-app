@@ -3294,6 +3294,70 @@ export const zhTW: Record<MessageKey, string> = {
   "doctor.finding.destructive": "破壞性",
   "doctor.finding.noDetail": "無更多詳情。",
 
+  // Platform capability matrix (mac / Windows / Linux honesty)
+  "doctor.platformMatrix.title": "平台能力矩陣",
+  "doctor.platformMatrix.hint":
+    "如實展示本安裝在 macOS / Windows / Linux 上的能力說明：路徑探測、沙箱核心、視窗裝飾、更新路徑、媒體迴路。補充 Windows 日用清單，不編造探測結果。",
+  "doctor.platformMatrix.col.capability": "能力",
+  "doctor.platformMatrix.col.status": "狀態",
+  "doctor.platformMatrix.col.detail": "說明",
+  "doctor.platformMatrix.row.platform": "平台",
+  "doctor.platformMatrix.row.cliPathProbe": "CLI 路徑探測",
+  "doctor.platformMatrix.row.sandboxEnforcement": "沙箱核心",
+  "doctor.platformMatrix.row.windowChrome": "視窗裝飾",
+  "doctor.platformMatrix.row.autoUpdate": "應用自動更新",
+  "doctor.platformMatrix.row.mediaLoopback": "媒體迴路",
+  "doctor.platformMatrix.status.pass": "通過",
+  "doctor.platformMatrix.status.warn": "警告",
+  "doctor.platformMatrix.status.na": "不適用",
+  "doctor.platformMatrix.status.unknown": "未知",
+  "doctor.platformMatrix.msg.platform.mac": "macOS（已偵測）。",
+  "doctor.platformMatrix.msg.platform.win": "Windows（已偵測）。",
+  "doctor.platformMatrix.msg.platform.linux": "Linux（已偵測）。",
+  "doctor.platformMatrix.msg.platform.unknown":
+    "未能辨識平台 — 能力說明可能不完整。",
+  "doctor.platformMatrix.msg.cli.found": "路徑探測已解析到 Grok Build CLI 二進位。",
+  "doctor.platformMatrix.msg.cli.missing":
+    "路徑探測未找到 Grok Build 二進位 — 請安裝或在 設定 → 執行環境 中指定路徑。",
+  "doctor.platformMatrix.msg.cli.unknown":
+    "CLI 路徑探測結果尚不可用（請重新執行 Doctor）。",
+  "doctor.platformMatrix.msg.sandbox.off":
+    "沙箱隔離已關閉 — 未請求核心強制。",
+  "doctor.platformMatrix.msg.sandbox.macSeatbelt":
+    "macOS Seatbelt：開啟隔離時 CLI 文件支援 OS 沙箱強制。",
+  "doctor.platformMatrix.msg.sandbox.linuxLandlock":
+    "Linux Landlock：開啟隔離時 CLI 文件支援 OS 沙箱強制。",
+  "doctor.platformMatrix.msg.sandbox.winSoftFail":
+    "Windows：CLI 可能接受沙箱設定但 soft-fail、無核心強制 — 請勿當作硬性安全邊界。",
+  "doctor.platformMatrix.msg.sandbox.platformSoft":
+    "此平台 OS 沙箱強制 soft-fail（CLI 可能在無隔離情況下繼續執行）。",
+  "doctor.platformMatrix.msg.sandbox.unknown":
+    "此平台的沙箱核心支援未知。",
+  "doctor.platformMatrix.msg.chrome.macOverlay":
+    "macOS Overlay 標題列 + 交通燈（tauri.macos.conf）。",
+  "doctor.platformMatrix.msg.chrome.winFrameless":
+    "Windows 無邊框自繪窗控（最小化 / 最大化 / 關閉）— tauri.windows.conf。",
+  "doctor.platformMatrix.msg.chrome.linuxDecorated":
+    "Linux 使用標準視窗裝飾（基礎 tauri.conf）。",
+  "doctor.platformMatrix.msg.chrome.unknown":
+    "此平台的視窗裝飾佈局未分類。",
+  "doctor.platformMatrix.msg.update.silent":
+    "已簽名發行路徑：支援應用內靜默自動更新。",
+  "doctor.platformMatrix.msg.update.manual":
+    "手動 / GitHub 更新路徑（本機、未簽名或外掛關閉）— 開啟 Releases；不宣稱靜默安裝。",
+  "doctor.platformMatrix.msg.update.unsupported":
+    "此安裝包類型不支援靜默自動更新（例如 Linux .deb/.rpm）— 請手動下載。",
+  "doctor.platformMatrix.msg.update.hostOnly":
+    "未在桌面應用宿主中執行 — 自動更新不適用。",
+  "doctor.platformMatrix.msg.update.unknown":
+    "更新通道尚未回報 — 請勿假定靜默安裝。",
+  "doctor.platformMatrix.msg.media.loopback":
+    "本機媒體走迴路 HTTP（127.0.0.1）並經 path-scope 白名單 — 產品路徑不用 raw media://。",
+  "doctor.platformMatrix.msg.media.unavailable":
+    "媒體迴路端點不可用 — 宿主媒體服務就緒前預覽可能 soft-fail。",
+  "doctor.platformMatrix.msg.media.unknown":
+    "此平台的媒體迴路能力未分類。",
+
   "reliability.title": "可靠性",
   "reliability.close": "關閉可靠性中心",
   "reliability.lead":

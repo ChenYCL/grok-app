@@ -47,6 +47,13 @@ import {
   type DoctorFindingRow,
   type DoctorFindingSourceFilter,
 } from "@/lib/doctorFindings";
+import {
+  buildDoctorPlatformMatrix,
+  doctorPlatformCellStatusKey,
+  doctorPlatformCellTone,
+} from "@/lib/doctorPlatformMatrix";
+import { detectAppPlatform } from "@/lib/appPlatform";
+import { useUpdaterContext } from "@/hooks/UpdaterProvider";
 import { CliUpdateRow } from "@/components/CliUpdateRow";
 import { redact } from "@/lib/redact";
 
@@ -83,6 +90,11 @@ export type DoctorModalProps = {
   onResetDone?: () => void;
   /** Open Reliability / Observability center (busy · stalls · errors). */
   onOpenReliability?: () => void;
+  /**
+   * Effective sandbox profile for platform-matrix honesty
+   * (global or project-resolved). Optional — omit → treat as off / default.
+   */
+  sandboxProfile?: string | null;
 };
 
 const CHECK_TITLE_KEYS: Record<string, MessageKey> = {
@@ -180,8 +192,11 @@ export function DoctorModal({
   onConfirm,
   onResetDone,
   onOpenReliability,
+  sandboxProfile = "off",
 }: DoctorModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
+  // Product tree wraps Doctor in UpdaterProvider (App shell).
+  const { channelInfo } = useUpdaterContext();
   const [report, setReport] = useState<DoctorReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -699,6 +714,26 @@ export function DoctorModal({
     };
   }, [report]);
 
+  /**
+   * Platform capability matrix — pure honesty from known inputs only.
+   * Never invents CLI found / update channel / media probe results.
+   */
+  const platformMatrix = useMemo(() => {
+    const cliFound =
+      cliResolved != null
+        ? cliResolved.found
+        : report?.checks?.find((c) => c.id === "cli")
+          ? report.checks.find((c) => c.id === "cli")!.level !== "fail"
+          : null;
+    return buildDoctorPlatformMatrix({
+      platform: detectAppPlatform(),
+      cliFound,
+      sandboxProfile,
+      updateChannel: channelInfo?.channel ?? null,
+      // Omit live media probe — design honesty only (no invented uptime).
+    });
+  }, [channelInfo?.channel, cliResolved, report, sandboxProfile]);
+
   const copyCliPath = useCallback(
     async (path: string) => {
       try {
@@ -849,6 +884,65 @@ export function DoctorModal({
                 </div>
               </dl>
             </div>
+          )}
+
+          {!loading && (
+            <section
+              className="doctor-platform-matrix"
+              aria-label={t("doctor.platformMatrix.title")}
+              data-testid="doctor-platform-matrix"
+            >
+              <div className="doctor-platform-matrix__head">
+                <h3 className="doctor-platform-matrix__title">
+                  {t("doctor.platformMatrix.title")}
+                </h3>
+                <p className="doctor-platform-matrix__hint">
+                  {t("doctor.platformMatrix.hint")}
+                </p>
+              </div>
+              <div className="doctor-platform-matrix__table-wrap">
+                <table className="doctor-platform-matrix__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">
+                        {t("doctor.platformMatrix.col.capability")}
+                      </th>
+                      <th scope="col">
+                        {t("doctor.platformMatrix.col.status")}
+                      </th>
+                      <th scope="col">
+                        {t("doctor.platformMatrix.col.detail")}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {platformMatrix.rows.map((row) => {
+                      const tone = doctorPlatformCellTone(row.status);
+                      return (
+                        <tr
+                          key={row.rowId}
+                          className={`doctor-platform-matrix__row doctor-platform-matrix__row--${tone}`}
+                          data-row-id={row.rowId}
+                          data-status={row.status}
+                        >
+                          <th scope="row">{t(row.labelKey)}</th>
+                          <td>
+                            <span
+                              className={`doctor-platform-matrix__badge doctor-platform-matrix__badge--${tone}`}
+                            >
+                              {t(doctorPlatformCellStatusKey(row.status))}
+                            </span>
+                          </td>
+                          <td className="doctor-platform-matrix__detail">
+                            {t(row.messageKey)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           )}
 
           {!loading && allFindings.length === 0 && (

@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Doctor platform capability matrix**: Doctor modal shows a **Platform matrix** table with honest macOS / Windows / Linux notes for CLI path probe, sandbox kernel (Seatbelt / Landlock / Windows soft-fail), window chrome (Overlay vs frameless vs decorated), app auto-update channel, and media loopback delivery — pure `doctorPlatformMatrix` helpers + tests; never invents probe results; en/zh/zh-TW. Complements the Windows day-use checklist without duplicating it.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
