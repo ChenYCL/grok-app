@@ -25,6 +25,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+      - name: ESLint (minimal quality rules)
+        run: pnpm lint
+      - name: Code quality gates
+        run: python3 scripts/check-code-quality-gates.py --mode wave-a
       - run: pnpm build:ui
 
   rust:
@@ -58,6 +62,15 @@ jobs:
         with:
           workspaces: "./src-tauri -> target"
           shared-key: ci-${{ matrix.name }}-v5
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+      - name: cargo clippy
+        working-directory: src-tauri
+        # Historical debt: clippy may warn; -D warnings can be tightened after remediation.
+        # Still fails on hard errors. Final Completion may document remaining allows.
+        run: cargo clippy --all-targets -- -D warnings
+        continue-on-error: false
       # Includes ACP golden fixtures (tests/fixtures/acp + acp_golden_test).
       # Required green for any ACP / mock_acp / permission wire change (T06).
       - name: cargo test

@@ -1,0 +1,127 @@
+// Minimal ESLint flat config for quality gates (wave-a+).
+// Keeps rules light so historical debt does not block CI; forbids native dialogs.
+import js from "@eslint/js";
+
+/** @type {import('eslint').Linter.Config[]} */
+export default [
+  {
+    ignores: [
+      "dist/**",
+      "src-tauri/target/**",
+      "node_modules/**",
+      "coverage/**",
+      "**/*.min.js",
+    ],
+  },
+  js.configs.recommended,
+  {
+    files: ["src/**/*.{js,jsx,ts,tsx}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+      },
+      globals: {
+        window: "readonly",
+        document: "readonly",
+        console: "readonly",
+        localStorage: "readonly",
+        sessionStorage: "readonly",
+        navigator: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        requestAnimationFrame: "readonly",
+        cancelAnimationFrame: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        URLSearchParams: "readonly",
+        FormData: "readonly",
+        Blob: "readonly",
+        File: "readonly",
+        FileReader: "readonly",
+        AbortController: "readonly",
+        AbortSignal: "readonly",
+        HTMLElement: "readonly",
+        HTMLDivElement: "readonly",
+        HTMLTextAreaElement: "readonly",
+        HTMLInputElement: "readonly",
+        HTMLButtonElement: "readonly",
+        Element: "readonly",
+        Node: "readonly",
+        NodeList: "readonly",
+        Event: "readonly",
+        CustomEvent: "readonly",
+        KeyboardEvent: "readonly",
+        MouseEvent: "readonly",
+        ClipboardEvent: "readonly",
+        DragEvent: "readonly",
+        FocusEvent: "readonly",
+        ResizeObserver: "readonly",
+        IntersectionObserver: "readonly",
+        MutationObserver: "readonly",
+        performance: "readonly",
+        crypto: "readonly",
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        exports: "readonly",
+        Buffer: "readonly",
+        global: "readonly",
+        React: "readonly",
+        JSX: "readonly",
+      },
+    },
+    rules: {
+      // Project hard rule: never use native browser dialogs in Tauri UI.
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "confirm",
+          message: "Use in-app dialogs (setAppDialog / GlassModal), never window.confirm.",
+        },
+        {
+          name: "alert",
+          message: "Use in-app dialogs, never window.alert.",
+        },
+        {
+          name: "prompt",
+          message: "Use in-app dialogs, never window.prompt.",
+        },
+      ],
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "window",
+          property: "confirm",
+          message: "Use in-app dialogs (setAppDialog / GlassModal), never window.confirm.",
+        },
+        {
+          object: "window",
+          property: "alert",
+          message: "Use in-app dialogs, never window.alert.",
+        },
+        {
+          object: "window",
+          property: "prompt",
+          message: "Use in-app dialogs, never window.prompt.",
+        },
+      ],
+      // Historical codebase is large; keep noise low in wave-a.
+      "no-unused-vars": "off",
+      "no-undef": "off",
+      "no-empty": "off",
+      "no-redeclare": "off",
+      "no-constant-condition": "off",
+      "no-prototype-builtins": "off",
+      "no-useless-escape": "off",
+      "no-control-regex": "off",
+      "no-cond-assign": "off",
+      "no-fallthrough": "off",
+      "no-sparse-arrays": "off",
+    },
+  },
+];

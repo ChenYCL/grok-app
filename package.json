@@ -31,7 +31,8 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.17",
@@ -49,6 +50,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "docx-preview": "^0.4.0",
+    "dompurify": "^3.4.12",
     "highlight.js": "^11.11.1",
     "html-to-image": "^1.11.13",
     "pdfjs-dist": "^5.4.296",
@@ -67,8 +69,10 @@
     "yet-another-react-lightbox": "^3.32.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.30.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2",
+    "@types/dompurify": "^3.2.0",
     "@types/node": "^22.15.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.8",
@@ -77,6 +81,7 @@
     "@vitejs/plugin-react": "^4.5.2",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "canvas": "^3.2.3",
+    "eslint": "^9.30.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",

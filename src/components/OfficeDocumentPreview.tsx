@@ -17,6 +17,7 @@ import {
 } from "@/lib/mediaLoadPro";
 import { createT, type Locale } from "@/i18n";
 import { openInEditor, pathOpen, pathReveal } from "@/lib/api";
+import { sanitizeOfficeSheetHtml } from "@/lib/sanitizeOfficeHtml";
 import { Tip } from "@/components/ui/tooltip";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
@@ -211,7 +212,13 @@ export function OfficeDocumentPreview({
       const idx = 0;
       setActiveSheet(idx);
       const ws = wb.Sheets[names[idx]];
-      setSheetHtml(ws ? XLSX.utils.sheet_to_html(ws, { id: "office-sheet" }) : "");
+      setSheetHtml(
+        ws
+          ? sanitizeOfficeSheetHtml(
+              XLSX.utils.sheet_to_html(ws, { id: "office-sheet" }),
+            )
+          : "",
+      );
     } catch (e) {
       setLoad({
         status: "error",
@@ -227,7 +234,13 @@ export function OfficeDocumentPreview({
       const name = wb.SheetNames[idx];
       const ws = wb.Sheets[name];
       setActiveSheet(idx);
-      setSheetHtml(ws ? XLSX.utils.sheet_to_html(ws, { id: "office-sheet" }) : "");
+      setSheetHtml(
+        ws
+          ? sanitizeOfficeSheetHtml(
+              XLSX.utils.sheet_to_html(ws, { id: "office-sheet" }),
+            )
+          : "",
+      );
     } catch (e) {
       setLoad({
         status: "error",

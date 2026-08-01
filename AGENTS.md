@@ -39,3 +39,5 @@
 5. Assistant messages: render markdown (`MarkdownBody`); user messages: gray bubble, no role labels.
 
 6. **Branch hygiene** — after work lands on `main` (merge, squash, or batch integrate), promptly and safely delete finished remote/local branches and idle worktrees. Confirm with `git fetch --prune`, ancestor / `gh pr` / feature-on-main checks; never delete open-PR heads, unique WIP, or worktree-checked-out branches without removing the worktree first. Details: [docs/llm-wiki/maintain.md](docs/llm-wiki/maintain.md#branch-hygiene-merged--finished-work).
+
+7. **App.tsx growth freeze** — do **not** add new `useState` / large feature blocks to `src/App.tsx`. New product state and UI must land in domain modules (`src/providers/`, `src/hooks/`, `src/components/`, `src/lib/`). During code-quality remediation App line count may only decrease relative to the WP start baseline (see `docs/plans/CODE-QUALITY-PROGRESS.md`).
