@@ -296,13 +296,18 @@ import {
   type ReliabilityStallSignal,
 } from "@/lib/reliabilityCenter";
 import {
+  buildGoalControlSummary,
+  canClearGoalBar,
+  filterGoalOrchEvents,
   GOAL_ORCH_EVENT_MAX,
   goalEventFromHostPayload,
   goalOrchPhaseLabelKey,
   loadGoalOrchUiEnabled,
+  planClearGoalOrchEvents,
   prependGoalOrchEvent,
   resolveGoalOrchSessionIndicator,
   saveGoalOrchUiEnabled,
+  shouldConfirmClearGoalOrch,
   type GoalOrchEvent,
   type GoalOrchHostPayload,
 } from "@/lib/goalOrch";
@@ -1311,6 +1316,11 @@ export default function App() {
   );
   /** In-memory ring of CLI goal_updated / goal phase events (never invented). */
   const [goalOrchEvents, setGoalOrchEvents] = useState<GoalOrchEvent[]>([]);
+  /** Session chip control menu (open Reliability / copy / clear timeline). */
+  const [goalOrchChipMenuOpen, setGoalOrchChipMenuOpen] = useState(false);
+  /** GlassModal confirm for clearing local goal orch timeline from session chip. */
+  const [goalOrchClearConfirmOpen, setGoalOrchClearConfirmOpen] =
+    useState(false);
   const [messageTimeFormat, setMessageTimeFormat] = useState<MessageTimeFormat>(
     () => loadMessageTimeFormatPref(localStorage),
   );
@@ -14326,6 +14336,72 @@ export default function App() {
     [goalOrchUiEnabled, goalOrchEvents, session.sessionId],
   );
 
+  /** Session-scoped observed goal events (for chip menu copy / honesty). */
+  const goalOrchSessionEvents = useMemo(
+    () => filterGoalOrchEvents(goalOrchEvents, session.sessionId ?? null),
+    [goalOrchEvents, session.sessionId],
+  );
+
+  const clearLocalGoalOrchTimeline = useCallback(() => {
+    const plan = planClearGoalOrchEvents(goalOrchEvents);
+    setGoalOrchEvents(plan.next);
+    setGoalOrchClearConfirmOpen(false);
+    setGoalOrchChipMenuOpen(false);
+    if (plan.cleared > 0) {
+      showToast(
+        tr("reliability.goal.clearDone", { count: plan.cleared }),
+        2400,
+      );
+    }
+  }, [goalOrchEvents, showToast, tr]);
+
+  const requestClearLocalGoalOrchTimeline = useCallback(() => {
+    const plan = planClearGoalOrchEvents(goalOrchEvents);
+    if (plan.cleared <= 0) {
+      setGoalOrchChipMenuOpen(false);
+      return;
+    }
+    setGoalOrchChipMenuOpen(false);
+    if (shouldConfirmClearGoalOrch(plan.cleared)) {
+      setGoalOrchClearConfirmOpen(true);
+      return;
+    }
+    clearLocalGoalOrchTimeline();
+  }, [goalOrchEvents, clearLocalGoalOrchTimeline]);
+
+  const copyGoalOrchControlSummary = useCallback(async () => {
+    setGoalOrchChipMenuOpen(false);
+    try {
+      const text = buildGoalControlSummary(goalOrchSessionEvents, {
+        title: tr("reliability.goal.title"),
+        generatedAt: new Date().toISOString(),
+      });
+      await navigator.clipboard.writeText(text);
+      showToast(tr("reliability.goal.copied"), 2200);
+    } catch {
+      showToast(tr("reliability.goal.copyFail"), 3200);
+    }
+  }, [goalOrchSessionEvents, showToast, tr]);
+
+  useEffect(() => {
+    if (!goalOrchChipMenuOpen) return;
+    const onPointer = (e: MouseEvent) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest(".goal-orch-session-chip-wrap")) return;
+      setGoalOrchChipMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setGoalOrchChipMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [goalOrchChipMenuOpen]);
+
   // T15: announce stream start/end once (avoid token-level noise).
   useEffect(() => {
     const streaming =
@@ -19123,41 +19199,89 @@ export default function App() {
               onApprove={() => void approvePlan()}
               onRequestChanges={() => openRequestPlanChanges()}
               onDismiss={() => void dismissPlan()}
-              onClearGoal={() => setGoalMode(false)}
+              onClearGoal={
+                canClearGoalBar({ goalMode })
+                  ? () => setGoalMode(false)
+                  : undefined
+              }
               onOpenDetails={() => openPlanInResource()}
             />
           )}
 
           {mainPane === "chat" && goalOrchSessionChip ? (
-            <button
-              type="button"
-              className="goal-orch-session-chip"
-              data-testid="goal-orch-session-chip"
-              title={[
-                tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
-                goalOrchSessionChip.label,
-                goalOrchSessionChip.progress,
-                goalOrchSessionChip.detail,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-              aria-label={tr("reliability.goal.sessionChipAria", {
-                phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
-              })}
-              onClick={() => openReliability()}
-            >
-              <span className="goal-orch-session-chip__dot" aria-hidden />
-              <span className="goal-orch-session-chip__label">
-                {tr("reliability.goal.sessionChip", {
+            <div className="goal-orch-session-chip-wrap">
+              <button
+                type="button"
+                className="goal-orch-session-chip"
+                data-testid="goal-orch-session-chip"
+                title={[
+                  tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+                  goalOrchSessionChip.label,
+                  goalOrchSessionChip.progress,
+                  goalOrchSessionChip.detail,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                aria-label={tr("reliability.goal.sessionChipAria", {
                   phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
                 })}
-              </span>
-              {goalOrchSessionChip.progress ? (
-                <span className="goal-orch-session-chip__meta">
-                  {goalOrchSessionChip.progress}
+                aria-haspopup="menu"
+                aria-expanded={goalOrchChipMenuOpen}
+                onClick={() => setGoalOrchChipMenuOpen((v) => !v)}
+              >
+                <span className="goal-orch-session-chip__dot" aria-hidden />
+                <span className="goal-orch-session-chip__label">
+                  {tr("reliability.goal.sessionChip", {
+                    phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+                  })}
                 </span>
+                {goalOrchSessionChip.progress ? (
+                  <span className="goal-orch-session-chip__meta">
+                    {goalOrchSessionChip.progress}
+                  </span>
+                ) : null}
+              </button>
+              {goalOrchChipMenuOpen ? (
+                <div
+                  className="menu-panel goal-orch-session-chip__menu"
+                  role="menu"
+                  aria-label={tr("reliability.goal.sessionMenuAria")}
+                  data-testid="goal-orch-session-chip-menu"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="goal-orch-session-chip__menu-item"
+                    data-testid="goal-orch-chip-open-reliability"
+                    onClick={() => {
+                      setGoalOrchChipMenuOpen(false);
+                      openReliability();
+                    }}
+                  >
+                    {tr("reliability.goal.openReliability")}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="goal-orch-session-chip__menu-item"
+                    data-testid="goal-orch-chip-copy-summary"
+                    onClick={() => void copyGoalOrchControlSummary()}
+                  >
+                    {tr("reliability.goal.copySummary")}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="goal-orch-session-chip__menu-item"
+                    data-testid="goal-orch-chip-clear-timeline"
+                    disabled={goalOrchEvents.length === 0}
+                    onClick={requestClearLocalGoalOrchTimeline}
+                  >
+                    {tr("reliability.goal.clearTimeline")}
+                  </button>
+                </div>
               ) : null}
-            </button>
+            </div>
           ) : null}
 
           {mainPane === "chat" && showChatFind && (
@@ -21085,6 +21209,10 @@ export default function App() {
         view={reliabilityView}
         goalOrchUiEnabled={goalOrchUiEnabled}
         goalOrchEvents={goalOrchEvents}
+        onClearGoalOrchEvents={() => {
+          const plan = planClearGoalOrchEvents(goalOrchEvents);
+          setGoalOrchEvents(plan.next);
+        }}
         lastProcessLimit={lastProcessLimit}
         onOpenDoctor={() => void openDoctor()}
         onSelectSession={(id) => {
@@ -21092,6 +21220,39 @@ export default function App() {
           trayHandlersRef.current.openSessionById(id);
         }}
       />
+      <GlassModal
+        open={goalOrchClearConfirmOpen}
+        onClose={() => setGoalOrchClearConfirmOpen(false)}
+        title={tr("reliability.goal.clearConfirmTitle")}
+        size="sm"
+        closeLabel={tr("common.cancel")}
+        titleId="goal-orch-clear-confirm-title"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setGoalOrchClearConfirmOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              data-testid="goal-orch-clear-confirm"
+              onClick={clearLocalGoalOrchTimeline}
+            >
+              {tr("reliability.goal.clearConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg" style={{ margin: 0, padding: "12px 16px" }}>
+          {tr("reliability.goal.clearConfirmMessage", {
+            count: goalOrchEvents.length,
+          })}
+        </p>
+      </GlassModal>
       <ProjectRulesModal
         open={!!projectRulesTarget}
         onClose={() => setProjectRulesTarget(null)}

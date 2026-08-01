@@ -32,11 +32,13 @@ import {
 import type { ProcessLimitEvent } from "@/lib/processBudget";
 import {
   assembleGoalOrchView,
+  buildGoalControlSummary,
   filterGoalOrchEvents,
-  formatGoalOrchSummaryText,
   goalOrchPhaseLabelKey,
   phasesPresentInEvents,
-  resolveGoalOrchEmptyState,
+  planClearGoalOrchEvents,
+  resolveGoalControlEmptyState,
+  shouldConfirmClearGoalOrch,
   type GoalOrchEvent,
   type GoalOrchPhaseFilter,
 } from "@/lib/goalOrch";
@@ -74,6 +76,11 @@ export type ReliabilityCenterModalProps = {
   goalOrchUiEnabled?: boolean;
   /** In-memory ring of observed goal phase events (never invented). */
   goalOrchEvents?: GoalOrchEvent[];
+  /**
+   * Clear the local goal orch event ring (App state only — no host RPC).
+   * When omitted, Clear timeline is hidden.
+   */
+  onClearGoalOrchEvents?: () => void;
   /** Last process_limit toast context for process-budget honesty. */
   lastProcessLimit?: ProcessLimitEvent | null;
 };
@@ -385,6 +392,7 @@ export function ReliabilityCenterModal({
   onSelectSession,
   goalOrchUiEnabled = true,
   goalOrchEvents = [],
+  onClearGoalOrchEvents,
   lastProcessLimit = null,
 }: ReliabilityCenterModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
@@ -418,6 +426,7 @@ export function ReliabilityCenterModal({
 
   const [goalPhaseFilter, setGoalPhaseFilter] =
     useState<GoalOrchPhaseFilter>("all");
+  const [confirmClearGoalOrch, setConfirmClearGoalOrch] = useState(false);
 
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
@@ -448,6 +457,7 @@ export function ReliabilityCenterModal({
     setAuditTo("");
     setConfirmClearAudit(false);
     setGoalPhaseFilter("all");
+    setConfirmClearGoalOrch(false);
     void loadAudit();
   }, [open, loadAudit]);
 
@@ -478,12 +488,16 @@ export function ReliabilityCenterModal({
           setConfirmClearAudit(false);
           return;
         }
+        if (confirmClearGoalOrch) {
+          setConfirmClearGoalOrch(false);
+          return;
+        }
         onClose();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose, confirmClearHistory, confirmClearAudit]);
+  }, [open, onClose, confirmClearHistory, confirmClearAudit, confirmClearGoalOrch]);
 
   const filteredHistory = useMemo(
     () =>
@@ -528,17 +542,19 @@ export function ReliabilityCenterModal({
 
   const goalEmpty = useMemo(
     () =>
-      resolveGoalOrchEmptyState({
+      resolveGoalControlEmptyState({
         uiEnabled: goalOrchUiEnabled,
         totalCount: goalSessionEvents.length,
         filteredCount: goalOrchView.count,
         phaseFilter: goalPhaseFilter,
+        ringCount: goalOrchEvents.length,
       }),
     [
       goalOrchUiEnabled,
       goalSessionEvents.length,
       goalOrchView.count,
       goalPhaseFilter,
+      goalOrchEvents.length,
     ],
   );
 
@@ -548,12 +564,17 @@ export function ReliabilityCenterModal({
     [goalSessionEvents],
   );
 
+  const clearGoalOrchPlan = useMemo(
+    () => planClearGoalOrchEvents(goalOrchEvents),
+    [goalOrchEvents],
+  );
+
   const onCopyGoalSummary = useCallback(async () => {
     setBusy("goal-copy");
     setStatusMsg(null);
     setErrorMsg(null);
     try {
-      const text = formatGoalOrchSummaryText(goalOrchView.events, {
+      const text = buildGoalControlSummary(goalOrchView.events, {
         title: t("reliability.goal.title"),
         generatedAt: new Date().toISOString(),
       });
@@ -565,6 +586,27 @@ export function ReliabilityCenterModal({
       setBusy(null);
     }
   }, [goalOrchView.events, t]);
+
+  const requestClearGoalOrch = useCallback(() => {
+    if (!onClearGoalOrchEvents) return;
+    const plan = planClearGoalOrchEvents(goalOrchEvents);
+    if (plan.cleared <= 0) return;
+    if (shouldConfirmClearGoalOrch(plan.cleared)) {
+      setConfirmClearGoalOrch(true);
+      return;
+    }
+    onClearGoalOrchEvents();
+    setStatusMsg(t("reliability.goal.clearDone", { count: plan.cleared }));
+  }, [goalOrchEvents, onClearGoalOrchEvents, t]);
+
+  const doClearGoalOrch = useCallback(() => {
+    if (!onClearGoalOrchEvents) return;
+    const plan = planClearGoalOrchEvents(goalOrchEvents);
+    onClearGoalOrchEvents();
+    setConfirmClearGoalOrch(false);
+    setGoalPhaseFilter("all");
+    setStatusMsg(t("reliability.goal.clearDone", { count: plan.cleared }));
+  }, [goalOrchEvents, onClearGoalOrchEvents, t]);
 
   const onSupportZip = useCallback(async () => {
     setBusy("zip");
@@ -900,6 +942,17 @@ export function ReliabilityCenterModal({
                         ? "…"
                         : t("reliability.goal.copySummary")}
                     </button>
+                    {onClearGoalOrchEvents ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={!!busy || clearGoalOrchPlan.cleared === 0}
+                        onClick={requestClearGoalOrch}
+                        data-testid="reliab-goal-clear"
+                      >
+                        {t("reliability.goal.clearTimeline")}
+                      </button>
+                    ) : null}
                     {goalPhaseFilter !== "all" ? (
                       <button
                         type="button"
@@ -1362,6 +1415,39 @@ export function ReliabilityCenterModal({
         <p className="app-dialog__msg" style={{ margin: 0, padding: "12px 16px" }}>
           {t("reliability.timeline.clearConfirmMessage", {
             count: clearHistoryPlan.count,
+          })}
+        </p>
+      </GlassModal>
+      <GlassModal
+        open={confirmClearGoalOrch}
+        onClose={() => setConfirmClearGoalOrch(false)}
+        title={t("reliability.goal.clearConfirmTitle")}
+        size="sm"
+        closeLabel={t("common.cancel")}
+        titleId="reliab-goal-clear-title"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setConfirmClearGoalOrch(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={doClearGoalOrch}
+              data-testid="reliab-goal-clear-confirm"
+            >
+              {t("reliability.goal.clearConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg" style={{ margin: 0, padding: "12px 16px" }}>
+          {t("reliability.goal.clearConfirmMessage", {
+            count: clearGoalOrchPlan.cleared,
           })}
         </p>
       </GlassModal>
