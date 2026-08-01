@@ -78,15 +78,37 @@ src-tauri/src/
 
 **No FAIL rows.** Live GUI not exercised in this environment; static + unit suite used.
 
-## 6. Residual debt
+## 6. Residual debt — post-final program (2026-08-01 parallel tracks)
 
-1. **`AppWorkbench.tsx` still ~24k lines** — vertical extraction incomplete beyond theme/settings signature collapse; further slices (sidebar, voice, phone, send queue) recommended.
-2. **Settings still prop-heavy at call site** — gate satisfied via outer routing destructure + `...rest`; full SettingsModel context wiring optional follow-up.
-3. **`useComposerController` / `useSessionRuntime`** — extraction anchors exist; workbench still owns most runtime state.
-4. **Clippy** — `cargo clippy --all-targets -- -D warnings` currently reports ~400 historical findings. CI runs `cargo clippy --all-targets -- -W clippy::all` so hard errors still fail while warnings do not block merge. Follow-up: ratify allowlist or fix batches; do **not** loosen `check-code-quality-gates.py`.
-5b. **ESLint** — CI `pnpm lint` uses `typescript-eslint` + `eslint-plugin-react-hooks` (rules mostly off) so TS/TSX parse cleanly and historical `eslint-disable` comments resolve; enforces no `window.confirm/alert/prompt` only.
-5. **i18n giants** (`messages.ts`, `zh-tw.ts`) and `ResourceViewer` / `SettingsPage` remain large; not required for final gates once ≥1k count ≤45.
-6. **CSS part files** are mechanical chunks (not semantic subsections); re-chunk by selector domain when editing styles.
+Multi-agent parallel tracks (non-overlapping paths) landed:
+
+| Track | Result |
+|-------|--------|
+| **residual-clippy** | Clippy warnings **478 → 0**; CI now `cargo clippy --all-targets -- -D warnings`. Targeted `#[allow]` for intentional dead_code / too_many_arguments with comments. |
+| **residual-i18n** | `messages.ts` / `zh-tw.ts` → `src/i18n/messages/{en,zh,zh-TW}/*` domain modules; barrels keep `@/i18n` / `@/i18n/messages` / `@/i18n/zh-tw`. Keys/strings identical. |
+| **residual-settings-catalog** | `settingsCatalog.ts` → `src/lib/settingsCatalog/**` domain entries; deep-link ids unchanged. |
+| **residual-settings** | `SettingsPage.tsx` **8874 → 1817**; sections under `src/components/settings/*` with real `SettingsModelProvider` consumption. |
+| **residual-resource-viewer** | `ResourceViewer.tsx` **4938 → 10** barrel + `resource-viewer/*` modules (shell ~1471). |
+| **residual-appworkbench** | AppWorkbench **24572 → 22907**; expanded `useSessionRuntime` / `useComposerController` / `useAppDialogs` + new `useSessionHostEvents` (~1345). |
+
+### Still open (honest)
+
+1. **AppWorkbench still ~22.9k** — host events extracted; GlassModal cluster / send / openSession / full JSX shell still large. Blind JSX extract was attempted and **reverted** (free-var bag broke typecheck). Next: modal components + `useSessionLifecycle` with explicit props contracts.
+2. **Settings call site** in AppWorkbench still passes a large props bag; section internals already use context.
+3. **useSessionHostEvents** uses a wide `ctx` bag / weaker typing — tighten later.
+4. **CSS part files** remain mechanical chunks.
+5. **ESLint** still minimal (dialog bans + TS parse); not a full style guide.
+
+### Residual metrics (after tracks)
+
+| File | Before residual | After residual |
+|------|-----------------|----------------|
+| AppWorkbench | ~24572 | ~22907 |
+| SettingsPage | ~8874 | ~1817 |
+| ResourceViewer entry | ~4938 | 10 (+ modules) |
+| messages / zh-tw | 14759 / 7259 | barrels + domain dirs |
+| settingsCatalog | ~3844 | dir modules |
+| Clippy warnings | ~478 | **0** |
 
 ## 7. Commits / waves
 

@@ -70,3 +70,18 @@ _(none — program complete)_
 ## FINAL: PASS
 
 Machine gate `final` green; handoff `docs/plans/CODE-QUALITY-COMPLETION.md` written.
+
+## Residual program (post-final, 2026-08-01)
+
+Parallel non-overlapping tracks (multi-agent):
+
+| Track | Owner path | Status |
+|-------|------------|--------|
+| residual-clippy | `src-tauri/**` | IN_PROGRESS |
+| residual-resource-viewer | ResourceViewer + parts | IN_PROGRESS |
+| residual-i18n | `src/i18n/**` | IN_PROGRESS |
+| residual-settings | SettingsPage + settings/* | IN_PROGRESS |
+| residual-appworkbench | AppWorkbench + hooks | IN_PROGRESS |
+| residual-settings-catalog | settingsCatalog split | IN_PROGRESS |
+
+Behavior freeze still applies; do not loosen gate script.

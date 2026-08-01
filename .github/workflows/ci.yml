@@ -67,10 +67,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: cargo clippy
         working-directory: src-tauri
-        # Historical lint debt is large (~400 clippy findings under -D warnings).
-        # Run clippy for hard errors; treat warnings as non-fatal until allowlisted.
-        # See docs/plans/CODE-QUALITY-COMPLETION.md residual debt.
-        run: cargo clippy --all-targets -- -W clippy::all
+        # residual-clippy brought the tree to zero clippy warnings (with targeted allows).
+        run: cargo clippy --all-targets -- -D warnings
         continue-on-error: false
       # Includes ACP golden fixtures (tests/fixtures/acp + acp_golden_test).
       # Required green for any ACP / mock_acp / permission wire change (T06).
