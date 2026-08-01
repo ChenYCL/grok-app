@@ -1351,6 +1351,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.netProbeHonesty":
     "僅短時 HTTP 路徑探測——成功不代表串流、登入或 Agent 回合一定可用。失敗是網路/代理提示，不是完整診斷。",
   "settings.netProbeRun": "測試連線",
+  "settings.netProbeRetry": "重試探測",
   "settings.netProbeTesting": "檢測中…",
   "settings.netProbeFailed": "無法連上",
   "settings.netProbe.summaryCounts": "{ok} 可達 · {fail} 失敗",
@@ -1360,6 +1361,18 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.netProbe.outcome.empty": "無探測目標",
   "settings.netProbe.outcome.error": "探測失敗",
   "settings.netProbe.outcome.unavailable": "僅桌面端",
+  "settings.netProbe.empty.hostOnly": "需要桌面應用程式",
+  "settings.netProbe.empty.hostOnlyHint":
+    "連通性檢測走桌面 Host 的代理路徑。請在桌面應用中探測——瀏覽器/開發殼不會虛構可達結果。",
+  "settings.netProbe.empty.idle": "尚未探測",
+  "settings.netProbe.empty.idleHint":
+    "對目前已儲存的有效代理做一次短時 HTTP 路徑檢測。成功不代表串流或登入一定可用。",
+  "settings.netProbe.empty.noTargets": "未回傳探測目標",
+  "settings.netProbe.empty.noTargetsHint":
+    "Host 回傳了空目標列表。儲存代理設定後可重試——空列表不會被當成全部可達。",
+  "settings.netProbe.empty.error": "探測未能執行",
+  "settings.netProbe.empty.errorHint":
+    "Host 呼叫失敗。可重試，或檢查桌面應用是否為最新版本。這不是完整的網路診斷。",
   "settings.netProbe.target.ok": "可達",
   "settings.netProbe.target.timeout": "逾時",
   "settings.netProbe.target.dns": "DNS",

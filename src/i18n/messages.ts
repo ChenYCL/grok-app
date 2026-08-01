@@ -1429,6 +1429,7 @@ const en = {
   "settings.netProbeHonesty":
     "Short HTTP path probe only — success does not guarantee streaming, login, or agent turns. Failure is a network/proxy hint, not a full diagnosis.",
   "settings.netProbeRun": "Test connection",
+  "settings.netProbeRetry": "Retry probe",
   "settings.netProbeTesting": "Testing…",
   "settings.netProbeFailed": "unreachable",
   "settings.netProbe.summaryCounts": "{ok} ok · {fail} failed",
@@ -1438,6 +1439,18 @@ const en = {
   "settings.netProbe.outcome.empty": "No targets",
   "settings.netProbe.outcome.error": "Probe failed",
   "settings.netProbe.outcome.unavailable": "Desktop only",
+  "settings.netProbe.empty.hostOnly": "Desktop app required",
+  "settings.netProbe.empty.hostOnlyHint":
+    "Connectivity check runs through the desktop Host proxy path. Open the desktop app to probe — this browser/dev shell cannot invent reachability.",
+  "settings.netProbe.empty.idle": "No probe yet",
+  "settings.netProbe.empty.idleHint":
+    "Run a short HTTP path check through the currently saved effective proxy. Success is not a streaming or login guarantee.",
+  "settings.netProbe.empty.noTargets": "No probe targets returned",
+  "settings.netProbe.empty.noTargetsHint":
+    "Host returned an empty target list. Retry after saving proxy settings — never treats empty as all reachable.",
+  "settings.netProbe.empty.error": "Probe could not run",
+  "settings.netProbe.empty.errorHint":
+    "Host invoke failed. Retry, or check that the desktop app is up to date. This is not a full network diagnosis.",
   "settings.netProbe.target.ok": "Reachable",
   "settings.netProbe.target.timeout": "Timeout",
   "settings.netProbe.target.dns": "DNS",
@@ -7589,6 +7602,7 @@ const zh: Record<MessageKey, string> = {
   "settings.netProbeHonesty":
     "仅短时 HTTP 路径探测——成功不代表流式、登录或 Agent 回合一定可用。失败是网络/代理提示，不是完整诊断。",
   "settings.netProbeRun": "测试连接",
+  "settings.netProbeRetry": "重试探测",
   "settings.netProbeTesting": "检测中…",
   "settings.netProbeFailed": "不可达",
   "settings.netProbe.summaryCounts": "{ok} 可达 · {fail} 失败",
@@ -7598,6 +7612,18 @@ const zh: Record<MessageKey, string> = {
   "settings.netProbe.outcome.empty": "无探测目标",
   "settings.netProbe.outcome.error": "探测失败",
   "settings.netProbe.outcome.unavailable": "仅桌面端",
+  "settings.netProbe.empty.hostOnly": "需要桌面应用",
+  "settings.netProbe.empty.hostOnlyHint":
+    "连通性检测走桌面 Host 的代理路径。请在桌面应用中探测——浏览器/开发壳不会虚构可达结果。",
+  "settings.netProbe.empty.idle": "尚未探测",
+  "settings.netProbe.empty.idleHint":
+    "对当前已保存的有效代理做一次短时 HTTP 路径检测。成功不代表流式或登录一定可用。",
+  "settings.netProbe.empty.noTargets": "未返回探测目标",
+  "settings.netProbe.empty.noTargetsHint":
+    "Host 返回了空目标列表。保存代理设置后可重试——空列表不会被当成全部可达。",
+  "settings.netProbe.empty.error": "探测未能执行",
+  "settings.netProbe.empty.errorHint":
+    "Host 调用失败。可重试，或检查桌面应用是否为最新版本。这不是完整的网络诊断。",
   "settings.netProbe.target.ok": "可达",
   "settings.netProbe.target.timeout": "超时",
   "settings.netProbe.target.dns": "DNS",

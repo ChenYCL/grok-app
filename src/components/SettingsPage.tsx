@@ -236,14 +236,14 @@ import {
   isValidProxyUrl,
   manualProxyUrlSoftFail,
   normalizeProxyMode,
-  probeOutcomeMessageKey,
   probeTargetClassMessageKey,
-  probeToneClass,
-  proxyApplyHonestyScopes,
-  proxyApplyMessageKey,
   proxySoftFailMessageKey,
   type ClassifiedProbeResult,
 } from "@/lib/networkProxy";
+import {
+  formatProbeSummary,
+  resolveProxyApplyHonesty,
+} from "@/lib/networkProxyPro";
 import { AccountPanel } from "@/components/AccountPanel";
 import { OfficialAuxPanel } from "@/components/OfficialAuxPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
@@ -816,6 +816,7 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
   const [classified, setClassified] = useState<ClassifiedProbeResult | null>(
     null,
   );
+  const isDesktop = api.isTauri();
 
   const runTest = async () => {
     if (!api.isTauri()) {
@@ -823,7 +824,6 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
       return;
     }
     setTesting(true);
-    setClassified(null);
     try {
       const raw = await api.networkProbe();
       setClassified(classifyProbeResult(raw));
@@ -836,7 +836,11 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
     }
   };
 
-  const summaryTone = classified ? probeToneClass(classified.tone) : "";
+  const summary = formatProbeSummary({
+    classified,
+    isDesktop,
+    probing: testing,
+  });
 
   return (
     <div className="settings-row settings-row--stack">
@@ -850,37 +854,79 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
           <button
             type="button"
             className="btn btn--ghost btn--sm"
-            disabled={testing}
+            disabled={testing || !isDesktop}
             onClick={() => void runTest()}
           >
-            {testing ? t("settings.netProbeTesting") : t("settings.netProbeRun")}
+            {t(summary.primaryActionKey as MessageKey)}
           </button>
-          {classified ? (
+          {summary.showRetry &&
+          !testing &&
+          isDesktop &&
+          !summary.empty?.showRetry ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => void runTest()}
+            >
+              {t("settings.netProbeRetry")}
+            </button>
+          ) : null}
+          {summary.showChip && summary.outcomeKey ? (
             <div
-              className={"settings-acp-chip settings-netprobe__chip " + summaryTone}
+              className={
+                "settings-acp-chip settings-netprobe__chip " + summary.toneClass
+              }
               role="status"
             >
               <span className="settings-acp-chip__dot" aria-hidden />
               <span className="settings-acp-chip__label">
-                {t(probeOutcomeMessageKey(classified.outcome) as MessageKey)}
+                {t(summary.outcomeKey as MessageKey)}
               </span>
-              {classified.targets.length > 0 ? (
+              {summary.showCounts ? (
                 <span className="settings-acp-chip__meta">
                   {t("settings.netProbe.summaryCounts", {
-                    ok: classified.okCount,
-                    fail: classified.failCount,
+                    ok: summary.okCount,
+                    fail: summary.failCount,
                   })}
                 </span>
               ) : null}
             </div>
           ) : null}
         </div>
-        {classified?.invokeError ? (
-          <div className="settings-row__hint is-danger" role="alert">
-            {classified.invokeError}
+        {summary.empty ? (
+          <div
+            className={
+              "settings-netprobe__empty" +
+              (summary.empty.softFail ? " is-soft" : "")
+            }
+            data-kind={summary.empty.kind}
+            role="status"
+          >
+            <div className="settings-netprobe__empty-title">
+              {t(summary.empty.titleKey as MessageKey)}
+            </div>
+            <div className="settings-netprobe__empty-hint">
+              {t(summary.empty.hintKey as MessageKey)}
+            </div>
+            {summary.empty.showRetry && isDesktop && !testing ? (
+              <div className="settings-netprobe__empty-actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => void runTest()}
+                >
+                  {t("settings.netProbeRetry")}
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
-        {classified && classified.targets.length > 0 ? (
+        {summary.invokeError ? (
+          <div className="settings-row__hint is-danger" role="alert">
+            {summary.invokeError}
+          </div>
+        ) : null}
+        {summary.showTargetList && classified ? (
           <ul className="settings-netprobe__list" role="list">
             {classified.targets.map((tg) => (
               <li
@@ -6751,23 +6797,27 @@ export function SettingsPage({
                       },
                     ]}
                   />
-                  <ul className="settings-proxy-apply" role="list">
-                    {proxyApplyHonestyScopes(proxyMode, proxyUrl).map(
-                      (scope) => (
-                        <li
-                          key={scope}
-                          className={
-                            "settings-row__hint" +
-                            (scope === "manual_invalid_inherit"
-                              ? " is-danger"
-                              : "")
-                          }
-                        >
-                          {t(proxyApplyMessageKey(scope) as MessageKey)}
-                        </li>
-                      ),
-                    )}
-                  </ul>
+                  {(() => {
+                    const applyHonesty = resolveProxyApplyHonesty({
+                      mode: proxyMode,
+                      url: proxyUrl,
+                    });
+                    return (
+                      <ul className="settings-proxy-apply" role="list">
+                        {applyHonesty.lines.map((line) => (
+                          <li
+                            key={line.scope}
+                            className={
+                              "settings-row__hint" +
+                              (line.tone === "danger" ? " is-danger" : "")
+                            }
+                          >
+                            {t(line.messageKey as MessageKey)}
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  })()}
                 </div>
                 {normalizeProxyMode(proxyMode) === "manual" && (
                   <>

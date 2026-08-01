@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Network proxy apply + probe honesty** (Settings → Runtime → Network): empty surfaces for host-only / idle / empty targets / probe invoke error; structured apply-path honesty lines (saved · new agents · reconnect · probe uses effective proxy · manual invalid inherits env); **Retry probe** CTA after re-runnable failures (partial · all fail · empty · error) without `window.confirm`. Pure `networkProxyPro` helpers (`resolveNetworkProxyEmptyState` · `resolveProxyApplyHonesty` · `formatProbeSummary`) + tests; en/zh/zh-TW; `settingsCatalog`. Reuses existing `networkProxy` classify — never invents reachable targets.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
