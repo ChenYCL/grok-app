@@ -84,6 +84,15 @@ import {
   sandboxSoftFailMessageKey,
 } from "@/lib/sandboxProfile";
 import {
+  DEMO_ASK_DOCS_URL,
+  buildDemoAskPrompt,
+  buildSampleAskUserPayload,
+  evaluateDemoAskChecklist,
+  isDemoPathSettingsReady,
+  planDemoPermissionPolicy,
+  resolveDemoPathBlockers,
+} from "@/lib/askUserDemoPath";
+import {
   DEFAULT_TODO_GATE_MAX_FIRES,
   MAX_TODO_GATE_MAX_FIRES,
   MIN_TODO_GATE_MAX_FIRES,
@@ -250,6 +259,7 @@ import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
 import { GitPrHubPanel } from "@/components/GitPrHubPanel";
 import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
+import { AskUserModal } from "@/components/AskUserModal";
 import { AgentConfigEditPanel } from "@/components/AgentConfigEditPanel";
 import { PrivacyCenterPanel } from "@/components/PrivacyCenterPanel";
 import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
@@ -1496,6 +1506,8 @@ export function SettingsPage({
   const [phonePane, setPhonePane] = useState<"index" | "detail">("index");
   const [editors, setEditors] = useState<DetectedEditor[]>([]);
   const [clearMemoryOpen, setClearMemoryOpen] = useState(false);
+  /** Preview-only Ask-user questionnaire (Settings → Permissions demo path). */
+  const [askUserDemoPreviewOpen, setAskUserDemoPreviewOpen] = useState(false);
   const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
   /** Bump to remount MemoryBrowserPanel after clear-all. */
   const [memoryBrowserEpoch, setMemoryBrowserEpoch] = useState(0);
@@ -1751,6 +1763,57 @@ export function SettingsPage({
     setSettingsToast(msg);
     window.setTimeout(() => setSettingsToast(null), ms);
   }, []);
+
+  /** Ask-user demo path: settings snapshot for checklist chips. */
+  const askUserDemoState = useMemo(
+    () => ({
+      policy,
+      noAskUser: !!noAskUser,
+      yolo: policy === "always_approve",
+    }),
+    [policy, noAskUser],
+  );
+  const askUserDemoChecklist = useMemo(
+    () => evaluateDemoAskChecklist(askUserDemoState),
+    [askUserDemoState],
+  );
+  const askUserDemoBlockers = useMemo(
+    () => resolveDemoPathBlockers(askUserDemoState),
+    [askUserDemoState],
+  );
+  const askUserDemoReady = useMemo(
+    () => isDemoPathSettingsReady(askUserDemoState),
+    [askUserDemoState],
+  );
+  const applyAskUserDemoPath = useCallback(() => {
+    const recommended = planDemoPermissionPolicy();
+    onPolicy(recommended);
+    let clearedNoAsk = false;
+    if (onNoAskUser && noAskUser) {
+      onNoAskUser(false);
+      clearedNoAsk = true;
+    }
+    showSettingsToast(
+      clearedNoAsk
+        ? t("settings.askDemo.applied")
+        : t("settings.askDemo.appliedPolicyOnly"),
+      3200,
+    );
+  }, [onPolicy, onNoAskUser, noAskUser, showSettingsToast, t]);
+  const copyAskUserDemoPrompt = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(buildDemoAskPrompt());
+      showSettingsToast(t("settings.askDemo.copied"), 3200);
+    } catch {
+      showSettingsToast(t("settings.askDemo.copyFailed"), 3200);
+    }
+  }, [showSettingsToast, t]);
+  const openAskUserDemoDocs = useCallback(() => {
+    void api.openExternalUrl(DEMO_ASK_DOCS_URL).catch(() => {
+      showSettingsToast(t("settings.askDemo.openDocsFailed"), 2800);
+    });
+  }, [showSettingsToast, t]);
+
   const runClearWorkspaceMemory = useCallback(async () => {
     if (!workspaceCwd || clearMemoryBusy) return;
     setClearMemoryBusy(true);
@@ -2927,6 +2990,160 @@ export function SettingsPage({
               ) : null}
               <PermissionRulesPanel t={t} />
             </div>
+
+            <div
+              className={
+                "settings-card" + rowHighlight("settings-anchor-askUserDemo")
+              }
+              id="settings-anchor-askUserDemo"
+            >
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    <IconShield size={16} />
+                    {t("settings.askDemo.title")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.askDemo.desc")}
+                  </div>
+                </div>
+                <div
+                  className="settings-row__hint settings-ask-demo__honesty"
+                  role="note"
+                >
+                  {t("settings.askDemo.honesty")}
+                </div>
+                <ol
+                  className="settings-ask-demo__list"
+                  aria-label={t("settings.askDemo.title")}
+                >
+                  {askUserDemoChecklist.map((step, index) => {
+                    const chipPass =
+                      step.id === "sample_prompt"
+                        ? step.pass
+                          ? "next"
+                          : "fail"
+                        : step.pass
+                          ? "pass"
+                          : "fail";
+                    const chipLabel =
+                      chipPass === "pass"
+                        ? t("settings.askDemo.chip.pass")
+                        : chipPass === "next"
+                          ? t("settings.askDemo.chip.next")
+                          : t("settings.askDemo.chip.fail");
+                    return (
+                      <li
+                        key={step.id}
+                        className={
+                          "settings-ask-demo__item" +
+                          (step.pass ? " is-pass" : " is-fail")
+                        }
+                      >
+                        <div className="settings-ask-demo__item-main">
+                          <span className="settings-ask-demo__index">
+                            {index + 1}
+                          </span>
+                          <div className="settings-ask-demo__item-text">
+                            <div className="settings-ask-demo__item-label">
+                              {t(step.labelKey)}
+                            </div>
+                            <div className="settings-ask-demo__item-hint">
+                              {t(step.hintKey)}
+                            </div>
+                          </div>
+                          <span
+                            className={
+                              "settings-acp-chip settings-ask-demo__chip" +
+                              (chipPass === "fail"
+                                ? " is-fail"
+                                : chipPass === "next"
+                                  ? " is-warn"
+                                  : " is-ok")
+                            }
+                            role="status"
+                          >
+                            <span className="settings-acp-chip__dot" />
+                            <span className="settings-acp-chip__label">
+                              {chipLabel}
+                            </span>
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+                {askUserDemoBlockers.length > 0 ? (
+                  <ul className="settings-ask-demo__blockers" role="list">
+                    {askUserDemoBlockers.map((b) => (
+                      <li
+                        key={b.id}
+                        className="settings-row__hint is-danger"
+                      >
+                        {t(b.messageKey)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="settings-row__hint" role="status">
+                    {t("settings.askDemo.ready")}
+                  </div>
+                )}
+                {!askUserDemoReady ? (
+                  <div className="settings-row__hint" role="status">
+                    {t("settings.askDemo.blocked")}
+                  </div>
+                ) : null}
+                <div className="settings-ask-demo__actions" role="group">
+                  <button
+                    type="button"
+                    className="btn btn--solid btn--sm"
+                    onClick={applyAskUserDemoPath}
+                  >
+                    {t("settings.askDemo.apply")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => void copyAskUserDemoPrompt()}
+                  >
+                    <IconCopy size={14} />
+                    {t("settings.askDemo.copyPrompt")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setAskUserDemoPreviewOpen(true)}
+                  >
+                    {t("settings.askDemo.preview")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={openAskUserDemoDocs}
+                  >
+                    {t("settings.askDemo.openDocs")}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {askUserDemoPreviewOpen ? (
+              <AskUserModal
+                payload={buildSampleAskUserPayload()}
+                labels={{
+                  title: t("settings.askDemo.previewTitle"),
+                  submit: t("askUser.submit"),
+                  cancel: t("askUser.cancel"),
+                  otherPlaceholder: t("askUser.otherPlaceholder"),
+                  freeTextHint: t("askUser.freeTextHint"),
+                  multiHint: t("askUser.multiHint"),
+                  close: t("common.close"),
+                }}
+                onSubmit={() => setAskUserDemoPreviewOpen(false)}
+                onCancel={() => setAskUserDemoPreviewOpen(false)}
+              />
+            ) : null}
             </>
             )}
 

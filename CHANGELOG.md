@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Ask-user demo path** (Settings → Permissions): checklist with pass/fail chips for Ask policy, not YOLO, and ask-user enabled; **Apply recommended Ask policy**, **Copy sample prompt**, **Preview sample questionnaire** (AskUserModal, clearly demo — not from agent), and SPIKE-ACP docs link. Honesty banner: real `ask_user_question` depends on model/CLI; App only prepares settings and never auto-sends. Pure `askUserDemoPath` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
