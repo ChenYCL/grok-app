@@ -249,6 +249,8 @@ pub struct AcpClient {
     /// Last inbound `session/update` — proof the agent is still producing turn
     /// output. Re-arms the `prompt_complete` fallback window.
     last_update_at: ParkingMutex<Option<Instant>>,
+    /// Official side-channel: skip App MCP inject on session/new.
+    empty_mcp_servers: bool,
 }
 
 /// Options applied at agent process start (CLI flags).
@@ -285,6 +287,13 @@ pub struct SpawnOptions {
     /// into a **new** agent id (ACP `session/fork`) instead of `session/load`.
     /// Host sets this from `SessionMeta.fork_agent_session` for one-shot connect.
     pub fork_session: bool,
+    /// When set, use this `GROK_HOME` instead of App session-data-mode home.
+    /// Official aux side-channel uses `agent-home-official` so credentials never
+    /// mix with a custom DeepSeek main process.
+    pub grok_home_override: Option<std::path::PathBuf>,
+    /// When true, `session/new` injects empty `mcpServers` (official side jobs
+    /// must not re-inject the `official-aux` MCP that shells out to `grok -p`).
+    pub empty_mcp_servers: bool,
 }
 
 
@@ -1044,9 +1053,16 @@ impl AcpClient {
         //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
         //   Flags after `stdio` are rejected (`unexpected argument '--model'`).
         //   `--permission-mode` is top-level `grok` only — not under `grok agent`.
-        let grok_home = crate::paths::resolve_agent_grok_home(session_data_mode);
+        let empty_mcp_servers = opts.empty_mcp_servers;
+        let home_override = opts.grok_home_override.clone();
+        let grok_home = if let Some(ref h) = home_override {
+            h.clone()
+        } else {
+            crate::paths::resolve_agent_grok_home(session_data_mode)
+        };
         let _ = std::fs::create_dir_all(&grok_home);
-        if session_data_mode != "shared" {
+        // Side-channel with explicit home: never touch main agent-home auth.
+        if home_override.is_none() && session_data_mode != "shared" {
             // Official → sync OIDC; custom → strip auth.json (api_key only).
             crate::providers::prepare_route_auth_for_agent();
             if let Some(ref pol) = opts.permission_policy {
@@ -1059,9 +1075,17 @@ impl AcpClient {
 
         // Composer may hold a catalog id while the active channel is a custom
         // provider — resolve to the route id Grok Build actually understands.
-        let spawn_model = crate::providers::agent_spawn_model_id(
-            opts.model_id.as_deref().unwrap_or(""),
-        );
+        // Override home (official aux): pass model id through as catalog id.
+        let spawn_model = if home_override.is_some() {
+            let m = opts.model_id.as_deref().unwrap_or("").trim();
+            if m.is_empty() {
+                crate::providers::OFFICIAL_CATALOG_MODEL.to_string()
+            } else {
+                m.to_string()
+            }
+        } else {
+            crate::providers::agent_spawn_model_id(opts.model_id.as_deref().unwrap_or(""))
+        };
 
         // Flag placement (CLI 0.2.x):
         //   top-level: `grok --no-auto-update --permission-mode <MODE> [--sandbox PROFILE] agent …`
@@ -1289,6 +1313,19 @@ impl AcpClient {
             cmd.env("PATH", path);
         }
         cmd.env("GROK_HOME", &grok_home);
+        // Do NOT set GROK_IMAGE_DESCRIPTION_MODEL / GROK_WEB_SEARCH_MODEL on the
+        // main agent process: when main is DeepSeek, those envs make CLI send
+        // model id `grok-4.5` to the DeepSeek base_url (400). Vision/search/X
+        // go through Host prepare_agent_prompt + MCP official-aux instead.
+        //
+        // Always disable Claude/Cursor MCP compat for App agent-home sessions.
+        // Grok merges ~/.claude.json / Cursor MCP by default; those hang for ~30s
+        // and pollute custom-main tool discovery. App injects only what it needs
+        // via session mcpServers (official-aux / Extensions). Opt back in with
+        // official_aux_with_user_mcp (Extensions MCPs), not Claude dump.
+        // Grok docs: GROK_CLAUDE_MCPS_ENABLED / GROK_CURSOR_MCPS_ENABLED.
+        cmd.env("GROK_CLAUDE_MCPS_ENABLED", "false");
+        cmd.env("GROK_CURSOR_MCPS_ENABLED", "false");
         // Route agent traffic through the configured proxy (NEW-02). Windows
         // system proxy is registry-only and never reaches children as env vars.
         crate::proxy::apply_to_tokio_command(&mut cmd);
@@ -1348,6 +1385,7 @@ impl AcpClient {
             reader_alive: AtomicBool::new(true),
             stderr_tail: ParkingMutex::new(Vec::new()),
             last_update_at: ParkingMutex::new(None),
+            empty_mcp_servers,
         });
 
         client.start_read_loop(Box::new(stdout));
@@ -1422,6 +1460,8 @@ impl AcpClient {
             reader_alive: AtomicBool::new(true),
             stderr_tail: ParkingMutex::new(Vec::new()),
             last_update_at: ParkingMutex::new(None),
+            // TCP connect path keeps default MCP inject (not official side-channel).
+            empty_mcp_servers: false,
         });
         client.start_read_loop(Box::new(read_half));
         Ok((client, event_rx))
@@ -2253,14 +2293,21 @@ impl AcpClient {
         }
 
         // Build ACP mcpServers off the async runtime (CLI list / file IO).
-        let project_cwd = cwd.clone();
-        let mcp_servers = tauri::async_runtime::spawn_blocking(move || {
-            crate::extensions::build_session_mcp_servers(Some(project_cwd.as_str()))
-        })
-        .await
-        .unwrap_or_else(|_| serde_json::json!([]));
-        let mcp_count = mcp_servers.as_array().map(|a| a.len()).unwrap_or(0);
-        info!("acp session open injecting mcpServers count={mcp_count}");
+        // Official aux side-channel uses empty inject (no nested official-aux MCP).
+        let mcp_servers = if self.empty_mcp_servers {
+            info!("acp session open empty mcpServers (side-channel)");
+            serde_json::json!([])
+        } else {
+            let project_cwd = cwd.clone();
+            let servers = tauri::async_runtime::spawn_blocking(move || {
+                crate::extensions::build_session_mcp_servers(Some(project_cwd.as_str()))
+            })
+            .await
+            .unwrap_or_else(|_| serde_json::json!([]));
+            let mcp_count = servers.as_array().map(|a| a.len()).unwrap_or(0);
+            info!("acp session open injecting mcpServers count={mcp_count}");
+            servers
+        };
 
         if let Some(rid) = resume_session_id.map(str::trim).filter(|s| !s.is_empty()) {
             // CLI `--fork-session`: new agent session id with parent context.

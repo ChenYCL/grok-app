@@ -29,6 +29,13 @@ describe("toolDisplay", () => {
     expect(isContextToolKind("read_file")).toBe(true);
     expect(isContextToolKind("web_fetch")).toBe(true);
     expect(isContextToolKind("search_replace")).toBe(false);
+    // Host vision must not collapse into "Ran 1 search"
+    expect(classifyToolKind("vision", "识别图片内容", "host-vision-abc")).toBe(
+      "read",
+    );
+    expect(
+      classifyToolKind("", "识别图片内容", "host-vision-xyz"),
+    ).toBe("read");
   });
 
   it("summarizes path basename", () => {

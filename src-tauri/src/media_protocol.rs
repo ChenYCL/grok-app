@@ -35,8 +35,11 @@ use std::thread;
 use tauri::http::{header, Method, Request, Response, StatusCode};
 use tauri::UriSchemeResponder;
 
-/// Max bytes returned per request (keeps memory bounded).
+/// Max bytes returned per Range request (keeps memory bounded).
 const MAX_CHUNK: u64 = 2 * 1024 * 1024; // 2 MiB
+
+/// Max full-body response without Range — chat `<img>` cannot reassemble 206.
+const MAX_FULL_BODY: u64 = 40 * 1024 * 1024; // 40 MiB
 
 /// Concurrent media protocol workers (Range + image loads share this).
 const POOL_WORKERS: usize = 4;
@@ -425,6 +428,8 @@ pub fn handle_request(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
+    let is_image = mime.starts_with("image/");
+
     // Decide byte window
     let (start, end, partial) = if let Some(ref rh) = range_hdr {
         match parse_range(rh, len) {
@@ -444,11 +449,20 @@ pub fn handle_request(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         }
     } else if len == 0 {
         (0, 0, false)
-    } else if len <= MAX_CHUNK {
+    } else if is_image || len <= MAX_CHUNK {
+        // Full body for images (any size ≤ MAX_FULL_BODY) and small non-images.
+        // `<img src>` never sends Range and cannot decode a 206 first-chunk.
+        if len > MAX_FULL_BODY {
+            return error_response(
+                &request,
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "file too large",
+            );
+        }
         (0, len - 1, false)
     } else {
-        // No Range on a large file: do NOT load entire file.
-        // Return the first chunk as 206 so the player learns Accept-Ranges + duration.
+        // No Range on a large video/audio/pdf: first chunk as 206 so the
+        // player learns Accept-Ranges + duration.
         (0, MAX_CHUNK - 1, true)
     };
 
@@ -459,12 +473,13 @@ pub fn handle_request(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     };
 
     // Guard against absurd allocations if range math ever regresses.
-    if nbytes > MAX_CHUNK {
+    let max_allowed = if partial { MAX_CHUNK } else { MAX_FULL_BODY };
+    if nbytes > max_allowed {
         tracing::error!(
             nbytes,
-            max = MAX_CHUNK,
+            max = max_allowed,
             path = %path_str,
-            "media protocol: chunk exceeds MAX_CHUNK — refusing"
+            "media protocol: chunk exceeds cap — refusing"
         );
         return error_response(
             &request,

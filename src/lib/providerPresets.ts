@@ -100,6 +100,25 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     apiKeyUrl: "https://api.yunyi.ai/register/?aff_code=W0iw",
     // No logo yet
   },
+  /**
+   * OpenCode Zen Go gateway. DeepSeek-class models on this host must use
+   * `chat_completions` — their Responses stream emits non-standard events
+   * (`ping`, deltas without `sequence_number`) that crash Grok Build CLI.
+   */
+  {
+    id: "opencode-go",
+    name: "OpenCode Go",
+    suggestedId: "opencode-go",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    apiBackend: "chat_completions",
+    models: [
+      { id: "deepseek-v4-flash", name: "DeepSeek-V4-Flash" },
+      { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" },
+    ],
+    efforts: DEEPSEEK_EFFORTS.map((e) => ({ ...e })),
+    blurbKey: "prov.preset.opencodeGo.blurb",
+    apiKeyUrl: "https://opencode.ai/",
+  },
 ];
 
 export function findProviderPreset(id: string): ProviderPreset | undefined {

@@ -41,6 +41,14 @@ describe("providerPresets", () => {
     expect(amux!.apiKeyUrl).toContain("api.amux.ai/register");
   });
 
+  it("ships OpenCode Go with chat_completions for DeepSeek-class models", () => {
+    const go = findProviderPreset("opencode-go");
+    expect(go).toBeDefined();
+    expect(go!.baseUrl).toBe("https://opencode.ai/zen/go/v1");
+    expect(go!.apiBackend).toBe("chat_completions");
+    expect(go!.models.map((m) => m.id)).toContain("deepseek-v4-flash");
+  });
+
   it("ships Yun API with grok-4.5 and yunyi register link", () => {
     const yun = findProviderPreset("yun-api");
     expect(yun).toBeDefined();

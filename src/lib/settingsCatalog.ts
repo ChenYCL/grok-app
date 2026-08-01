@@ -2154,6 +2154,33 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "听写",
     ],
   },
+  {
+    id: "account.officialAuxInject",
+    section: "account",
+    tab: "providers",
+    anchorId: "settings-anchor-official-aux-inject",
+    labelKey: "prov.officialAuxInject",
+    descKeys: [
+      "prov.officialAuxInjectDesc",
+      "prov.officialAuxInjectDisabled",
+      "prov.officialAuxWithUserMcp",
+      "prov.officialAuxWithUserMcpDesc",
+    ],
+    keywords: [
+      "official aux",
+      "inject tools",
+      "x_keyword_search",
+      "web_search",
+      "vision",
+      "official-aux",
+      "官方工具",
+      "注入",
+      "x搜索",
+      "custom only",
+      "第三方",
+      "MCP",
+    ],
+  },
   // ── archived ──
   {
     id: "archived.list",

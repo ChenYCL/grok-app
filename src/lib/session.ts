@@ -199,13 +199,27 @@ export function resolveToolDisplayTitle(
   const title = (payload.title || "").trim();
   if (title && !isGenericToolLabel(title)) return title;
   const detail = (payload.detail || "").trim();
-  if (detail) return detail;
+  const isStatusDetail =
+    /^(done|ok|failed|unavailable|识别完成|识别失败|搜索完成|搜索失败|\d+\s*image)/i.test(
+      detail,
+    );
+  // Prefer previous good title over short host status chips.
+  const prev = (prevContent || "").trim();
+  if (
+    prev &&
+    !isGenericToolLabel(prev) &&
+    !prev.startsWith("tool_step|") &&
+    isStatusDetail
+  ) {
+    return prev;
+  }
+  if (detail && !isStatusDetail) return detail;
   const path = (payload.path || "").trim();
   if (path) return path;
-  const prev = (prevContent || "").trim();
   if (prev && !isGenericToolLabel(prev) && !prev.startsWith("tool_step|")) {
     return prev;
   }
+  if (detail) return detail;
   const kind = (payload.kind || "").trim();
   if (kind && !isGenericToolLabel(kind)) {
     return kind.replace(/[_./]+/g, " ").trim();
@@ -272,20 +286,37 @@ export function upsertToolInSegments(
   const next = segs.map((s) =>
     s.kind === "tool" ? { ...s } : { ...s },
   ) as MessageSegment[];
-  const si = next.findIndex(
+  let si = next.findIndex(
     (s) => s.kind === "tool" && s.toolCallId === tool.toolCallId,
   );
+  // Same Host family (live uuid vs journal uuid) → update in place, never append.
+  if (si < 0) {
+    const fam = hostToolFamilyKey(tool.toolCallId, tool.toolKind, tool.title);
+    if (fam) {
+      si = next.findIndex(
+        (s) =>
+          s.kind === "tool" &&
+          hostToolFamilyKey(s.toolCallId, s.toolKind, s.title) === fam,
+      );
+    }
+  }
   if (si >= 0) {
     const prev = next[si] as MessageToolSegment;
     // Never wipe a good title with empty/generic.
     const title =
       (tool.title && !isGenericToolLabel(tool.title) ? tool.title : "") ||
       prev.title;
+    const detail =
+      (tool.detail || "").length >= (prev.detail || "").length
+        ? tool.detail || prev.detail
+        : prev.detail || tool.detail;
     next[si] = {
       ...prev,
       ...tool,
+      // Keep the first stable host id so React keys stay put.
+      toolCallId: prev.toolCallId || tool.toolCallId,
       title,
-      detail: tool.detail || prev.detail,
+      detail,
       path: tool.path || prev.path,
       toolKind: tool.toolKind || prev.toolKind,
     };
@@ -299,13 +330,23 @@ export function upsertToolInSegments(
 export function isToolInlinedInAssistants(
   messages: ChatMessage[],
   toolCallId: string,
+  opts?: { toolKind?: string | null; title?: string | null },
 ): boolean {
   const id = toolCallId.trim();
   if (!id) return false;
+  const fam = hostToolFamilyKey(id, opts?.toolKind, opts?.title);
   for (const m of messages) {
     if (m.role !== "assistant" || !m.segments?.length) continue;
     for (const s of m.segments) {
-      if (s.kind === "tool" && s.toolCallId === id) return true;
+      if (s.kind !== "tool") continue;
+      if (s.toolCallId === id) return true;
+      // Host vision/X: live uuid and journal uuid are the same chip.
+      if (
+        fam &&
+        hostToolFamilyKey(s.toolCallId, s.toolKind, s.title) === fam
+      ) {
+        return true;
+      }
     }
   }
   return false;
@@ -324,18 +365,36 @@ export function filterTranscriptMessages(
 ): ChatMessage[] {
   if (!messages.length) return messages;
   let anyInlined = false;
+  let anyHostInlined = false;
   for (const m of messages) {
-    if (m.role === "assistant" && m.segments?.some((s) => s.kind === "tool")) {
+    if (m.role !== "assistant" || !m.segments?.length) continue;
+    for (const s of m.segments) {
+      if (s.kind !== "tool") continue;
       anyInlined = true;
-      break;
+      if (hostToolFamilyKey(s.toolCallId, s.toolKind, s.title)) {
+        anyHostInlined = true;
+      }
     }
   }
-  if (!anyInlined) return messages;
   return messages.filter((m) => {
     if (!isToolStepMessage(m)) return true;
     const tcid = toolCallIdOf(m);
+    const title = toolStepDisplayTitle(m) || m.content;
+    const fam = hostToolFamilyKey(tcid, m.toolKind, title);
+    // Host vision/X: never paint a standalone row when already on an assistant.
+    if (fam && anyHostInlined) return false;
+    if (fam && isToolInlinedInAssistants(messages, tcid, {
+      toolKind: m.toolKind,
+      title,
+    })) {
+      return false;
+    }
+    if (!anyInlined) return true;
     if (!tcid) return true;
-    return !isToolInlinedInAssistants(messages, tcid);
+    return !isToolInlinedInAssistants(messages, tcid, {
+      toolKind: m.toolKind,
+      title,
+    });
   });
 }
 
@@ -355,13 +414,25 @@ function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null 
   // Journal often stores empty kind + title "tool"; recover from call-id prefix.
   const toolKind =
     (row.toolKind || "").trim() || inferKindFromToolCallId(tcid) || undefined;
+  // Prefer field detail; if content still has full tool_step body, re-parse
+  // (App maps title-only into content and used to keep only first detail line).
+  let detail = row.toolDetail;
+  let path = row.toolPath;
+  const raw = (row.content || "").trim();
+  if (raw.startsWith("tool_step|")) {
+    const parsed = parseToolStepContent(raw);
+    if (parsed?.detail && (!detail || parsed.detail.length > detail.length)) {
+      detail = parsed.detail;
+    }
+    if (parsed?.path && !path) path = parsed.path;
+  }
   return toolSegmentFromFields({
     toolCallId: tcid,
     title: toolStepDisplayTitle(row) || row.content || tcid,
     toolKind,
     status,
-    detail: row.toolDetail,
-    path: row.toolPath,
+    detail,
+    path,
     streaming: false,
     isError: !!row.isError || status === "failed" || status === "error",
     createdAt: row.createdAt,
@@ -385,9 +456,20 @@ export function mergeToolsIntoAssistantSegments(
       .filter((s): s is MessageToolSegment => s.kind === "tool")
       .map((s) => s.toolCallId),
   );
-  const missing = tools.filter((t) => !existingIds.has(t.toolCallId));
+  const existingFamilies = new Set(
+    segs
+      .filter((s): s is MessageToolSegment => s.kind === "tool")
+      .map((s) => hostToolFamilyKey(s.toolCallId, s.toolKind, s.title))
+      .filter((k): k is string => !!k),
+  );
+  const missing = tools.filter((t) => {
+    if (existingIds.has(t.toolCallId)) return false;
+    const fam = hostToolFamilyKey(t.toolCallId, t.toolKind, t.title);
+    if (fam && existingFamilies.has(fam)) return false;
+    return true;
+  });
   if (!missing.length) {
-    // Still apply status updates for known tools.
+    // Still apply status updates for known tools (and host-family merges).
     let next = segs;
     for (const t of tools) next = upsertToolInSegments(next, t);
     return compactMessageSegments(next);
@@ -567,10 +649,23 @@ export function syncTurnToolsIntoAssistant(
       (m.toolCallId || "").trim() ||
       (m.id.startsWith("tool-") ? m.id.slice(5) : m.id);
     if (!tcid || have.has(tcid)) continue;
+    const title = toolStepDisplayTitle(m) || m.content || tcid;
+    const fam = hostToolFamilyKey(tcid, m.toolKind, title);
+    // Skip host-family rows already inlined under another toolCallId.
+    if (
+      fam &&
+      segs.some(
+        (s) =>
+          s.kind === "tool" &&
+          hostToolFamilyKey(s.toolCallId, s.toolKind, s.title) === fam,
+      )
+    ) {
+      continue;
+    }
     const status = (m.toolStatus || "completed").toLowerCase();
     const toolSeg = toolSegmentFromFields({
       toolCallId: tcid,
-      title: toolStepDisplayTitle(m) || m.content || tcid,
+      title,
       toolKind: m.toolKind,
       status,
       detail: m.toolDetail,
@@ -613,49 +708,125 @@ export function applyToolEvent(
   const prev = idx >= 0 ? messages[idx]! : null;
   const title = resolveToolDisplayTitle(payload, prev?.content);
   const parentId = (payload.parentId || "").trim() || undefined;
+  const hostFam = hostToolFamilyKey(tcid, payload.kind, title);
+  // Prefer longer detail (stream accumulation) over short status chips.
+  const prevDetail = (prev?.toolDetail || "").trim();
+  const nextDetail = (payload.detail || "").trim();
+  const statusy =
+    /^(done|ok|failed|unavailable|识别完成|识别失败|搜索完成|搜索失败|working…|正在识别…|正在搜索…)$/i.test(
+      nextDetail,
+    );
+  const mergedDetail =
+    nextDetail && (!statusy || nextDetail.length >= prevDetail.length)
+      ? nextDetail
+      : nextDetail || prevDetail || undefined;
+  const mergedTitle =
+    title ||
+    (prev
+      ? resolveToolDisplayTitle(
+          {
+            title: prev.content,
+            kind: prev.toolKind,
+            detail: prev.toolDetail,
+            path: prev.toolPath,
+          },
+          prev.content,
+        )
+      : "") ||
+    // Keep empty when only generic "tool" — live UI hides placeholder chips.
+    // Never fall back to raw toolCallId (would show "t-gen" / uuid noise).
+    "";
+  const toolKind = payload.kind || prev?.toolKind || undefined;
+  const toolPath = payload.path?.trim() || prev?.toolPath || undefined;
+  const isError = status === "failed" || status === "error";
+
+  // Host vision / X: **only** live on the assistant timeline. A separate
+  // tool_step row + inlined segment was painting "搜索 X 信息" twice.
+  // Disk journal still written by Host; reload weaves from journal.
+  if (hostFam) {
+    let copy = messages.slice();
+    // Drop any standalone host-family tool rows (this id or same family).
+    copy = copy.filter((m) => {
+      if (!isToolStepMessage(m)) return true;
+      const mid = toolCallIdOf(m);
+      if (mid === tcid || m.id === id) return false;
+      const fam = hostToolFamilyKey(
+        mid,
+        m.toolKind,
+        toolStepDisplayTitle(m) || m.content,
+      );
+      return fam !== hostFam;
+    });
+    const aIdx = findCurrentTurnAssistantIndex(copy);
+    if (aIdx < 0) {
+      // No assistant yet (rare race): keep a single ephemeral tool row.
+      const nextRow: ChatMessage = {
+        id,
+        role: "tool",
+        content: mergedTitle,
+        toolCallId: tcid,
+        toolKind,
+        toolStatus: status || "in_progress",
+        toolDetail: mergedDetail,
+        toolPath,
+        toolParentId: parentId,
+        streaming: running,
+        marker: "tool_step",
+        createdAt: prev?.createdAt || now,
+        isError,
+      };
+      return [...copy, nextRow];
+    }
+    const asst = copy[aIdx]!;
+    const toolSeg = toolSegmentFromFields({
+      toolCallId: tcid,
+      title: mergedTitle,
+      toolKind,
+      status: status || "in_progress",
+      detail: mergedDetail,
+      path: toolPath,
+      streaming: running,
+      isError,
+      createdAt: prev?.createdAt || now,
+    });
+    const segs = compactMessageSegments(
+      upsertToolInSegments(ensureSegments(asst), toolSeg),
+    );
+    const derived = deriveFieldsFromSegments(segs);
+    copy[aIdx] = { ...asst, ...derived, segments: segs };
+    return copy;
+  }
+
   const nextRow: ChatMessage = {
     id,
     role: "tool",
-    content: title,
+    content: mergedTitle,
     toolCallId: tcid,
-    toolKind: payload.kind || undefined,
+    toolKind,
     toolStatus: status || "in_progress",
-    toolDetail: payload.detail?.trim() || undefined,
-    toolPath: payload.path?.trim() || undefined,
+    toolDetail: mergedDetail,
+    toolPath,
     toolParentId: parentId,
     streaming: running,
     marker: "tool_step",
     createdAt: now,
-    isError: status === "failed" || status === "error",
+    isError,
   };
 
   let copy: ChatMessage[];
-  let mergedTitle = title;
   if (idx < 0) {
     copy = [...messages, nextRow];
   } else {
     copy = messages.slice();
-    // Never downgrade a good title to empty / generic on later updates.
-    mergedTitle =
-      title ||
-      resolveToolDisplayTitle(
-        {
-          title: prev!.content,
-          kind: prev!.toolKind,
-          detail: prev!.toolDetail,
-          path: prev!.toolPath,
-        },
-        prev!.content,
-      );
     copy[idx] = {
       ...prev!,
       ...nextRow,
       createdAt: prev!.createdAt || now,
       content: mergedTitle,
-      toolDetail: nextRow.toolDetail || prev!.toolDetail,
-      toolPath: nextRow.toolPath || prev!.toolPath,
-      toolKind: nextRow.toolKind || prev!.toolKind,
-      toolParentId: nextRow.toolParentId || prev!.toolParentId,
+      toolDetail: mergedDetail,
+      toolPath: toolPath || prev!.toolPath,
+      toolKind: toolKind || prev!.toolKind,
+      toolParentId: parentId || prev!.toolParentId,
     };
   }
 
@@ -836,14 +1007,39 @@ export function parseToolStepContent(content: string): {
   const status = parts[1] || "completed";
   const kind = parts[2] || "";
   const title = parts.slice(3).join("|") || kind || "tool";
-  const detailLine = rest[0]?.trim();
-  const pathLine = rest[1]?.trim();
+  // Host side-channels journal multi-line bodies (vision / X results).
+  // Legacy native rows used: detail\npath (exactly 2 trailing lines, path-like).
+  let detail: string | undefined;
+  let path: string | undefined;
+  if (rest.length === 0) {
+    detail = undefined;
+    path = undefined;
+  } else if (rest.length === 1) {
+    detail = rest[0]?.trim() || undefined;
+  } else if (rest.length === 2) {
+    const a = rest[0] ?? "";
+    const b = (rest[1] ?? "").trim();
+    const bIsPath =
+      !!b &&
+      (/^https?:\/\//i.test(b) ||
+        b.startsWith("/") ||
+        /^[A-Za-z]:[\\/]/.test(b));
+    if (bIsPath && !a.includes("\n")) {
+      detail = a.trim() || undefined;
+      path = b;
+    } else {
+      detail = rest.join("\n").trim() || undefined;
+    }
+  } else {
+    // 3+ lines: full body is detail (Host X / vision dumps).
+    detail = rest.join("\n").trim() || undefined;
+  }
   return {
     status,
     kind,
     title,
-    detail: detailLine || undefined,
-    path: pathLine || undefined,
+    detail,
+    path,
   };
 }
 
@@ -992,12 +1188,62 @@ export function deriveFieldsFromSegments(segments: MessageSegment[]): {
   };
 }
 
+/** Host side-channel family: at most one vision + one X chip per turn. */
+export function hostToolFamilyKey(
+  toolCallId: string | null | undefined,
+  toolKind?: string | null,
+  title?: string | null,
+): string | null {
+  const id = (toolCallId || "").toLowerCase();
+  const kind = (toolKind || "").toLowerCase();
+  const t = (title || "").toLowerCase();
+  if (
+    id.startsWith("host-vision") ||
+    kind === "vision" ||
+    /识别图片|recogniz(e|ing)\s*image|image\s*descri/i.test(t)
+  ) {
+    return "host-vision";
+  }
+  // Title alone is enough — kind may be empty after journal remap.
+  if (
+    id.startsWith("host-x") ||
+    /搜索\s*x\s*信息|搜索\s*x\b|search(ing)?\s*(on\s*)?x\b|\bx\s*search\b/i.test(
+      t,
+    ) ||
+    (kind === "search" && /(?:^|\s)x(?:\s|$)|twitter|推特/i.test(t))
+  ) {
+    return "host-x";
+  }
+  return null;
+}
+
+function preferRicherTool(
+  a: MessageToolSegment,
+  b: MessageToolSegment,
+): MessageToolSegment {
+  const aDetail = (a.detail || "").length;
+  const bDetail = (b.detail || "").length;
+  const aDone = !toolSegmentLooksRunning(a);
+  const bDone = !toolSegmentLooksRunning(b);
+  // Prefer completed over in-progress when both exist.
+  if (aDone !== bDone) return aDone ? a : b;
+  if (bDetail !== aDetail) return bDetail > aDetail ? b : a;
+  return b;
+}
+
+function toolSegmentLooksRunning(t: MessageToolSegment): boolean {
+  if (t.streaming) return true;
+  const s = (t.status || "").toLowerCase();
+  return s === "in_progress" || s === "pending" || s === "running" || !s;
+}
+
 /**
  * Compact a segment timeline for display / persistence hygiene:
  * - drop empty thought/content pieces
  * - merge adjacent same-kind text segments (spurious "new" thought phases after
  *   empty assistant ticks used to create back-to-back 思考 2 / 思考 3 rows)
  * - keep tool steps; coalesce duplicate toolCallId updates in place
+ * - coalesce Host vision/X family (same title twice → one row)
  */
 export function compactMessageSegments(
   segments: MessageSegment[],
@@ -1005,23 +1251,42 @@ export function compactMessageSegments(
   const out: MessageSegment[] = [];
   for (const raw of segments) {
     if (raw.kind === "tool") {
-      const existing = out.findIndex(
+      const existingById = out.findIndex(
         (s) => s.kind === "tool" && s.toolCallId === raw.toolCallId,
       );
-      if (existing >= 0) {
-        const prev = out[existing] as MessageToolSegment;
+      if (existingById >= 0) {
+        const prev = out[existingById] as MessageToolSegment;
         const title =
           (raw.title && !isGenericToolLabel(raw.title) ? raw.title : "") ||
           prev.title;
-        out[existing] = {
+        const mergedDetail =
+          (raw.detail || "").length >= (prev.detail || "").length
+            ? raw.detail || prev.detail
+            : prev.detail || raw.detail;
+        out[existingById] = {
           ...prev,
           ...raw,
           title,
-          detail: raw.detail || prev.detail,
+          detail: mergedDetail,
           path: raw.path || prev.path,
           toolKind: raw.toolKind || prev.toolKind,
         };
         continue;
+      }
+      // Host side-channel: only one vision / one X row even if toolCallIds differ
+      // (live + journal weave race used to paint "识别图片内容" twice).
+      const family = hostToolFamilyKey(raw.toolCallId, raw.toolKind, raw.title);
+      if (family) {
+        const existingFamily = out.findIndex(
+          (s) =>
+            s.kind === "tool" &&
+            hostToolFamilyKey(s.toolCallId, s.toolKind, s.title) === family,
+        );
+        if (existingFamily >= 0) {
+          const prev = out[existingFamily] as MessageToolSegment;
+          out[existingFamily] = preferRicherTool(prev, raw);
+          continue;
+        }
       }
       out.push({ ...raw });
       continue;

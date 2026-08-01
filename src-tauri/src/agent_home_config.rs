@@ -167,6 +167,20 @@ pub fn set_table_bool(text: &str, table: &str, key: &str, value: bool) -> String
     set_table_key(text, table, key, bool_lit(value), false)
 }
 
+/// Pin App agent-home so Grok does **not** merge Claude/Cursor MCP catalogs.
+///
+/// Without this, `~/.claude.json` mcpServers (Playwright, open-websearch, …)
+/// are imported by default and stall first-tool discovery for ~30s.
+pub fn ensure_compat_mcp_disabled(text: &str) -> String {
+    let t = set_table_bool(text, "compat.claude", "mcps", false);
+    set_table_bool(&t, "compat.cursor", "mcps", false)
+}
+
+/// Write `[compat.claude/cursor] mcps = false` into independent agent-home.
+pub fn apply_compat_mcp_disabled(session_data_mode: &str) -> Result<(), String> {
+    update_config_toml_if_independent(session_data_mode, ensure_compat_mcp_disabled).map(|_| ())
+}
+
 /// Upsert `[table] key = "value"`.
 pub fn set_table_string(text: &str, table: &str, key: &str, value: &str) -> String {
     set_table_key(text, table, key, value, true)
@@ -333,6 +347,15 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn ensure_compat_mcp_disabled_sets_both() {
+        let t = ensure_compat_mcp_disabled("");
+        assert_eq!(get_table_bool(&t, "compat.claude", "mcps"), Some(false));
+        assert_eq!(get_table_bool(&t, "compat.cursor", "mcps"), Some(false));
+        let again = ensure_compat_mcp_disabled(&t);
+        assert_eq!(get_table_bool(&again, "compat.claude", "mcps"), Some(false));
+    }
+
     fn set_and_get_table_bool_and_string() {
         let t = set_table_bool("", "memory", "enabled", true);
         assert!(t.contains("[memory]"));

@@ -17,7 +17,9 @@ GET http://127.0.0.1:{port}/v1/media?t={token}&p={urlencode(absPath)}
 
 - **Token**: random per process; frontend loads via `media_server_endpoint` / `ensureMediaEndpoint()`.
 - **path_scope**: same allowlist as fs absolute APIs (trusted projects, app data, agent home, grants).
-- **Range**: 206 + max 2 MiB chunk (video/audio/PDF).
+- **Images**: no-Range GET returns **full 200 body** (up to 40 MiB). `<img>` cannot reassemble Range/206 — truncating at 2 MiB breaks chat thumbs and composer drops.
+- **Range**: 206 + max 2 MiB chunk for video/audio/PDF (and Range requests on any type).
+- **CORS**: main-window origins only (for `fetch` / copy / office reassembly); never `*`.
 - **CSP**: `img-src` / `media-src` / `connect-src` allow `http://127.0.0.1:*`.
 
 Frontend entry: `src/lib/imageSrc.ts` (`localPathToMediaHttpUrl`, `resolveImageSrc*`).  

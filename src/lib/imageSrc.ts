@@ -167,8 +167,18 @@ export async function resolveImageSrc(
   if (isViewableSrc(raw)) return raw;
   if (looksAbsoluteFsPath(raw) && isTauri()) {
     await ensureMediaEndpoint();
-    // Drop stale null cache entry from before endpoint was ready.
-    if (resolveCache.get(raw) == null) {
+    // Drop stale entries from before endpoint was ready:
+    // - null (hard fail while server was down)
+    // - media:// / asset:// cold-start fallback (prefer loopback HTTP)
+    const cached = resolveCache.get(raw);
+    if (
+      cached == null ||
+      (typeof cached === "string" &&
+        (cached.startsWith("media:") ||
+          cached.includes("media.localhost") ||
+          cached.startsWith("asset:") ||
+          cached.includes("asset.localhost")))
+    ) {
       resolveCache.delete(raw);
     }
   }

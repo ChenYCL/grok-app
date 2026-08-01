@@ -16,6 +16,7 @@
  */
 
 import type { MessageSegment, MessageToolSegment } from "./session";
+import { hostToolFamilyKey } from "./session";
 import { extractThinkingSummary } from "./thinkingSummary";
 
 /** Ordered work unit inside a phase (Grok activity rail). */
@@ -130,6 +131,47 @@ function bufTools(buf: WorkBuf): MessageToolSegment[] {
     .map((x) => (x.item as { kind: "tool"; tool: MessageToolSegment }).tool);
 }
 
+/** Collapse Host vision/X duplicates inside a work buffer before paint. */
+function dedupeHostToolsInBuf(buf: WorkBuf): WorkBuf {
+  const seen = new Map<string, number>(); // family → item index
+  const items: WorkBuf["items"] = [];
+  for (const entry of buf.items) {
+    if (entry.item.kind !== "tool") {
+      items.push(entry);
+      continue;
+    }
+    const tool = entry.item.tool;
+    const fam = hostToolFamilyKey(tool.toolCallId, tool.toolKind, tool.title);
+    if (!fam) {
+      items.push(entry);
+      continue;
+    }
+    const prevIdx = seen.get(fam);
+    if (prevIdx == null) {
+      seen.set(fam, items.length);
+      items.push(entry);
+      continue;
+    }
+    // Keep richer / completed tool at the earlier slot.
+    const prev = items[prevIdx]!;
+    if (prev.item.kind !== "tool") {
+      items.push(entry);
+      continue;
+    }
+    const a = prev.item.tool;
+    const b = tool;
+    const aLen = (a.detail || "").length;
+    const bLen = (b.detail || "").length;
+    const aRun = a.streaming || /in_progress|pending|running/i.test(a.status || "");
+    const bRun = b.streaming || /in_progress|pending|running/i.test(b.status || "");
+    const preferB = (!bRun && aRun) || bLen > aLen;
+    if (preferB) {
+      items[prevIdx] = entry;
+    }
+  }
+  return { items };
+}
+
 function bufStartSi(buf: WorkBuf): number {
   return buf.items[0]?.si ?? 0;
 }
@@ -183,6 +225,7 @@ export function buildTimelineUnits(
 
   const flush = (live: boolean) => {
     if (bufEmpty(buf)) return;
+    buf = dedupeHostToolsInBuf(buf);
     const thoughts = bufThoughts(buf);
     const tools = bufTools(buf);
     if (isPhaseWorthy(thoughts, tools)) {
