@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Support bundle export honesty** (Reliability center): pure `supportBundlePro` helpers plan redacted sections (`doctor` / `settings` / `meta` / optional `stall-timeline` / `logs` / `README`), never claim secrets or invent logs; classified soft-fail (`host_only` · `cancel` · `io` · `empty` · `other`); GlassModal confirm with section checklist + text manifest preview before export; stall JSON only when signals exist. en/zh/zh-TW + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

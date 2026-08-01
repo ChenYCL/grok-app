@@ -3521,6 +3521,45 @@ const en = {
     "Aggregate busy chats, stall signals, recent error cards, and the tool audit ledger; export support zip.",
   "reliability.supportZipHint":
     "Redacted Doctor report, recent logs, and stall timeline snapshot (no secrets).",
+  "reliability.supportZip.confirmTitle": "Export support zip?",
+  "reliability.supportZip.confirmMessage":
+    "Review the redacted checklist below. The zip never includes secrets, auth tokens, or API keys.",
+  "reliability.supportZip.confirmAction": "Export support zip",
+  "reliability.supportZip.checklistTitle": "Included sections (redacted)",
+  "reliability.supportZip.secretsNever":
+    "Secrets are never included (no secrets.json, account auth, or raw API keys).",
+  "reliability.supportZip.redacted": "redacted",
+  "reliability.supportZip.whenAvailable": "if present on host",
+  "reliability.supportZip.sectionOmitted": "not included this export",
+  "reliability.supportZip.auditNotIncluded":
+    "Tool audit ledger is not in this zip — use Audit export instead.",
+  "reliability.supportZip.manifestPreview": "Text manifest preview",
+  "reliability.supportZip.section.doctor": "Doctor report (doctor.json)",
+  "reliability.supportZip.section.doctorHint":
+    "Health checks; host builds a fresh report when none is passed (paths only, no keys).",
+  "reliability.supportZip.section.settings": "App settings (settings.json)",
+  "reliability.supportZip.section.settingsHint":
+    "Included only when settings exist on this device; secrets scrubbed.",
+  "reliability.supportZip.section.meta": "App / OS meta (meta.json)",
+  "reliability.supportZip.section.metaHint":
+    "Version, OS/arch, session and project counts — no paths with secrets.",
+  "reliability.supportZip.section.stall": "Stall timeline (stall-timeline.json)",
+  "reliability.supportZip.section.stallHint":
+    "Structured stall signals from Reliability center only when present.",
+  "reliability.supportZip.section.logs": "Recent logs (logs/)",
+  "reliability.supportZip.section.logsHint":
+    "Recent log files if present on host; size-capped and redacted — never invented.",
+  "reliability.supportZip.section.readme": "README.txt",
+  "reliability.supportZip.section.readmeHint":
+    "Plain inventory of zip contents for the recipient.",
+  "reliability.supportZip.emptyHostOnly": "Support zip needs the desktop app",
+  "reliability.supportZip.emptyHostOnlyHint":
+    "Export runs on the Tauri host only — open Grok App on desktop to build a redacted support zip.",
+  "reliability.supportZip.failHostOnly":
+    "Support zip needs the desktop app (not available in browser)",
+  "reliability.supportZip.failCancel": "Support zip cancelled",
+  "reliability.supportZip.failIo": "Could not write support zip (disk or permission)",
+  "reliability.supportZip.failEmpty": "Nothing honest to put in the support zip",
   "reliability.goal.title": "Goal orchestration",
   "reliability.goal.count": "{count}",
   "reliability.goal.lead":
@@ -9520,6 +9559,43 @@ const zh: Record<MessageKey, string> = {
     "汇总忙碌会话、卡顿信号、最近错误卡片与工具审计账本；可导出支持包。",
   "reliability.supportZipHint":
     "脱敏后的 Doctor 报告、近期日志与卡顿时间线快照（不含密钥）。",
+  "reliability.supportZip.confirmTitle": "导出支持包？",
+  "reliability.supportZip.confirmMessage":
+    "请先核对下方脱敏清单。支持包绝不会包含密钥、登录凭据或 API Key。",
+  "reliability.supportZip.confirmAction": "导出支持包",
+  "reliability.supportZip.checklistTitle": "将包含的部分（已脱敏）",
+  "reliability.supportZip.secretsNever":
+    "绝不会包含密钥（无 secrets.json、账户登录或原始 API Key）。",
+  "reliability.supportZip.redacted": "已脱敏",
+  "reliability.supportZip.whenAvailable": "主机上存在时才写入",
+  "reliability.supportZip.sectionOmitted": "本次不包含",
+  "reliability.supportZip.auditNotIncluded":
+    "工具审计账本不在此压缩包内 — 请改用「审计」导出。",
+  "reliability.supportZip.manifestPreview": "文本清单预览",
+  "reliability.supportZip.section.doctor": "Doctor 报告（doctor.json）",
+  "reliability.supportZip.section.doctorHint":
+    "健康检查；界面未传入时由主机重新生成（仅路径，无密钥）。",
+  "reliability.supportZip.section.settings": "应用设置（settings.json）",
+  "reliability.supportZip.section.settingsHint":
+    "仅当本机存在设置文件时写入；密钥已脱敏。",
+  "reliability.supportZip.section.meta": "应用 / 系统元数据（meta.json）",
+  "reliability.supportZip.section.metaHint":
+    "版本、系统架构、会话与项目数量 — 不含含密钥路径。",
+  "reliability.supportZip.section.stall": "卡顿时间线（stall-timeline.json）",
+  "reliability.supportZip.section.stallHint":
+    "仅在有可靠性中心卡顿信号时写入结构化快照。",
+  "reliability.supportZip.section.logs": "近期日志（logs/）",
+  "reliability.supportZip.section.logsHint":
+    "主机上存在时才写入近期日志；限大小并脱敏 — 绝不虚构日志。",
+  "reliability.supportZip.section.readme": "README.txt",
+  "reliability.supportZip.section.readmeHint": "给接收方的压缩包内容说明。",
+  "reliability.supportZip.emptyHostOnly": "支持包需要桌面应用",
+  "reliability.supportZip.emptyHostOnlyHint":
+    "导出仅在 Tauri 主机上运行 — 请在桌面版 Grok App 中生成脱敏支持包。",
+  "reliability.supportZip.failHostOnly": "支持包需要桌面应用（浏览器中不可用）",
+  "reliability.supportZip.failCancel": "已取消导出支持包",
+  "reliability.supportZip.failIo": "无法写入支持包（磁盘或权限）",
+  "reliability.supportZip.failEmpty": "当前没有可诚实写入支持包的内容",
   "reliability.goal.title": "目标编排",
   "reliability.goal.count": "{count}",
   "reliability.goal.lead":
