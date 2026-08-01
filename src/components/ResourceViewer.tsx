@@ -3623,6 +3623,19 @@ export function ResourceViewer({
                 expandDetails: tr("plan.expandDetails"),
                 collapseDetails: tr("plan.collapseDetails"),
                 current: tr("planBar.current"),
+                edit: tr("plan.edit"),
+                cancelEdit: tr("plan.cancelEdit"),
+                requestWithDraft: tr("plan.requestWithDraft"),
+                approveDirtyHint: tr("plan.approveDirtyHint"),
+                draftPlaceholder: tr("plan.draftPlaceholder"),
+                draftAria: tr("plan.draftAria"),
+                discardTitle: tr("plan.discardTitle"),
+                discardMessage: tr("plan.discardMessage"),
+                discardConfirm: tr("plan.discardConfirm"),
+                discardCancel: tr("common.cancel"),
+                draftEmpty: tr("plan.draftEmpty"),
+                draftTooLong: tr("plan.draftTooLong"),
+                close: tr("common.close"),
               }}
               onApprove={onApprovePlan}
               onRequestChanges={onRequestPlanChanges}

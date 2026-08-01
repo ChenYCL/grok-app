@@ -1306,6 +1306,20 @@ const en = {
     "Optional note for the agent. Leave empty to ask for a general revision.",
   "plan.reviseNotePlaceholder": "What should change? (optional)",
   "plan.reviseNoteSubmit": "Send revision request",
+  /** Editable plan canvas (Resources → Plan before approve) */
+  "plan.edit": "Edit plan",
+  "plan.cancelEdit": "Cancel edit",
+  "plan.requestWithDraft": "Request changes with draft",
+  "plan.approveDirtyHint":
+    "You have unsaved plan edits. Request changes with your draft first, or discard them to approve the agent's plan.",
+  "plan.draftPlaceholder": "Edit the plan markdown…",
+  "plan.draftAria": "Plan draft markdown",
+  "plan.discardTitle": "Discard plan edits?",
+  "plan.discardMessage":
+    "Your local edits will be lost. The agent’s original plan stays until you request changes or approve.",
+  "plan.discardConfirm": "Discard edits",
+  "plan.draftEmpty": "Plan draft cannot be empty.",
+  "plan.draftTooLong": "Plan draft is too long (max about 200k characters).",
   "plan.phaseLabel": "Thinking {n}",
   "plan.steps": "Steps",
   "plan.openInResources": "Open in resources",
@@ -7375,6 +7389,20 @@ const zh: Record<MessageKey, string> = {
   "plan.reviseNoteDesc": "可填写给 Agent 的说明；留空则请求一般性修订。",
   "plan.reviseNotePlaceholder": "希望改什么？（可选）",
   "plan.reviseNoteSubmit": "发送修改请求",
+  /** Editable plan canvas (Resources → Plan before approve) */
+  "plan.edit": "编辑计划",
+  "plan.cancelEdit": "取消编辑",
+  "plan.requestWithDraft": "用草稿请求修改",
+  "plan.approveDirtyHint":
+    "你有未提交的计划修改。请先用草稿请求修改，或丢弃后再批准 Agent 的原计划。",
+  "plan.draftPlaceholder": "编辑计划 Markdown…",
+  "plan.draftAria": "计划草稿 Markdown",
+  "plan.discardTitle": "丢弃计划修改？",
+  "plan.discardMessage":
+    "本地修改将丢失。在请求修改或批准之前，仍以 Agent 原计划为准。",
+  "plan.discardConfirm": "丢弃修改",
+  "plan.draftEmpty": "计划草稿不能为空。",
+  "plan.draftTooLong": "计划草稿过长（上限约 20 万字符）。",
   "plan.phaseLabel": "思考 {n}",
   "plan.steps": "步骤",
   "plan.openInResources": "在资源中打开",

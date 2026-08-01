@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Editable plan canvas** (Resources → Plan): when a plan is awaiting review, **Edit plan** opens a local markdown draft; dirty drafts disable **Approve** (hint: request changes with your edits first); **Request changes with draft** sends feedback with clear revised-plan markers; discard dirty edit uses GlassModal (no `window.confirm`). Pure `planEditCanvas` helpers + tests; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

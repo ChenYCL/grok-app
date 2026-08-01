@@ -4,9 +4,13 @@
  * - **Awaiting review** (`rpcId`): expand by default — Markdown + approve/revise.
  * - **In progress** (entries, no gate): collapsed by default — top progress only;
  *   click header / expand control to show steps + detail body.
+ * - **Edit canvas**: when the exit_plan_mode gate is open, users can edit plan
+ *   markdown locally; dirty drafts disable Approve and send via request-changes
+ *   with clear revised-plan markers (see `planEditCanvas`).
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { GlassModal } from "@/components/GlassModal";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { IconChevronDown, IconChevronRight, IconPlan } from "@/components/icons";
@@ -16,6 +20,13 @@ import {
   planIsAwaitingReview,
   type PlanReviewState,
 } from "@/lib/planBody";
+import {
+  buildRequestChangesNoteFromDraft,
+  planDraftIsDirty,
+  planEditEmptyState,
+  sanitizePlanDraft,
+  validatePlanDraft,
+} from "@/lib/planEditCanvas";
 import {
   planHasExpandableContent,
   planPanelInnerEmptyLabelKey,
@@ -44,6 +55,27 @@ export type PlanReviewPanelLabels = {
   /** Collapse control when expanded. */
   collapseDetails: string;
   current: string;
+  /** Enter local plan draft edit mode. */
+  edit: string;
+  /** Leave edit mode (clean). */
+  cancelEdit: string;
+  /** Primary when draft is dirty — send revised plan via request-changes. */
+  requestWithDraft: string;
+  /** Hint when Approve is disabled because the draft is dirty. */
+  approveDirtyHint: string;
+  /** Textarea aria / placeholder. */
+  draftPlaceholder: string;
+  draftAria: string;
+  /** Discard dirty draft confirm modal. */
+  discardTitle: string;
+  discardMessage: string;
+  discardConfirm: string;
+  discardCancel: string;
+  /** Soft-fail when draft is empty / too long. */
+  draftEmpty: string;
+  draftTooLong: string;
+  /** Close dialog button label. */
+  close: string;
 };
 
 export type PlanReviewPanelProps = {
@@ -55,6 +87,7 @@ export type PlanReviewPanelProps = {
   /**
    * Request plan revisions. Optional `note` is free-form feedback for the agent.
    * Callers may open a note modal first, then invoke with the string (empty ok).
+   * When the edit canvas sends a dirty draft, `note` includes revised-plan markers.
    */
   onRequestChanges?: (note?: string) => void;
   onDismiss?: () => void;
@@ -77,6 +110,7 @@ export function PlanReviewPanel({
   const fraction = formatPlanFraction(progress);
   const canAct = planActionsEnabled(plan);
   const awaitingReview = planIsAwaitingReview(plan);
+  const editAvail = planEditEmptyState({ canAct, hasBody });
 
   const model = useMemo(
     () =>
@@ -101,6 +135,12 @@ export function PlanReviewPanel({
     return "";
   }, [hasBody, plan.body, plan.entries, awaitingReview, entries.length]);
 
+  /** Baseline for dirty checks — prefer full body; fall back to display md. */
+  const originalBody = useMemo(() => {
+    if (plan.body) return sanitizePlanDraft(plan.body);
+    return sanitizePlanDraft(detailMarkdown);
+  }, [plan.body, detailMarkdown]);
+
   const statusLabel =
     model.headlineKey === "planBar.progress"
       ? labels.progress
@@ -115,11 +155,20 @@ export function PlanReviewPanel({
   // Review gate → expanded; pure progress → collapsed until user opens.
   const defaultExpanded = awaitingReview || (hasBody && entries.length === 0);
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(originalBody);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
-  // When plan identity / gate flips, reset expand policy.
+  const dirty = planDraftIsDirty(originalBody, draft);
+  const draftValidation = validatePlanDraft(draft);
+
+  // When plan identity / gate flips, reset expand policy and leave edit mode.
   useEffect(() => {
     setExpanded(defaultExpanded);
-  }, [defaultExpanded, plan.rpcId, plan.title]);
+    setEditing(false);
+    setDraft(originalBody);
+    setDiscardOpen(false);
+  }, [defaultExpanded, plan.rpcId, plan.title, originalBody]);
 
   // 详情 / planFocusKey: force expand so steps+detail are visible.
   useEffect(() => {
@@ -129,7 +178,8 @@ export function PlanReviewPanel({
 
   const hasExpandableContent =
     planHasExpandableContent({ body: detailMarkdown || plan.body, entries }) ||
-    !!planDisplayMarkdown(plan.body, plan.entries);
+    !!planDisplayMarkdown(plan.body, plan.entries) ||
+    editing;
 
   const innerEmptyKind = resolvePlanPanelInnerEmpty({
     waiting: plan.waiting && !canAct,
@@ -147,14 +197,60 @@ export function PlanReviewPanel({
     setExpanded((v) => !v);
   };
 
+  const enterEdit = () => {
+    setDraft(originalBody);
+    setEditing(true);
+    setExpanded(true);
+  };
+
+  const leaveEditClean = () => {
+    setEditing(false);
+    setDraft(originalBody);
+    setDiscardOpen(false);
+  };
+
+  const requestCancelEdit = () => {
+    if (dirty) {
+      setDiscardOpen(true);
+      return;
+    }
+    leaveEditClean();
+  };
+
+  const submitDraftChanges = () => {
+    if (!onRequestChanges) return;
+    if (!dirty) {
+      onRequestChanges();
+      return;
+    }
+    if (!draftValidation.ok) return;
+    const note = buildRequestChangesNoteFromDraft({
+      originalBody,
+      draft,
+    });
+    onRequestChanges(note);
+    leaveEditClean();
+  };
+
+  const approveDisabled = dirty;
+  const draftErrorLabel =
+    editing && dirty && !draftValidation.ok
+      ? draftValidation.reason === "too_long"
+        ? labels.draftTooLong
+        : labels.draftEmpty
+      : null;
+
   return (
     <div
       className={
         "plan-review" +
-        (expanded ? " plan-review--expanded" : " plan-review--collapsed")
+        (expanded ? " plan-review--expanded" : " plan-review--collapsed") +
+        (editing ? " plan-review--editing" : "")
       }
       data-testid="plan-review-panel"
       data-plan-card
+      data-plan-editing={editing ? "true" : undefined}
+      data-plan-dirty={dirty ? "true" : undefined}
     >
       <header className="plan-review__header">
         <button
@@ -211,7 +307,7 @@ export function PlanReviewPanel({
         ) : null}
 
         <div className="plan-review__actions">
-          {hasExpandableContent ? (
+          {hasExpandableContent && !editing ? (
             <button
               type="button"
               className="btn btn--ghost btn--sm"
@@ -220,20 +316,55 @@ export function PlanReviewPanel({
               {expanded ? labels.collapseDetails : labels.expandDetails}
             </button>
           ) : null}
+          {editAvail.canEdit && !editing ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={enterEdit}
+              data-testid="plan-review-edit"
+            >
+              {labels.edit}
+            </button>
+          ) : null}
+          {editing ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={requestCancelEdit}
+              data-testid="plan-review-cancel-edit"
+            >
+              {labels.cancelEdit}
+            </button>
+          ) : null}
           {canAct && onApprove ? (
             <button
               type="button"
               className="btn btn--solid btn--sm"
               onClick={onApprove}
+              disabled={approveDisabled}
+              title={approveDisabled ? labels.approveDirtyHint : undefined}
+              data-testid="plan-review-approve"
             >
               {labels.approve}
             </button>
           ) : null}
-          {canAct && onRequestChanges ? (
+          {canAct && onRequestChanges && editing && dirty ? (
+            <button
+              type="button"
+              className="btn btn--solid btn--sm"
+              onClick={submitDraftChanges}
+              disabled={!draftValidation.ok}
+              data-testid="plan-review-request-with-draft"
+            >
+              {labels.requestWithDraft}
+            </button>
+          ) : null}
+          {canAct && onRequestChanges && !(editing && dirty) ? (
             <button
               type="button"
               className="btn btn--ghost btn--sm"
               onClick={() => onRequestChanges()}
+              data-testid="plan-review-request-changes"
             >
               {labels.changes}
             </button>
@@ -248,12 +379,30 @@ export function PlanReviewPanel({
             </button>
           ) : null}
         </div>
+        {approveDisabled && canAct ? (
+          <p
+            className="plan-review__dirty-hint"
+            role="status"
+            data-testid="plan-review-dirty-hint"
+          >
+            {labels.approveDirtyHint}
+          </p>
+        ) : null}
+        {draftErrorLabel ? (
+          <p
+            className="plan-review__draft-error"
+            role="alert"
+            data-testid="plan-review-draft-error"
+          >
+            {draftErrorLabel}
+          </p>
+        ) : null}
       </header>
 
       {expanded ? (
         <OverlayScroll className="plan-review__scroll">
           <div className="plan-review__body">
-            {entries.length > 0 ? (
+            {entries.length > 0 && !editing ? (
               <section className="plan-review__steps">
                 <h3 className="plan-review__steps-title">{labels.steps}</h3>
                 <ol className="plan-review__steps-list">
@@ -280,7 +429,19 @@ export function PlanReviewPanel({
               </section>
             ) : null}
 
-            {detailMarkdown ? (
+            {editing ? (
+              <div className="plan-review__editor">
+                <textarea
+                  className="plan-review__textarea"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder={labels.draftPlaceholder}
+                  aria-label={labels.draftAria}
+                  spellCheck={false}
+                  data-testid="plan-review-draft"
+                />
+              </div>
+            ) : detailMarkdown ? (
               <div
                 className={
                   "plan-review__md" +
@@ -305,6 +466,36 @@ export function PlanReviewPanel({
           </div>
         </OverlayScroll>
       ) : null}
+
+      <GlassModal
+        open={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        title={labels.discardTitle}
+        size="sm"
+        closeLabel={labels.close}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setDiscardOpen(false)}
+            >
+              {labels.discardCancel}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={leaveEditClean}
+              data-testid="plan-review-discard-confirm"
+            >
+              {labels.discardConfirm}
+            </button>
+          </>
+        }
+      >
+        <p className="plan-review__discard-msg">{labels.discardMessage}</p>
+      </GlassModal>
     </div>
   );
 }
