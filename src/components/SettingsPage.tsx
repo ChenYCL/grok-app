@@ -3456,33 +3456,41 @@ export function SettingsPage({
               </div>
               <div
                 className={
-                  "settings-codebase-indexing-wrap" +
-                  rowHighlight("settings-anchor-codebaseIndexing")
+                  "settings-code-graph-product" +
+                  rowHighlight("settings-anchor-codeGraph")
                 }
+                id="settings-anchor-codeGraph"
               >
-                <CodebaseIndexingPanel
-                  locale={resolveLocale(locale)}
-                  cliVersion={cliInfo.version}
-                  onSaved={() =>
-                    showSettingsToast(
-                      t("settings.codebaseIndexing.saved"),
-                      2200,
-                    )
+                <div
+                  className={
+                    "settings-codebase-indexing-wrap" +
+                    rowHighlight("settings-anchor-codebaseIndexing")
                   }
-                  onError={(msg) => showSettingsToast(msg, 3200)}
-                />
-              </div>
-              <div
-                className={
-                  "settings-codebase-search-wrap" +
-                  rowHighlight("settings-anchor-codebaseSearch")
-                }
-              >
-                <CodebaseSearchPanel
-                  locale={resolveLocale(locale)}
-                  projectPath={workspaceCwd}
-                  onOpenInResources={onOpenProjectFileInResources}
-                />
+                >
+                  <CodebaseIndexingPanel
+                    locale={resolveLocale(locale)}
+                    cliVersion={cliInfo.version}
+                    onSaved={() =>
+                      showSettingsToast(
+                        t("settings.codebaseIndexing.saved"),
+                        2200,
+                      )
+                    }
+                    onError={(msg) => showSettingsToast(msg, 3200)}
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-codebase-search-wrap" +
+                    rowHighlight("settings-anchor-codebaseSearch")
+                  }
+                >
+                  <CodebaseSearchPanel
+                    locale={resolveLocale(locale)}
+                    projectPath={workspaceCwd}
+                    onOpenInResources={onOpenProjectFileInResources}
+                  />
+                </div>
               </div>
               {onSubagentsEnabled ? (
                 <div

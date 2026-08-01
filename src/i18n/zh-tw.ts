@@ -1958,6 +1958,60 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.codebaseSearch.openResources": "資源",
   "settings.codebaseSearch.refresh": "重新整理",
   "settings.codebaseSearch.clear": "清除",
+  "settings.codeGraph": "程式碼圖",
+  "settings.codeGraphDesc":
+    "統一展示程式碼庫索引（CLI 程式碼圖）與應用內專案搜尋（僅關鍵字）的誠實狀態。不會虛構程式碼圖或 embedding 命中。",
+  "settings.codeGraph.modeLabel": "程式碼圖狀態",
+  "settings.codeGraph.chip.appKeyword": "應用內搜尋：關鍵字",
+  "settings.codeGraph.chip.cliGraph": "CLI 程式碼圖：開",
+  "settings.codeGraph.chip.cliGraphDefaultOn": "CLI 程式碼圖：預設開",
+  "settings.codeGraph.chip.graphUnavailable": "應用內圖搜尋：不可用",
+  "settings.codeGraph.chip.keywordOnly": "程式碼圖：關",
+  "settings.codeGraph.chip.cliOld": "CLI 過舊，不支援程式碼圖",
+  "settings.codeGraph.chip.noEmbeddings": "非 embedding",
+  "settings.codeGraph.mode.keywordOnly":
+    "程式碼庫索引已關閉 — CLI 不會建置程式碼圖。應用內專案搜尋仍為關鍵字（rg/走訪）。",
+  "settings.codeGraph.mode.graphEnabledUnknown":
+    "程式碼庫索引已開啟，CLI 可能建置程式碼圖；應用尚無法確認圖就緒狀態或回傳圖命中。",
+  "settings.codeGraph.mode.graphUnavailable":
+    "程式碼庫索引對 CLI code-nav 已開啟，但應用內專案搜尋沒有圖 API — 結果仍僅為關鍵字。",
+  "settings.codeGraph.mode.cliOld":
+    "CLI 低於 {min} — 可能忽略 `[features].codebase_indexing`（soft-fail）。應用內搜尋仍為關鍵字。",
+  "settings.codeGraph.mode.unsetDefaultOn":
+    "鍵未設定 — CLI 預設開啟。應用不會虛構已寫入的設定值；專案搜尋仍為關鍵字。",
+  "settings.codeGraph.appSearchRemainsKeyword":
+    "在 Host 提供真正的圖搜尋 API 之前，應用內專案搜尋保持關鍵字。CLI 圖/code-nav 請另行啟用索引。",
+  "settings.codeGraph.openIndexingSettings": "程式碼庫索引設定",
+  "settings.codeGraph.openSearchSettings": "專案程式碼庫搜尋",
+  "settings.codeGraph.empty.cliOld": "CLI 過舊，不支援程式碼圖索引",
+  "settings.codeGraph.empty.cliOldHint":
+    "請升級 Grok Build CLI 以使用 `[features].codebase_indexing`。應用內搜尋仍僅為關鍵字。",
+  "settings.codeGraph.empty.unsetDefaultOn":
+    "程式碼庫索引鍵未設定（CLI 預設開啟）",
+  "settings.codeGraph.empty.unsetDefaultOnHint":
+    "切換一次可寫入明確 bool。應用內搜尋不使用程式碼圖。",
+  "settings.codeGraph.empty.keywordOnly": "程式碼圖索引已關閉",
+  "settings.codeGraph.empty.keywordOnlyHint":
+    "開啟程式碼庫索引以供 CLI code-nav。應用內專案搜尋始終為關鍵字。",
+  "settings.codeGraph.empty.graphUnavailable":
+    "CLI 程式碼圖可能已啟用 — 應用內圖搜尋不可用",
+  "settings.codeGraph.empty.graphUnavailableHint":
+    "索引可協助 CLI agent；此應用介面僅執行關鍵字（rg/走訪）專案搜尋。",
+  "settings.codeGraph.empty.graphEnabledUnknown":
+    "CLI 程式碼圖可能已啟用 — 應用內狀態未知",
+  "settings.codeGraph.empty.graphEnabledUnknownHint":
+    "應用不會探測圖健康度，也不會虛構圖命中。專案搜尋僅為關鍵字。",
+  "settings.codeGraph.empty.searchKeywordIdle": "輸入關鍵字以搜尋此專案",
+  "settings.codeGraph.empty.searchKeywordIdleHint":
+    "結果為路徑/名稱或內容相符 — 絕不會虛構程式碼圖或 embedding 命中。",
+  "settings.codeGraph.empty.searchNoMatches": "無關鍵字相符",
+  "settings.codeGraph.empty.searchNoMatchesHint":
+    "專案下無路徑/名稱或內容命中。這不是程式碼圖或向量搜尋。",
+  "settings.codeGraph.rebuild.availableNote": "Host 可重建程式碼圖索引。",
+  "settings.codeGraph.rebuild.unavailableNote":
+    "應用沒有程式碼圖的 Host 重建介面。",
+  "settings.codeGraph.rebuild.cliHint":
+    "若索引過期，請在 Grok Build CLI 提供相應命令時於 CLI 重建 — 本面板不會虛構重建按鈕。",
   "settings.allowUnverifiedCli": "允許未校驗的 CLI 安裝",
   "settings.allowUnverifiedCliDesc":
     "官方鏡像通常不發佈 SHA-256 校驗檔；缺少校驗時預設仍可安裝（HTTPS 白名單 + 二進位探測）。開啟此項可在設定了 GROK_CLI_REQUIRE_CHECKSUM=1 時仍允許安裝。校驗和不一致一律拒絕。",
