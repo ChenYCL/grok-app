@@ -23,12 +23,24 @@ import {
 import {
   AUTOMATION_RUN_HISTORY_CHANGE_EVENT,
   clearAutomationRunHistory,
-  countAutomationRunOutcomes,
-  filterAutomationRunHistory,
   loadAutomationRunHistory,
   type AutomationRunOutcomeFilter,
   type AutomationRunRecord,
 } from "@/lib/automationRunHistory";
+import {
+  buildAutomationsInbox,
+  clearInboxSeenIds,
+  countInboxByOutcome,
+  filterInbox,
+  loadInboxSeenIds,
+  markAllInboxRead,
+  markInboxItemRead,
+  planOpenInboxItem,
+  planRetryAutomation,
+  resolveInboxEmptyState,
+  type AutomationsInboxItem,
+} from "@/lib/automationsInbox";
+import { formatRelativeTime } from "@/lib/accountUi";
 import { Select } from "@/components/Select";
 import { GlassModal } from "@/components/GlassModal";
 import {
@@ -65,6 +77,15 @@ export interface AutomationsPageProps {
   models?: ModelOption[];
   onAiCreate: () => void;
   onRunNow?: (auto: Automation) => void;
+  /**
+   * Open a session linked from an Inbox row (when sessionId was observed).
+   * Soft — App resolves live session; may toast if missing.
+   */
+  onOpenSession?: (sessionId: string, projectId?: string | null) => void;
+  /** Focus a project when Inbox row has project but no session. */
+  onOpenProject?: (projectId: string) => void;
+  /** Locale for relative timestamps in Inbox (default: en). */
+  locale?: string;
   /** AppSettings.launchAtLogin — honest background status banner. */
   openAtLogin?: boolean;
   /** Deep-link to Settings → general/app → Launch at login. */
@@ -110,6 +131,9 @@ export function AutomationsPage({
   models,
   onAiCreate,
   onRunNow,
+  onOpenSession,
+  onOpenProject,
+  locale = "en",
   openAtLogin = false,
   onOpenLaunchAtLogin,
   closeToTray = true,
@@ -144,8 +168,13 @@ export function AutomationsPage({
   const [runHistory, setRunHistory] = useState<AutomationRunRecord[]>(() =>
     loadAutomationRunHistory(),
   );
-  const [runHistoryFilter, setRunHistoryFilter] =
+  /** Inbox filters (outcome chips + search) over the same observed ring. */
+  const [inboxOutcome, setInboxOutcome] =
     useState<AutomationRunOutcomeFilter>("all");
+  const [inboxQuery, setInboxQuery] = useState("");
+  const [inboxSeen, setInboxSeen] = useState<Set<string>>(() =>
+    loadInboxSeenIds(),
+  );
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const createBtnRef = useRef<HTMLButtonElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
@@ -215,20 +244,90 @@ export function AutomationsPage({
     [list],
   );
 
-  const filteredRunHistory = useMemo(
-    () => filterAutomationRunHistory(runHistory, runHistoryFilter),
-    [runHistory, runHistoryFilter],
+  const inboxItems = useMemo(
+    () =>
+      buildAutomationsInbox(runHistory, {
+        seenIds: inboxSeen,
+        tasks: list.map((a) => ({
+          id: a.id,
+          projectId: a.projectId,
+          title: a.title,
+        })),
+      }),
+    [runHistory, inboxSeen, list],
   );
 
-  const runHistoryCounts = useMemo(
-    () => countAutomationRunOutcomes(runHistory),
-    [runHistory],
+  const filteredInbox = useMemo(
+    () =>
+      filterInbox(inboxItems, {
+        outcome: inboxOutcome,
+        query: inboxQuery,
+      }),
+    [inboxItems, inboxOutcome, inboxQuery],
+  );
+
+  const inboxCounts = useMemo(
+    () => countInboxByOutcome(inboxItems),
+    [inboxItems],
+  );
+
+  const inboxEmpty = useMemo(
+    () =>
+      resolveInboxEmptyState({
+        totalCount: inboxItems.length,
+        filteredCount: filteredInbox.length,
+        outcomeFilter: inboxOutcome,
+        query: inboxQuery,
+      }),
+    [inboxItems.length, filteredInbox.length, inboxOutcome, inboxQuery],
+  );
+
+  const unreadCount = useMemo(
+    () => inboxItems.filter((i) => i.unread).length,
+    [inboxItems],
   );
 
   const confirmClearHistory = () => {
     setRunHistory(clearAutomationRunHistory());
+    setInboxSeen(clearInboxSeenIds());
     setClearHistoryOpen(false);
   };
+
+  const onMarkInboxRead = useCallback((item: AutomationsInboxItem) => {
+    setInboxSeen(markInboxItemRead(item.id));
+  }, []);
+
+  const onMarkAllInboxRead = useCallback(() => {
+    setInboxSeen(markAllInboxRead(inboxItems.map((i) => i.id)));
+  }, [inboxItems]);
+
+  const onOpenInboxItem = useCallback(
+    (item: AutomationsInboxItem) => {
+      const plan = planOpenInboxItem(item);
+      if (plan.kind === "session") {
+        onOpenSession?.(plan.sessionId, plan.projectId ?? item.projectId);
+        onMarkInboxRead(item);
+        return;
+      }
+      if (plan.kind === "project") {
+        onOpenProject?.(plan.projectId);
+        onMarkInboxRead(item);
+      }
+    },
+    [onOpenSession, onOpenProject, onMarkInboxRead],
+  );
+
+  const onRetryInboxItem = useCallback(
+    (item: AutomationsInboxItem) => {
+      const plan = planRetryAutomation(item);
+      if (!plan.canRetry || !onRunNow) return;
+      const auto = list.find((a) => a.id === plan.taskId);
+      if (!auto) return;
+      onMarkInboxRead(item);
+      onRunNow(auto);
+    },
+    [list, onRunNow, onMarkInboxRead],
+  );
 
   const banner = useMemo(
     () =>
@@ -837,77 +936,111 @@ export function AutomationsPage({
         </div>
       </div>
 
-      {/* Observed fires only — empty is soft-fail, never invents offline runs */}
+      {/* Inbox: observed fires only — empty is soft-fail, never invents offline runs */}
       <div
-        className="auto-page__history"
+        className="auto-page__history auto-page__inbox"
         role="region"
-        aria-label={t("automations.history.section")}
+        aria-label={t("automations.inbox.section")}
       >
         <div className="auto-page__history-head">
           <div className="auto-page__history-titles">
             <div className="auto-page__history-title">
-              {t("automations.history.section")}
+              {t("automations.inbox.section")}
+              {unreadCount > 0 ? (
+                <span className="auto-page__inbox-unread" aria-label={t("automations.inbox.unreadCount", { n: unreadCount })}>
+                  {unreadCount}
+                </span>
+              ) : null}
             </div>
             <p className="auto-page__history-desc">
-              {t("automations.history.honesty")}
+              {t("automations.inbox.desc")}
             </p>
           </div>
-          {runHistory.length > 0 ? (
-            <button
-              type="button"
-              className="auto-page__bg-banner-link"
-              onClick={() => setClearHistoryOpen(true)}
-            >
-              {t("automations.history.clear")}
-            </button>
-          ) : null}
+          <div className="auto-page__inbox-head-actions">
+            {unreadCount > 0 ? (
+              <button
+                type="button"
+                className="auto-page__bg-banner-link"
+                onClick={onMarkAllInboxRead}
+              >
+                {t("automations.inbox.markAllRead")}
+              </button>
+            ) : null}
+            {runHistory.length > 0 ? (
+              <button
+                type="button"
+                className="auto-page__bg-banner-link"
+                onClick={() => setClearHistoryOpen(true)}
+              >
+                {t("automations.inbox.clear")}
+              </button>
+            ) : null}
+          </div>
         </div>
+
         <div
-          className="auto-page__history-filters"
-          role="tablist"
-          aria-label={t("automations.history.filterAria")}
+          className="auto-page__inbox-banner"
+          role="note"
         >
-          {(
-            [
-              ["all", "automations.history.filter.all"],
-              ["ok", "automations.history.filter.ok"],
-              ["error", "automations.history.filter.error"],
-              ["skipped", "automations.history.filter.skipped"],
-            ] as const
-          ).map(([id, key]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={runHistoryFilter === id}
-              className={
-                "auto-page__filter" +
-                (runHistoryFilter === id ? " is-active" : "")
-              }
-              onClick={() => setRunHistoryFilter(id)}
-            >
-              {t(key)}
-              <span className="auto-page__history-count" aria-hidden>
-                {runHistoryCounts[id]}
-              </span>
-            </button>
-          ))}
+          {t("automations.inbox.processBound")}
         </div>
-        {filteredRunHistory.length === 0 ? (
+
+        <div className="auto-page__inbox-toolbar">
+          <div className="auto-page__search auto-page__inbox-search">
+            <IconSearch size={14} />
+            <input
+              type="search"
+              value={inboxQuery}
+              onChange={(e) => setInboxQuery(e.target.value)}
+              placeholder={t("automations.inbox.search")}
+              aria-label={t("automations.inbox.search")}
+            />
+          </div>
+          <div
+            className="auto-page__history-filters"
+            role="tablist"
+            aria-label={t("automations.inbox.filterAria")}
+          >
+            {(
+              [
+                ["all", "automations.history.filter.all"],
+                ["ok", "automations.history.filter.ok"],
+                ["error", "automations.history.filter.error"],
+                ["skipped", "automations.history.filter.skipped"],
+              ] as const
+            ).map(([id, key]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={inboxOutcome === id}
+                className={
+                  "auto-page__filter" +
+                  (inboxOutcome === id ? " is-active" : "")
+                }
+                onClick={() => setInboxOutcome(id)}
+              >
+                {t(key)}
+                <span className="auto-page__history-count" aria-hidden>
+                  {inboxCounts[id]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {inboxEmpty ? (
           <div className="auto-page__history-empty" role="status">
-            {runHistory.length === 0
-              ? t("automations.history.empty")
-              : t("automations.history.emptyFiltered")}
+            {inboxEmpty === "filter"
+              ? t("automations.inbox.emptyFiltered")
+              : inboxEmpty === "process_bound_hint"
+                ? t("automations.inbox.emptyProcessBound")
+                : t("automations.inbox.empty")}
           </div>
         ) : (
-          <ul className="auto-page__history-list">
-            {filteredRunHistory.map((row) => {
-              let when = row.at;
-              try {
-                when = new Date(row.at).toLocaleString();
-              } catch {
-                /* keep raw */
-              }
+          <ul className="auto-page__history-list auto-page__inbox-list">
+            {filteredInbox.map((row) => {
+              const when = formatRelativeTime(row.at, locale);
               const outcomeKey =
                 row.outcome === "ok"
                   ? "automations.history.outcome.ok"
@@ -920,16 +1053,19 @@ export function AutomationsPage({
                   : row.source === "run_now"
                     ? "automations.history.source.runNow"
                     : "automations.history.source.unknown";
+              const openPlan = planOpenInboxItem(row);
+              const retryPlan = planRetryAutomation(row);
               return (
                 <li
                   key={row.id}
                   className={
-                    "auto-page__history-row" +
+                    "auto-page__history-row auto-page__inbox-row" +
                     (row.outcome === "error"
                       ? " auto-page__history-row--error"
                       : row.outcome === "skipped"
                         ? " auto-page__history-row--skipped"
-                        : "")
+                        : "") +
+                    (row.unread ? " auto-page__inbox-row--unread" : "")
                   }
                 >
                   <span
@@ -941,17 +1077,62 @@ export function AutomationsPage({
                     {t(outcomeKey)}
                   </span>
                   <div className="auto-page__history-main">
-                    <span className="auto-page__history-name">{row.name}</span>
+                    <span className="auto-page__history-name">
+                      {row.unread ? (
+                        <span
+                          className="auto-page__inbox-dot"
+                          aria-hidden
+                        />
+                      ) : null}
+                      {row.title}
+                    </span>
                     <span className="auto-page__history-meta">
-                      {when}
+                      <time dateTime={row.at} title={row.at}>
+                        {when}
+                      </time>
                       {" · "}
                       {t(sourceKey)}
                     </span>
                     {row.outcome === "error" && row.error ? (
-                      <span className="auto-page__history-error" title={row.error}>
+                      <span
+                        className="auto-page__history-error"
+                        title={row.error}
+                      >
                         {row.error}
                       </span>
                     ) : null}
+                    <div className="auto-page__inbox-actions">
+                      {openPlan.kind !== "none" &&
+                      (onOpenSession || onOpenProject) ? (
+                        <button
+                          type="button"
+                          className="auto-page__inbox-action"
+                          onClick={() => onOpenInboxItem(row)}
+                        >
+                          {openPlan.kind === "session"
+                            ? t("automations.inbox.openSession")
+                            : t("automations.inbox.openProject")}
+                        </button>
+                      ) : null}
+                      {retryPlan.canRetry && onRunNow ? (
+                        <button
+                          type="button"
+                          className="auto-page__inbox-action"
+                          onClick={() => onRetryInboxItem(row)}
+                        >
+                          {t("automations.inbox.runNow")}
+                        </button>
+                      ) : null}
+                      {row.unread ? (
+                        <button
+                          type="button"
+                          className="auto-page__inbox-action"
+                          onClick={() => onMarkInboxRead(row)}
+                        >
+                          {t("automations.inbox.markRead")}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </li>
               );
@@ -1179,7 +1360,7 @@ export function AutomationsPage({
       <GlassModal
         open={clearHistoryOpen}
         onClose={() => setClearHistoryOpen(false)}
-        title={t("automations.history.clearTitle")}
+        title={t("automations.inbox.clearTitle")}
         size="sm"
         closeLabel={t("common.close")}
         footer={
@@ -1196,14 +1377,14 @@ export function AutomationsPage({
               className="btn btn--danger"
               onClick={confirmClearHistory}
             >
-              {t("automations.history.clearConfirm")}
+              {t("automations.inbox.clearConfirm")}
             </button>
           </>
         }
       >
-        <p className="app-dialog__msg">{t("automations.history.clearBody")}</p>
+        <p className="app-dialog__msg">{t("automations.inbox.clearBody")}</p>
         <p className="app-dialog__msg app-dialog__msg--muted">
-          {t("automations.history.honesty")}
+          {t("automations.inbox.processBound")}
         </p>
       </GlassModal>
 

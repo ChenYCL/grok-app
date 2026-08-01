@@ -6,8 +6,6 @@
 
 **UI 只展示官方真正可用的模型。服务商是后端渠道，只在设置 → 账户 → 自定义提供商切换。**
 
-**官方工具注入**（DeepSeek 等自定义主模型）：设置 → 账户 → **拓展** →「注入官方工具能力」。MCP `official-aux` 经隔离 `grok -p` 提供 `web_search` / 全部 `x_*` / 识图。详见 [model-routing.md](./model-routing.md)。
-
 | 来源 | 说明 |
 |------|------|
 | `models_cache.json` | CLI 官方目录 |
@@ -46,6 +44,15 @@ Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极
 展示标签走 UI 阶梯 i18n（`effort.low|medium|high|xhigh`），不直接用上游 id 文案。
 
 Spawn：`--reasoning-effort <spawnId>`。切换通道时按阶梯对齐（极高在 3 档上钳到「高」）。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
+
+**Apply honesty（UI）**：纯 helper `src/lib/modelEffortApply.ts`。Composer 改模型 / 推理后 toast + 菜单 footer 说明生效路径：
+
+| 控制 | 无 live Agent | Live Agent |
+|------|---------------|------------|
+| 模型 | `next_message`（下条消息 spawn） | `session/set_model` → `immediate_rpc`；不支持则 `soft_respawn` |
+| 推理 | `next_message` | `soft_respawn`（无 set_effort） |
+
+不得静默失败：prefs / set_model 错误经 `classifyModelEffortError` 分类 toast。
 
 ### 连接加速（Host）
 

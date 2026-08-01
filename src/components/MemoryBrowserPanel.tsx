@@ -1,10 +1,9 @@
 /**
- * Settings → Agent: browse on-disk Grok Build workspace memory files.
- * When experimental memory is off, shows an honest empty state.
- * Client-side search + kind chips filter the host list (preview stays redacted).
- * Host list + content search under GROK_HOME/memory (capped, path-scoped).
- * Previews/snippets redact likely secrets. Open / reveal / delete per file.
- * App search is always keyword — never invents embeddings (CLI hybrid separate).
+ * Settings → Agent: Memory ops center + on-disk Grok Build memory browser.
+ * Mode chips (keyword / CLI hybrid / hybrid unavailable / memory off), dream
+ * & watcher config presence (never invents running status), clear scopes with
+ * GlassModal confirm. Host list + content search under GROK_HOME/memory.
+ * App search is always keyword — never invents embeddings.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
@@ -37,12 +36,17 @@ import { isEmbeddingConfigured } from "@/lib/memoryEmbedConfig";
 import {
   CLI_MEMORY_HYBRID_SEARCH_AVAILABLE,
   effectiveMemorySearchKind,
-  memoryHybridUnavailableHintKey,
   memorySearchKindStatusKey,
-  memorySearchModeChipLabelKey,
-  memorySearchModeChips,
   type MemorySearchKind,
 } from "@/lib/memoryHybridSearch";
+import {
+  clearMemoryScopeUnavailableKey,
+  memoryOpsModeChipLabelKey,
+  planClearMemoryScope,
+  resolveMemoryOpsMode,
+  resolveMemoryOpsPresenceChips,
+  type MemoryOpsClearScope,
+} from "@/lib/memoryOpsCenter";
 
 function formatSize(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
@@ -83,19 +87,85 @@ function kindFilterLabelKey(filter: MemoryBrowserKindFilter): MessageKey {
   return kindLabelKey(filter);
 }
 
+function presenceLabelKey(
+  presence: "set_on" | "set_off" | "unset",
+): MessageKey {
+  if (presence === "set_on") return "settings.memoryEmbed.presence.on";
+  if (presence === "set_off") return "settings.memoryEmbed.presence.off";
+  return "settings.memoryEmbed.presence.unset";
+}
+
+function clearScopeLabelKey(scope: MemoryOpsClearScope): MessageKey {
+  switch (scope) {
+    case "session":
+      return "settings.memoryOps.clear.session";
+    case "all":
+      return "settings.memoryOps.clear.all";
+    case "workspace":
+    default:
+      return "settings.memoryOps.clear.workspace";
+  }
+}
+
+function clearConfirmTitleKey(scope: MemoryOpsClearScope): MessageKey {
+  switch (scope) {
+    case "session":
+      return "settings.memoryOps.clear.confirmTitle.session";
+    case "all":
+      return "settings.memoryOps.clear.confirmTitle.all";
+    case "workspace":
+    default:
+      return "settings.memoryOps.clear.confirmTitle.workspace";
+  }
+}
+
+function clearConfirmMsgKey(scope: MemoryOpsClearScope): MessageKey {
+  switch (scope) {
+    case "session":
+      return "settings.memoryOps.clear.confirmMsg.session";
+    case "all":
+      return "settings.memoryOps.clear.confirmMsg.all";
+    case "workspace":
+    default:
+      return "settings.memoryOps.clear.confirmMsg.workspace";
+  }
+}
+
+function clearDoneKey(scope: MemoryOpsClearScope): MessageKey {
+  switch (scope) {
+    case "all":
+      return "settings.memoryOps.clear.done.all";
+    case "session":
+      return "settings.memoryOps.clear.done.session";
+    case "workspace":
+    default:
+      return "settings.memoryOps.clear.done.workspace";
+  }
+}
+
+const CLEAR_SCOPES: MemoryOpsClearScope[] = ["workspace", "session", "all"];
+
 export function MemoryBrowserPanel({
   locale,
   projectPath = null,
   experimentalMemory,
   onClearAll,
+  onMemoryCleared,
   clearAllBusy = false,
+  onToast,
 }: {
   locale: Locale;
   projectPath?: string | null;
   experimentalMemory: boolean;
-  /** Opens the existing clear-workspace confirm flow. */
+  /**
+   * Legacy: opens host Settings clear-workspace confirm.
+   * Prefer panel-owned clear scopes when omitted.
+   */
   onClearAll?: () => void;
+  /** Fired after a successful clear (any available scope). */
+  onMemoryCleared?: () => void;
   clearAllBusy?: boolean;
+  onToast?: (msg: string, ms?: number) => void;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
   const t = useCallback((k: MessageKey, vars?: Record<string, string | number>) => tr(k, vars), [tr]);
@@ -115,8 +185,12 @@ export function MemoryBrowserPanel({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [actionBusyPath, setActionBusyPath] = useState<string | null>(null);
   const [embedConfigured, setEmbedConfigured] = useState<boolean | null>(null);
+  const [dreamEnabled, setDreamEnabled] = useState<boolean | null>(null);
+  const [watcherEnabled, setWatcherEnabled] = useState<boolean | null>(null);
   /** Host-reported search kind from last content search (soft-fail missing). */
   const [hostSearchKind, setHostSearchKind] = useState<string | null>(null);
+  const [clearScope, setClearScope] = useState<MemoryOpsClearScope | null>(null);
+  const [clearBusy, setClearBusy] = useState(false);
 
   const cwd = (projectPath || "").trim() || null;
 
@@ -132,12 +206,36 @@ export function MemoryBrowserPanel({
 
   const modeChips = useMemo(
     () =>
-      memorySearchModeChips({
-        embeddingConfigured: embedConfigured,
-        cliHybridAvailable: CLI_MEMORY_HYBRID_SEARCH_AVAILABLE,
+      resolveMemoryOpsMode({
+        memoryEnabled: experimentalMemory,
+        embedModelSet: embedConfigured,
+        hybridUnavailable:
+          embedConfigured === true
+            ? !CLI_MEMORY_HYBRID_SEARCH_AVAILABLE
+            : undefined,
+        browserKeyword: true,
       }),
-    [embedConfigured],
+    [experimentalMemory, embedConfigured],
   );
+
+  const presenceChips = useMemo(
+    () =>
+      resolveMemoryOpsPresenceChips({
+        dreamEnabled,
+        watcherEnabled,
+      }),
+    [dreamEnabled, watcherEnabled],
+  );
+
+  const clearPlans = useMemo(() => {
+    const opts = {
+      memoryEnabled: experimentalMemory,
+      hasCwd: !!cwd,
+    };
+    return Object.fromEntries(
+      CLEAR_SCOPES.map((scope) => [scope, planClearMemoryScope(scope, opts)]),
+    ) as Record<MemoryOpsClearScope, ReturnType<typeof planClearMemoryScope>>;
+  }, [experimentalMemory, cwd]);
 
   const load = useCallback(async () => {
     if (!experimentalMemory) {
@@ -171,10 +269,12 @@ export function MemoryBrowserPanel({
     void load();
   }, [load]);
 
-  // Soft-probe embedding status for honest search-mode chips (never invents vectors).
+  // Soft-probe embedding + dream/watcher presence (never invents vectors or running status).
   useEffect(() => {
     if (!experimentalMemory || !api.isTauri()) {
       setEmbedConfigured(null);
+      setDreamEnabled(null);
+      setWatcherEnabled(null);
       setHostSearchKind(null);
       return;
     }
@@ -184,9 +284,25 @@ export function MemoryBrowserPanel({
         const snap = await api.memoryEmbedConfigGet();
         if (cancelled) return;
         setEmbedConfigured(isEmbeddingConfigured(snap));
+        setDreamEnabled(
+          snap.dreamEnabled === true
+            ? true
+            : snap.dreamEnabled === false
+              ? false
+              : null,
+        );
+        setWatcherEnabled(
+          snap.watcherEnabled === true
+            ? true
+            : snap.watcherEnabled === false
+              ? false
+              : null,
+        );
       } catch {
         if (cancelled) return;
         setEmbedConfigured(null);
+        setDreamEnabled(null);
+        setWatcherEnabled(null);
       }
     })();
     return () => {
@@ -323,6 +439,51 @@ export function MemoryBrowserPanel({
     }
   };
 
+  const requestClearScope = (scope: MemoryOpsClearScope) => {
+    const plan = clearPlans[scope];
+    if (!plan.available) {
+      if (plan.unavailableReason) {
+        onToast?.(t(clearMemoryScopeUnavailableKey(plan.unavailableReason)), 3200);
+      }
+      return;
+    }
+    // Legacy path: Settings owns workspace confirm when onClearAll is wired.
+    if (scope === "workspace" && onClearAll) {
+      onClearAll();
+      return;
+    }
+    setClearScope(scope);
+  };
+
+  const runClearScope = async () => {
+    if (!clearScope || clearBusy) return;
+    const plan = planClearMemoryScope(clearScope, {
+      memoryEnabled: experimentalMemory,
+      hasCwd: !!cwd,
+    });
+    if (!plan.available || !plan.hostScope) {
+      if (plan.unavailableReason) {
+        onToast?.(t(clearMemoryScopeUnavailableKey(plan.unavailableReason)), 3200);
+      }
+      setClearScope(null);
+      return;
+    }
+    setClearBusy(true);
+    try {
+      await api.memoryClear({ cwd, scope: plan.hostScope });
+      setClearScope(null);
+      setSearchHits([]);
+      await load();
+      onMemoryCleared?.();
+      onToast?.(t(clearDoneKey(clearScope)), 3500);
+    } catch (e) {
+      onToast?.(String(e), 4500);
+      setError(String(e));
+    } finally {
+      setClearBusy(false);
+    }
+  };
+
   const openFile = async (path: string) => {
     if (!api.isTauri() || actionBusyPath) return;
     setActionBusyPath(path);
@@ -353,21 +514,27 @@ export function MemoryBrowserPanel({
   const showSearchingInline =
     queryActive && searching && rows.length > 0 && !emptyState;
 
+  const anyClearBusy = clearBusy || clearAllBusy;
+
   return (
     <div
       className={"settings-row settings-row--stack" + " settings-memory-browser"}
       id="settings-anchor-memoryBrowser"
     >
       <div className="settings-row__text">
-        <div className="settings-row__label">{t("settings.memoryBrowser")}</div>
-        <div className="settings-row__desc">{t("settings.memoryBrowserDesc")}</div>
+        <div className="settings-row__label">{t("settings.memoryOps")}</div>
+        <div className="settings-row__desc">{t("settings.memoryOpsDesc")}</div>
       </div>
 
-      {experimentalMemory ? (
+      <div
+        className="settings-memory-ops"
+        role="region"
+        aria-label={t("settings.memoryOps")}
+      >
         <div
-          className="settings-memory-browser__embed-status"
+          className="settings-memory-ops__modes"
           role="status"
-          aria-label={t("settings.memoryBrowser.searchModeLabel")}
+          aria-label={t("settings.memoryOps.modeLabel")}
         >
           {modeChips.map((chip) => (
             <span
@@ -375,19 +542,21 @@ export function MemoryBrowserPanel({
               className={
                 chip === "cli_hybrid"
                   ? "ext-badge"
-                  : "ext-badge ext-badge--muted"
+                  : chip === "hybrid_unavailable" || chip === "memory_off"
+                    ? "ext-badge ext-badge--muted"
+                    : "ext-badge ext-badge--muted"
               }
             >
-              {t(memorySearchModeChipLabelKey(chip))}
+              {t(memoryOpsModeChipLabelKey(chip))}
             </span>
           ))}
-          {embedConfigured === false ? (
-            <span className="ext-field-hint settings-memory-browser__embed-hint">
+          {experimentalMemory && embedConfigured === false ? (
+            <span className="ext-field-hint settings-memory-ops__hint">
               {t("settings.memoryBrowser.embedUnsetHint")}
             </span>
-          ) : searchKind === "hybrid_unavailable" ? (
-            <span className="ext-field-hint settings-memory-browser__embed-hint">
-              {t(memoryHybridUnavailableHintKey())}
+          ) : experimentalMemory && searchKind === "hybrid_unavailable" ? (
+            <span className="ext-field-hint settings-memory-ops__hint">
+              {t("settings.memoryOps.hybridUnavailableHint")}
             </span>
           ) : null}
           <button
@@ -395,10 +564,74 @@ export function MemoryBrowserPanel({
             className="btn btn--ghost btn--sm"
             onClick={scrollToEmbedSettings}
           >
-            {t("settings.memoryBrowser.openEmbedSettings")}
+            {t("settings.memoryOps.openEmbed")}
           </button>
         </div>
-      ) : null}
+
+        {experimentalMemory ? (
+          <div
+            className="settings-memory-ops__presence"
+            role="status"
+            aria-label={t("settings.memoryOps.presenceLabel")}
+          >
+            {presenceChips.map((chip) => (
+              <span key={chip.id} className="settings-memory-ops__presence-item">
+                <span className="ext-field-hint">
+                  {chip.id === "dream"
+                    ? t("settings.memoryOps.dream")
+                    : t("settings.memoryOps.watcher")}
+                </span>
+                <span
+                  className={
+                    chip.presence === "set_on"
+                      ? "ext-badge"
+                      : "ext-badge ext-badge--muted"
+                  }
+                >
+                  {t(presenceLabelKey(chip.presence))}
+                </span>
+              </span>
+            ))}
+            <span className="ext-field-hint settings-memory-ops__presence-note">
+              {t("settings.memoryOps.presenceNote")}
+            </span>
+          </div>
+        ) : null}
+
+        {experimentalMemory ? (
+          <div
+            className="settings-memory-ops__clear"
+            role="group"
+            aria-label={t("settings.memoryOps.clearLabel")}
+          >
+            {CLEAR_SCOPES.map((scope) => {
+              const plan = clearPlans[scope];
+              const disabled = anyClearBusy || loading || !plan.available;
+              return (
+                <button
+                  key={scope}
+                  type="button"
+                  className="btn btn--ghost btn--sm btn--danger"
+                  disabled={disabled}
+                  title={
+                    !plan.available && plan.unavailableReason
+                      ? t(clearMemoryScopeUnavailableKey(plan.unavailableReason))
+                      : undefined
+                  }
+                  onClick={() => requestClearScope(scope)}
+                >
+                  <IconTrash size={13} />
+                  <span>
+                    {anyClearBusy && clearScope === scope
+                      ? t("settings.memoryOps.clear.busy")
+                      : t(clearScopeLabelKey(scope))}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
 
       {!experimentalMemory ? (
         <div className="settings-memory-browser__filter-empty">
@@ -460,27 +693,12 @@ export function MemoryBrowserPanel({
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
-                disabled={loading || deleteBusy}
+                disabled={loading || deleteBusy || anyClearBusy}
                 onClick={() => void load()}
               >
                 <IconRefresh size={13} />
                 <span>{t("settings.memoryBrowser.refresh")}</span>
               </button>
-              {onClearAll && cwd ? (
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm btn--danger"
-                  disabled={clearAllBusy || loading}
-                  onClick={onClearAll}
-                >
-                  <IconTrash size={13} />
-                  <span>
-                    {clearAllBusy
-                      ? t("settings.clearWorkspaceMemoryBusy")
-                      : t("settings.clearWorkspaceMemory")}
-                  </span>
-                </button>
-              ) : null}
             </div>
           </div>
 
@@ -695,6 +913,51 @@ export function MemoryBrowserPanel({
           {t("settings.memoryBrowser.deleteConfirmMsg", {
             name: deleteTarget?.relativePath || deleteTarget?.name || "",
           })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!clearScope}
+        onClose={() => {
+          if (!clearBusy) setClearScope(null);
+        }}
+        title={
+          clearScope
+            ? t(clearConfirmTitleKey(clearScope))
+            : t("settings.memoryOps.clear.confirmTitle.workspace")
+        }
+        size="sm"
+        closeLabel={t("common.close")}
+        closeOnOverlay={!clearBusy}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={clearBusy}
+              onClick={() => setClearScope(null)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={clearBusy || !clearScope}
+              onClick={() => void runClearScope()}
+            >
+              {clearBusy
+                ? t("settings.memoryOps.clear.busy")
+                : clearScope
+                  ? t(clearScopeLabelKey(clearScope))
+                  : t("settings.memoryOps.clear.workspace")}
+            </button>
+          </>
+        }
+      >
+        <p className="settings-row__desc" style={{ margin: 0 }}>
+          {clearScope
+            ? t(clearConfirmMsgKey(clearScope))
+            : t("settings.memoryOps.clear.confirmMsg.workspace")}
         </p>
       </GlassModal>
     </div>

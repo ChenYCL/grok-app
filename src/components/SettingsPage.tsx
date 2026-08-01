@@ -39,9 +39,27 @@ import {
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import {
-  countUnlinkedCliSessions,
-  filterCliSessions,
-} from "@/lib/cliSessionsFilter";
+  CLI_SESSIONS_LINK_FILTERS,
+  classifyCliSessionsSearchError,
+  cliSessionsLinkFilterLabelKey,
+  countCliSessionsByLink,
+  filterCliSessionHits,
+  hasActiveCliSessionsFilters,
+  planImportSelection,
+  resolveCliSessionsEmptyState,
+  type CliSessionsLinkFilter,
+} from "@/lib/cliSessionsSearchPro";
+import {
+  formatSessionDataModeStatusVars,
+  normalizeSessionDataMode,
+  resolveSessionDataModeBanner,
+  sessionDataModeHomeLabel,
+} from "@/lib/sessionDataMode";
+import {
+  cliTrustChipClass,
+  gradeFromLastInstall,
+  resolveCliTrustBanner,
+} from "@/lib/cliTrustSupplyChain";
 import {
   listArchiveAgeOptionPreviews,
   hasAnyArchiveAgeMatches,
@@ -73,8 +91,8 @@ import {
   toggleAllowedTool,
 } from "@/lib/allowedTools";
 import { detectAppPlatform } from "@/lib/appPlatform";
+import { resolveOpenEditorEmptyState } from "@/lib/openEditorHonesty";
 import {
-  RECOMMENDED_SANDBOX_PROFILE,
   SANDBOX_MIN_CLI,
   childNetworkRestrictApplies,
   sandboxIsolationActive,
@@ -83,6 +101,15 @@ import {
   sandboxSoftFailKind,
   sandboxSoftFailMessageKey,
 } from "@/lib/sandboxProfile";
+import {
+  DEMO_ASK_DOCS_URL,
+  buildDemoAskPrompt,
+  buildSampleAskUserPayload,
+  evaluateDemoAskChecklist,
+  isDemoPathSettingsReady,
+  planDemoPermissionPolicy,
+  resolveDemoPathBlockers,
+} from "@/lib/askUserDemoPath";
 import {
   DEFAULT_TODO_GATE_MAX_FIRES,
   MAX_TODO_GATE_MAX_FIRES,
@@ -245,20 +272,22 @@ import {
   type ClassifiedProbeResult,
 } from "@/lib/networkProxy";
 import { AccountPanel } from "@/components/AccountPanel";
-import { OfficialAuxPanel } from "@/components/OfficialAuxPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
 import { GitPrHubPanel } from "@/components/GitPrHubPanel";
 import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
+import { AskUserModal } from "@/components/AskUserModal";
 import { AgentConfigEditPanel } from "@/components/AgentConfigEditPanel";
 import { PrivacyCenterPanel } from "@/components/PrivacyCenterPanel";
 import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { GlassModal } from "@/components/GlassModal";
 import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
+import { AgentsPersonasConsolePanel } from "@/components/AgentsPersonasConsolePanel";
 import { MemoryEmbedPanel } from "@/components/MemoryEmbedPanel";
 import { CodebaseIndexingPanel } from "@/components/CodebaseIndexingPanel";
+import { LspToolsPanel } from "@/components/LspToolsPanel";
 import { CodebaseSearchPanel } from "@/components/CodebaseSearchPanel";
 import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { ProcessBudgetPanel } from "@/components/ProcessBudgetPanel";
@@ -275,6 +304,19 @@ import {
   type Vars,
 } from "@/i18n";
 import { useUpdaterContext } from "@/hooks/UpdaterProvider";
+import {
+  isAutoUpdatePath,
+  isUpdateActionBusy,
+  mapUpdateStatusCopy,
+  resolveManualUpdateUrls,
+  resolveUpdateChannelHonestyPreferHost,
+  shouldShowInstallButton,
+  shouldShowInstallProgress,
+  shouldShowManualDownloadCtas,
+  updateChannelLabelKey,
+  updateStatusToneClass,
+  type AppUpdateStatusLike,
+} from "@/lib/appUpdateHonesty";
 import {
   loadCodeLineNumbersPref,
   saveCodeLineNumbersPref,
@@ -584,6 +626,11 @@ export interface SettingsPageProps {
   compactionDetail?: string;
   onCompactionDetail?: (v: string) => void;
   /**
+   * Apply-path honesty for compaction mode/detail (soft-respawn / next spawn /
+   * unsupported). Pre-translated string from App.
+   */
+  compactionApplyNote?: string;
+  /**
    * Prefire two-pass compaction (CLI 0.2.117+ config
    * two_pass_compaction_enabled + GROK_TWO_PASS_COMPACTION).
    */
@@ -692,6 +739,8 @@ export interface SettingsPageProps {
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
+  /** Open sandbox profile guide wizard (GlassModal). */
+  onOpenSandboxWizard?: () => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -764,6 +813,11 @@ export interface SettingsPageProps {
   focusAnchorId?: string | null;
   /** Optional PR number to highlight in Git PR hub (`?pr=` / ship success). */
   prHubHighlightPr?: number | null;
+  /**
+   * Insert a PR review prompt (Fix CI / comment → Grok) into the workbench
+   * composer. When omitted, GitPrHubPanel hides those action buttons.
+   */
+  onPrReviewDraftToChat?: (prompt: string) => void;
   /** Called once after focusAnchorId is applied (parent can clear). */
   onFocusAnchorConsumed?: () => void;
   /** After skill enable toggle — refresh slash palette in App. */
@@ -1330,6 +1384,7 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  onOpenSandboxWizard,
   maxAgentTurns = 0,
   onMaxAgentTurns,
   backgroundWaitPolicy = "wait",
@@ -1351,6 +1406,7 @@ export function SettingsPage({
   onCompactionMode,
   compactionDetail = "verbose",
   onCompactionDetail,
+  compactionApplyNote,
   twoPassCompactionEnabled = false,
   onTwoPassCompactionEnabled,
   subagentsEnabled = true,
@@ -1445,6 +1501,7 @@ export function SettingsPage({
   onOpenProjectFileInResources,
   focusAnchorId = null,
   prHubHighlightPr = null,
+  onPrReviewDraftToChat,
   onFocusAnchorConsumed,
   onSkillsPrefsChanged,
   onOpenShortcutsHelp,
@@ -1497,6 +1554,8 @@ export function SettingsPage({
   const [phonePane, setPhonePane] = useState<"index" | "detail">("index");
   const [editors, setEditors] = useState<DetectedEditor[]>([]);
   const [clearMemoryOpen, setClearMemoryOpen] = useState(false);
+  /** Preview-only Ask-user questionnaire (Settings → Permissions demo path). */
+  const [askUserDemoPreviewOpen, setAskUserDemoPreviewOpen] = useState(false);
   const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
   /** Bump to remount MemoryBrowserPanel after clear-all. */
   const [memoryBrowserEpoch, setMemoryBrowserEpoch] = useState(0);
@@ -1752,6 +1811,57 @@ export function SettingsPage({
     setSettingsToast(msg);
     window.setTimeout(() => setSettingsToast(null), ms);
   }, []);
+
+  /** Ask-user demo path: settings snapshot for checklist chips. */
+  const askUserDemoState = useMemo(
+    () => ({
+      policy,
+      noAskUser: !!noAskUser,
+      yolo: policy === "always_approve",
+    }),
+    [policy, noAskUser],
+  );
+  const askUserDemoChecklist = useMemo(
+    () => evaluateDemoAskChecklist(askUserDemoState),
+    [askUserDemoState],
+  );
+  const askUserDemoBlockers = useMemo(
+    () => resolveDemoPathBlockers(askUserDemoState),
+    [askUserDemoState],
+  );
+  const askUserDemoReady = useMemo(
+    () => isDemoPathSettingsReady(askUserDemoState),
+    [askUserDemoState],
+  );
+  const applyAskUserDemoPath = useCallback(() => {
+    const recommended = planDemoPermissionPolicy();
+    onPolicy(recommended);
+    let clearedNoAsk = false;
+    if (onNoAskUser && noAskUser) {
+      onNoAskUser(false);
+      clearedNoAsk = true;
+    }
+    showSettingsToast(
+      clearedNoAsk
+        ? t("settings.askDemo.applied")
+        : t("settings.askDemo.appliedPolicyOnly"),
+      3200,
+    );
+  }, [onPolicy, onNoAskUser, noAskUser, showSettingsToast, t]);
+  const copyAskUserDemoPrompt = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(buildDemoAskPrompt());
+      showSettingsToast(t("settings.askDemo.copied"), 3200);
+    } catch {
+      showSettingsToast(t("settings.askDemo.copyFailed"), 3200);
+    }
+  }, [showSettingsToast, t]);
+  const openAskUserDemoDocs = useCallback(() => {
+    void api.openExternalUrl(DEMO_ASK_DOCS_URL).catch(() => {
+      showSettingsToast(t("settings.askDemo.openDocsFailed"), 2800);
+    });
+  }, [showSettingsToast, t]);
+
   const runClearWorkspaceMemory = useCallback(async () => {
     if (!workspaceCwd || clearMemoryBusy) return;
     setClearMemoryBusy(true);
@@ -2764,10 +2874,20 @@ export function SettingsPage({
                   <div className="settings-row__desc" style={{ marginTop: 8 }}>
                     {t(sandboxProfileHelpKey(sandboxProfile || "off"))}
                   </div>
-                  {sandboxProfile === RECOMMENDED_SANDBOX_PROFILE ||
-                  (sandboxProfile || "off") === "off" ? (
-                    <div className="settings-row__hint" style={{ marginTop: 6 }}>
-                      {t("settings.sandbox.recommendedNote")}
+                  <div className="settings-row__hint" style={{ marginTop: 6 }}>
+                    {t("settings.sandbox.recommendedDaily")}
+                    {" — "}
+                    {t("settings.sandbox.recommendedNote")}
+                  </div>
+                  {onOpenSandboxWizard ? (
+                    <div style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={onOpenSandboxWizard}
+                      >
+                        {t("settings.sandbox.openGuide")}
+                      </button>
                     </div>
                   ) : null}
                   {(() => {
@@ -2928,6 +3048,160 @@ export function SettingsPage({
               ) : null}
               <PermissionRulesPanel t={t} />
             </div>
+
+            <div
+              className={
+                "settings-card" + rowHighlight("settings-anchor-askUserDemo")
+              }
+              id="settings-anchor-askUserDemo"
+            >
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    <IconShield size={16} />
+                    {t("settings.askDemo.title")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.askDemo.desc")}
+                  </div>
+                </div>
+                <div
+                  className="settings-row__hint settings-ask-demo__honesty"
+                  role="note"
+                >
+                  {t("settings.askDemo.honesty")}
+                </div>
+                <ol
+                  className="settings-ask-demo__list"
+                  aria-label={t("settings.askDemo.title")}
+                >
+                  {askUserDemoChecklist.map((step, index) => {
+                    const chipPass =
+                      step.id === "sample_prompt"
+                        ? step.pass
+                          ? "next"
+                          : "fail"
+                        : step.pass
+                          ? "pass"
+                          : "fail";
+                    const chipLabel =
+                      chipPass === "pass"
+                        ? t("settings.askDemo.chip.pass")
+                        : chipPass === "next"
+                          ? t("settings.askDemo.chip.next")
+                          : t("settings.askDemo.chip.fail");
+                    return (
+                      <li
+                        key={step.id}
+                        className={
+                          "settings-ask-demo__item" +
+                          (step.pass ? " is-pass" : " is-fail")
+                        }
+                      >
+                        <div className="settings-ask-demo__item-main">
+                          <span className="settings-ask-demo__index">
+                            {index + 1}
+                          </span>
+                          <div className="settings-ask-demo__item-text">
+                            <div className="settings-ask-demo__item-label">
+                              {t(step.labelKey)}
+                            </div>
+                            <div className="settings-ask-demo__item-hint">
+                              {t(step.hintKey)}
+                            </div>
+                          </div>
+                          <span
+                            className={
+                              "settings-acp-chip settings-ask-demo__chip" +
+                              (chipPass === "fail"
+                                ? " is-fail"
+                                : chipPass === "next"
+                                  ? " is-warn"
+                                  : " is-ok")
+                            }
+                            role="status"
+                          >
+                            <span className="settings-acp-chip__dot" />
+                            <span className="settings-acp-chip__label">
+                              {chipLabel}
+                            </span>
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+                {askUserDemoBlockers.length > 0 ? (
+                  <ul className="settings-ask-demo__blockers" role="list">
+                    {askUserDemoBlockers.map((b) => (
+                      <li
+                        key={b.id}
+                        className="settings-row__hint is-danger"
+                      >
+                        {t(b.messageKey)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="settings-row__hint" role="status">
+                    {t("settings.askDemo.ready")}
+                  </div>
+                )}
+                {!askUserDemoReady ? (
+                  <div className="settings-row__hint" role="status">
+                    {t("settings.askDemo.blocked")}
+                  </div>
+                ) : null}
+                <div className="settings-ask-demo__actions" role="group">
+                  <button
+                    type="button"
+                    className="btn btn--solid btn--sm"
+                    onClick={applyAskUserDemoPath}
+                  >
+                    {t("settings.askDemo.apply")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => void copyAskUserDemoPrompt()}
+                  >
+                    <IconCopy size={14} />
+                    {t("settings.askDemo.copyPrompt")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setAskUserDemoPreviewOpen(true)}
+                  >
+                    {t("settings.askDemo.preview")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={openAskUserDemoDocs}
+                  >
+                    {t("settings.askDemo.openDocs")}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {askUserDemoPreviewOpen ? (
+              <AskUserModal
+                payload={buildSampleAskUserPayload()}
+                labels={{
+                  title: t("settings.askDemo.previewTitle"),
+                  submit: t("askUser.submit"),
+                  cancel: t("askUser.cancel"),
+                  otherPlaceholder: t("askUser.otherPlaceholder"),
+                  freeTextHint: t("askUser.freeTextHint"),
+                  multiHint: t("askUser.multiHint"),
+                  close: t("common.close"),
+                }}
+                onSubmit={() => setAskUserDemoPreviewOpen(false)}
+                onCancel={() => setAskUserDemoPreviewOpen(false)}
+              />
+            ) : null}
             </>
             )}
 
@@ -3085,6 +3359,20 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              <div
+                className={
+                  "settings-row settings-row--stack" +
+                  rowHighlight("settings-anchor-agentsPersonas")
+                }
+              >
+                <AgentsPersonasConsolePanel
+                  locale={resolveLocale(locale)}
+                  projectPath={workspaceCwd}
+                  preferredAgent={preferredAgent}
+                  onPreferredAgent={onPreferredAgent}
+                  agentCatalog={agentCatalog}
+                />
+              </div>
               {onAgentProfilePath ? (
                 <div
                   className={
@@ -3361,6 +3649,30 @@ export function SettingsPage({
                   </div>
                 </div>
               ) : null}
+              {onCompactionMode || onCompactionDetail ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-compactionApply")
+                  }
+                  id="settings-anchor-compactionApply"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__desc">
+                      {t("settings.compactionApply.note")}
+                    </div>
+                    {compactionApplyNote ? (
+                      <div
+                        className="settings-row__desc settings-row__desc--honesty"
+                        style={{ marginTop: 8 }}
+                        role="status"
+                      >
+                        {compactionApplyNote}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {onTwoPassCompactionEnabled ? (
                 <div
                   className={
@@ -3403,7 +3715,11 @@ export function SettingsPage({
                         ? () => setClearMemoryOpen(true)
                         : undefined
                     }
+                    onMemoryCleared={() =>
+                      setMemoryBrowserEpoch((n) => n + 1)
+                    }
                     clearAllBusy={clearMemoryBusy}
+                    onToast={showSettingsToast}
                   />
                 </div>
               ) : null}
@@ -3423,20 +3739,61 @@ export function SettingsPage({
               </div>
               <div
                 className={
-                  "settings-codebase-indexing-wrap" +
-                  rowHighlight("settings-anchor-codebaseIndexing")
+                  "settings-code-graph-product" +
+                  rowHighlight("settings-anchor-codeGraph")
+                }
+                id="settings-anchor-codeGraph"
+              >
+                <div
+                  className={
+                    "settings-codebase-indexing-wrap" +
+                    rowHighlight("settings-anchor-codebaseIndexing")
+                  }
+                >
+                  <CodebaseIndexingPanel
+                    locale={resolveLocale(locale)}
+                    cliVersion={cliInfo.version}
+                    onSaved={() =>
+                      showSettingsToast(
+                        t("settings.codebaseIndexing.saved"),
+                        2200,
+                      )
+                    }
+                    onError={(msg) => showSettingsToast(msg, 3200)}
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-codebase-search-wrap" +
+                    rowHighlight("settings-anchor-codebaseSearch")
+                  }
+                >
+                  <CodebaseSearchPanel
+                    locale={resolveLocale(locale)}
+                    projectPath={workspaceCwd}
+                    onOpenInResources={onOpenProjectFileInResources}
+                  />
+                </div>
+              </div>
+              <div
+                className={
+                  "settings-lsp-tools-wrap" +
+                  rowHighlight("settings-anchor-lspTools")
                 }
               >
-                <CodebaseIndexingPanel
+                <LspToolsPanel
                   locale={resolveLocale(locale)}
                   cliVersion={cliInfo.version}
                   onSaved={() =>
-                    showSettingsToast(
-                      t("settings.codebaseIndexing.saved"),
-                      2200,
-                    )
+                    showSettingsToast(t("settings.lspTools.saved"), 2200)
                   }
                   onError={(msg) => showSettingsToast(msg, 3200)}
+                  onOpenConfigSection={() => {
+                    const el = document.getElementById(
+                      "settings-anchor-configTomlEdit",
+                    );
+                    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+                  }}
                 />
               </div>
               <div
@@ -4122,38 +4479,86 @@ export function SettingsPage({
                   ]}
                 />
               </div>
-              <div
-                className={
-                  "settings-row" + rowHighlight("settings-anchor-sessionDataMode")
-                }
-                id="settings-anchor-sessionDataMode"
-              >
-                <div className="settings-row__text">
-                  <div className="settings-row__label">
-                    {t("settings.sessionDataMode")}
+              {(() => {
+                const mode = normalizeSessionDataMode(sessionDataMode);
+                const banner = resolveSessionDataModeBanner(mode);
+                const modeLabel =
+                  mode === "shared"
+                    ? t("settings.modeShared")
+                    : t("settings.modeIndependent");
+                const statusVars = formatSessionDataModeStatusVars(
+                  mode,
+                  modeLabel,
+                );
+                return (
+                  <div
+                    className={
+                      "settings-row settings-row--stack" +
+                      rowHighlight("settings-anchor-sessionDataMode")
+                    }
+                    id="settings-anchor-sessionDataMode"
+                  >
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("settings.sessionDataMode")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.sessionDataModeDesc")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.sessionModeHelp")}
+                      </div>
+                      <div
+                        className="settings-row__hint"
+                        role="status"
+                        style={{ marginTop: 6 }}
+                      >
+                        {t("settings.sessionDataMode.status", statusVars)}
+                      </div>
+                      {banner.showSharedBanner ? (
+                        <div
+                          className="settings-row__hint is-danger"
+                          role="status"
+                          style={{
+                            marginTop: 8,
+                            whiteSpace: "pre-line",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          {banner.keys
+                            .map((k) => t(k as MessageKey))
+                            .join("\n")}
+                        </div>
+                      ) : (
+                        <div
+                          className="settings-row__hint"
+                          role="note"
+                          style={{ marginTop: 6, fontFamily: "inherit" }}
+                        >
+                          {t("settings.sessionDataMode.independentNote", {
+                            path: sessionDataModeHomeLabel(mode),
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <Select
+                      value={mode}
+                      onChange={onSessionDataMode}
+                      options={[
+                        {
+                          value: "independent",
+                          label: t("settings.modeIndependent"),
+                        },
+                        { value: "shared", label: t("settings.modeShared") },
+                      ]}
+                    />
                   </div>
-                  <div className="settings-row__desc">
-                    {t("settings.sessionDataModeDesc")}
-                  </div>
-                  <div className="settings-row__desc">
-                    {t("settings.sessionModeHelp")}
-                  </div>
-                </div>
-                <Select
-                  value={sessionDataMode}
-                  onChange={onSessionDataMode}
-                  options={[
-                    {
-                      value: "independent",
-                      label: t("settings.modeIndependent"),
-                    },
-                    { value: "shared", label: t("settings.modeShared") },
-                  ]}
-                />
-              </div>
+                );
+              })()}
               <CliSessionsPanel
                 t={t}
                 sessionDataMode={sessionDataMode}
+                cliFound={cliInfo.found}
                 onImported={onCliSessionsImported}
                 onOpenSession={onOpenCliSession}
               />
@@ -4632,6 +5037,26 @@ export function SettingsPage({
                     <div className="settings-row__desc">
                       {t("settings.openTargetDesc")}
                     </div>
+                    {(() => {
+                      const available = editors.filter((e) => e.available);
+                      const empty = resolveOpenEditorEmptyState({
+                        editorsFound: available.length,
+                        preferred: defaultOpenTarget,
+                        availableIds: available.map((e) => e.id),
+                      });
+                      if (!empty.messageKey) return null;
+                      return (
+                        <div
+                          className={
+                            "settings-row__hint" +
+                            (empty.severity === "warn" ? " is-danger" : "")
+                          }
+                          role="status"
+                        >
+                          {t(empty.messageKey as MessageKey)}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <Select
                     value={defaultOpenTarget}
@@ -5959,9 +6384,7 @@ export function SettingsPage({
               id={
                 activeTab === "providers"
                   ? "settings-anchor-account-providers"
-                  : activeTab === "extras"
-                    ? "settings-anchor-account-extras"
-                    : "settings-anchor-account-official"
+                  : "settings-anchor-account-official"
               }
             >
               <div className="settings-seg settings-seg--lg" role="presentation">
@@ -5999,30 +6422,10 @@ export function SettingsPage({
                 >
                   {t("settings.tabProviders")}
                 </button>
-                <button
-                  type="button"
-                  role="tab"
-                  className={
-                    "settings-seg__btn" +
-                    (activeTab === "extras" ? " is-on" : "")
-                  }
-                  aria-selected={activeTab === "extras"}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setSectionTab("extras");
-                  }}
-                >
-                  {t("settings.tabExtras")}
-                </button>
               </div>
               {activeTab === "providers" ? (
                 <p className="settings-account-tabs__hint">
                   {t("settings.tabProvidersHint")}
-                </p>
-              ) : activeTab === "extras" ? (
-                <p className="settings-account-tabs__hint">
-                  {t("settings.tabExtrasHint")}
                 </p>
               ) : (
                 <p className="settings-account-tabs__hint">
@@ -6041,19 +6444,6 @@ export function SettingsPage({
                   )
                 }
                 onProvidersChanged={onProvidersChanged}
-                onProviderActivated={onProviderActivated}
-                onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2800)}
-              />
-            ) : activeTab === "extras" ? (
-              <OfficialAuxPanel
-                locale={resolveLocale(locale)}
-                officialAvailable={
-                  !!(
-                    account?.profile?.signedIn ||
-                    account?.cliAuthPresent ||
-                    account?.hasOfficialKey
-                  )
-                }
                 onProviderActivated={onProviderActivated}
                 onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2800)}
               />
@@ -6591,6 +6981,30 @@ export function SettingsPage({
                 className={"settings-card" + rowHighlight("settings-anchor-cliPath")}
                 id="settings-anchor-cliPath"
               >
+                <div
+                  className={
+                    "settings-row" + rowHighlight("settings-anchor-platform")
+                  }
+                  id="settings-anchor-platform"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.runtime.platformTip")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.runtime.platformTipDesc")}
+                    </div>
+                    <div className="settings-row__hint">
+                      {(() => {
+                        const p = detectAppPlatform();
+                        if (p === "win") return "Windows";
+                        if (p === "mac") return "macOS";
+                        if (p === "linux") return "Linux";
+                        return "—";
+                      })()}
+                    </div>
+                  </div>
+                </div>
                 <div className="settings-row settings-row--stack">
                   <div className="settings-row__text">
                     <div className="settings-row__label">
@@ -6617,13 +7031,56 @@ export function SettingsPage({
                       {cliInfo.cliAuthPresent
                         ? ` · ${t("account.cliAuthOk")}`
                         : ` · ${t("account.cliAuthMissing")}`}
-                      {lastCliChecksumVerified === true
-                        ? ` · ${t("settings.cliChecksumVerified")}`
-                        : lastCliChecksumVerified === false
-                          ? ` · ${t("settings.cliChecksumUnverified")}`
-                          : ""}
                     </div>
                   )}
+                  {(() => {
+                    const grade = gradeFromLastInstall({
+                      lastCliChecksumVerified,
+                      allowUnverified: allowUnverifiedCliInstall,
+                    });
+                    if (grade === "unknown") return null;
+                    const banner = resolveCliTrustBanner(grade);
+                    return (
+                      <div
+                        className="settings-cli-trust"
+                        data-testid="settings-cli-trust-chip"
+                        data-trust-grade={grade}
+                      >
+                        <span className={cliTrustChipClass(banner.severity)}>
+                          {t(banner.titleKey as MessageKey)}
+                        </span>
+                        {banner.hintKey ? (
+                          <span className="settings-row__hint">
+                            {t(banner.hintKey as MessageKey)}
+                          </span>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div
+                  className={
+                    "settings-row" + rowHighlight("settings-anchor-platform")
+                  }
+                  id="settings-anchor-platform"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.runtime.platformTip")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.runtime.platformTipDesc")}
+                    </div>
+                    <div className="settings-row__hint">
+                      {(() => {
+                        const p = detectAppPlatform();
+                        if (p === "win") return "Windows";
+                        if (p === "mac") return "macOS";
+                        if (p === "linux") return "Linux";
+                        return "—";
+                      })()}
+                    </div>
+                  </div>
                 </div>
                 {onAllowUnverifiedCliInstall ? (
                   <div
@@ -7074,13 +7531,17 @@ export function SettingsPage({
                     <TraceHistoryList
                       labels={{
                         empty: t("session.tracesEmpty"),
+                        emptyHint: t("session.tracesEmptyHint"),
                         emptyFilter: t("session.tracesEmptyFilter"),
+                        emptyFilterHint: t("session.tracesEmptyFilterHint"),
+                        clearFilters: t("session.tracesClearFilters"),
                         reveal: t("session.tracesReveal"),
                         copyPath: t("session.tracesCopyPath"),
                         copied: t("session.tracesCopied"),
                         remove: t("session.tracesRemove"),
                         clearAll: t("session.tracesClearAll"),
                         clearConfirmTitle: t("session.tracesClearConfirmTitle"),
+                        // Leave {count} for TraceHistoryList (planClearTraceHistory).
                         clearConfirmMessage: t(
                           "session.tracesClearConfirmMessage",
                         ),
@@ -7088,9 +7549,17 @@ export function SettingsPage({
                           "session.tracesClearConfirmAction",
                         ),
                         cancel: t("common.cancel"),
+                        closeLabel: t("common.close"),
                         searchPlaceholder: t("session.tracesSearch"),
                         listAria: t("session.tracesTitle"),
                         uploadedBadge: t("session.tracesUploadedBadge"),
+                        uploadedBadgeTitle: t(
+                          "session.tracesUploadedBadgeTitle",
+                        ),
+                        filterAll: t("session.tracesFilter.all"),
+                        filterLocal: t("session.tracesFilter.local"),
+                        filterUploaded: t("session.tracesFilter.uploaded"),
+                        filterAria: t("session.tracesFilterAria"),
                       }}
                       onCopied={() =>
                         showSettingsToast(t("session.tracesCopied"), 2000)
@@ -7344,6 +7813,7 @@ export function SettingsPage({
                       projectPath={projectPath}
                       hideHeader
                       highlightPrNumber={prHubHighlightPr}
+                      onDraftToChat={onPrReviewDraftToChat}
                     />
                   </div>
                 </div>
@@ -8057,11 +8527,14 @@ function ShortcutsSettingsPanel({
 function CliSessionsPanel({
   t,
   sessionDataMode,
+  cliFound = true,
   onImported,
   onOpenSession,
 }: {
   t: (key: MessageKey, vars?: Record<string, string | number>) => string;
   sessionDataMode: string;
+  /** Whether Grok Build CLI is on PATH — soft-fail empty when missing. */
+  cliFound?: boolean;
   onImported?: () => void;
   onOpenSession?: (appSessionId: string) => void;
 }) {
@@ -8071,12 +8544,15 @@ function CliSessionsPanel({
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
+  const [linkFilter, setLinkFilter] =
+    useState<CliSessionsLinkFilter>("all");
   /** Host CLI search results when query is non-empty; null = show local list/filter. */
   const [searchHits, setSearchHits] = useState<api.CliSessionSearchHit[] | null>(
     null,
   );
   const [searching, setSearching] = useState(false);
   const [searchNote, setSearchNote] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<
     | null
@@ -8116,6 +8592,7 @@ function CliSessionsPanel({
       setSearchHits(null);
       setSearching(false);
       setSearchNote(null);
+      setSearchError(null);
       return;
     }
     if (!api.isTauri()) {
@@ -8124,6 +8601,7 @@ function CliSessionsPanel({
     }
     const seq = ++searchSeq.current;
     setSearching(true);
+    setSearchError(null);
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
@@ -8136,11 +8614,13 @@ function CliSessionsPanel({
               ? t("settings.cliSessionsSearchViaCli")
               : t("settings.cliSessionsSearchViaLocal"),
           );
-        } catch {
+          setSearchError(null);
+        } catch (e) {
           if (searchSeq.current !== seq) return;
-          // Host failed — fall back to client-side title/id/cwd/firstPrompt filter.
+          // Host failed — soft-fail: fall back to client-side filter; surface chip.
           setSearchHits(null);
           setSearchNote(t("settings.cliSessionsSearchFallback"));
+          setSearchError(String(e));
         } finally {
           if (searchSeq.current === seq) setSearching(false);
         }
@@ -8151,15 +8631,70 @@ function CliSessionsPanel({
     };
   }, [filterQuery, sessionDataMode, listEpoch, t]);
 
+  const linkCounts = useMemo(() => countCliSessionsByLink(rows), [rows]);
+
   const filtered = useMemo(() => {
     const q = filterQuery.trim();
-    if (!q) return rows;
-    if (searchHits) return searchHits;
-    // Host still loading or failed → local filter (incl. firstPrompt when present).
-    return filterCliSessions(rows, q);
-  }, [rows, filterQuery, searchHits]);
+    // Host search hits (when present) already match the free-text query;
+    // still apply link chip + rank. When host fails/still loading, pure filter.
+    const base = q && searchHits ? searchHits : rows;
+    return filterCliSessionHits(base, { query: q, link: linkFilter });
+  }, [rows, filterQuery, searchHits, linkFilter]);
+
   /** Bulk import / delete unlinked always targets the full list (not the filter). */
-  const pending = countUnlinkedCliSessions(rows);
+  const importPlan = useMemo(() => planImportSelection(rows), [rows]);
+  const pending = importPlan.importable;
+  const deletableUnlinked = importPlan.deletable;
+
+  const emptyState = useMemo(
+    () =>
+      resolveCliSessionsEmptyState({
+        loading,
+        searching,
+        cliFound,
+        query: filterQuery,
+        resultCount: filtered.length,
+        totalCount: rows.length,
+        linkFilter,
+        error,
+      }),
+    [
+      loading,
+      searching,
+      cliFound,
+      filterQuery,
+      filtered.length,
+      rows.length,
+      linkFilter,
+      error,
+    ],
+  );
+
+  const filtersActive = hasActiveCliSessionsFilters({
+    query: filterQuery,
+    link: linkFilter,
+  });
+
+  const searchErrorView = useMemo(
+    () =>
+      searchError ? classifyCliSessionsSearchError(searchError) : null,
+    [searchError],
+  );
+
+  const listErrorView = useMemo(
+    () => (error && rows.length === 0 ? classifyCliSessionsSearchError(error) : null),
+    [error, rows.length],
+  );
+
+  const clearFilters = () => {
+    setFilterQuery("");
+    setLinkFilter("all");
+    setSearchHits(null);
+    setSearchError(null);
+    setSearchNote(null);
+    if (error) setError(null);
+  };
+
   const sourceHome =
     rows.find((r) => r.sourceHome)?.sourceHome ??
     (isIndependent ? "~/.grok-app/agent-home" : "~/.grok");
@@ -8242,7 +8777,10 @@ function CliSessionsPanel({
   };
 
   const runDeleteUnlinked = async () => {
-    const targets = rows.filter((r) => !r.alreadyLinked);
+    // Only delete unlinked rows with a local dir (remote-only soft-skipped).
+    const targets = rows.filter(
+      (r) => !r.alreadyLinked && !!(r.dir ?? "").trim(),
+    );
     if (targets.length === 0) {
       setDeleteConfirm(null);
       return;
@@ -8309,7 +8847,16 @@ function CliSessionsPanel({
           <button
             type="button"
             className="btn btn--solid"
-            disabled={loading || !!busyId || pending === 0}
+            disabled={loading || !!busyId || !importPlan.hasImportable}
+            title={
+              importPlan.selected > 0
+                ? t("settings.cliSessionsImportPlan", {
+                    importable: String(importPlan.importable),
+                    selected: String(importPlan.selected),
+                    skipped: String(importPlan.skipped),
+                  })
+                : undefined
+            }
             onClick={() => void importAll()}
           >
             {busyId === "__all__"
@@ -8319,18 +8866,59 @@ function CliSessionsPanel({
           <button
             type="button"
             className="btn btn--ghost btn--danger"
-            disabled={loading || !!busyId || pending === 0}
+            disabled={loading || !!busyId || !importPlan.hasDeletable}
             onClick={() =>
-              setDeleteConfirm({ kind: "unlinked", count: pending })
+              setDeleteConfirm({
+                kind: "unlinked",
+                count: deletableUnlinked,
+              })
             }
           >
             {busyId === "__delete_unlinked__"
               ? t("settings.cliSessionsDeleting")
               : t("settings.cliSessionsDeleteUnlinked", {
-                  n: String(pending),
+                  n: String(deletableUnlinked),
                 })}
           </button>
         </div>
+
+        <div
+          className="settings-cli-sessions__chips"
+          role="tablist"
+          aria-label={t("settings.cliSessions")}
+        >
+          {CLI_SESSIONS_LINK_FILTERS.map((id) => {
+            const n = linkCounts[id];
+            // Hide zero-count chips except "all" and the active selection.
+            if (id !== "all" && n === 0 && linkFilter !== id) return null;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={linkFilter === id}
+                className={
+                  "settings-cli-sessions__chip" +
+                  (linkFilter === id ? " is-active" : "")
+                }
+                onClick={() => setLinkFilter(id)}
+              >
+                <span>{t(cliSessionsLinkFilterLabelKey(id))}</span>
+                <span className="settings-cli-sessions__chip-count">{n}</span>
+              </button>
+            );
+          })}
+          {filtersActive ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm settings-cli-sessions__clear"
+              onClick={clearFilters}
+            >
+              {t("settings.cliSessions.clearFilters")}
+            </button>
+          ) : null}
+        </div>
+
         <div className="settings-cli-sessions__filter">
           <IconSearch size={14} />
           <input
@@ -8340,6 +8928,7 @@ function CliSessionsPanel({
               setFilterQuery(e.target.value);
               // Clear stale host error when the user edits the query.
               if (error) setError(null);
+              if (searchError) setSearchError(null);
             }}
             placeholder={t("settings.cliSessionsFilterPlaceholder")}
             aria-label={t("settings.cliSessionsFilterPlaceholder")}
@@ -8356,7 +8945,42 @@ function CliSessionsPanel({
             {t("settings.cliSessionsSearching")}
           </div>
         ) : null}
-        {error ? (
+        {searchErrorView ? (
+          <div
+            className={
+              "settings-cli-sessions__err-chip" +
+              (searchErrorView.softFail
+                ? " settings-cli-sessions__err-chip--soft"
+                : "")
+            }
+            role="status"
+          >
+            <span className="settings-cli-sessions__err-kind">
+              {t(searchErrorView.titleKey as MessageKey)}
+            </span>
+            <span className="settings-cli-sessions__err-hint">
+              {t(searchErrorView.hintKey as MessageKey)}
+            </span>
+          </div>
+        ) : null}
+        {listErrorView && emptyState?.kind === "error" ? (
+          <div
+            className={
+              "settings-cli-sessions__err-chip" +
+              (listErrorView.softFail
+                ? " settings-cli-sessions__err-chip--soft"
+                : "")
+            }
+            role="alert"
+          >
+            <span className="settings-cli-sessions__err-kind">
+              {t(listErrorView.titleKey as MessageKey)}
+            </span>
+            <span className="settings-cli-sessions__err-hint">
+              {t(listErrorView.hintKey as MessageKey)}
+            </span>
+          </div>
+        ) : error && rows.length > 0 ? (
           <div className="settings-cli-sessions__err" role="alert">
             {error}
           </div>
@@ -8366,23 +8990,25 @@ function CliSessionsPanel({
             {status}
           </div>
         ) : null}
-        {loading && rows.length === 0 && !filterQuery.trim() ? (
+        {emptyState ? (
           <div className="settings-cli-sessions__empty">
-            {t("settings.cliSessionsLoading")}
-          </div>
-        ) : rows.length === 0 && !filterQuery.trim() ? (
-          <div className="settings-cli-sessions__empty">
-            {t("settings.cliSessionsEmpty")}
-          </div>
-        ) : searching && filtered.length === 0 ? (
-          <div className="settings-cli-sessions__empty">
-            {t("settings.cliSessionsSearching")}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="settings-cli-sessions__empty">
-            {filterQuery.trim()
-              ? t("settings.cliSessionsSearchEmpty")
-              : t("settings.cliSessionsFilterEmpty")}
+            <p className="settings-cli-sessions__empty-title">
+              {t(emptyState.titleKey)}
+            </p>
+            {emptyState.hintKey ? (
+              <p className="settings-cli-sessions__empty-hint">
+                {t(emptyState.hintKey)}
+              </p>
+            ) : null}
+            {emptyState.showClearFilters ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={clearFilters}
+              >
+                {t("settings.cliSessions.clearFilters")}
+              </button>
+            ) : null}
           </div>
         ) : (
           <ul className="settings-cli-sessions__list">
@@ -8396,7 +9022,7 @@ function CliSessionsPanel({
                 "firstPrompt" in r
                   ? (r as { firstPrompt?: string | null }).firstPrompt
                   : undefined;
-              const remoteOnly = !r.dir;
+              const remoteOnly = !(r.dir ?? "").trim();
               return (
                 <li
                   key={r.agentSessionId}
@@ -8575,6 +9201,7 @@ function AboutUpdateRow({
   t: (key: MessageKey, vars?: Record<string, string | number>) => string;
 }) {
   // Single authority: useUpdater (plugin path or GitHub fallback).
+  // Status / channel copy via appUpdateHonesty — never invent versions.
   const {
     status,
     channelInfo,
@@ -8593,64 +9220,67 @@ function AboutUpdateRow({
     }
   };
 
+  const statusLike = status as AppUpdateStatusLike;
+  const copy = mapUpdateStatusCopy(statusLike);
+  const channel = resolveUpdateChannelHonestyPreferHost({
+    hostChannel: channelInfo.channel,
+    pluginEnabled: channelInfo.pluginEnabled,
+    autoUpdateSupported:
+      channelInfo.platformSupported && channelInfo.pluginEnabled,
+    isDesktopHost: true,
+    status: statusLike,
+  });
+  const channelLabelKey = updateChannelLabelKey(channel);
+
   const statusText = (() => {
-    switch (status.state) {
-      case "checking":
-        return t("settings.autoUpdateChecking");
-      case "up-to-date":
-        return status.version
-          ? t("settings.checkUpdateLatest", { version: status.version })
-          : t("settings.autoUpdateUpToDate");
-      case "available":
-        return t("settings.autoUpdateAvailable", { version: status.version });
-      case "downloading":
-        return t("settings.autoUpdateDownloading");
-      case "ready":
-        return t("settings.autoUpdateReady");
-      case "installing":
-        return t("settings.autoUpdateInstalling");
-      case "manual-required":
-        return t("settings.autoUpdateManualRequired", {
-          version: status.version,
-        });
-      case "error":
-        return null;
-      default:
-        return null;
+    if (!copy.titleKey || status.state === "idle" || status.state === "error") {
+      return null;
     }
+    if (copy.version) {
+      return t(copy.titleKey, { version: copy.version });
+    }
+    return t(copy.titleKey);
   })();
 
-  const busy =
-    status.state === "checking" ||
-    status.state === "downloading" ||
-    status.state === "installing";
+  const bodyText = (() => {
+    if (!copy.bodyKey) return null;
+    // Error body is shown under the alert line separately.
+    if (status.state === "error") return null;
+    // Agents note only on auto path; manual path uses manual body.
+    if (
+      copy.bodyKey === "settings.autoUpdateBody.agentsNote" &&
+      !isAutoUpdatePath(channel)
+    ) {
+      return null;
+    }
+    return t(copy.bodyKey);
+  })();
 
+  const busy = isUpdateActionBusy(statusLike);
+  const showInstallProgress = shouldShowInstallProgress(statusLike);
   // Only show install when download finished (ready), never on available.
-  const showInstall = status.state === "ready";
-  const showInstalling = status.state === "installing";
-  const showOpenRelease = status.state === "manual-required";
-  const releaseUrl =
-    status.state === "manual-required" ? status.releaseUrl : githubReleasesUrl;
-  const downloadUrl =
-    status.state === "manual-required" ? status.downloadUrl : null;
-  const assetNames =
-    status.state === "manual-required" ? status.assetNames : undefined;
-  const highlight =
-    status.state === "available" ||
-    status.state === "ready" ||
-    status.state === "downloading" ||
-    status.state === "manual-required";
+  const showInstall = shouldShowInstallButton(statusLike);
+  const showOpenRelease = shouldShowManualDownloadCtas(statusLike);
+  const manualUrls = showOpenRelease
+    ? resolveManualUpdateUrls(statusLike, githubReleasesUrl)
+    : null;
+  const releaseUrl = manualUrls?.releaseUrl ?? githubReleasesUrl;
+  const downloadUrl = manualUrls?.downloadUrl ?? null;
+  const assetNames = manualUrls?.assetNames;
+  const toneClass = updateStatusToneClass(copy.severity);
 
   return (
     <div className="settings-row settings-row--stack">
       <div className="settings-row__text">
         <div className="settings-row__label">{t("settings.checkUpdate")}</div>
         <div className="settings-row__desc">{t("settings.checkUpdateDesc")}</div>
-        <div className="settings-row__hint" data-updater-channel={channelInfo.channel}>
-          {channelInfo.channel === "silent"
-            ? t("settings.autoUpdateChannelSilent")
-            : t("settings.autoUpdateChannelManual")}
-          {channelInfo.endpoint
+        <div
+          className="settings-row__hint"
+          data-updater-channel={channel}
+          data-updater-host-channel={channelInfo.channel}
+        >
+          {t(channelLabelKey)}
+          {channelInfo.endpoint && isAutoUpdatePath(channel)
             ? ` · ${channelInfo.endpoint.replace(/^https:\/\//, "")}`
             : ""}
         </div>
@@ -8667,7 +9297,7 @@ function AboutUpdateRow({
               ? t("settings.checkUpdateChecking")
               : t("settings.checkUpdate")}
           </button>
-          {showInstalling ? (
+          {showInstallProgress && status.state === "installing" ? (
             <button type="button" className="btn btn--solid" disabled>
               {t("settings.autoUpdateInstalling")}
             </button>
@@ -8703,16 +9333,38 @@ function AboutUpdateRow({
         {statusText ? (
           <div
             className={
-              "settings-about-update__status" + (highlight ? " is-available" : "")
+              "settings-about-update__status" +
+              (toneClass ? ` ${toneClass}` : "")
             }
             role="status"
+            data-update-state={status.state}
+            data-update-severity={copy.severity}
           >
             {statusText}
           </div>
         ) : null}
+        {bodyText ? (
+          <div
+            className="settings-about-update__body"
+            data-update-body={copy.bodyKey ?? undefined}
+          >
+            {bodyText}
+          </div>
+        ) : null}
         {status.state === "error" ? (
-          <div className="settings-about-update__err" role="alert">
-            {t("settings.autoUpdateError", { error: status.message })}
+          <div
+            className="settings-about-update__err"
+            role="alert"
+            data-update-error-kind={copy.errorKind ?? "other"}
+          >
+            {t("settings.autoUpdateError", {
+              error: copy.errorMessage ?? status.message,
+            })}
+            {copy.bodyKey ? (
+              <div className="settings-about-update__err-hint">
+                {t(copy.bodyKey)}
+              </div>
+            ) : null}
           </div>
         ) : null}
         {openError ? (

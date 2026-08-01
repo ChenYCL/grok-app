@@ -17,6 +17,7 @@ import {
   classifyPrHubReason,
   formatChecksSummaryLine,
   normalizeMergeable,
+  summarizeChecks,
   type GitPrCheckEntry,
   type GitPrCommentEntry,
   type GitPrHubEntry,
@@ -26,6 +27,12 @@ import {
   isHighlightedPr,
   sanitizePrNumber,
 } from "@/lib/prHubDeepLink";
+import {
+  buildFixCiPrompt,
+  buildPrCommentPrompt,
+  canSuggestFixCi,
+  listFailedChecks,
+} from "@/lib/prReviewWorkbench";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -44,6 +51,12 @@ export interface GitPrHubPanelProps {
    * Soft-no-op when the number is missing from the current list.
    */
   highlightPrNumber?: number | null;
+  /**
+   * Insert a Fix-CI / comment prompt into the workbench composer.
+   * When omitted, "Fix with Grok" / "Ask Grok" action buttons stay hidden
+   * (honest: no silent no-op).
+   */
+  onDraftToChat?: (prompt: string) => void;
 }
 
 function ChecksBadge({
@@ -224,12 +237,15 @@ function CommentsDetail({
   error,
   conversationUrl,
   tr,
+  onAskGrok,
 }: {
   comments: GitPrCommentEntry[] | null;
   loading: boolean;
   error: string | null;
   conversationUrl?: string | null;
   tr: (key: MessageKey, vars?: Record<string, string | number>) => string;
+  /** Per-row Ask Grok; omit to hide action buttons. */
+  onAskGrok?: (comment: GitPrCommentEntry) => void;
 }) {
   if (loading) {
     return (
@@ -259,6 +275,8 @@ function CommentsDetail({
           const stateLabel =
             c.kind === "review" ? reviewStateLabel(c.state, tr) : null;
           const openTarget = c.url || conversationUrl || null;
+          const canAsk =
+            typeof onAskGrok === "function" && Boolean(c.body?.trim());
           return (
             <li key={c.id} className="pr-hub__comment-row">
               <div className="pr-hub__comment-head">
@@ -274,17 +292,30 @@ function CommentsDetail({
                     {tr("prHub.comments.comment")}
                   </span>
                 )}
-                {openTarget ? (
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm pr-hub__comment-link"
-                    onClick={() => void openUrl(openTarget)}
-                    title={openTarget}
-                    aria-label={tr("prHub.comments.open")}
-                  >
-                    <IconExternalLink size={12} />
-                  </button>
-                ) : null}
+                <span className="pr-hub__comment-actions">
+                  {canAsk ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm pr-hub__ask-grok"
+                      onClick={() => onAskGrok?.(c)}
+                      title={tr("prHub.comments.askGrokTitle")}
+                      aria-label={tr("prHub.comments.askGrok")}
+                    >
+                      {tr("prHub.comments.askGrok")}
+                    </button>
+                  ) : null}
+                  {openTarget ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm pr-hub__comment-link"
+                      onClick={() => void openUrl(openTarget)}
+                      title={openTarget}
+                      aria-label={tr("prHub.comments.open")}
+                    >
+                      <IconExternalLink size={12} />
+                    </button>
+                  ) : null}
+                </span>
               </div>
               <p className="pr-hub__comment-excerpt" title={c.body || undefined}>
                 {c.excerpt || tr("prHub.comments.emptyBody")}
@@ -312,10 +343,12 @@ export function GitPrHubPanel({
   projectPath = null,
   hideHeader = false,
   highlightPrNumber = null,
+  onDraftToChat,
 }: GitPrHubPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const cwd = projectPath?.trim() || null;
   const highlightN = sanitizePrNumber(highlightPrNumber);
+  const canDraft = typeof onDraftToChat === "function";
 
   const [prs, setPrs] = useState<GitPrHubEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -505,6 +538,50 @@ export function GitPrHubPanel({
     });
   };
 
+  const draftFixCi = useCallback(
+    (pr: GitPrHubEntry) => {
+      if (!canDraft || !onDraftToChat) return;
+      const loaded = checksByPr[pr.number];
+      const failed = listFailedChecks(loaded ?? []);
+      const prompt = buildFixCiPrompt({
+        prNumber: pr.number,
+        title: pr.title || "",
+        url: pr.url || null,
+        headRef: pr.headRefName ?? null,
+        baseRef: pr.baseRefName ?? null,
+        failedChecks: failed.map((c) => ({
+          name: c.name,
+          state: c.state || c.bucket,
+          description: c.description ?? null,
+        })),
+        bodyExcerpt: pr.body ?? null,
+      });
+      if (!prompt.trim()) return;
+      onDraftToChat(prompt);
+    },
+    [canDraft, onDraftToChat, checksByPr],
+  );
+
+  const draftComment = useCallback(
+    (pr: GitPrHubEntry, comment: GitPrCommentEntry) => {
+      if (!canDraft || !onDraftToChat) return;
+      const prompt = buildPrCommentPrompt({
+        prNumber: pr.number,
+        title: pr.title || "",
+        comment: {
+          author: comment.author || "",
+          body: comment.body || "",
+          kind: comment.kind,
+          state: comment.state ?? null,
+          url: comment.url ?? null,
+        },
+      });
+      if (!prompt.trim()) return;
+      onDraftToChat(prompt);
+    },
+    [canDraft, onDraftToChat],
+  );
+
   const reasonKind = classifyPrHubReason(reason);
   const softMessage = (() => {
     if (!cwd) {
@@ -566,6 +643,13 @@ export function GitPrHubPanel({
           const conversationUrl =
             conversationUrlByPr[pr.number] || pr.url || null;
           const highlighted = isHighlightedPr(pr.number, highlightN);
+          const loadedChecks = checksByPr[pr.number];
+          const effectiveSummary: PrChecksSummary | null | undefined =
+            loadedChecks != null && loadedChecks.length > 0
+              ? summarizeChecks(loadedChecks)
+              : pr.checks;
+          const showFixCi =
+            canDraft && canSuggestFixCi(effectiveSummary);
           return (
             <li
               key={pr.number}
@@ -642,6 +726,18 @@ export function GitPrHubPanel({
                       <h4 className="pr-hub__section-title">
                         {tr("prHub.checks.title")}
                       </h4>
+                      {showFixCi ? (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm pr-hub__fix-ci"
+                          onClick={() => draftFixCi(pr)}
+                          title={tr("prHub.checks.fixCiTitle")}
+                          aria-label={tr("prHub.checks.fixCi")}
+                          data-testid={`pr-hub-fix-ci-${pr.number}`}
+                        >
+                          {tr("prHub.checks.fixCi")}
+                        </button>
+                      ) : null}
                     </div>
                     <ChecksDetail
                       checks={checksByPr[pr.number] ?? null}
@@ -674,6 +770,11 @@ export function GitPrHubPanel({
                       error={commentsError[pr.number] ?? null}
                       conversationUrl={conversationUrl}
                       tr={tr}
+                      onAskGrok={
+                        canDraft
+                          ? (c) => draftComment(pr, c)
+                          : undefined
+                      }
                     />
                   </section>
                 </div>

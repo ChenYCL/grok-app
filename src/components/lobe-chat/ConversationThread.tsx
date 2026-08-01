@@ -32,8 +32,13 @@ import {
   adjacentNode,
   buildSessionMessageNodes,
   estimateStartScrollTop,
+  nodeById,
   type SessionMessageNode,
 } from "@/lib/sessionMessageNodes";
+import {
+  formatMessageDeepLink,
+  planScrollToMessage,
+} from "@/lib/messageNodeDeepLink";
 import { MessageNodeRail } from "./MessageNodeRail";
 import { isEndOfTurnMarker } from "@/lib/endOfTurn";
 import type { Attachment } from "@/lib/attachments";
@@ -56,6 +61,7 @@ import {
   IconClock,
   IconExportMd,
   IconFork,
+  IconLink,
   IconRename,
   IconRewind,
   IconTarget,
@@ -446,6 +452,25 @@ export interface ConversationThreadProps {
   findHitMessageIds?: ReadonlySet<string>;
   /** Active match target for scroll / current mark. */
   findActive?: { messageId: string; occurrence: number } | null;
+  /**
+   * Stored session id for copy-link deep hashes (`#/session/<id>/m/<mid>`).
+   * Draft / new-chat leaves this null — copy link is hidden.
+   */
+  sessionId?: string | null;
+  /**
+   * External locate request (message deep link). Scrolls once when the
+   * journal contains `messageId` (reuses rail virtualizer path).
+   */
+  locateMessageId?: string | null;
+  /**
+   * Fired once per locate attempt after messages are available
+   * (success or soft-missing). Parent shows toast / clears pending.
+   */
+  onLocateMessage?: (result: {
+    ok: boolean;
+    messageId: string;
+    reason?: "missing" | "empty_id";
+  }) => void;
   /** Open session Changes panel (turn activity file strip). */
   onOpenSessionChanges?: () => void;
   /** Open a modified path from turn activity. */
@@ -534,6 +559,9 @@ export function ConversationThread({
   findQuery = "",
   findHitMessageIds,
   findActive = null,
+  sessionId = null,
+  locateMessageId = null,
+  onLocateMessage,
   onOpenSessionChanges: _onOpenSessionChanges,
   onOpenModifiedPath: _onOpenModifiedPath,
   showTimestamps = true,
@@ -804,6 +832,63 @@ export function ConversationThread({
     const t = window.requestAnimationFrame(() => applyScrollToNodeDom(node, 0));
     return () => window.cancelAnimationFrame(t);
   }, [locateTargetId, messageNodes, applyScrollToNodeDom]);
+
+  /**
+   * Deep-link locate: when parent sets `locateMessageId`, scroll once the
+   * journal has rows (reuse rail virtualizer path). Soft-missing reports up.
+   */
+  const deepLocateConsumedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const mid = (locateMessageId ?? "").trim();
+    if (!mid) {
+      deepLocateConsumedRef.current = null;
+      return;
+    }
+    // Wait until the session journal is present (open-in-flight → empty).
+    if (messages.length === 0) return;
+    if (deepLocateConsumedRef.current === mid) return;
+
+    const plan = planScrollToMessage({
+      messageId: mid,
+      nodes: messageNodes,
+      messages,
+    });
+    deepLocateConsumedRef.current = mid;
+
+    if (!plan.ok) {
+      onLocateMessage?.({
+        ok: false,
+        messageId: mid,
+        reason: plan.reason,
+      });
+      return;
+    }
+
+    const fromNode = plan.nodeId ? nodeById(messageNodes, plan.nodeId) : null;
+    const roleRaw = messages[plan.messageIndex]?.role;
+    const role: SessionMessageNode["role"] =
+      roleRaw === "user" ? "user" : "assistant";
+    const node: SessionMessageNode =
+      fromNode ??
+      ({
+        id: mid,
+        messageIndex: plan.messageIndex,
+        nodeIndex: -1,
+        role,
+        preview: "",
+        status: "done",
+        promptIndex: null,
+      } satisfies SessionMessageNode);
+
+    scrollToMessageNode(node);
+    onLocateMessage?.({ ok: true, messageId: mid });
+  }, [
+    locateMessageId,
+    messages,
+    messageNodes,
+    onLocateMessage,
+    scrollToMessageNode,
+  ]);
 
   const onNodePrev = useCallback(() => {
     const cur = railCursorRef.current ?? activeNodeId;
@@ -1129,14 +1214,7 @@ export function ConversationThread({
                 (m.toolCallId || "").trim() ||
                 (m.id.startsWith("tool-") ? m.id.slice(5) : "");
               // Use woven list — parent `messages` may lag display-layer weave.
-              // Host vision/X: also hide journal row when family already inlined.
-              if (
-                tcid &&
-                isToolInlinedInAssistants(wovenMessages, tcid, {
-                  toolKind: m.toolKind,
-                  title: m.content || m.toolKind,
-                })
-              ) {
+              if (tcid && isToolInlinedInAssistants(wovenMessages, tcid)) {
                 return virtualized ? (
                   <div
                     key={m.id}
@@ -1350,6 +1428,23 @@ export function ConversationThread({
                             copiedLabel={tr("message.copied")}
                           />
                         ) : null}
+                        {sessionId
+                          ? (() => {
+                              const link = formatMessageDeepLink(
+                                sessionId,
+                                m.id,
+                              );
+                              if (!link) return null;
+                              return (
+                                <MessageCopyButton
+                                  text={link}
+                                  copyLabel={tr("message.copyLink")}
+                                  copiedLabel={tr("message.linkCopied")}
+                                  idleIcon={<IconLink size={15} />}
+                                />
+                              );
+                            })()
+                          : null}
                         {isLastUser ? (
                           <MessageActionButton
                             label={tr("message.edit")}
@@ -1401,11 +1496,8 @@ export function ConversationThread({
               const isFindHit = !!findHitMessageIds?.has(m.id);
               const isFindCurrent = findActive?.messageId === m.id;
               const isNodeFocus = focusMessageId === m.id;
-              // Hide regenerate while session is busy (host vision/X wait, stream).
               const canRegenError =
-                !!onRegenerateAssistant &&
-                regenerableAssistantId === m.id &&
-                !!canRegenerate;
+                !!onRegenerateAssistant && regenerableAssistantId === m.id;
               // Codex-style soft notice — muted pill, no red box.
               return wrap(
                 <div
@@ -1712,12 +1804,15 @@ export function ConversationThread({
                 actions={(() => {
                   if (m.streaming) return null;
                   const showCopy = !!m.content.trim();
-                  // Hide regen during busy turns (host side-channel wait / stream).
                   const showRegen =
-                    !!onRegenerateAssistant &&
-                    regenerableAssistantId === m.id &&
-                    !!canRegenerate;
+                    !!onRegenerateAssistant && regenerableAssistantId === m.id;
                   if (!showCopy && !showRegen) return null;
+                  const deepLink =
+                    sessionId != null
+                      ? formatMessageDeepLink(sessionId, m.id)
+                      : "";
+                  const showCopyLink = !!deepLink;
+                  if (!showCopy && !showRegen && !showCopyLink) return null;
                   return (
                     <>
                       {showCopy ? (
@@ -1744,6 +1839,14 @@ export function ConversationThread({
                             <IconExportMd size={15} />
                           </MessageActionButton>
                         </>
+                      ) : null}
+                      {showCopyLink ? (
+                        <MessageCopyButton
+                          text={deepLink}
+                          copyLabel={tr("message.copyLink")}
+                          copiedLabel={tr("message.linkCopied")}
+                          idleIcon={<IconLink size={15} />}
+                        />
                       ) : null}
                       {showRegen ? (
                         <MessageRegenerateButton

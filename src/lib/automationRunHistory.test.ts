@@ -71,6 +71,16 @@ describe("parseAutomationRunRecord", () => {
     expect(e?.source).toBe("unknown");
     expect(e?.error).toBeUndefined();
   });
+
+  it("keeps optional sessionId / projectId when present", () => {
+    const e = parseAutomationRunRecord({
+      ...base,
+      sessionId: "sess-1",
+      project_id: "proj-9",
+    });
+    expect(e?.sessionId).toBe("sess-1");
+    expect(e?.projectId).toBe("proj-9");
+  });
 });
 
 describe("redactAutomationRunError", () => {

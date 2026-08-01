@@ -406,6 +406,13 @@ export interface CliInstallResult {
   version: string | null;
   mirrorUsed: string | null;
   message: string;
+  /** Streamed SHA-256 when Host computed it. */
+  sha256?: string | null;
+  /**
+   * `true` = published sidecar matched; `false` = installed without sidecar
+   * (HTTPS allowlist + binary probe). Mismatch never returns ok.
+   */
+  checksumVerified?: boolean | null;
 }
 
 export interface CliInstallCommands {
@@ -3612,6 +3619,33 @@ export async function workflowsRun(opts: {
   });
 }
 
+/** Result of host `workflows_create` (template `.rhai` write). */
+export type WorkflowsCreateResult = {
+  name: string;
+  path: string;
+  scope: string;
+  created: boolean;
+  overwritten: boolean;
+};
+
+/**
+ * Create a minimal `.rhai` workflow template under user (`~/.grok/workflows`)
+ * or project (`.grok/workflows`). Refuses overwrite unless `force`.
+ */
+export async function workflowsCreate(opts: {
+  name: string;
+  scope?: "user" | "project" | string;
+  projectPath?: string | null;
+  force?: boolean;
+}) {
+  return invoke<WorkflowsCreateResult>("workflows_create", {
+    name: opts.name,
+    scope: opts.scope ?? "user",
+    projectPath: opts.projectPath ?? null,
+    force: opts.force ?? false,
+  });
+}
+
 export type AgentsScaffoldResult = {
   name: string;
   path: string;
@@ -3696,6 +3730,51 @@ export async function gitWorktreeRemove(opts: {
     projectPath: opts.projectPath,
     worktreePath: opts.worktreePath,
     force: opts.force ?? false,
+  });
+}
+
+/** One row from host `git_worktree_compare` (`git diff --name-status`). */
+export type GitWorktreeCompareEntry = {
+  status: string;
+  path: string;
+  oldPath?: string | null;
+};
+
+/**
+ * Soft-fail compare of two worktree paths / refs.
+ * `available: false` with `reason` when same path, missing, not git, etc.
+ */
+export type GitWorktreeCompareResult = {
+  available: boolean;
+  entries: GitWorktreeCompareEntry[];
+  /** Raw name-status stdout for client re-parse. */
+  raw?: string | null;
+  reason?: string | null;
+  base: string;
+  other: string;
+  baseRef?: string | null;
+  otherRef?: string | null;
+  /** True when host truncated entries (cap honesty). */
+  truncated?: boolean;
+  total?: number;
+};
+
+/**
+ * Compare two worktree paths via `git diff --name-status <base>...<other>`.
+ * Soft-fails when paths missing / not git / different repos.
+ * Does not merge or apply.
+ */
+export async function gitWorktreeCompare(opts: {
+  basePath: string;
+  otherPath: string;
+  baseBranch?: string | null;
+  otherBranch?: string | null;
+}): Promise<GitWorktreeCompareResult> {
+  return invoke<GitWorktreeCompareResult>("git_worktree_compare", {
+    basePath: opts.basePath,
+    otherPath: opts.otherPath,
+    baseBranch: opts.baseBranch?.trim() || null,
+    otherBranch: opts.otherBranch?.trim() || null,
   });
 }
 

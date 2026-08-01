@@ -84,6 +84,13 @@ function MessageResponseImpl({
       typeFile: tr("attach.typeFile"),
       typeUrl: tr("attach.typeUrl"),
       typeDir: tr("attach.typeDir"),
+      errNotFound: tr("resources.openErr.notFound"),
+      errPathDenied: tr("resources.openErr.pathDenied"),
+      errHostOnly: tr("resources.openErr.hostOnly"),
+      errNoEditor: tr("resources.openErr.noEditor"),
+      errCancelled: tr("resources.openErr.cancelled"),
+      errOther: tr("resources.openErr.other"),
+      errRevealOther: tr("resources.revealErr.other"),
     }),
     [tr],
   );

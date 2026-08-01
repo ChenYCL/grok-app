@@ -62,10 +62,13 @@ export function MessageCopyButton({
   text,
   copyLabel,
   copiedLabel = "OK",
+  /** Optional idle icon (default copy glyph). Use for “copy link”. */
+  idleIcon,
 }: {
   text: string;
   copyLabel: string;
   copiedLabel?: string;
+  idleIcon?: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | null>(null);
@@ -88,7 +91,11 @@ export function MessageCopyButton({
       onClick={() => void onCopy()}
       className={copied ? "is-copied" : undefined}
     >
-      {copied ? <IconCheck size={15} /> : <IconCopy size={15} />}
+      {copied ? (
+        <IconCheck size={15} />
+      ) : (
+        (idleIcon ?? <IconCopy size={15} />)
+      )}
     </MessageActionButton>
   );
 }

@@ -30,6 +30,13 @@ export type AutomationRunRecord = {
   error?: string | null;
   /** How this row was observed. */
   source: AutomationRunSource;
+  /**
+   * Session created for this fire when known (host runner / Run now).
+   * Soft optional — never invented after Quit.
+   */
+  sessionId?: string | null;
+  /** Project the schedule was bound to when known. */
+  projectId?: string | null;
 };
 
 export type AutomationRunOutcomeFilter = "all" | AutomationRunOutcome;
@@ -136,6 +143,15 @@ export function parseAutomationRunRecord(raw: unknown): AutomationRunRecord | nu
   const error =
     outcome === "error" ? redactAutomationRunError(o.error ?? o.detail) : null;
 
+  const sessionId = scrub(
+    o.sessionId ?? o.session_id,
+    AUTOMATION_RUN_ID_MAX,
+  );
+  const projectId = scrub(
+    o.projectId ?? o.project_id,
+    AUTOMATION_RUN_ID_MAX,
+  );
+
   return {
     id,
     scheduleId,
@@ -144,6 +160,8 @@ export function parseAutomationRunRecord(raw: unknown): AutomationRunRecord | nu
     outcome,
     source,
     ...(error ? { error } : {}),
+    ...(sessionId ? { sessionId } : {}),
+    ...(projectId ? { projectId } : {}),
   };
 }
 
@@ -244,11 +262,15 @@ export function recordAutomationRun(
     error?: unknown;
     source?: AutomationRunSource;
     id?: string;
+    sessionId?: string | null;
+    projectId?: string | null;
   },
   storage: AutomationRunHistoryStorage = defaultStorage(),
   max = AUTOMATION_RUN_HISTORY_MAX,
 ): AutomationRunRecord[] {
   const name = (input.name ?? input.title ?? "").toString();
+  const sessionId = scrub(input.sessionId, AUTOMATION_RUN_ID_MAX);
+  const projectId = scrub(input.projectId, AUTOMATION_RUN_ID_MAX);
   const entry: AutomationRunRecord = {
     id: input.id || newAutomationRunId(),
     scheduleId: (input.scheduleId ?? "").toString(),
@@ -259,6 +281,8 @@ export function recordAutomationRun(
     ...(input.outcome === "error"
       ? { error: redactAutomationRunError(input.error) }
       : {}),
+    ...(sessionId ? { sessionId } : {}),
+    ...(projectId ? { projectId } : {}),
   };
   const next = pushAutomationRun(
     loadAutomationRunHistory(storage, max),

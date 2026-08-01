@@ -63,9 +63,9 @@ mod project_rules;
 mod skill_edit;
 mod permission_rules;
 mod providers;
-mod relay_stream_proxy;
-mod models_aux;
 mod official_aux;
+mod models_aux;
+mod relay_stream_proxy;
 mod cc_switch_import;
 mod secrets;
 mod session_import;
@@ -233,6 +233,7 @@ pub fn run() {
                     tracing::error!(error = %e, "media server failed to start — local media previews may break");
                 }
             }
+            
             // OpenCode Zen Go etc. append non-OpenAI SSE trailers (missing `id`)
             // that fatal Grok Build — sanitize via loopback reverse proxy and
             // rewrite affected provider base_url in agent-home config.toml.
@@ -474,6 +475,7 @@ pub fn run() {
             commands::agents_list,
             commands::workflows_list,
             commands::workflows_run,
+            commands::workflows_create,
             commands::agents_scaffold,
             commands::inspect_mcp,
             commands::project_inspect,
@@ -533,6 +535,7 @@ pub fn run() {
             commands::git_worktree_add,
             commands::git_worktree_remove,
             commands::git_worktree_gc,
+            commands::git_worktree_compare,
             commands::git_push_branch,
             commands::gh_pr_create,
             git_pr_hub::git_pr_list,

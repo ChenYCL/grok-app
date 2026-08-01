@@ -1,11 +1,13 @@
 /**
- * Settings → Runtime → Tools: workflows discovery + soft-fail headless run.
- * No visual workflow editor; run uses CLI workflow tool via short agent.
+ * Settings → Runtime → Tools: workflows discovery + template create +
+ * soft-fail headless run + local recent-run history.
+ * No visual workflow editor; author via create-workflow skill / edit `.rhai`.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
+import { GlassModal } from "@/components/GlassModal";
 import {
   formatDiscoveredWorkflowNames,
   formatWorkflowRunStatusLine,
@@ -18,6 +20,20 @@ import {
   type WorkflowRunResultLike,
   type WorkflowScope,
 } from "@/lib/workflows";
+import {
+  clearWorkflowRunHistory,
+  filterWorkflowRunHistory,
+  loadWorkflowRunHistory,
+  planCreateWorkflow,
+  recordWorkflowRunHistory,
+  resolveWorkflowsAuthorEmptyState,
+  sanitizeWorkflowName,
+  workflowRunResultToHistoryOutcome,
+  WORKFLOW_RUN_HISTORY_CHANGE_EVENT,
+  type WorkflowCreateScope,
+  type WorkflowRunHistoryFilter,
+  type WorkflowRunHistoryRecord,
+} from "@/lib/workflowsAuthor";
 
 const RUN_REASON_KEYS: Record<string, MessageKey> = {
   ok: "settings.workflows.run.reason.ok",
@@ -28,6 +44,13 @@ const RUN_REASON_KEYS: Record<string, MessageKey> = {
   empty: "settings.workflows.run.reason.empty",
   nonzero_exit: "settings.workflows.run.reason.nonzero_exit",
   soft_fail: "settings.workflows.run.reason.soft_fail",
+};
+
+const EMPTY_LIST_KEYS: Record<string, MessageKey> = {
+  no_workflows: "settings.workflows.empty.no_workflows",
+  scan_soft_fail: "settings.workflows.empty.scan_soft_fail",
+  browser_only: "settings.workflows.empty.browser_only",
+  history_empty: "settings.workflows.empty.history_empty",
 };
 
 export type WorkflowsDiscoveryBlockProps = {
@@ -49,6 +72,16 @@ type RunState = {
   error: string | null;
 };
 
+function formatHistoryWhen(at: string, locale: Locale): string {
+  try {
+    const d = new Date(at);
+    if (Number.isNaN(d.getTime())) return at;
+    return d.toLocaleString(locale === "en" ? "en-US" : locale);
+  } catch {
+    return at;
+  }
+}
+
 export function WorkflowsDiscoveryBlock({
   locale,
   projectPath,
@@ -61,6 +94,26 @@ export function WorkflowsDiscoveryBlock({
   const [userDir, setUserDir] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [runState, setRunState] = useState<RunState | null>(null);
+
+  // Create-from-template modal
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createScope, setCreateScope] = useState<WorkflowCreateScope>("user");
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [overwriteTarget, setOverwriteTarget] = useState<{
+    name: string;
+    scope: WorkflowCreateScope;
+  } | null>(null);
+
+  // Recent runs
+  const [history, setHistory] = useState<WorkflowRunHistoryRecord[]>(() =>
+    loadWorkflowRunHistory(),
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyFilter, setHistoryFilter] =
+    useState<WorkflowRunHistoryFilter>("all");
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!api.isTauri()) {
@@ -93,6 +146,21 @@ export function WorkflowsDiscoveryBlock({
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (Array.isArray(detail)) {
+        setHistory(detail as WorkflowRunHistoryRecord[]);
+      } else {
+        setHistory(loadWorkflowRunHistory());
+      }
+    };
+    window.addEventListener(WORKFLOW_RUN_HISTORY_CHANGE_EVENT, onChange);
+    return () => {
+      window.removeEventListener(WORKFLOW_RUN_HISTORY_CHANGE_EVENT, onChange);
+    };
+  }, []);
+
   const summary = formatDiscoveredWorkflowNames(workflows);
   const scopeLabels: Partial<Record<WorkflowScope, string>> = {
     project: t("settings.workflows.scope.project"),
@@ -105,6 +173,48 @@ export function WorkflowsDiscoveryBlock({
     const msgKey = RUN_REASON_KEYS[key] ?? RUN_REASON_KEYS.soft_fail;
     return t(msgKey);
   };
+
+  const listEmpty = resolveWorkflowsAuthorEmptyState({
+    workflowCount: workflows.length,
+    scanError: !!error,
+    isDesktop: api.isTauri(),
+    surface: "list",
+  });
+  const historyEmpty = resolveWorkflowsAuthorEmptyState({
+    historyCount: history.length,
+    isDesktop: api.isTauri(),
+    surface: "history",
+  });
+
+  const filteredHistory = useMemo(
+    () => filterWorkflowRunHistory(history, historyFilter),
+    [history, historyFilter],
+  );
+
+  const namePreview = sanitizeWorkflowName(createName);
+  // `userDir` from host is already `…/.grok/workflows`; plan user scope via
+  // parent of that dir as GROK home (`…/.grok` → user home for resolveWorkflowDirs).
+  const plannedUserHome = (() => {
+    if (!userDir) return null;
+    const trimmed = userDir.replace(/[/\\]+$/g, "");
+    // strip `/workflows` then `/.grok` → user home
+    const withoutWf = trimmed.replace(/[/\\]workflows$/i, "");
+    const withoutGrok = withoutWf.replace(/[/\\]\.grok$/i, "");
+    return withoutGrok || null;
+  })();
+  const createPlan = planCreateWorkflow({
+    name: createName,
+    scope: createScope,
+    projectPath,
+    userHome: plannedUserHome,
+    isDesktop: api.isTauri(),
+  });
+
+  const canSubmitCreate =
+    !!namePreview &&
+    !createBusy &&
+    api.isTauri() &&
+    (createScope !== "project" || !!projectPath?.trim());
 
   const openSkill = async () => {
     if (!skillPath) {
@@ -127,6 +237,27 @@ export function WorkflowsDiscoveryBlock({
     }
   };
 
+  const revealPath = async (path: string) => {
+    try {
+      await api.pathReveal(path);
+    } catch {
+      showToast?.(t("settings.workflows.dirMissing"), 2800);
+    }
+  };
+
+  const openInEditor = async (path: string) => {
+    if (!api.isTauri()) return;
+    try {
+      await api.openInEditor({ path });
+    } catch {
+      try {
+        await api.pathReveal(path);
+      } catch {
+        showToast?.(t("settings.workflows.dirMissing"), 2800);
+      }
+    }
+  };
+
   const runWorkflow = async (name: string, mode: WorkflowRunMode) => {
     if (!api.isTauri()) {
       showToast?.(t("settings.workflows.run.desktopOnly"), 2800);
@@ -145,6 +276,13 @@ export function WorkflowsDiscoveryBlock({
         },
         error: null,
       });
+      recordWorkflowRunHistory({
+        name,
+        mode,
+        outcome: "soft_fail",
+        reason: "invalid_name",
+        source: "settings",
+      });
       return;
     }
     setRunState({ name, mode, busy: true, result: null, error: null });
@@ -154,25 +292,36 @@ export function WorkflowsDiscoveryBlock({
         projectPath,
         mode,
       });
+      const result: WorkflowRunResultLike = {
+        ok: !!res.ok,
+        reason: res.reason ?? (res.ok ? "ok" : "soft_fail"),
+        workflowName: res.workflowName ?? name,
+        mode: res.mode ?? mode,
+        log: res.log ?? null,
+        durationMs: res.durationMs ?? null,
+        truncated: res.truncated ?? false,
+        cliPath: res.cliPath ?? null,
+        cliVersion: res.cliVersion ?? null,
+      };
       setRunState({
         name,
         mode,
         busy: false,
-        result: {
-          ok: !!res.ok,
-          reason: res.reason ?? (res.ok ? "ok" : "soft_fail"),
-          workflowName: res.workflowName ?? name,
-          mode: res.mode ?? mode,
-          log: res.log ?? null,
-          durationMs: res.durationMs ?? null,
-          truncated: res.truncated ?? false,
-          cliPath: res.cliPath ?? null,
-          cliVersion: res.cliVersion ?? null,
-        },
+        result,
         error: null,
+      });
+      recordWorkflowRunHistory({
+        name: result.workflowName ?? name,
+        mode,
+        outcome: workflowRunResultToHistoryOutcome(result),
+        reason: result.reason,
+        log: result.log,
+        durationMs: result.durationMs ?? null,
+        source: "settings",
       });
     } catch (e) {
       // Soft-fail: never throw into Settings root.
+      const log = String(e ?? "workflows_run failed");
       setRunState({
         name,
         mode,
@@ -182,10 +331,73 @@ export function WorkflowsDiscoveryBlock({
           reason: "soft_fail",
           workflowName: name,
           mode,
-          log: String(e ?? "workflows_run failed"),
+          log,
         },
-        error: String(e ?? "workflows_run failed"),
+        error: log,
       });
+      recordWorkflowRunHistory({
+        name,
+        mode,
+        outcome: "soft_fail",
+        reason: "soft_fail",
+        log,
+        source: "settings",
+      });
+    }
+  };
+
+  const runCreate = async (opts: {
+    name: string;
+    scope: WorkflowCreateScope;
+    force?: boolean;
+  }) => {
+    if (!api.isTauri()) {
+      setCreateError(t("settings.workflows.create.desktopOnly"));
+      return;
+    }
+    const stem = sanitizeWorkflowName(opts.name);
+    if (!stem) {
+      setCreateError(t("settings.workflows.create.nameInvalid"));
+      return;
+    }
+    if (opts.scope === "project" && !projectPath?.trim()) {
+      setCreateError(t("settings.workflows.create.needProject"));
+      return;
+    }
+    setCreateBusy(true);
+    setCreateError(null);
+    try {
+      const res = await api.workflowsCreate({
+        name: stem,
+        scope: opts.scope,
+        projectPath,
+        force: opts.force ?? false,
+      });
+      setCreateOpen(false);
+      setOverwriteTarget(null);
+      setCreateName("");
+      await refresh();
+      showToast?.(
+        res.overwritten
+          ? t("settings.workflows.create.overwritten", { name: res.name })
+          : t("settings.workflows.create.created", { name: res.name }),
+        2800,
+      );
+      if (res.path) {
+        void openInEditor(res.path);
+      }
+    } catch (e) {
+      const msg = String(e || "");
+      if (/already exists/i.test(msg) && !opts.force) {
+        setOverwriteTarget({ name: stem, scope: opts.scope });
+        setCreateError(null);
+      } else if (/invalid|reserved|path|required/i.test(msg)) {
+        setCreateError(t("settings.workflows.create.nameInvalid"));
+      } else {
+        setCreateError(msg || t("settings.workflows.create.error"));
+      }
+    } finally {
+      setCreateBusy(false);
     }
   };
 
@@ -201,7 +413,13 @@ export function WorkflowsDiscoveryBlock({
       })
     : null;
 
-  const anyBusy = !!runState?.busy;
+  const anyBusy = !!runState?.busy || createBusy;
+
+  const outcomeLabel = (o: WorkflowRunHistoryRecord["outcome"]) => {
+    if (o === "ok") return t("settings.workflows.history.outcome.ok");
+    if (o === "error") return t("settings.workflows.history.outcome.error");
+    return t("settings.workflows.history.outcome.softFail");
+  };
 
   return (
     <div className="settings-workflows-discovery">
@@ -210,17 +428,28 @@ export function WorkflowsDiscoveryBlock({
           ? t("settings.workflows.scanning")
           : summary
             ? t("settings.workflows.discovered", { names: summary })
-            : t("settings.workflows.noneFound")}
+            : listEmpty
+              ? t(
+                  EMPTY_LIST_KEYS[listEmpty.key] ??
+                    "settings.workflows.noneFound",
+                )
+              : t("settings.workflows.noneFound")}
         {error ? ` · ${t("settings.workflows.scanSoftFail")}` : null}
       </div>
       <div className="settings-row__hint settings-workflows-run-hint">
         {t("settings.workflows.runHonesty")}
       </div>
+      <div className="settings-row__hint settings-workflows-run-hint">
+        {t("settings.workflows.authorHint")}
+      </div>
+
       {workflows.length > 0 ? (
-        <ul className="settings-workflows-list" aria-label={t("settings.workflows")}>
+        <ul
+          className="settings-workflows-list"
+          aria-label={t("settings.workflows")}
+        >
           {workflows.slice(0, 24).map((w) => {
-            const runningThis =
-              anyBusy && runState?.name === w.name;
+            const runningThis = anyBusy && runState?.name === w.name;
             return (
               <li key={`${w.scope}:${w.path}`}>
                 <div className="settings-workflows-list__row">
@@ -228,11 +457,7 @@ export function WorkflowsDiscoveryBlock({
                     type="button"
                     className="btn btn--ghost btn--sm"
                     title={w.path}
-                    onClick={() => {
-                      void api.pathReveal(w.path).catch(() => {
-                        showToast?.(t("settings.workflows.dirMissing"), 2800);
-                      });
-                    }}
+                    onClick={() => void revealPath(w.path)}
                   >
                     {w.name}
                     <span className="settings-workflows-list__scope">
@@ -241,6 +466,24 @@ export function WorkflowsDiscoveryBlock({
                     </span>
                   </button>
                   <span className="settings-workflows-list__actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={anyBusy}
+                      title={t("settings.workflows.revealTitle")}
+                      onClick={() => void revealPath(w.path)}
+                    >
+                      {t("settings.workflows.reveal")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={anyBusy}
+                      title={t("settings.workflows.openEditorTitle")}
+                      onClick={() => void openInEditor(w.path)}
+                    >
+                      {t("settings.workflows.openEditor")}
+                    </button>
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"
@@ -328,7 +571,134 @@ export function WorkflowsDiscoveryBlock({
         </div>
       ) : null}
 
-      <div className="settings-row__actions" style={{ gap: 8, flexWrap: "wrap" }}>
+      {/* Recent runs */}
+      <div className="settings-workflows-history">
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm settings-workflows-history__toggle"
+          aria-expanded={historyOpen}
+          onClick={() => setHistoryOpen((v) => !v)}
+        >
+          {historyOpen
+            ? t("settings.workflows.history.hide")
+            : t("settings.workflows.history.show", {
+                count: String(history.length),
+              })}
+        </button>
+        {historyOpen ? (
+          <div className="settings-workflows-history__panel">
+            <div className="settings-row__hint">
+              {t("settings.workflows.history.honesty")}
+            </div>
+            {history.length > 0 ? (
+              <div
+                className="settings-workflows-history__filters"
+                role="group"
+                aria-label={t("settings.workflows.history.filter")}
+              >
+                {(
+                  [
+                    "all",
+                    "ok",
+                    "error",
+                    "soft_fail",
+                    "validate",
+                    "launch",
+                  ] as WorkflowRunHistoryFilter[]
+                ).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    className={
+                      "btn btn--ghost btn--sm" +
+                      (historyFilter === f ? " is-active" : "")
+                    }
+                    onClick={() => setHistoryFilter(f)}
+                  >
+                    {f === "all"
+                      ? t("settings.workflows.history.filter.all")
+                      : f === "ok"
+                        ? t("settings.workflows.history.outcome.ok")
+                        : f === "error"
+                          ? t("settings.workflows.history.outcome.error")
+                          : f === "soft_fail"
+                            ? t("settings.workflows.history.outcome.softFail")
+                            : f === "launch"
+                              ? t("settings.workflows.run.mode.launch")
+                              : t("settings.workflows.run.mode.validate")}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setClearHistoryOpen(true)}
+                >
+                  {t("settings.workflows.history.clear")}
+                </button>
+              </div>
+            ) : null}
+            {historyEmpty ? (
+              <div className="settings-row__hint">
+                {t("settings.workflows.empty.history_empty")}
+              </div>
+            ) : filteredHistory.length === 0 ? (
+              <div className="settings-row__hint">
+                {t("settings.workflows.history.filterEmpty")}
+              </div>
+            ) : (
+              <ul
+                className="settings-workflows-history__list"
+                aria-label={t("settings.workflows.history")}
+              >
+                {filteredHistory.slice(0, 20).map((h) => (
+                  <li key={h.id} className="settings-workflows-history__item">
+                    <div className="settings-workflows-history__item-title">
+                      <strong>{h.name}</strong>
+                      <span className="settings-workflows-list__scope">
+                        {" "}
+                        ·{" "}
+                        {h.mode === "launch"
+                          ? t("settings.workflows.run.mode.launch")
+                          : t("settings.workflows.run.mode.validate")}
+                        {" · "}
+                        {outcomeLabel(h.outcome)}
+                      </span>
+                    </div>
+                    <div className="settings-row__hint">
+                      {formatHistoryWhen(h.at, locale)}
+                      {h.reason ? ` · ${reasonLabel(h.reason)}` : ""}
+                      {typeof h.durationMs === "number"
+                        ? ` · ${h.durationMs}ms`
+                        : ""}
+                    </div>
+                    {h.logSnippet ? (
+                      <pre className="settings-workflows-run-result__log">
+                        {h.logSnippet}
+                      </pre>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      <div
+        className="settings-row__actions"
+        style={{ gap: 8, flexWrap: "wrap" }}
+      >
+        <button
+          type="button"
+          className="btn btn--ghost settings-row__action"
+          onClick={() => {
+            setCreateError(null);
+            setCreateOpen(true);
+          }}
+          disabled={anyBusy || !api.isTauri()}
+        >
+          {t("settings.workflows.create")}
+        </button>
         <button
           type="button"
           className="btn btn--ghost settings-row__action"
@@ -354,6 +724,203 @@ export function WorkflowsDiscoveryBlock({
           </button>
         ) : null}
       </div>
+
+      {/* New from template */}
+      <GlassModal
+        open={createOpen}
+        onClose={() => {
+          if (!createBusy) setCreateOpen(false);
+        }}
+        title={t("settings.workflows.create.title")}
+        size="md"
+        closeLabel={t("common.close")}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={createBusy}
+              onClick={() => setCreateOpen(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={!canSubmitCreate}
+              onClick={() =>
+                void runCreate({ name: createName, scope: createScope })
+              }
+            >
+              {createBusy
+                ? t("settings.workflows.create.creating")
+                : t("settings.workflows.create.submit")}
+            </button>
+          </>
+        }
+      >
+        <form
+          className="app-dialog__form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (canSubmitCreate) {
+              void runCreate({ name: createName, scope: createScope });
+            }
+          }}
+        >
+          <p className="ext-field-hint">{t("settings.workflows.create.hint")}</p>
+          <label className="field">
+            <span>{t("settings.workflows.create.name")}</span>
+            <input
+              className="app-dialog__input"
+              value={createName}
+              onChange={(e) => {
+                setCreateName(e.target.value);
+                setCreateError(null);
+              }}
+              placeholder={t("settings.workflows.create.namePlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={createBusy}
+              autoFocus
+            />
+            {namePreview && namePreview !== createName.trim() ? (
+              <span className="ext-field-hint">
+                {t("settings.workflows.create.namePreview", {
+                  name: namePreview,
+                })}
+              </span>
+            ) : null}
+          </label>
+          <label className="field">
+            <span>{t("settings.workflows.create.scope")}</span>
+            <select
+              className="app-dialog__input"
+              value={createScope}
+              disabled={createBusy}
+              onChange={(e) => {
+                setCreateScope(
+                  e.target.value === "project" ? "project" : "user",
+                );
+                setCreateError(null);
+              }}
+              aria-label={t("settings.workflows.create.scope")}
+            >
+              <option value="user">
+                {t("settings.workflows.scope.user")}
+              </option>
+              <option value="project" disabled={!projectPath?.trim()}>
+                {t("settings.workflows.scope.project")}
+              </option>
+            </select>
+            {!projectPath?.trim() ? (
+              <span className="ext-field-hint">
+                {t("settings.workflows.create.needProjectHint")}
+              </span>
+            ) : null}
+          </label>
+          <p className="ext-field-hint">
+            {t("settings.workflows.create.argsNote")}
+          </p>
+          {createPlan.path ? (
+            <p className="ext-field-hint" title={createPlan.path}>
+              {t("settings.workflows.create.pathPreview", {
+                path: createPlan.path,
+              })}
+            </p>
+          ) : null}
+          {createError ? (
+            <div className="ext-alert ext-alert--error" role="alert">
+              <p className="ext-alert__body">{createError}</p>
+            </div>
+          ) : null}
+        </form>
+      </GlassModal>
+
+      {/* Overwrite confirm */}
+      <GlassModal
+        open={!!overwriteTarget}
+        onClose={() => {
+          if (!createBusy) setOverwriteTarget(null);
+        }}
+        title={t("settings.workflows.create.overwriteTitle")}
+        size="sm"
+        closeLabel={t("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={createBusy}
+              onClick={() => setOverwriteTarget(null)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={createBusy}
+              onClick={() => {
+                if (!overwriteTarget) return;
+                void runCreate({
+                  name: overwriteTarget.name,
+                  scope: overwriteTarget.scope,
+                  force: true,
+                });
+              }}
+            >
+              {createBusy
+                ? t("settings.workflows.create.creating")
+                : t("settings.workflows.create.overwrite")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">
+          {t("settings.workflows.create.overwriteBody", {
+            name: overwriteTarget?.name ?? "",
+          })}
+        </p>
+      </GlassModal>
+
+      {/* Clear history confirm */}
+      <GlassModal
+        open={clearHistoryOpen}
+        onClose={() => setClearHistoryOpen(false)}
+        title={t("settings.workflows.history.clearTitle")}
+        size="sm"
+        closeLabel={t("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setClearHistoryOpen(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={() => {
+                clearWorkflowRunHistory();
+                setHistory([]);
+                setClearHistoryOpen(false);
+                showToast?.(t("settings.workflows.history.cleared"), 2200);
+              }}
+            >
+              {t("settings.workflows.history.clearConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">
+          {t("settings.workflows.history.clearBody", {
+            count: String(history.length),
+          })}
+        </p>
+      </GlassModal>
     </div>
   );
 }

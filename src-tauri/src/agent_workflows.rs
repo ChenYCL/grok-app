@@ -300,6 +300,162 @@ pub fn is_valid_workflow_name(name: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
+/// Sanitize a raw name into a safe workflow filename stem.
+/// Mirrors `src/lib/workflowsAuthor.ts` `sanitizeWorkflowName`.
+pub fn sanitize_workflow_name(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("invalid workflow name".into());
+    }
+    if trimmed.contains("..") || trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("invalid workflow name".into());
+    }
+    let mut s = trimmed.to_string();
+    if s.to_ascii_lowercase().ends_with(".rhai") {
+        s = s[..s.len() - ".rhai".len()].trim().to_string();
+    }
+    // Spaces / dots → dash; drop other junk; keep underscore.
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+        } else if ch == '_' {
+            if !out.ends_with('_') {
+                out.push('_');
+            }
+        } else if ch == '-' || ch.is_whitespace() || ch == '.' {
+            if !out.is_empty() && !out.ends_with('-') && !out.ends_with('_') {
+                out.push('-');
+            }
+        }
+        // else drop
+    }
+    while out.ends_with('-') || out.ends_with('_') {
+        out.pop();
+    }
+    if out.is_empty() || out.len() > WORKFLOW_NAME_MAX_LEN {
+        return Err("invalid workflow name".into());
+    }
+    if out.eq_ignore_ascii_case("readme") {
+        return Err("reserved workflow name".into());
+    }
+    if !is_valid_workflow_name(&out) {
+        return Err("invalid workflow name".into());
+    }
+    Ok(out)
+}
+
+/// Minimal valid-ish Rhai scaffold (pure-literal meta). Honest comments only.
+pub fn default_workflow_template(name: &str) -> Result<String, String> {
+    let safe = sanitize_workflow_name(name)?;
+    Ok(format!(
+        r#"// Workflow scaffold: {safe}
+// Full authoring: create-workflow skill (/create-workflow) or edit this .rhai.
+// This App lists, creates templates, and smoke/runs — no visual graph editor.
+// Optional args: pass an object via the workflow tool `args` map when launching.
+
+let meta = #{{
+    name: "{safe}",
+    description: "Template scaffold — replace with real orchestration steps",
+}};
+
+// Guard optional args (unit `()` when absent).
+let _note = if args == () {{ "no args" }} else {{ "args present" }};
+log("template " + meta.name + " ready (" + _note + ") — edit or use /create-workflow");
+complete(#{{ summary: "template scaffold", name: meta.name }});
+"#
+    ))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowCreateResult {
+    pub name: String,
+    pub path: String,
+    pub scope: String,
+    pub created: bool,
+    pub overwritten: bool,
+}
+
+/// Resolve writable workflows directory for create scope.
+///
+/// - `user` → `~/.grok/workflows` (matches discovery + create-workflow skill)
+/// - `project` → `{project}/.grok/workflows`
+fn resolve_create_workflows_dir(
+    scope: &str,
+    project_path: Option<&str>,
+) -> Result<(PathBuf, String), String> {
+    let scope = scope.trim().to_ascii_lowercase();
+    match scope.as_str() {
+        "user" | "" => {
+            let home = crate::process_util::user_home();
+            Ok((home.join(".grok").join("workflows"), "user".into()))
+        }
+        "project" => {
+            let proj = project_path
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "project path required for project scope".to_string())?;
+            if proj.contains('\0') {
+                return Err("invalid project path".into());
+            }
+            let root = PathBuf::from(proj);
+            if root
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                return Err("invalid project path".into());
+            }
+            Ok((root.join(".grok").join("workflows"), "project".into()))
+        }
+        other => Err(format!("unknown workflow scope: {other}")),
+    }
+}
+
+/// Create `{name}.rhai` under the scoped workflows dir. Path-scoped only.
+/// Rejects overwrite unless `force` is true. Soft soft-fail via Result.
+pub fn create_workflow_template(
+    name: &str,
+    scope: &str,
+    project_path: Option<&str>,
+    force: bool,
+) -> Result<WorkflowCreateResult, String> {
+    let stem = sanitize_workflow_name(name)?;
+    let (dir, scope_label) = resolve_create_workflows_dir(scope, project_path)?;
+    let path = dir.join(format!("{stem}.rhai"));
+
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("path not allowed: traversal".into());
+    }
+    if path.parent() != Some(dir.as_path()) {
+        return Err("path not allowed: outside workflows directory".into());
+    }
+
+    let exists = path.is_file();
+    if exists && !force {
+        return Err(format!(
+            "workflow already exists: {} (pass force to overwrite)",
+            path.display()
+        ));
+    }
+
+    fs::create_dir_all(&dir).map_err(|e| format!("could not create workflows dir: {e}"))?;
+    let body = default_workflow_template(&stem)?;
+    fs::write(&path, body.as_bytes())
+        .map_err(|e| format!("could not write workflow file: {e}"))?;
+
+    Ok(WorkflowCreateResult {
+        name: stem,
+        path: path.display().to_string(),
+        scope: scope_label,
+        created: !exists,
+        overwritten: exists && force,
+    })
+}
+
 /// Normalize run mode; unknown → `validate` (safest Settings path).
 pub fn normalize_run_mode(raw: &str) -> &'static str {
     match raw.trim().to_ascii_lowercase().as_str() {
@@ -663,6 +819,56 @@ mod tests {
         assert!(!is_valid_workflow_name("a/b"));
         assert!(!is_valid_workflow_name("has space"));
         assert!(!is_valid_workflow_name(&"a".repeat(100)));
+    }
+
+    #[test]
+    fn sanitizes_and_templates() {
+        assert_eq!(
+            sanitize_workflow_name("  my workflow  ").as_deref(),
+            Ok("my-workflow")
+        );
+        assert_eq!(
+            sanitize_workflow_name("find.flaky.rhai").as_deref(),
+            Ok("find-flaky")
+        );
+        assert!(sanitize_workflow_name("../evil").is_err());
+        assert!(sanitize_workflow_name("README").is_err());
+        let body = default_workflow_template("review-changes").unwrap();
+        assert!(body.contains("let meta = #{"));
+        assert!(body.contains("review-changes"));
+        assert!(body.contains("create-workflow"));
+        assert!(!body.contains("parallel("));
+    }
+
+    #[test]
+    fn create_workflow_template_project_idempotent() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-wf-create-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let r1 = create_workflow_template("demo-wf", "project", Some(tmp.to_str().unwrap()), false)
+            .unwrap();
+        assert!(r1.created);
+        assert!(!r1.overwritten);
+        assert!(Path::new(&r1.path).is_file());
+        let err = create_workflow_template(
+            "demo-wf",
+            "project",
+            Some(tmp.to_str().unwrap()),
+            false,
+        );
+        assert!(err.is_err());
+        let r2 = create_workflow_template(
+            "demo-wf",
+            "project",
+            Some(tmp.to_str().unwrap()),
+            true,
+        )
+        .unwrap();
+        assert!(r2.overwritten);
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

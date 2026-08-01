@@ -485,6 +485,23 @@
   line-height: 1.4 !important;
 }
 
+/* CLI checksum trust risk chip (missing sidecar / mismatch honesty) */
+.setup-trust-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.setup-trust-chip-row__hint {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
 .setup-error {
   display: flex;
   flex-direction: column;

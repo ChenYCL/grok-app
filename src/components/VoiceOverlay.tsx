@@ -1,5 +1,6 @@
 /**
- * Live Voice overlay — full-duplex session UI + delegated agent chips.
+ * Live Voice overlay — command center: full-duplex UI + delegated session
+ * chips, tool/permission status, keep-agents honesty.
  *
  * Status (listening / thinking / speaking / Build tool+permission path)
  * comes from host voice:// events + real session://permission for
@@ -21,6 +22,18 @@ import {
   type VoiceSessionState,
 } from "@/lib/api";
 import { playPcm16Base64, startPcmCapture } from "@/lib/voiceAudio";
+import {
+  buildVoiceSessionChips,
+  formatVoiceToolStatus,
+  hasRunningVoiceDelegates,
+  mergeVoiceSessionsForChips,
+  normalizeVoiceChipStatus,
+  planVoiceEnd,
+  resolveKeepAgentsBanner,
+  resolveVoiceCenterEmptyState,
+  voiceCenterEmptyMessageKey,
+  type VoiceSessionChipInput,
+} from "@/lib/voiceCommandCenter";
 import {
   canSendTranscriptAsPrompt,
   classifyLiveVoiceError,
@@ -64,7 +77,16 @@ export type VoiceOverlayProps = {
   keepAgentsOnEnd?: boolean;
   /** When true, the workbench has an active chat that can accept a prompt. */
   hasActiveSession?: boolean;
+  /**
+   * Sidebar / live session rows for chip titles + status.
+   * Overlay merges with host delegatedSessionIds (never invents STT).
+   */
+  sessions?: readonly VoiceSessionChipInput[] | null;
+  /** Soft auth gate for empty-state honesty (CLI / account). Default true. */
+  hasVoiceAuth?: boolean;
   onClose: () => void;
+  /** Focus a coding session (chip click). Alias of onOpenSession. */
+  onFocusSession?: (sessionId: string) => void;
   onOpenSession?: (sessionId: string) => void;
   /**
    * Optional: send formatted host transcript as a user prompt on the active
@@ -117,10 +139,14 @@ export function VoiceOverlay({
   voiceId,
   keepAgentsOnEnd = true,
   hasActiveSession = false,
+  sessions: sessionSummaries = null,
+  hasVoiceAuth = true,
   onClose,
+  onFocusSession,
   onOpenSession,
   onSendTranscriptAsPrompt,
 }: VoiceOverlayProps) {
+  const focusSession = onFocusSession ?? onOpenSession;
   const tt = useCallback(
     (key: MessageKey, vars?: Record<string, string | number>) => t(locale, key, vars),
     [locale],
@@ -543,6 +569,14 @@ export function VoiceOverlay({
   });
   const statusLabel = tt(phaseMessageKey(phase));
   const toolStatusKey = toolLoopStatusMessageKey(toolLoop);
+  const formattedTool = useMemo(
+    () =>
+      formatVoiceToolStatus({
+        name: toolLoop.name,
+        status: toolLoop.status,
+      }),
+    [toolLoop.name, toolLoop.status],
+  );
   const softMicLabel = softMicWarning
     ? tt(liveVoiceErrorMessageKey(softMicWarning) as MessageKey)
     : null;
@@ -553,6 +587,49 @@ export function VoiceOverlay({
         deny: tt("perm.deny"),
       })
     : [];
+
+  const sessionChips = useMemo(() => {
+    const merged = mergeVoiceSessionsForChips({
+      delegatedIds: state?.delegatedSessionIds ?? [],
+      // Only pass busy/permission rows as non-delegated candidates;
+      // idle sidebar chats stay out of the command-center strip.
+      sessions: (sessionSummaries ?? []).filter((s) => {
+        const st = normalizeVoiceChipStatus(s.status);
+        return st === "running" || st === "permission" || Boolean(s.isDelegated);
+      }),
+    });
+    // Prefer host-delegated chips; fall back to active Build sessions only.
+    const delegatedOnly = buildVoiceSessionChips(merged, {
+      preferDelegatedOnly: true,
+    });
+    if (delegatedOnly.length > 0) return delegatedOnly;
+    return buildVoiceSessionChips(merged, { preferDelegatedOnly: false }).filter(
+      (c) => c.status === "running" || c.status === "permission",
+    );
+  }, [state?.delegatedSessionIds, sessionSummaries]);
+
+  const keepBanner = useMemo(
+    () => resolveKeepAgentsBanner(keepAgentsOnEnd),
+    [keepAgentsOnEnd],
+  );
+  const endPlan = useMemo(
+    () =>
+      planVoiceEnd({
+        keepAgents: keepAgentsOnEnd,
+        hasRunningDelegates: hasRunningVoiceDelegates(sessionChips),
+      }),
+    [keepAgentsOnEnd, sessionChips],
+  );
+
+  const hasMic = !softMicWarning || !isSoftMicFailure(softMicWarning);
+  const centerEmptyKind = resolveVoiceCenterEmptyState({
+    hasMic,
+    hasAuth: hasVoiceAuth,
+    hasDelegates: hasDelegatedSessions(state) || sessionChips.length > 0,
+    transcriptEmpty:
+      emptyKind === "none" || emptyKind === "system_only",
+  });
+  const centerEmptyKey = voiceCenterEmptyMessageKey(centerEmptyKind);
 
   const handleSendTranscript = async () => {
     if (!showSend || !onSendTranscriptAsPrompt || !transcriptPrompt.trim()) {
@@ -599,38 +676,58 @@ export function VoiceOverlay({
                 aria-hidden
               />
               {statusLabel}
-              {toolStatusKey &&
-              (toolBusy ||
-                toolLoop.status === "completed" ||
-                toolLoop.status === "ok" ||
-                toolLoop.status === "soft_fail" ||
-                toolLoop.status === "error") ? (
-                <span
-                  className={cn(
-                    "voice-overlay__tool-chip",
-                    `is-${toolLoop.status === "running" ? "tool_running" : toolLoop.status === "ok" ? "completed" : toolLoop.status}`,
-                  )}
-                >
-                  {tt(toolStatusKey, {
-                    name: toolLoop.name ?? "tool",
-                    reason: toolLoop.reason ?? "",
-                    title:
-                      toolLoop.permissionTitle ??
-                      toolLoop.name ??
-                      "",
-                  })}
-                </span>
-              ) : null}
             </div>
           </div>
           <button
             type="button"
             className="voice-overlay__end"
+            title={tt(endPlan.noteMessageKey as MessageKey)}
             onClick={() => void handleEnd()}
           >
             {tt("voice.stop")}
           </button>
         </header>
+
+        {/* Tool + permission status region (host events only). */}
+        <div
+          className="voice-overlay__tool-status"
+          role="status"
+          data-tool-status={formattedTool.status}
+          data-tool-name={formattedTool.name ?? undefined}
+          data-permission-pending={permPending ? "true" : undefined}
+        >
+          {toolStatusKey &&
+          (toolBusy ||
+            toolLoop.status === "completed" ||
+            toolLoop.status === "ok" ||
+            toolLoop.status === "soft_fail" ||
+            toolLoop.status === "error" ||
+            permPending) ? (
+            <span
+              className={cn(
+                "voice-overlay__tool-chip",
+                `is-${
+                  toolLoop.status === "running"
+                    ? "tool_running"
+                    : toolLoop.status === "ok"
+                      ? "completed"
+                      : toolLoop.status
+                }`,
+              )}
+            >
+              {tt(toolStatusKey, {
+                name: toolLoop.name ?? "tool",
+                reason: toolLoop.reason ?? "",
+                title:
+                  toolLoop.permissionTitle ?? toolLoop.name ?? "",
+              })}
+            </span>
+          ) : (
+            <span className="voice-overlay__tool-idle">
+              {tt("voice.center.toolIdle")}
+            </span>
+          )}
+        </div>
 
         {error ? <div className="voice-overlay__error">{error}</div> : null}
         {!error && softMicLabel ? (
@@ -691,6 +788,54 @@ export function VoiceOverlay({
           </div>
         ) : null}
 
+        {/* Session chips strip — delegated / active Build sessions. */}
+        <section
+          className="voice-overlay__chips-strip"
+          aria-label={tt("voice.delegated")}
+        >
+          <div className="voice-overlay__delegated-title">
+            {tt("voice.delegated")}
+          </div>
+          {sessionChips.length === 0 ? (
+            <div className="voice-overlay__muted">{tt("voice.noDelegated")}</div>
+          ) : (
+            <ul className="voice-overlay__chips">
+              {sessionChips.map((chip) => (
+                <li key={chip.id}>
+                  <button
+                    type="button"
+                    className={cn(
+                      "voice-overlay__chip",
+                      `is-${chip.tone}`,
+                      chip.isDelegated && "is-delegated",
+                    )}
+                    data-session-id={chip.id}
+                    data-status={chip.status}
+                    title={chip.id}
+                    onClick={() => focusSession?.(chip.id)}
+                  >
+                    <span
+                      className={cn(
+                        "voice-overlay__chip-dot",
+                        `is-${chip.tone}`,
+                      )}
+                      aria-hidden
+                    />
+                    <span className="voice-overlay__chip-label">
+                      {chip.label}
+                    </span>
+                    {chip.isDelegated ? (
+                      <span className="voice-overlay__chip-tag">
+                        {tt("voice.center.chipDelegated")}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         <div className="voice-overlay__wave" aria-hidden>
           <span
             className={cn(
@@ -725,12 +870,13 @@ export function VoiceOverlay({
         </div>
 
         <div className="voice-overlay__transcript">
-          {emptyKind === "none" ? (
-            <div className="voice-overlay__muted">{tt("voice.transcriptEmpty")}</div>
-          ) : null}
-          {emptyKind === "system_only" ? (
+          {emptyKind === "none" || emptyKind === "system_only" ? (
             <div className="voice-overlay__muted">
-              {tt("voice.transcriptSystemOnly")}
+              {centerEmptyKey
+                ? tt(centerEmptyKey as MessageKey)
+                : emptyKind === "system_only"
+                  ? tt("voice.transcriptSystemOnly")
+                  : tt("voice.transcriptEmpty")}
             </div>
           ) : null}
           {lines.map((l) => (
@@ -770,25 +916,6 @@ export function VoiceOverlay({
               </div>
             )
           ) : null}
-        </div>
-
-        <section className="voice-overlay__delegated">
-          <div className="voice-overlay__delegated-title">
-            {tt("voice.delegated")}
-          </div>
-          {!hasDelegatedSessions(state) ? (
-            <div className="voice-overlay__muted">{tt("voice.noDelegated")}</div>
-          ) : (
-            <ul className="voice-overlay__chips">
-              {(state?.delegatedSessionIds ?? []).map((id) => (
-                <li key={id}>
-                  <button type="button" onClick={() => onOpenSession?.(id)}>
-                    {tt("voice.openSession")} · {id.slice(0, 8)}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
           {state?.mock ? (
             <button
               type="button"
@@ -798,7 +925,23 @@ export function VoiceOverlay({
               {tt("voice.demoDelegate")}
             </button>
           ) : null}
-        </section>
+        </div>
+
+        {/* Footer honesty: keep coding sessions pref + end-session note. */}
+        <footer className="voice-overlay__footer">
+          <div
+            className={cn(
+              "voice-overlay__keep-banner",
+              keepBanner.keep ? "is-keep" : "is-cancel",
+            )}
+            data-keep-agents={keepBanner.keep ? "true" : "false"}
+          >
+            {tt(keepBanner.messageKey as MessageKey)}
+          </div>
+          <div className="voice-overlay__end-note">
+            {tt(endPlan.noteMessageKey as MessageKey)}
+          </div>
+        </footer>
       </div>
     </div>
   );

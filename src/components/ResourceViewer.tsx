@@ -13,13 +13,20 @@ import {
   type ReactNode,
 } from "react";
 import * as api from "@/lib/api";
-import { createT, type Locale } from "@/i18n";
+import { createT, type Locale, type MessageKey } from "@/i18n";
 import { resolvePreviewSrc } from "@/lib/filePreviewSrc";
 import {
   formatMediaLoadErrorMessage,
   mediaLoadErrorLabelMap,
   resolveMediaLoadError,
 } from "@/lib/mediaLoadPro";
+import {
+  formatOpenEditorErrorMessage,
+  formatRevealErrorMessage,
+  planOpenInEditor,
+  resolveOpenEditorError,
+  resolveRevealError,
+} from "@/lib/openEditorHonesty";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
 import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
 import { MarkdownBody } from "@/components/MarkdownBody";
@@ -40,7 +47,9 @@ import {
   IconFileDiff,
   IconFolder,
   IconFiles,
+  IconList,
   IconListTree,
+  IconChat,
   IconPlan,
   IconRefresh,
   IconRewind,
@@ -48,12 +57,23 @@ import {
   IconUpload,
 } from "@/components/icons";
 import { PlanReviewPanel } from "@/components/PlanReviewPanel";
+import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import type { PlanReviewState } from "@/lib/planBody";
+import type { ChatMessage } from "@/lib/session";
 import {
   resolvePlanResourceEmptyState,
   shouldAutoLeavePlanSideMode,
   shouldShowPlanChromeButton,
 } from "@/lib/planModePro";
+import {
+  AGENTS_RAIL_SIDE_MODE,
+  countAgentsRailRunning,
+  shouldShowAgentsRailBadge,
+} from "@/lib/agentsRail";
+import {
+  collectSessionTasks,
+} from "@/lib/sessionTasks";
+import type { TasksBindCwdResult } from "@/lib/tasksPanelPro";
 import { OfficeDocumentPreview } from "@/components/OfficeDocumentPreview";
 import { CodePreview } from "@/components/CodePreview";
 import { isOfficeKind } from "@/lib/filePreviewSrc";
@@ -61,7 +81,6 @@ import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { Tip } from "@/components/ui/tooltip";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { GlassModal } from "@/components/GlassModal";
-import type { MessageKey } from "@/i18n";
 import {
   buildUnifiedDiff,
   changeListKey,
@@ -92,6 +111,10 @@ import {
   type UnifiedHunk,
 } from "@/lib/diffAccept";
 import {
+  formatHunkSnippet,
+  planDiffCommentToChat,
+} from "@/lib/diffComment";
+import {
   filterWorkspaceGitEntries,
   normalizeWorkspaceGitEntries,
   resolveWorkspaceAbsolutePath,
@@ -105,6 +128,15 @@ import {
   isResourceDraftDirty,
   isResourceTextEditable,
 } from "@/lib/resourceEdit";
+import {
+  closeResourceTab,
+  openResourceTab,
+  resolveResourceTabsEmptyState,
+  resourceTabPathsEqual,
+  setActiveTab,
+  type OpenResourceTabResult,
+  type ResourceTab,
+} from "@/lib/resourceTabs";
 import {
   asideSurfaceFromPreviewKind,
   type AsideLayoutHint,
@@ -163,11 +195,23 @@ export interface ResourceViewerProps {
    */
   sessionChanges?: SessionFileChange[];
   /**
-   * Active session messages (optional; used by some side-pane helpers).
-   * Accepted for forward-compat with App; not required for core file/plan UI.
+   * Active session messages — drives Resources → Agents task tree.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sessionMessages?: any[];
+  sessionMessages?: ChatMessage[];
+  /**
+   * Bind chat cwd from a subagent worktree path (Agents rail / Tasks panel).
+   */
+  onOpenAgentsCwd?: (
+    cwd: string,
+  ) => void | TasksBindCwdResult | Promise<void | TasksBindCwdResult>;
+  /** Current chat project path — marks active cwd on Agents rail rows. */
+  activeCwd?: string | null;
+  /**
+   * CLI subagent worktree snapshot mode (`subagent_worktree_snapshot_enabled`).
+   */
+  subagentWorktreeSnapshotEnabled?: boolean;
+  /** Current session is streaming / connecting / awaiting permission. */
+  sessionBusy?: boolean;
   /**
    * Live plan snapshot for Plan review mode (exit_plan_mode / progress).
    */
@@ -200,13 +244,18 @@ export interface ResourceViewerProps {
    */
   onShip?: () => void;
   /**
+   * Diff hunk review comment → parent inserts structured prompt into composer
+   * (prefer draft insert over auto-send). When omitted, per-hunk Comment is hidden.
+   */
+  onDiffCommentToChat?: (prompt: string) => void;
+  /**
    * Content-aware right-pane layout hint (preview kind, tree open, tabs).
    * App soft-grows aside width so chrome icons never collide with window controls.
    */
   onAsideLayoutHint?: (hint: AsideLayoutHint) => void;
 }
 
-type SideMode = "files" | "changes" | "plan";
+type SideMode = "files" | "changes" | "plan" | typeof AGENTS_RAIL_SIDE_MODE;
 
 type DiffLayout = "unified" | "split";
 
@@ -277,6 +326,50 @@ interface FileTab {
   saving?: boolean;
 }
 
+/** Slim strip model for pure open/close/LRU helpers. */
+function fileTabToResourceTab(t: FileTab): ResourceTab {
+  const path =
+    t.tabKind === "url"
+      ? t.url || t.relativePath
+      : t.absolutePath || t.relativePath;
+  return {
+    id: t.id,
+    path,
+    name: t.name,
+    kind: t.preview?.kind,
+    dirty: isResourceDraftDirty(t.draftText, t.baselineText),
+  };
+}
+
+/** Match a file tab by absolute or relative path (normalized). */
+function fileTabMatchesPath(t: FileTab, path: string): boolean {
+  if (t.tabKind === "url") {
+    return resourceTabPathsEqual(t.url || t.relativePath, path);
+  }
+  if (t.absolutePath && resourceTabPathsEqual(t.absolutePath, path)) return true;
+  if (t.relativePath && resourceTabPathsEqual(t.relativePath, path)) return true;
+  return false;
+}
+
+/**
+ * Apply pure open result onto rich FileTab list (order + LRU drops + optional create).
+ */
+function mergeFileTabsFromOpen(
+  prev: FileTab[],
+  open: OpenResourceTabResult,
+  created?: FileTab,
+): FileTab[] {
+  const byId = new Map(prev.map((t) => [t.id, t]));
+  if (created) byId.set(created.id, created);
+  for (const id of open.droppedIds) byId.delete(id);
+  const out: FileTab[] = [];
+  for (const r of open.tabs) {
+    const f = byId.get(r.id);
+    if (f) out.push(f);
+  }
+  return out;
+}
+
 function formatSize(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -339,6 +432,11 @@ export function ResourceViewer({
   onOpenRequestConsumed,
   paneActive = true,
   sessionChanges = [],
+  sessionMessages = [],
+  onOpenAgentsCwd,
+  activeCwd = null,
+  subagentWorktreeSnapshotEnabled = false,
+  sessionBusy = false,
   plan = null,
   planFocusKey = null,
   planChrome = null,
@@ -347,6 +445,7 @@ export function ResourceViewer({
   onDismissPlan,
   onOpenPlanHistory,
   onShip,
+  onDiffCommentToChat,
   onAsideLayoutHint,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -365,6 +464,14 @@ export function ResourceViewer({
   const lastPlanFocusKey = useRef<number | null>(null);
   /** User opened Plan via open-in-resources / planFocus — keep empty states. */
   const [userPinnedPlanSide, setUserPinnedPlanSide] = useState(false);
+
+  const agentsRailRunningCount = useMemo(
+    () => countAgentsRailRunning(collectSessionTasks(sessionMessages)),
+    [sessionMessages],
+  );
+  const showAgentsRailBadge = shouldShowAgentsRailBadge(
+    agentsRailRunningCount,
+  );
 
   const planResourceEmpty = useMemo(
     () =>
@@ -439,6 +546,18 @@ export function ResourceViewer({
   } | null>(null);
   /** In-app confirm for file-scoped reject-all-remaining hunks. */
   const [batchHunkRejectConfirm, setBatchHunkRejectConfirm] = useState(false);
+  /** Per-hunk review comment → insert structured prompt into composer. */
+  const [diffCommentTarget, setDiffCommentTarget] = useState<{
+    path: string;
+    name: string;
+    hunkIndex: number;
+    hunkHeader: string;
+    hunkSnippet: string;
+  } | null>(null);
+  const [diffCommentNote, setDiffCommentNote] = useState("");
+  const [diffCommentError, setDiffCommentError] = useState<
+    "empty" | "too_long" | "no_path" | "no_snippet" | null
+  >(null);
   /** Open-with target for the location button (finder / editor id). */
   const [openWithTarget, setOpenWithTarget] = useState(() => {
     try {
@@ -449,6 +568,14 @@ export function ResourceViewer({
   });
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
+  const filesTabsEmpty = useMemo(
+    () =>
+      resolveResourceTabsEmptyState({
+        tabCount: tabs.length,
+        sideMode,
+      }),
+    [tabs.length, sideMode],
+  );
   const changeCount = sessionChanges.length;
   const workspaceCount = workspaceFiles.length;
   const totalChangeBadge = changeCount + workspaceCount;
@@ -847,23 +974,46 @@ export function ResourceViewer({
     [projectPath],
   );
 
-  const openChangeInEditor = useCallback(async (path: string) => {
-    if (!path || !api.isTauri()) return;
-    try {
-      await api.openInEditor({ path });
-    } catch (e) {
-      setError(String(e));
-    }
-  }, []);
+  const openChangeInEditor = useCallback(
+    async (path: string) => {
+      const plan = planOpenInEditor({
+        path,
+        isTauri: api.isTauri(),
+      });
+      if (!plan.ok) {
+        if (plan.kind === "cancelled") return;
+        setError(tr(plan.messageKey as MessageKey));
+        return;
+      }
+      try {
+        await api.openInEditor({ path: plan.path });
+      } catch (e) {
+        const resolved = resolveOpenEditorError(e);
+        if (resolved.silent) return;
+        setError(formatOpenEditorErrorMessage(resolved, tr));
+      }
+    },
+    [tr],
+  );
 
-  const revealChangePath = useCallback(async (path: string) => {
-    if (!path || !api.isTauri()) return;
-    try {
-      await api.pathReveal(path);
-    } catch (e) {
-      setError(String(e));
-    }
-  }, []);
+  const revealChangePath = useCallback(
+    async (path: string) => {
+      if (!path) return;
+      if (!api.isTauri()) {
+        const resolved = resolveRevealError({ code: "host_only" });
+        setError(formatRevealErrorMessage(resolved, tr));
+        return;
+      }
+      try {
+        await api.pathReveal(path);
+      } catch (e) {
+        const resolved = resolveRevealError(e);
+        if (resolved.silent) return;
+        setError(formatRevealErrorMessage(resolved, tr));
+      }
+    },
+    [tr],
+  );
 
   const copyChangePath = useCallback(async (path: string) => {
     if (!path) return;
@@ -2125,18 +2275,28 @@ export function ResourceViewer({
       return;
     }
     const existing = tabs.find(
-      (t) => t.tabKind !== "url" && t.relativePath === relativePath,
+      (t) => t.tabKind !== "url" && fileTabMatchesPath(t, relativePath),
     );
-    if (existing) {
-      setTabs((prev) => {
-        const hit = prev.find((t) => t.id === existing.id);
-        if (!hit) return prev;
-        return [hit, ...prev.filter((t) => t.id !== existing.id)];
-      });
-      setActiveId(existing.id);
+    const keyPath = existing
+      ? fileTabToResourceTab(existing).path
+      : relativePath;
+    const open = openResourceTab(
+      tabs.map(fileTabToResourceTab),
+      keyPath,
+      existing
+        ? {
+            id: existing.id,
+            name: existing.name,
+            kind: existing.preview?.kind,
+          }
+        : { name: baseName(relativePath) },
+    );
+    if (!open.created) {
+      setTabs((prev) => mergeFileTabsFromOpen(prev, open));
+      setActiveId(open.activeId);
       return;
     }
-    const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const id = open.activeId;
     const tab: FileTab = {
       id,
       relativePath,
@@ -2148,8 +2308,7 @@ export function ResourceViewer({
       loading: true,
       tabKind: "file",
     };
-    // Newest tab on the left
-    setTabs((prev) => [tab, ...prev]);
+    setTabs((prev) => mergeFileTabsFromOpen(prev, open, tab));
     setActiveId(id);
     try {
       const r = await api.fsReadFile(projectPath, relativePath);
@@ -2184,21 +2343,27 @@ export function ResourceViewer({
       const norm = absolutePath.trim();
       if (!norm) return;
       const existing = tabs.find(
-        (t) =>
-          t.tabKind !== "url" &&
-          (t.absolutePath === norm || t.relativePath === norm),
+        (t) => t.tabKind !== "url" && fileTabMatchesPath(t, norm),
       );
-      if (existing) {
-        // Move existing to front + activate (Chrome-like focus)
-        setTabs((prev) => {
-          const hit = prev.find((t) => t.id === existing.id);
-          if (!hit) return prev;
-          return [hit, ...prev.filter((t) => t.id !== existing.id)];
-        });
-        setActiveId(existing.id);
+      const keyPath = existing ? fileTabToResourceTab(existing).path : norm;
+      const open = openResourceTab(
+        tabs.map(fileTabToResourceTab),
+        keyPath,
+        existing
+          ? {
+              id: existing.id,
+              name: title || existing.name,
+              kind: existing.preview?.kind,
+            }
+          : { name: title || baseName(norm) },
+      );
+      if (!open.created) {
+        // Move existing to front + activate (Chrome-like focus / MRU)
+        setTabs((prev) => mergeFileTabsFromOpen(prev, open));
+        setActiveId(open.activeId);
         return;
       }
-      const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const id = open.activeId;
       const tab: FileTab = {
         id,
         relativePath: norm,
@@ -2210,7 +2375,7 @@ export function ResourceViewer({
         loading: true,
         tabKind: "file",
       };
-      setTabs((prev) => [tab, ...prev]);
+      setTabs((prev) => mergeFileTabsFromOpen(prev, open, tab));
       setActiveId(id);
       try {
         const r = await api.fsOpenPath(norm, projectPath);
@@ -2255,18 +2420,29 @@ export function ResourceViewer({
     (url: string, title?: string) => {
       const u = url.trim();
       if (!u) return;
-      const existing = tabs.find((t) => t.tabKind === "url" && t.url === u);
-      if (existing) {
-        setActiveId(existing.id);
-        return;
-      }
-      const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const existing = tabs.find(
+        (t) => t.tabKind === "url" && fileTabMatchesPath(t, u),
+      );
       let name = title || u;
       try {
         name = title || new URL(u).hostname || u;
       } catch {
         /* keep */
       }
+      const keyPath = existing ? fileTabToResourceTab(existing).path : u;
+      const open = openResourceTab(
+        tabs.map(fileTabToResourceTab),
+        keyPath,
+        existing
+          ? { id: existing.id, name: title || existing.name, kind: "url" }
+          : { name, kind: "url" },
+      );
+      if (!open.created) {
+        setTabs((prev) => mergeFileTabsFromOpen(prev, open));
+        setActiveId(open.activeId);
+        return;
+      }
+      const id = open.activeId;
       const tab: FileTab = {
         id,
         relativePath: u,
@@ -2279,7 +2455,7 @@ export function ResourceViewer({
         url: u,
         tabKind: "url",
       };
-      setTabs((prev) => [tab, ...prev]);
+      setTabs((prev) => mergeFileTabsFromOpen(prev, open, tab));
       setActiveId(id);
     },
     [tabs],
@@ -2433,19 +2609,20 @@ export function ResourceViewer({
     (id: string) => {
       let remaining = -1;
       setTabs((prev) => {
-        const idx = prev.findIndex((t) => t.id === id);
-        if (idx < 0) {
-          remaining = prev.length;
-          return prev;
-        }
-        const next = prev.filter((t) => t.id !== id);
-        remaining = next.length;
-        if (activeId === id) {
-          // Prefer neighbor on the left (newer), else right
-          const neighbor = next[Math.max(0, idx - 1)] ?? next[0] ?? null;
-          setActiveId(neighbor?.id ?? null);
-        }
-        return next;
+        const closed = closeResourceTab(
+          prev.map(fileTabToResourceTab),
+          activeId,
+          id,
+        );
+        remaining = closed.tabs.length;
+        setActiveId(closed.activeId);
+        if (closed.tabs.length === prev.length) return prev;
+        const keep = new Set(closed.tabs.map((t) => t.id));
+        // Preserve pure-helper order (same relative order minus closed).
+        const byId = new Map(prev.map((t) => [t.id, t]));
+        return closed.tabs
+          .map((r) => byId.get(r.id))
+          .filter((t): t is FileTab => !!t && keep.has(t.id));
       });
       if (remaining === 0) closePaneIfNoTabs(0);
     },
@@ -2828,6 +3005,29 @@ export function ResourceViewer({
                     <IconClose size={12} />
                   </button>
                 </Tip>
+                {onDiffCommentToChat ? (
+                  <Tip label={tr("changes.commentTip")}>
+                    <button
+                      type="button"
+                      className="chrome-btn rp-diff-action rp-diff-action--comment"
+                      data-testid={`changes-comment-hunk-${idx}`}
+                      onClick={() => {
+                        setDiffCommentError(null);
+                        setDiffCommentNote("");
+                        setDiffCommentTarget({
+                          path: diffView.path,
+                          name: diffView.name,
+                          hunkIndex: idx,
+                          hunkHeader: h.header,
+                          hunkSnippet: formatHunkSnippet(h),
+                        });
+                      }}
+                      aria-label={tr("changes.comment")}
+                    >
+                      <IconChat size={12} />
+                    </button>
+                  </Tip>
+                ) : null}
               </div>
             ))}
           </div>
@@ -3349,9 +3549,11 @@ export function ResourceViewer({
       <div className="rp-chrome">
         <div className="rp-tabs" role="tablist" aria-label={tr("resources.files")}>
           <div className="rp-tabs__scroll">
-            {tabs.length === 0 ? (
+            {filesTabsEmpty ? (
               <div className="rp-tabs__placeholder">
-                <span className="rp-tabs__hint">{tr("resources.emptyPreview")}</span>
+                <span className="rp-tabs__hint">
+                  {tr(filesTabsEmpty.titleKey)}
+                </span>
               </div>
             ) : (
               tabs.map((t) => {
@@ -3373,9 +3575,18 @@ export function ResourceViewer({
                       className={
                         "rp-tab" +
                         (active ? " is-active" : " is-inactive") +
-                        (t.tabKind === "url" ? " rp-tab--url" : "")
+                        (t.tabKind === "url" ? " rp-tab--url" : "") +
+                        (isResourceDraftDirty(t.draftText, t.baselineText)
+                          ? " is-dirty"
+                          : "")
                       }
-                      onClick={() => setActiveId(t.id)}
+                      onClick={() => {
+                        const next = setActiveTab(
+                          tabs.map(fileTabToResourceTab),
+                          t.id,
+                        );
+                        setActiveId(next.activeId);
+                      }}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -3441,7 +3652,13 @@ export function ResourceViewer({
                   /* ignore */
                 }
               }}
-              onOpenError={(e) => setError(e)}
+              onOpenError={(e) => {
+                // OpenLocationButton may reveal, system-open, or open-in-editor.
+                // Prefer open-editor classifier (superset); reveal-only phrases map fine.
+                const resolved = resolveOpenEditorError(e);
+                if (resolved.silent) return;
+                setError(formatOpenEditorErrorMessage(resolved, tr));
+              }}
               compact
               platform={detectAppPlatform()}
               labels={{
@@ -3513,6 +3730,35 @@ export function ResourceViewer({
               </button>
             </Tip>
           ) : null}
+          <Tip
+            label={
+              treeVisible && sideMode === AGENTS_RAIL_SIDE_MODE
+                ? tr("resources.agentsHide")
+                : tr("resources.agentsShow")
+            }
+          >
+            <button
+              type="button"
+              className={
+                "chrome-btn main__pane-toggle rp-chrome__agents-btn" +
+                (treeVisible && sideMode === AGENTS_RAIL_SIDE_MODE
+                  ? " is-on"
+                  : "")
+              }
+              onClick={() => showSidePanel(AGENTS_RAIL_SIDE_MODE)}
+              aria-label={tr("resources.agents")}
+              data-testid="resources-agents-chrome-btn"
+            >
+              <IconList size={16} />
+              {showAgentsRailBadge ? (
+                <span className="rp-chrome__badge" aria-hidden>
+                  {agentsRailRunningCount > 99
+                    ? "99+"
+                    : agentsRailRunningCount}
+                </span>
+              ) : null}
+            </button>
+          </Tip>
           <Tip
             label={
               treeVisible && sideMode === "files"
@@ -3623,6 +3869,19 @@ export function ResourceViewer({
                 expandDetails: tr("plan.expandDetails"),
                 collapseDetails: tr("plan.collapseDetails"),
                 current: tr("planBar.current"),
+                edit: tr("plan.edit"),
+                cancelEdit: tr("plan.cancelEdit"),
+                requestWithDraft: tr("plan.requestWithDraft"),
+                approveDirtyHint: tr("plan.approveDirtyHint"),
+                draftPlaceholder: tr("plan.draftPlaceholder"),
+                draftAria: tr("plan.draftAria"),
+                discardTitle: tr("plan.discardTitle"),
+                discardMessage: tr("plan.discardMessage"),
+                discardConfirm: tr("plan.discardConfirm"),
+                discardCancel: tr("common.cancel"),
+                draftEmpty: tr("plan.draftEmpty"),
+                draftTooLong: tr("plan.draftTooLong"),
+                close: tr("common.close"),
               }}
               onApprove={onApprovePlan}
               onRequestChanges={onRequestPlanChanges}
@@ -3675,7 +3934,9 @@ export function ResourceViewer({
                   ? tr("changes.empty")
                   : sideMode === "changes"
                     ? tr("changes.pickTitle")
-                    : tr("resources.emptyPreview")}
+                    : tr(
+                        filesTabsEmpty?.titleKey ?? "resources.emptyPreview",
+                      )}
               </div>
               <div className="rp__empty-desc">
                 {sideMode === "changes" &&
@@ -3684,7 +3945,10 @@ export function ResourceViewer({
                   ? tr("changes.emptyHint")
                   : sideMode === "changes"
                     ? tr("changes.pickHint")
-                    : tr("resources.emptyPreviewHint")}
+                    : tr(
+                        filesTabsEmpty?.hintKey ??
+                          "resources.emptyPreviewHint",
+                      )}
               </div>
               {sideMode === "changes" &&
               (changeCount > 0 || workspaceCount > 0) ? (
@@ -3788,6 +4052,26 @@ export function ResourceViewer({
                     ) : null}
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sideMode === AGENTS_RAIL_SIDE_MODE}
+                  className={
+                    "rp-side-modes__btn" +
+                    (sideMode === AGENTS_RAIL_SIDE_MODE ? " is-active" : "")
+                  }
+                  onClick={() => setSideMode(AGENTS_RAIL_SIDE_MODE)}
+                  data-testid="resources-agents-tab"
+                >
+                  {tr("resources.agents")}
+                  {showAgentsRailBadge ? (
+                    <span className="rp-side-modes__count">
+                      {agentsRailRunningCount > 99
+                        ? "99+"
+                        : agentsRailRunningCount}
+                    </span>
+                  ) : null}
+                </button>
                 {plan?.visible ? (
                   <button
                     type="button"
@@ -3803,6 +4087,25 @@ export function ResourceViewer({
                   </button>
                 ) : null}
               </div>
+              {sideMode === AGENTS_RAIL_SIDE_MODE ? (
+                <div
+                  className="rp-agents-rail"
+                  data-testid="resources-agents-rail"
+                >
+                  <AgentTasksPanel
+                    variant="rail"
+                    messages={sessionMessages}
+                    t={(k, vars) => tr(k, vars)}
+                    onOpenCwd={onOpenAgentsCwd}
+                    activeCwd={activeCwd}
+                    subagentWorktreeSnapshotEnabled={
+                      subagentWorktreeSnapshotEnabled
+                    }
+                    sessionBusy={sessionBusy}
+                  />
+                </div>
+              ) : (
+                <>
               <div className="rp-tree-search">
                 <IconSearch size={14} />
                 <input
@@ -4278,6 +4581,8 @@ export function ResourceViewer({
                   renderTree(root, 0)
                 )}
               </OverlayScroll>
+                </>
+              )}
             </div>
           </>
         )}
@@ -4531,6 +4836,102 @@ export function ResourceViewer({
             name: diffView?.name ?? "",
           })}
         </p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!diffCommentTarget}
+        onClose={() => {
+          setDiffCommentTarget(null);
+          setDiffCommentNote("");
+          setDiffCommentError(null);
+        }}
+        title={tr("changes.commentModalTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="rp-diff-comment-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                setDiffCommentTarget(null);
+                setDiffCommentNote("");
+                setDiffCommentError(null);
+              }}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              data-testid="changes-comment-insert"
+              disabled={!onDiffCommentToChat}
+              onClick={() => {
+                if (!diffCommentTarget || !onDiffCommentToChat) return;
+                const planned = planDiffCommentToChat({
+                  path: diffCommentTarget.path,
+                  name: diffCommentTarget.name,
+                  hunkHeader: diffCommentTarget.hunkHeader,
+                  hunkSnippet: diffCommentTarget.hunkSnippet,
+                  note: diffCommentNote,
+                });
+                if (!planned.ok) {
+                  setDiffCommentError(planned.reason);
+                  return;
+                }
+                onDiffCommentToChat(planned.prompt);
+                setDiffCommentTarget(null);
+                setDiffCommentNote("");
+                setDiffCommentError(null);
+              }}
+            >
+              {tr("changes.commentInsert")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-diff-comment-modal__desc">
+          {diffCommentTarget
+            ? tr("changes.commentModalDesc", {
+                name:
+                  diffCommentTarget.name ||
+                  diffCommentTarget.path ||
+                  "",
+                n: String(diffCommentTarget.hunkIndex + 1),
+              })
+            : null}
+        </p>
+        {diffCommentTarget?.hunkHeader ? (
+          <p className="rp-diff-comment-modal__hunk" title={diffCommentTarget.hunkHeader}>
+            {diffCommentTarget.hunkHeader}
+          </p>
+        ) : null}
+        <label className="rp-diff-comment-modal__field">
+          <span className="sr-only">{tr("changes.commentPlaceholder")}</span>
+          <textarea
+            className="rp-diff-comment-modal__textarea"
+            value={diffCommentNote}
+            onChange={(e) => {
+              setDiffCommentNote(e.target.value);
+              if (diffCommentError) setDiffCommentError(null);
+            }}
+            placeholder={tr("changes.commentPlaceholder")}
+            rows={4}
+            autoFocus
+            data-testid="changes-comment-note"
+          />
+        </label>
+        {diffCommentError ? (
+          <p className="rp-diff-comment-modal__error" role="alert">
+            {diffCommentError === "empty"
+              ? tr("changes.commentErrorEmpty")
+              : diffCommentError === "too_long"
+                ? tr("changes.commentErrorTooLong")
+                : tr("changes.commentErrorGeneric")}
+          </p>
+        ) : null}
       </GlassModal>
     </div>
   );
