@@ -15727,6 +15727,12 @@ textarea::-webkit-scrollbar-thumb:active,
   line-height: 1;
 }
 
+/* Unsaved draft on inactive/active strip tabs (multi-file workbench). */
+.rp-tab.is-dirty .rp-tab__name,
+.rp-tab.is-dirty .rp-tab__dirty {
+  color: var(--warning, #f0993d);
+}
+
 .chrome-btn--save.is-dirty {
   color: var(--text-primary);
   font-weight: 600;
