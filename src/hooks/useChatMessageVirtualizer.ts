@@ -37,6 +37,7 @@ import {
   shouldCommitRowHeight,
   type ChatVirtualWindow,
 } from "@/lib/chatVirtualList";
+import { resolveStreamOverscanScale } from "@/lib/streamRenderPolicy";
 
 export type UseChatMessageVirtualizerArgs = {
   itemCount: number;
@@ -186,6 +187,10 @@ export function useChatMessageVirtualizer(
       overscanPx: resolveChatOverscanPx({
         viewportHeight: el.clientHeight,
         pinToBottom: pin,
+        scale: resolveStreamOverscanScale(
+          typeof document !== "undefined" &&
+            document.documentElement.dataset.streamPerf === "1",
+        ),
       }),
       pinToBottom: pin,
       forceIndices: forceRef.current,

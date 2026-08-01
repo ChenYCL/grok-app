@@ -1,7 +1,9 @@
 /**
  * Session runtime: messages / liveMap / stop latch / viewing session coordination.
  * Owns projection state so AppWorkbench stays a shell over Host event wiring + send.
- * api.sessionSend contract remains in AppWorkbench (send path).
+ *
+ * Stream hot path uses external stores so token growth does not force every
+ * workbench subscriber to reconcile (Intel Retina multi-turn).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -10,24 +12,33 @@ import {
   type StopLatchState,
 } from "@/lib/stopLatch";
 import {
-  IDLE_SNAPSHOT,
   isSessionLiveStreaming,
   type ChatMessage,
-  type SessionSnapshot,
 } from "@/lib/session";
 import {
-  busySessionIds,
   settleStoppedSessionInLiveMap,
   settleStoppedSessionSnapshot,
   type SessionLiveMap,
 } from "@/lib/sessionLiveStore";
-import {
-  reconcileUiBusyGate,
-} from "@/lib/sessionPhase";
-import {
-  type ViewFocus,
-} from "@/lib/viewFocus";
+import { reconcileUiBusyGate } from "@/lib/sessionPhase";
+import { type ViewFocus } from "@/lib/viewFocus";
 import { canLiveParticipate } from "@/lib/multiWindow";
+import { sessionTranscriptStore } from "@/lib/sessionTranscriptStore";
+import {
+  useTranscriptActions,
+  useTranscriptMeta,
+} from "@/hooks/useSessionTranscript";
+import {
+  useLiveMap,
+  useLiveMapActions,
+  useLiveMapBusyIds,
+} from "@/hooks/useSessionLiveMap";
+import {
+  useFocusedSession,
+  useLiveHost,
+  useSessionShellActions,
+} from "@/hooks/useSessionShell";
+import { useSessionRuntimeRefs } from "@/hooks/useSessionRuntimeRefs";
 
 export type { SessionLiveMap };
 
@@ -36,16 +47,17 @@ export function useSessionRuntime(opts?: {
 }) {
   const isSecondaryWindow = opts?.isSecondaryWindow ?? false;
 
-  const [session, setSession] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
-  /** Host live agent (may differ from the session currently viewed in the UI). */
-  const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
-  const liveHostRef = useRef<SessionSnapshot>(IDLE_SNAPSHOT);
+  const session = useFocusedSession();
+  const liveHost = useLiveHost();
+  const { setSession, setLiveHost } = useSessionShellActions();
 
-  /** Multi-session live projection (busy / permission badges). */
-  const [liveMap, setLiveMap] = useState<SessionLiveMap>({});
-  /** Latest live map for callbacks that must not close over a stale render. */
-  const liveMapRef = useRef(liveMap);
-  liveMapRef.current = liveMap;
+  const liveMap = useLiveMap();
+  const { setLiveMap } = useLiveMapActions();
+  const busyIdsFromStore = useLiveMapBusyIds();
+  const { liveMapRef, liveHostRef } = useSessionRuntimeRefs({
+    liveMap,
+    liveHost,
+  });
 
   /** Stop interrupt honesty latch (force unlock after budget). */
   const [stopLatch, setStopLatch] = useState<StopLatchState>(() =>
@@ -54,17 +66,46 @@ export function useSessionRuntime(opts?: {
   const stopLatchRef = useRef<StopLatchState>(createStopLatchState());
   stopLatchRef.current = stopLatch;
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const messagesRef = useRef<ChatMessage[]>([]);
-  /** Per-session message cache so switching away mid-turn does not drop the UI. */
-  const messagesBySessionRef = useRef<Map<string, ChatMessage[]>>(new Map());
-  const viewingSessionIdRef = useRef<string | null>(null);
+  const transcriptMeta = useTranscriptMeta();
+  const { setMessages, patchSessionMessages: patchStore } =
+    useTranscriptActions();
   /**
-   * Bumped on every user navigation (open chat / new chat). Async work captures
-   * {@link currentViewFocus} before its first await and must re-check before
-   * touching view state.
+   * Structural shell mirror — token growth does not update this array.
+   * ConversationThreadLive subscribes to full content separately.
    */
+  const [messages, setShellMessages] = useState<ChatMessage[]>(() =>
+    sessionTranscriptStore.getMessages(),
+  );
+  useEffect(() => {
+    setShellMessages(sessionTranscriptStore.getMessages());
+  }, [transcriptMeta.structuralRev]);
+
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  useEffect(() => {
+    return sessionTranscriptStore.subscribeContent(() => {
+      messagesRef.current = sessionTranscriptStore.getMessages();
+    });
+  }, []);
+  messagesRef.current = sessionTranscriptStore.getMessages();
+
+  const messagesBySessionRef = useRef(sessionTranscriptStore.getBySessionMap());
+  const viewingSessionIdRef = useRef<string | null>(null);
   const viewEpochRef = useRef(0);
+
+  useEffect(() => {
+    sessionTranscriptStore.setViewingSessionId(session.sessionId);
+    sessionTranscriptStore.setViewingIdResolver(
+      () => viewingSessionIdRef.current,
+    );
+    return () => sessionTranscriptStore.setViewingIdResolver(null);
+  }, [session.sessionId]);
+
+  // Keep viewing id aligned when React session id updates (when not opening).
+  useEffect(() => {
+    if (viewingSessionIdRef.current == null && session.sessionId) {
+      viewingSessionIdRef.current = session.sessionId;
+    }
+  }, [session.sessionId]);
 
   const currentViewFocus = useCallback(
     (): ViewFocus => ({
@@ -77,50 +118,27 @@ export function useSessionRuntime(opts?: {
     viewEpochRef.current += 1;
   }, []);
 
-  useEffect(() => {
-    liveHostRef.current = liveHost;
-  }, [liveHost]);
-
-  // Mirror viewed-session messages into the cache on every change.
-  useEffect(() => {
-    messagesRef.current = messages;
-    const id = session.sessionId;
-    if (!id) return;
-    messagesBySessionRef.current.set(id, messages);
-  }, [messages, session.sessionId]);
-
-  /** Apply a message reducer to the viewed session or only to the cache. */
   const patchSessionMessages = useCallback(
     (
       targetSessionId: string | undefined | null,
       reduce: (prev: ChatMessage[]) => ChatMessage[],
     ) => {
-      if (!targetSessionId) return;
-      if (viewingSessionIdRef.current === targetSessionId) {
-        setMessages((prev) => {
-          const next = reduce(prev);
-          messagesBySessionRef.current.set(targetSessionId, next);
-          return next;
-        });
-      } else {
-        const prev = messagesBySessionRef.current.get(targetSessionId) ?? [];
-        messagesBySessionRef.current.set(targetSessionId, reduce(prev));
-      }
+      patchStore(targetSessionId, reduce);
     },
-    [],
+    [patchStore],
   );
 
-  /**
-   * Multi-session busy ids (stream / permission) for sidebar spinner.
-   * Uses liveMap projection + liveHost fallback. Excludes connecting.
-   */
   const busyIds = useMemo(() => {
-    const set = busySessionIds(liveMap);
-    if (liveHost.sessionId && isSessionLiveStreaming(liveHost.state)) {
+    const set = new Set(busyIdsFromStore);
+    if (
+      liveHost.sessionId &&
+      isSessionLiveStreaming(liveHost.state) &&
+      !set.has(liveHost.sessionId)
+    ) {
       set.add(liveHost.sessionId);
     }
     return set;
-  }, [liveMap, liveHost.sessionId, liveHost.state]);
+  }, [busyIdsFromStore, liveHost.sessionId, liveHost.state]);
 
   const settleStoppedSessionUi = useCallback((sessionId: string) => {
     setLiveMap((prev) => {
@@ -134,7 +152,7 @@ export function useSessionRuntime(opts?: {
       return next;
     });
     setSession((prev) => settleStoppedSessionSnapshot(prev, sessionId));
-  }, []);
+  }, [setLiveMap, setLiveHost, setSession, liveMapRef, liveHostRef]);
 
   const stopGate = useMemo(
     () =>
@@ -145,7 +163,6 @@ export function useSessionRuntime(opts?: {
     [session.state, stopLatch],
   );
 
-  // Session-keyed pool: secondary shares Host — send/stop allowed (session-targeted).
   const effectiveCanSend =
     stopGate.sendable && canLiveParticipate(isSecondaryWindow);
   const effectiveCanStop =
@@ -185,5 +202,7 @@ export function useSessionRuntime(opts?: {
     stopGate,
     effectiveCanSend,
     effectiveCanStop,
+    /** Structural transcript meta for shell empty/streaming gates. */
+    transcriptMeta,
   };
 }

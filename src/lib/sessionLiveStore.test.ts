@@ -5,6 +5,7 @@ import {
   inferTurnProgressFromMessages,
   isSessionLiveBusy,
   markSawModelOutput,
+  markSawToolActivity,
   mergeTurnProgressFromMessages,
   projectHostIntoLiveMap,
   resumeStateForSession,
@@ -202,6 +203,40 @@ describe("sessionLiveStore", () => {
     // Leaving the turn clears flags.
     map = projectHostIntoLiveMap(map, { sessionId: "a", state: "ready" });
     expect(map.a!.sawModelOutput).toBe(false);
+  });
+
+  it("markSawModelOutput is identity when already true (no thrash)", () => {
+    let map = projectHostIntoLiveMap(
+      {},
+      { sessionId: "a", state: "streaming", streamingMessageId: "m1" },
+    );
+    map = markSawModelOutput(map, "a");
+    const again = markSawModelOutput(map, "a");
+    expect(again).toBe(map);
+  });
+
+  it("markSawToolActivity is identity when already true", () => {
+    let map = projectHostIntoLiveMap(
+      {},
+      { sessionId: "a", state: "streaming", streamingMessageId: "m1" },
+    );
+    map = markSawToolActivity(map, "a");
+    const again = markSawToolActivity(map, "a");
+    expect(again).toBe(map);
+  });
+
+  it("upsertLiveSnapshot is identity when fields unchanged", () => {
+    let map = upsertLiveSnapshot(
+      {},
+      { sessionId: "a", state: "streaming", streamingMessageId: "m1" },
+      1,
+    );
+    const again = upsertLiveSnapshot(
+      map,
+      { sessionId: "a", state: "streaming", streamingMessageId: "m1" },
+      99,
+    );
+    expect(again).toBe(map);
   });
 
   it("infers turn progress from journal after last user message", () => {

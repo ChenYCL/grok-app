@@ -859,7 +859,7 @@ import {
   summarizeGitDirty,
   type GitDirtySummary
 } from "@/lib/workspaceGit";
-import { ConversationThread } from "@/components/lobe-chat";
+import { ConversationThreadLive } from "@/components/lobe-chat";
 import { dispatchCollapseAllActivity } from "@/lib/collapseAllActivity";
 import {
   installDialogFocus,
@@ -1191,6 +1191,7 @@ export function AppWorkbench() {
     stopGate,
     effectiveCanSend,
     effectiveCanStop,
+    transcriptMeta,
   } = useSessionRuntime({ isSecondaryWindow });
 
   /** Context usage chip — known tokens from compact events + estimate fallback. */
@@ -6492,12 +6493,19 @@ export function AppWorkbench() {
     [tr, platform],
   );
 
-  const lastUserMessageId = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role === "user") return messages[i]!.id;
-    }
-    return null;
-  }, [messages]);
+  const lastUserMessageId = transcriptMeta.lastUserId;
+
+  // Streaming perf mode — cheapen wallpaper/glass on integrated GPU Retina.
+  useEffect(() => {
+    const on =
+      session.state === "streaming" ||
+      session.state === "awaiting_permission" ||
+      transcriptMeta.hasStreamingAssistant;
+    document.documentElement.dataset.streamPerf = on ? "1" : "0";
+    return () => {
+      document.documentElement.dataset.streamPerf = "0";
+    };
+  }, [session.state, transcriptMeta.hasStreamingAssistant]);
 
   const canEditLastUser =
     !!lastUserMessageId &&
@@ -10229,12 +10237,12 @@ export function AppWorkbench() {
   const welcomeSession =
     mainPane === "chat" &&
     !session.sessionId &&
-    messages.length === 0 &&
+    transcriptMeta.length === 0 &&
     session.state !== "streaming";
   const emptyExistingSession =
     mainPane === "chat" &&
     !!session.sessionId &&
-    messages.length === 0 &&
+    transcriptMeta.length === 0 &&
     session.state !== "streaming" &&
     session.state !== "connecting";
   // Live billing can take seconds (quota network). Cache last mark so the
@@ -17377,9 +17385,8 @@ export function AppWorkbench() {
               retry: tr("ui.errorBoundary.retry"),
             }}
           >
-          <ConversationThread
+          <ConversationThreadLive
             locale={locale}
-            messages={messages}
             sessionState={
               stopLatch.phase === "force_idle" || stopGate.forceIdle
                 ? "ready"

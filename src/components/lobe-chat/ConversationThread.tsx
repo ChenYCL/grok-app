@@ -135,6 +135,30 @@ type AttachLabels = {
   remove: string;
 };
 
+
+/** Keep path-map object identity when tool paths did not change (stream text growth). */
+function useStableSessionPathMap(
+  messages: ChatMessage[],
+  projectPath?: string | null,
+): Record<string, string> {
+  const prevRef = useRef<Record<string, string>>({});
+  const next = useMemo(
+    () => buildSessionFilePathMap(messages, projectPath),
+    [messages, projectPath],
+  );
+  const prev = prevRef.current;
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(next);
+  if (
+    prevKeys.length === nextKeys.length &&
+    nextKeys.every((k) => prev[k] === next[k])
+  ) {
+    return prev;
+  }
+  prevRef.current = next;
+  return next;
+}
+
 /**
  * Assistant markdown + attachment cards.
  * Memoized so parent re-renders (showBack, live tool pulse, etc.) do not
@@ -528,6 +552,859 @@ export interface ConversationThreadProps {
     usageTotal?: string;
   };
 }
+
+
+type TranscriptMessageRowProps = {
+  m: ChatMessage;
+  msgIndex: number;
+  virtualized: boolean;
+  measureRef: (index: number) => (el: HTMLElement | null) => void;
+  locale: Locale;
+  tr: ReturnType<typeof createT>;
+  projectPath?: string | null;
+  sessionPathMap?: Record<string, string>;
+  sessionId?: string | null;
+  showToolChrome: boolean;
+  toolStepsAutoCollapse: boolean;
+  showTimestamps: boolean;
+  messageTimeFormat: MessageTimeFormat;
+  /** Bumps every minute when relative timestamps are on — busts row memo. */
+  timeTick: number;
+  showReplyLength: boolean;
+  lastUserMessageId?: string | null;
+  editingUserMessageId?: string | null;
+  editSubmitting?: boolean;
+  editAttachments: Attachment[];
+  canEditLastUser: boolean;
+  canRegenerate: boolean;
+  canRewindSession: boolean;
+  regenerableAssistantId: string | null;
+  regenerateModels: ModelOption[];
+  regenerateModelId: string;
+  activeAssistantId: string | null;
+  liveTool: ReturnType<typeof pickRunningTurnTool>;
+  wovenMessages: ChatMessage[];
+  findQuery: string;
+  findHitMessageIds?: ReadonlySet<string>;
+  findActive: { messageId: string; occurrence: number } | null;
+  focusMessageId: string | null;
+  structuredUsageMessageId: string | null;
+  structuredOutputActive: boolean;
+  structuredOutputSchema: string | null;
+  structuredOutputUsage: {
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    totalTokens?: number | null;
+  } | null;
+  structuredOutputLabels?: ConversationThreadProps["structuredOutputLabels"];
+  attachLabels: AttachLabels;
+  onEditUserMessage?: ConversationThreadProps["onEditUserMessage"];
+  onCancelEditUserMessage?: ConversationThreadProps["onCancelEditUserMessage"];
+  onSubmitEditUserMessage?: ConversationThreadProps["onSubmitEditUserMessage"];
+  onRemoveEditAttachment?: ConversationThreadProps["onRemoveEditAttachment"];
+  onRegenerateAssistant?: ConversationThreadProps["onRegenerateAssistant"];
+  onRewindToUserMessage?: ConversationThreadProps["onRewindToUserMessage"];
+  onForkFromUserMessage?: ConversationThreadProps["onForkFromUserMessage"];
+  onOpenResource?: ConversationThreadProps["onOpenResource"];
+  onOpenExternalLink?: ConversationThreadProps["onOpenExternalLink"];
+  onAddAttachmentToComposer?: ConversationThreadProps["onAddAttachmentToComposer"];
+};
+
+function transcriptRowPropsEqual(
+  a: TranscriptMessageRowProps,
+  b: TranscriptMessageRowProps,
+): boolean {
+  if (a.m !== b.m) return false;
+  if (a.msgIndex !== b.msgIndex) return false;
+  if (a.virtualized !== b.virtualized) return false;
+  if (a.locale !== b.locale) return false;
+  if (a.projectPath !== b.projectPath) return false;
+  if (a.sessionPathMap !== b.sessionPathMap) return false;
+  if (a.sessionId !== b.sessionId) return false;
+  if (a.showToolChrome !== b.showToolChrome) return false;
+  if (a.toolStepsAutoCollapse !== b.toolStepsAutoCollapse) return false;
+  if (a.showTimestamps !== b.showTimestamps) return false;
+  if (a.messageTimeFormat !== b.messageTimeFormat) return false;
+  if (a.timeTick !== b.timeTick) return false;
+  if (a.showReplyLength !== b.showReplyLength) return false;
+  if (a.lastUserMessageId !== b.lastUserMessageId) return false;
+  if (a.editingUserMessageId !== b.editingUserMessageId) return false;
+  if (a.editSubmitting !== b.editSubmitting) return false;
+  if (a.editAttachments !== b.editAttachments) return false;
+  if (a.canEditLastUser !== b.canEditLastUser) return false;
+  if (a.canRegenerate !== b.canRegenerate) return false;
+  if (a.canRewindSession !== b.canRewindSession) return false;
+  if (a.regenerableAssistantId !== b.regenerableAssistantId) return false;
+  if (a.regenerateModels !== b.regenerateModels) return false;
+  if (a.regenerateModelId !== b.regenerateModelId) return false;
+  if (a.activeAssistantId !== b.activeAssistantId) return false;
+  if (a.liveTool !== b.liveTool) return false;
+  if (a.wovenMessages !== b.wovenMessages) return false;
+  if (a.findQuery !== b.findQuery) return false;
+  if (a.findHitMessageIds !== b.findHitMessageIds) return false;
+  if (a.findActive !== b.findActive) return false;
+  if (a.focusMessageId !== b.focusMessageId) return false;
+  if (a.structuredUsageMessageId !== b.structuredUsageMessageId) return false;
+  if (a.structuredOutputActive !== b.structuredOutputActive) return false;
+  if (a.structuredOutputSchema !== b.structuredOutputSchema) return false;
+  if (a.structuredOutputUsage !== b.structuredOutputUsage) return false;
+  if (a.structuredOutputLabels !== b.structuredOutputLabels) return false;
+  if (a.attachLabels !== b.attachLabels) return false;
+  return true;
+}
+
+const TranscriptMessageRow = memo(function TranscriptMessageRow({
+  m,
+  msgIndex,
+  virtualized,
+  measureRef,
+  locale,
+  tr,
+  projectPath,
+  sessionPathMap,
+  sessionId = null,
+  showToolChrome,
+  toolStepsAutoCollapse,
+  showTimestamps,
+  messageTimeFormat,
+  timeTick: _timeTick,
+  showReplyLength,
+  lastUserMessageId = null,
+  editingUserMessageId = null,
+  editSubmitting = false,
+  editAttachments,
+  canEditLastUser,
+  canRegenerate,
+  canRewindSession,
+  regenerableAssistantId,
+  regenerateModels,
+  regenerateModelId,
+  activeAssistantId,
+  liveTool,
+  wovenMessages,
+  findQuery,
+  findHitMessageIds,
+  findActive,
+  focusMessageId,
+  structuredUsageMessageId,
+  structuredOutputActive,
+  structuredOutputSchema,
+  structuredOutputUsage,
+  structuredOutputLabels,
+  attachLabels,
+  onEditUserMessage,
+  onCancelEditUserMessage,
+  onSubmitEditUserMessage,
+  onRemoveEditAttachment,
+  onRegenerateAssistant,
+  onRewindToUserMessage,
+  onForkFromUserMessage,
+  onOpenResource,
+  onOpenExternalLink,
+  onAddAttachmentToComposer,
+}: TranscriptMessageRowProps) {
+  void _timeTick;
+  const wrap = (node: ReactNode) =>
+    virtualized ? (
+      <div
+        key={m.id}
+        ref={measureRef(msgIndex)}
+        data-virt-index={msgIndex}
+      >
+        {node}
+      </div>
+    ) : (
+      node
+    );
+
+  if (
+    isEndOfTurnMarker(m.marker) ||
+    m.marker === "turn_cancelled" ||
+    (m.role === "tool" &&
+      (m.content?.startsWith("turn_cancelled") ||
+        m.content?.startsWith("turn_end|")))
+  ) {
+    return wrap(
+      <EndOfTurnChip key={m.id} message={m} locale={locale} />,
+    );
+  }
+
+  // Standalone tool_step only when not already woven into an assistant
+  // timeline (tools before first assistant bubble, edge cases).
+  // Conversation filter hides tool chrome entirely.
+  if (isToolStepMessage(m)) {
+    if (!showToolChrome) {
+      return virtualized ? (
+        <div
+          key={m.id}
+          ref={measureRef(msgIndex)}
+          data-virt-index={msgIndex}
+          style={{ height: 0, overflow: "hidden" }}
+          aria-hidden
+        />
+      ) : null;
+    }
+    const tcid =
+      (m.toolCallId || "").trim() ||
+      (m.id.startsWith("tool-") ? m.id.slice(5) : "");
+    // Use woven list — parent `messages` may lag display-layer weave.
+    if (tcid && isToolInlinedInAssistants(wovenMessages, tcid)) {
+      return virtualized ? (
+        <div
+          key={m.id}
+          ref={measureRef(msgIndex)}
+          data-virt-index={msgIndex}
+          style={{ height: 0, overflow: "hidden" }}
+          aria-hidden
+        />
+      ) : null;
+    }
+    const toolSeg = toolSegmentFromMessage(m);
+    if (!toolSeg) {
+      return virtualized ? (
+        <div
+          key={m.id}
+          ref={measureRef(msgIndex)}
+          data-virt-index={msgIndex}
+          style={{ height: 0, overflow: "hidden" }}
+          aria-hidden
+        />
+      ) : null;
+    }
+    return wrap(
+      <div key={m.id} className="lobe-chat-assistant-timeline">
+        <div className="lobe-timeline-rail">
+          <TimelineToolRow
+            tool={toolSeg}
+            autoCollapse={toolStepsAutoCollapse}
+            locale={locale}
+          />
+        </div>
+      </div>,
+    );
+  }
+
+  if (
+    m.marker === "context_compact" ||
+    (m.role === "tool" &&
+      (m.content?.startsWith("context_compact") ||
+        m.compactMeta))
+  ) {
+    const meta = m.compactMeta;
+    const auto = (meta?.trigger || "auto") !== "manual";
+    const title = auto
+      ? tr("compact.bannerAuto")
+      : tr("compact.bannerManual");
+    let detail = "";
+    if (
+      meta?.tokensBefore != null &&
+      meta?.tokensAfter != null &&
+      Number.isFinite(meta.tokensBefore) &&
+      Number.isFinite(meta.tokensAfter)
+    ) {
+      detail = tr("compact.tokensRange", {
+        before: formatTokenCount(meta.tokensBefore, locale),
+        after: formatTokenCount(meta.tokensAfter, locale),
+      });
+    } else if (meta?.note) {
+      detail = meta.note;
+    }
+    const summary = meta?.summaryPreview?.trim();
+    return wrap(
+      <div
+        key={m.id}
+        className="lobe-chat-compact"
+        role="status"
+        data-trigger={meta?.trigger || "auto"}
+      >
+        <span className="lobe-chat-compact__icon" aria-hidden>
+          <IconArrowsMinimize size={15} />
+        </span>
+        <div className="lobe-chat-compact__body">
+          <div className="lobe-chat-compact__title">{title}</div>
+          {detail ? (
+            <div className="lobe-chat-compact__detail">{detail}</div>
+          ) : null}
+          {summary ? (
+            <details className="lobe-chat-compact__summary">
+              <summary>{tr("compact.summaryToggle")}</summary>
+              <p>{summary}</p>
+            </details>
+          ) : null}
+        </div>
+      </div>,
+    );
+  }
+
+  // Generic tool rows (non marker) — keep quiet; no history stack.
+  if (m.role === "tool") {
+    return virtualized ? (
+      <div
+        key={m.id}
+        ref={measureRef(msgIndex)}
+        data-virt-index={msgIndex}
+        style={{ height: 0, overflow: "hidden" }}
+        aria-hidden
+      />
+    ) : null;
+  }
+
+  if (m.role === "user") {
+    const isInterjection = m.marker === "interjection";
+    const isLastUser = !isInterjection && lastUserMessageId === m.id;
+    const isEditing = editingUserMessageId === m.id;
+    const timeLabel =
+      showTimestamps && m.createdAt
+        ? messageTimeFormat === "relative"
+          ? formatRelativeTime(m.createdAt, locale)
+          : formatMessageTime(m.createdAt, locale)
+        : null;
+    const isFindHit = !!findHitMessageIds?.has(m.id);
+    const isFindCurrent = findActive?.messageId === m.id;
+    const isNodeFocus = focusMessageId === m.id;
+    return wrap(
+      <ChatItem
+        key={m.id}
+        id={m.id}
+        placement="right"
+        showAvatar={false}
+        showTitle={false}
+        className={
+          (isFindHit ? " lobe-chat-item--find-hit" : "") +
+          (isFindCurrent ? " lobe-chat-item--find-current" : "") +
+          (isNodeFocus ? " lobe-chat-item--node-focus" : "")
+        }
+        message={
+          <div
+            className={
+              "lobe-chat-user-stack" +
+              (isEditing ? " lobe-chat-user-stack--editing" : "")
+            }
+          >
+            {/* Read-only attachments above bubble; edit mode reloads them inside the form */}
+            {!isEditing &&
+            m.attachments &&
+            m.attachments.length > 0 ? (
+              <div className="lobe-chat-atts lobe-chat-atts--user">
+                {m.attachments.map((a) => (
+                  <AttachmentCard
+                    key={a.path}
+                    attachment={a}
+                    variant="card"
+                    labels={attachLabels}
+                    galleryPaths={m.attachments
+                      ?.filter((x) => !x.isDir && isImagePath(x.path))
+                      .map((x) => x.path)}
+                    onAddToComposer={onAddAttachmentToComposer}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {isEditing ? (
+              <InlineUserEdit
+                content={m.content}
+                attachments={editAttachments}
+                attachLabels={attachLabels}
+                busy={editSubmitting}
+                cancelLabel={tr("message.editCancel")}
+                resendLabel={tr("message.editResend")}
+                placeholder={tr("message.editPlaceholder")}
+                onCancel={() => onCancelEditUserMessage?.()}
+                onSubmit={(stored) =>
+                  onSubmitEditUserMessage?.(m, stored)
+                }
+                onRemoveAttachment={onRemoveEditAttachment}
+              />
+            ) : m.content.trim() ? (
+              <div
+                className={
+                  "lobe-chat-bubble" +
+                  (isInterjection
+                    ? " lobe-chat-bubble--interjection"
+                    : "")
+                }
+                data-message-marker={m.marker}
+              >
+                {isInterjection ? (
+                  <div className="lobe-chat-interjection-tag">
+                    <IconTarget size={12} aria-hidden />
+                    <span>{tr("message.interjectionTag")}</span>
+                  </div>
+                ) : null}
+                <UserMessageBody
+                  content={m.content}
+                  scheduledLabel={tr("automations.msgTag")}
+                  remoteImLabel={tr("remoteIm.msgTag")}
+                  locale={locale}
+                  findQuery={findQuery}
+                  findActiveOccurrence={
+                    isFindCurrent
+                      ? (findActive?.occurrence ?? null)
+                      : null
+                  }
+                />
+              </div>
+            ) : null}
+          </div>
+        }
+        actions={
+          isEditing ? null : (
+            <>
+              {timeLabel ? (
+                <span className="lobe-chat-action-time">
+                  {timeLabel}
+                </span>
+              ) : null}
+              {m.content.trim() ? (
+                <MessageCopyButton
+                  text={m.content}
+                  copyLabel={tr("message.copy")}
+                  copiedLabel={tr("message.copied")}
+                />
+              ) : null}
+              {sessionId
+                ? (() => {
+                    const link = formatMessageDeepLink(
+                      sessionId,
+                      m.id,
+                    );
+                    if (!link) return null;
+                    return (
+                      <MessageCopyButton
+                        text={link}
+                        copyLabel={tr("message.copyLink")}
+                        copiedLabel={tr("message.linkCopied")}
+                        idleIcon={<IconLink size={15} />}
+                      />
+                    );
+                  })()
+                : null}
+              {isLastUser ? (
+                <MessageActionButton
+                  label={tr("message.edit")}
+                  disabled={!canEditLastUser}
+                  onClick={() => {
+                    if (!canEditLastUser) return;
+                    onEditUserMessage?.(m);
+                  }}
+                >
+                  <IconRename size={15} />
+                </MessageActionButton>
+              ) : null}
+              {onRewindToUserMessage && !isInterjection ? (
+                <MessageActionButton
+                  label={tr("message.rewindHere")}
+                  disabled={!canRewindSession}
+                  onClick={() => {
+                    if (!canRewindSession) return;
+                    onRewindToUserMessage(m);
+                  }}
+                >
+                  <IconRewind size={15} />
+                </MessageActionButton>
+              ) : null}
+              {onForkFromUserMessage && !isInterjection ? (
+                <MessageActionButton
+                  label={tr("message.forkHere")}
+                  disabled={!canRewindSession}
+                  onClick={() => {
+                    if (!canRewindSession) return;
+                    onForkFromUserMessage(m);
+                  }}
+                >
+                  <IconFork size={15} />
+                </MessageActionButton>
+              ) : null}
+            </>
+          )
+        }
+      />,
+    );
+  }
+
+  if (m.isError) {
+    const friendly = formatTurnErrorBody(
+      { content: m.content, code: undefined, message: undefined },
+      locale === "en" ? "en" : "zh",
+    );
+    const isFindHit = !!findHitMessageIds?.has(m.id);
+    const isFindCurrent = findActive?.messageId === m.id;
+    const isNodeFocus = focusMessageId === m.id;
+    const canRegenError =
+      !!onRegenerateAssistant && regenerableAssistantId === m.id;
+    // Codex-style soft notice — muted pill, no red box.
+    return wrap(
+      <div
+        key={m.id}
+        className={
+          "lobe-chat-error" +
+          (isFindHit ? " lobe-chat-item--find-hit" : "") +
+          (isFindCurrent ? " lobe-chat-item--find-current" : "") +
+          (isNodeFocus ? " lobe-chat-item--node-focus" : "")
+        }
+        role="status"
+        data-testid="chat-turn-error"
+        data-message-id={m.id}
+      >
+        <div className="lobe-chat-error__pill">
+          <span className="lobe-chat-error__icon" aria-hidden>
+            ℹ
+          </span>
+          <span className="lobe-chat-error__text">
+            {findQuery.trim() ? (
+              <HighlightedText
+                text={friendly}
+                query={findQuery}
+                activeOccurrence={
+                  isFindCurrent
+                    ? (findActive?.occurrence ?? null)
+                    : null
+                }
+              />
+            ) : (
+              friendly
+            )}
+          </span>
+          {canRegenError ? (
+            <span className="lobe-chat-error__actions">
+              <MessageRegenerateButton
+                label={tr("message.regenerate")}
+                sameModelLabel={tr("message.regenerateSameModel")}
+                pickModelLabel={tr("message.regeneratePickModel")}
+                disabled={!canRegenerate}
+                models={regenerateModels}
+                currentModelId={regenerateModelId}
+                iconSize={14}
+                onRegenerate={(modelId) => {
+                  if (!canRegenerate) return;
+                  onRegenerateAssistant?.(
+                    m,
+                    modelId ? { modelId } : undefined,
+                  );
+                }}
+              />
+            </span>
+          ) : null}
+        </div>
+      </div>,
+    );
+  }
+
+  // Assistant — thought / tool / body in true stream order.
+  const segs = messageSegments(m);
+  const isActiveAssistant = activeAssistantId === m.id;
+  const hasInlinedRunningTool = segs.some(
+    (s) => s.kind === "tool" && toolSegmentIsRunning(s),
+  );
+  // Fallback live line only when tool not yet woven into segments.
+  // Conversation filter hides tool chrome (including live tool text).
+  const showLiveToolBelow =
+    showToolChrome &&
+    !!liveTool &&
+    isActiveAssistant &&
+    !hasInlinedRunningTool;
+  const showThinkingPlaceholder =
+    !!m.streaming &&
+    segs.length === 0 &&
+    !showLiveToolBelow;
+
+  const contentSegCount = segs.filter((s) => s.kind === "content")
+    .length;
+  let lastContentSi = -1;
+  for (let i = segs.length - 1; i >= 0; i--) {
+    if (segs[i]!.kind === "content") {
+      lastContentSi = i;
+      break;
+    }
+  }
+
+  const isFindHit = !!findHitMessageIds?.has(m.id);
+  const isFindCurrent = findActive?.messageId === m.id;
+  const isNodeFocus = focusMessageId === m.id;
+  // Phase projection: thought+tools collapse when phase ends (content
+  // / next thought), not only when the full answer is done.
+  const timelineUnits = buildTimelineUnits(segs, {
+    streaming: !!m.streaming,
+  });
+
+  return wrap(
+    <ChatItem
+      key={m.id}
+      id={m.id}
+      placement="left"
+      showAvatar={false}
+      loading={!!m.streaming}
+      className={
+        (isFindHit ? " lobe-chat-item--find-hit" : "") +
+        (isFindCurrent ? " lobe-chat-item--find-current" : "") +
+        (isNodeFocus ? " lobe-chat-item--node-focus" : "")
+      }
+      message={
+        <div
+          className="lobe-chat-assistant-timeline"
+          aria-busy={m.streaming ? true : undefined}
+          aria-live={m.streaming ? "polite" : undefined}
+          data-find-assistant={isFindCurrent ? "current" : undefined}
+        >
+          {showThinkingPlaceholder ? (
+            <Thinking
+              locale={locale}
+              thinking
+              streamingLabel={tr("chat.thinkingLabel")}
+              doneLabel={tr("chat.thoughtDone")}
+              thoughtForLabel={(n) => tr("chat.thoughtFor", { n })}
+            />
+          ) : null}
+          {(() => {
+            // Running occurrence base across content segments so
+            // find marks stay aligned with message-level match index.
+            let contentOccBase = 0;
+            return timelineUnits.map((unit) => {
+              if (unit.kind === "phase") {
+                // Always paint Grok Worked-for rail (tools + thought steps).
+                // “Conversation only” only hides standalone tool_step rows,
+                // not this official activity summary.
+                return (
+                  <TimelinePhaseBlock
+                    key={`${m.id}-${unit.id}`}
+                    phase={unit}
+                    locale={locale}
+                    messageStreaming={!!m.streaming}
+                    autoCollapse={toolStepsAutoCollapse}
+                    historyTimestamps={[
+                      m.createdAt,
+                      ...unit.tools.map((t) => t.createdAt),
+                    ]}
+                  />
+                );
+              }
+              if (unit.kind === "tool") {
+                // Bare tool outside a phase — respect hide-tools filter.
+                if (!showToolChrome) return null;
+                return (
+                  <div
+                    key={`${m.id}-tool-${unit.tool.toolCallId || unit.si}`}
+                    className="lobe-timeline-rail"
+                  >
+                    <TimelineToolRow
+                      tool={unit.tool}
+                      autoCollapse={toolStepsAutoCollapse}
+                      locale={locale}
+                    />
+                  </div>
+                );
+              }
+              // Adjacent bare thoughts are coalesced into thought-group.
+              if (
+                unit.kind === "thought" ||
+                unit.kind === "thought-group"
+              ) {
+                const texts =
+                  unit.kind === "thought-group"
+                    ? unit.texts
+                    : [unit.text];
+                const joined = texts
+                  .map((t) => t.trim())
+                  .filter(Boolean)
+                  .join("\n\n");
+                const streaming = unit.streaming;
+                if (
+                  !joined &&
+                  !(m.streaming && streaming)
+                ) {
+                  return null;
+                }
+                return (
+                  <div
+                    key={`${m.id}-th-${unit.si}`}
+                    className="lobe-timeline-rail"
+                  >
+                    <Thinking
+                      locale={locale}
+                      thinking={streaming}
+                      content={joined}
+                      streamingLabel={tr("chat.thinkingLabel")}
+                      doneLabel={tr("chat.thoughtDone")}
+                      thoughtForLabel={(n) =>
+                        tr("chat.thoughtFor", { n })
+                      }
+                      onOpenExternalLink={onOpenExternalLink}
+                    />
+                  </div>
+                );
+              }
+              // content — never folded into a work phase
+              const segBase = contentOccBase;
+              if (findQuery.trim()) {
+                contentOccBase += findChatMatches(findQuery, [
+                  {
+                    id: `${m.id}-seg-${unit.si}`,
+                    role: "assistant",
+                    content: unit.text,
+                  },
+                ]).length;
+              }
+              return (
+                <AssistantMessageBody
+                  key={`${m.id}-c-${unit.si}`}
+                  content={unit.text}
+                  attachments={
+                    unit.si === lastContentSi
+                      ? m.attachments
+                      : undefined
+                  }
+                  streaming={unit.streaming}
+                  locale={locale}
+                  projectPath={projectPath}
+                  sessionPathMap={sessionPathMap}
+                  onOpenResource={onOpenResource}
+                  onOpenExternalLink={onOpenExternalLink}
+                  onAddAttachmentToComposer={
+                    onAddAttachmentToComposer
+                  }
+                  attachLabels={attachLabels}
+                  findQuery={findQuery}
+                  findActiveOccurrence={
+                    isFindCurrent
+                      ? (findActive?.occurrence ?? null)
+                      : null
+                  }
+                  findOccurrenceBase={segBase}
+                />
+              );
+            });
+          })()}
+          {/* Body-less turn with only attachments */}
+          {!contentSegCount && m.attachments?.length ? (
+            <AssistantMessageBody
+              content=""
+              attachments={m.attachments}
+              streaming={!!m.streaming}
+              locale={locale}
+              projectPath={projectPath}
+              sessionPathMap={sessionPathMap}
+              onOpenResource={onOpenResource}
+              onOpenExternalLink={onOpenExternalLink}
+              onAddAttachmentToComposer={onAddAttachmentToComposer}
+              attachLabels={attachLabels}
+              findQuery={findQuery}
+              findActiveOccurrence={
+                isFindCurrent
+                  ? (findActive?.occurrence ?? null)
+                  : null
+              }
+            />
+          ) : null}
+          {structuredOutputActive &&
+          structuredOutputLabels &&
+          (m.streaming || !!m.content.trim()) ? (
+            <StructuredJsonPanel
+              content={m.content}
+              schemaText={structuredOutputSchema}
+              labels={structuredOutputLabels}
+              streaming={!!m.streaming}
+              usage={
+                m.id === structuredUsageMessageId
+                  ? structuredOutputUsage
+                  : null
+              }
+            />
+          ) : null}
+          {(() => {
+            if (m.streaming || !showReplyLength) return null;
+            const stats = computeMessageLength(m.content);
+            if (stats.empty) return null;
+            const words = String(stats.words);
+            const chars = String(stats.chars);
+            return (
+              <div
+                className="lobe-chat-reply-length"
+                aria-label={tr("message.replyLengthAria", {
+                  words,
+                  chars,
+                })}
+              >
+                {tr("message.replyLength", { words, chars })}
+              </div>
+            );
+          })()}
+        </div>
+      }
+      belowMessage={
+        showLiveToolBelow && liveTool ? (
+          <LiveToolText message={liveTool} locale={locale} />
+        ) : null
+      }
+      actions={(() => {
+        if (m.streaming) return null;
+        const showCopy = !!m.content.trim();
+        const showRegen =
+          !!onRegenerateAssistant && regenerableAssistantId === m.id;
+        if (!showCopy && !showRegen) return null;
+        const deepLink =
+          sessionId != null
+            ? formatMessageDeepLink(sessionId, m.id)
+            : "";
+        const showCopyLink = !!deepLink;
+        if (!showCopy && !showRegen && !showCopyLink) return null;
+        return (
+          <>
+            {showCopy ? (
+              <>
+                <MessageCopyButton
+                  text={m.content}
+                  copyLabel={tr("message.copy")}
+                  copiedLabel={tr("message.copied")}
+                />
+                <MessageActionButton
+                  label={tr("message.exportMd")}
+                  onClick={() => {
+                    const blob = new Blob([m.content], {
+                      type: "text/markdown;charset=utf-8",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `grok-${m.id.slice(0, 8)}.md`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  <IconExportMd size={15} />
+                </MessageActionButton>
+              </>
+            ) : null}
+            {showCopyLink ? (
+              <MessageCopyButton
+                text={deepLink}
+                copyLabel={tr("message.copyLink")}
+                copiedLabel={tr("message.linkCopied")}
+                idleIcon={<IconLink size={15} />}
+              />
+            ) : null}
+            {showRegen ? (
+              <MessageRegenerateButton
+                label={tr("message.regenerate")}
+                sameModelLabel={tr("message.regenerateSameModel")}
+                pickModelLabel={tr("message.regeneratePickModel")}
+                disabled={!canRegenerate}
+                models={regenerateModels}
+                currentModelId={regenerateModelId}
+                onRegenerate={(modelId) => {
+                  if (!canRegenerate) return;
+                  onRegenerateAssistant?.(
+                    m,
+                    modelId ? { modelId } : undefined,
+                  );
+                }}
+              />
+            ) : null}
+          </>
+        );
+      })()}
+    />,
+  );
+}, transcriptRowPropsEqual);
 
 export function ConversationThread({
   locale,
@@ -985,10 +1862,7 @@ export function ConversationThread({
    * Map short path tokens → absolute using tool_step abs paths in this session.
    * Fixes homonyms like many `04-正文/正文.md` under article roots.
    */
-  const sessionPathMap = useMemo(
-    () => buildSessionFilePathMap(messages, projectPath),
-    [messages, projectPath],
-  );
+  const sessionPathMap = useStableSessionPathMap(messages, projectPath);
 
   // Quiet thinking when busy, no tool motion, no assistant yet.
   const showQuietThinking =
@@ -1169,708 +2043,59 @@ export function ConversationThread({
             />
           ) : null}
 
-          {visibleMessages.map(({ m, index: msgIndex }) => {
-            const wrap = (node: ReactNode) =>
-              virtualized ? (
-                <div
-                  key={m.id}
-                  ref={measureRef(msgIndex)}
-                  data-virt-index={msgIndex}
-                >
-                  {node}
-                </div>
-              ) : (
-                node
-              );
-
-            if (
-              isEndOfTurnMarker(m.marker) ||
-              m.marker === "turn_cancelled" ||
-              (m.role === "tool" &&
-                (m.content?.startsWith("turn_cancelled") ||
-                  m.content?.startsWith("turn_end|")))
-            ) {
-              return wrap(
-                <EndOfTurnChip key={m.id} message={m} locale={locale} />,
-              );
-            }
-
-            // Standalone tool_step only when not already woven into an assistant
-            // timeline (tools before first assistant bubble, edge cases).
-            // Conversation filter hides tool chrome entirely.
-            if (isToolStepMessage(m)) {
-              if (!showToolChrome) {
-                return virtualized ? (
-                  <div
-                    key={m.id}
-                    ref={measureRef(msgIndex)}
-                    data-virt-index={msgIndex}
-                    style={{ height: 0, overflow: "hidden" }}
-                    aria-hidden
-                  />
-                ) : null;
-              }
-              const tcid =
-                (m.toolCallId || "").trim() ||
-                (m.id.startsWith("tool-") ? m.id.slice(5) : "");
-              // Use woven list — parent `messages` may lag display-layer weave.
-              if (tcid && isToolInlinedInAssistants(wovenMessages, tcid)) {
-                return virtualized ? (
-                  <div
-                    key={m.id}
-                    ref={measureRef(msgIndex)}
-                    data-virt-index={msgIndex}
-                    style={{ height: 0, overflow: "hidden" }}
-                    aria-hidden
-                  />
-                ) : null;
-              }
-              const toolSeg = toolSegmentFromMessage(m);
-              if (!toolSeg) {
-                return virtualized ? (
-                  <div
-                    key={m.id}
-                    ref={measureRef(msgIndex)}
-                    data-virt-index={msgIndex}
-                    style={{ height: 0, overflow: "hidden" }}
-                    aria-hidden
-                  />
-                ) : null;
-              }
-              return wrap(
-                <div key={m.id} className="lobe-chat-assistant-timeline">
-                  <div className="lobe-timeline-rail">
-                    <TimelineToolRow
-                      tool={toolSeg}
-                      autoCollapse={toolStepsAutoCollapse}
-                      locale={locale}
-                    />
-                  </div>
-                </div>,
-              );
-            }
-
-            if (
-              m.marker === "context_compact" ||
-              (m.role === "tool" &&
-                (m.content?.startsWith("context_compact") ||
-                  m.compactMeta))
-            ) {
-              const meta = m.compactMeta;
-              const auto = (meta?.trigger || "auto") !== "manual";
-              const title = auto
-                ? tr("compact.bannerAuto")
-                : tr("compact.bannerManual");
-              let detail = "";
-              if (
-                meta?.tokensBefore != null &&
-                meta?.tokensAfter != null &&
-                Number.isFinite(meta.tokensBefore) &&
-                Number.isFinite(meta.tokensAfter)
-              ) {
-                detail = tr("compact.tokensRange", {
-                  before: formatTokenCount(meta.tokensBefore, locale),
-                  after: formatTokenCount(meta.tokensAfter, locale),
-                });
-              } else if (meta?.note) {
-                detail = meta.note;
-              }
-              const summary = meta?.summaryPreview?.trim();
-              return wrap(
-                <div
-                  key={m.id}
-                  className="lobe-chat-compact"
-                  role="status"
-                  data-trigger={meta?.trigger || "auto"}
-                >
-                  <span className="lobe-chat-compact__icon" aria-hidden>
-                    <IconArrowsMinimize size={15} />
-                  </span>
-                  <div className="lobe-chat-compact__body">
-                    <div className="lobe-chat-compact__title">{title}</div>
-                    {detail ? (
-                      <div className="lobe-chat-compact__detail">{detail}</div>
-                    ) : null}
-                    {summary ? (
-                      <details className="lobe-chat-compact__summary">
-                        <summary>{tr("compact.summaryToggle")}</summary>
-                        <p>{summary}</p>
-                      </details>
-                    ) : null}
-                  </div>
-                </div>,
-              );
-            }
-
-            // Generic tool rows (non marker) — keep quiet; no history stack.
-            if (m.role === "tool") {
-              return virtualized ? (
-                <div
-                  key={m.id}
-                  ref={measureRef(msgIndex)}
-                  data-virt-index={msgIndex}
-                  style={{ height: 0, overflow: "hidden" }}
-                  aria-hidden
-                />
-              ) : null;
-            }
-
-            if (m.role === "user") {
-              const isInterjection = m.marker === "interjection";
-              const isLastUser = !isInterjection && lastUserMessageId === m.id;
-              const isEditing = editingUserMessageId === m.id;
-              const timeLabel =
-                showTimestamps && m.createdAt
-                  ? messageTimeFormat === "relative"
-                    ? formatRelativeTime(m.createdAt, locale)
-                    : formatMessageTime(m.createdAt, locale)
-                  : null;
-              const isFindHit = !!findHitMessageIds?.has(m.id);
-              const isFindCurrent = findActive?.messageId === m.id;
-              const isNodeFocus = focusMessageId === m.id;
-              return wrap(
-                <ChatItem
-                  key={m.id}
-                  id={m.id}
-                  placement="right"
-                  showAvatar={false}
-                  showTitle={false}
-                  className={
-                    (isFindHit ? " lobe-chat-item--find-hit" : "") +
-                    (isFindCurrent ? " lobe-chat-item--find-current" : "") +
-                    (isNodeFocus ? " lobe-chat-item--node-focus" : "")
-                  }
-                  message={
-                    <div
-                      className={
-                        "lobe-chat-user-stack" +
-                        (isEditing ? " lobe-chat-user-stack--editing" : "")
-                      }
-                    >
-                      {/* Read-only attachments above bubble; edit mode reloads them inside the form */}
-                      {!isEditing &&
-                      m.attachments &&
-                      m.attachments.length > 0 ? (
-                        <div className="lobe-chat-atts lobe-chat-atts--user">
-                          {m.attachments.map((a) => (
-                            <AttachmentCard
-                              key={a.path}
-                              attachment={a}
-                              variant="card"
-                              labels={attachLabels}
-                              galleryPaths={m.attachments
-                                ?.filter((x) => !x.isDir && isImagePath(x.path))
-                                .map((x) => x.path)}
-                              onAddToComposer={onAddAttachmentToComposer}
-                            />
-                          ))}
-                        </div>
-                      ) : null}
-                      {isEditing ? (
-                        <InlineUserEdit
-                          content={m.content}
-                          attachments={editAttachments}
-                          attachLabels={attachLabels}
-                          busy={editSubmitting}
-                          cancelLabel={tr("message.editCancel")}
-                          resendLabel={tr("message.editResend")}
-                          placeholder={tr("message.editPlaceholder")}
-                          onCancel={() => onCancelEditUserMessage?.()}
-                          onSubmit={(stored) =>
-                            onSubmitEditUserMessage?.(m, stored)
-                          }
-                          onRemoveAttachment={onRemoveEditAttachment}
-                        />
-                      ) : m.content.trim() ? (
-                        <div
-                          className={
-                            "lobe-chat-bubble" +
-                            (isInterjection
-                              ? " lobe-chat-bubble--interjection"
-                              : "")
-                          }
-                          data-message-marker={m.marker}
-                        >
-                          {isInterjection ? (
-                            <div className="lobe-chat-interjection-tag">
-                              <IconTarget size={12} aria-hidden />
-                              <span>{tr("message.interjectionTag")}</span>
-                            </div>
-                          ) : null}
-                          <UserMessageBody
-                            content={m.content}
-                            scheduledLabel={tr("automations.msgTag")}
-                            remoteImLabel={tr("remoteIm.msgTag")}
-                            locale={locale}
-                            findQuery={findQuery}
-                            findActiveOccurrence={
-                              isFindCurrent
-                                ? (findActive?.occurrence ?? null)
-                                : null
-                            }
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  }
-                  actions={
-                    isEditing ? null : (
-                      <>
-                        {timeLabel ? (
-                          <span className="lobe-chat-action-time">
-                            {timeLabel}
-                          </span>
-                        ) : null}
-                        {m.content.trim() ? (
-                          <MessageCopyButton
-                            text={m.content}
-                            copyLabel={tr("message.copy")}
-                            copiedLabel={tr("message.copied")}
-                          />
-                        ) : null}
-                        {sessionId
-                          ? (() => {
-                              const link = formatMessageDeepLink(
-                                sessionId,
-                                m.id,
-                              );
-                              if (!link) return null;
-                              return (
-                                <MessageCopyButton
-                                  text={link}
-                                  copyLabel={tr("message.copyLink")}
-                                  copiedLabel={tr("message.linkCopied")}
-                                  idleIcon={<IconLink size={15} />}
-                                />
-                              );
-                            })()
-                          : null}
-                        {isLastUser ? (
-                          <MessageActionButton
-                            label={tr("message.edit")}
-                            disabled={!canEditLastUser}
-                            onClick={() => {
-                              if (!canEditLastUser) return;
-                              onEditUserMessage?.(m);
-                            }}
-                          >
-                            <IconRename size={15} />
-                          </MessageActionButton>
-                        ) : null}
-                        {onRewindToUserMessage && !isInterjection ? (
-                          <MessageActionButton
-                            label={tr("message.rewindHere")}
-                            disabled={!canRewindSession}
-                            onClick={() => {
-                              if (!canRewindSession) return;
-                              onRewindToUserMessage(m);
-                            }}
-                          >
-                            <IconRewind size={15} />
-                          </MessageActionButton>
-                        ) : null}
-                        {onForkFromUserMessage && !isInterjection ? (
-                          <MessageActionButton
-                            label={tr("message.forkHere")}
-                            disabled={!canRewindSession}
-                            onClick={() => {
-                              if (!canRewindSession) return;
-                              onForkFromUserMessage(m);
-                            }}
-                          >
-                            <IconFork size={15} />
-                          </MessageActionButton>
-                        ) : null}
-                      </>
-                    )
-                  }
-                />,
-              );
-            }
-
-            if (m.isError) {
-              const friendly = formatTurnErrorBody(
-                { content: m.content, code: undefined, message: undefined },
-                locale === "en" ? "en" : "zh",
-              );
-              const isFindHit = !!findHitMessageIds?.has(m.id);
-              const isFindCurrent = findActive?.messageId === m.id;
-              const isNodeFocus = focusMessageId === m.id;
-              const canRegenError =
-                !!onRegenerateAssistant && regenerableAssistantId === m.id;
-              // Codex-style soft notice — muted pill, no red box.
-              return wrap(
-                <div
-                  key={m.id}
-                  className={
-                    "lobe-chat-error" +
-                    (isFindHit ? " lobe-chat-item--find-hit" : "") +
-                    (isFindCurrent ? " lobe-chat-item--find-current" : "") +
-                    (isNodeFocus ? " lobe-chat-item--node-focus" : "")
-                  }
-                  role="status"
-                  data-testid="chat-turn-error"
-                  data-message-id={m.id}
-                >
-                  <div className="lobe-chat-error__pill">
-                    <span className="lobe-chat-error__icon" aria-hidden>
-                      ℹ
-                    </span>
-                    <span className="lobe-chat-error__text">
-                      {findQuery.trim() ? (
-                        <HighlightedText
-                          text={friendly}
-                          query={findQuery}
-                          activeOccurrence={
-                            isFindCurrent
-                              ? (findActive?.occurrence ?? null)
-                              : null
-                          }
-                        />
-                      ) : (
-                        friendly
-                      )}
-                    </span>
-                    {canRegenError ? (
-                      <span className="lobe-chat-error__actions">
-                        <MessageRegenerateButton
-                          label={tr("message.regenerate")}
-                          sameModelLabel={tr("message.regenerateSameModel")}
-                          pickModelLabel={tr("message.regeneratePickModel")}
-                          disabled={!canRegenerate}
-                          models={regenerateModels}
-                          currentModelId={regenerateModelId}
-                          iconSize={14}
-                          onRegenerate={(modelId) => {
-                            if (!canRegenerate) return;
-                            onRegenerateAssistant?.(
-                              m,
-                              modelId ? { modelId } : undefined,
-                            );
-                          }}
-                        />
-                      </span>
-                    ) : null}
-                  </div>
-                </div>,
-              );
-            }
-
-            // Assistant — thought / tool / body in true stream order.
-            const segs = messageSegments(m);
-            const isActiveAssistant = activeAssistantId === m.id;
-            const hasInlinedRunningTool = segs.some(
-              (s) => s.kind === "tool" && toolSegmentIsRunning(s),
-            );
-            // Fallback live line only when tool not yet woven into segments.
-            // Conversation filter hides tool chrome (including live tool text).
-            const showLiveToolBelow =
-              showToolChrome &&
-              !!liveTool &&
-              isActiveAssistant &&
-              !hasInlinedRunningTool;
-            const showThinkingPlaceholder =
-              !!m.streaming &&
-              segs.length === 0 &&
-              !showLiveToolBelow;
-
-            const contentSegCount = segs.filter((s) => s.kind === "content")
-              .length;
-            let lastContentSi = -1;
-            for (let i = segs.length - 1; i >= 0; i--) {
-              if (segs[i]!.kind === "content") {
-                lastContentSi = i;
-                break;
-              }
-            }
-
-            const isFindHit = !!findHitMessageIds?.has(m.id);
-            const isFindCurrent = findActive?.messageId === m.id;
-            const isNodeFocus = focusMessageId === m.id;
-            // Phase projection: thought+tools collapse when phase ends (content
-            // / next thought), not only when the full answer is done.
-            const timelineUnits = buildTimelineUnits(segs, {
-              streaming: !!m.streaming,
-            });
-
-            return wrap(
-              <ChatItem
-                key={m.id}
-                id={m.id}
-                placement="left"
-                showAvatar={false}
-                loading={!!m.streaming}
-                className={
-                  (isFindHit ? " lobe-chat-item--find-hit" : "") +
-                  (isFindCurrent ? " lobe-chat-item--find-current" : "") +
-                  (isNodeFocus ? " lobe-chat-item--node-focus" : "")
-                }
-                message={
-                  <div
-                    className="lobe-chat-assistant-timeline"
-                    aria-busy={m.streaming ? true : undefined}
-                    aria-live={m.streaming ? "polite" : undefined}
-                    data-find-assistant={isFindCurrent ? "current" : undefined}
-                  >
-                    {showThinkingPlaceholder ? (
-                      <Thinking
-                        locale={locale}
-                        thinking
-                        streamingLabel={tr("chat.thinkingLabel")}
-                        doneLabel={tr("chat.thoughtDone")}
-                        thoughtForLabel={(n) => tr("chat.thoughtFor", { n })}
-                      />
-                    ) : null}
-                    {(() => {
-                      // Running occurrence base across content segments so
-                      // find marks stay aligned with message-level match index.
-                      let contentOccBase = 0;
-                      return timelineUnits.map((unit) => {
-                        if (unit.kind === "phase") {
-                          // Always paint Grok Worked-for rail (tools + thought steps).
-                          // “Conversation only” only hides standalone tool_step rows,
-                          // not this official activity summary.
-                          return (
-                            <TimelinePhaseBlock
-                              key={`${m.id}-${unit.id}`}
-                              phase={unit}
-                              locale={locale}
-                              messageStreaming={!!m.streaming}
-                              autoCollapse={toolStepsAutoCollapse}
-                              historyTimestamps={[
-                                m.createdAt,
-                                ...unit.tools.map((t) => t.createdAt),
-                              ]}
-                            />
-                          );
-                        }
-                        if (unit.kind === "tool") {
-                          // Bare tool outside a phase — respect hide-tools filter.
-                          if (!showToolChrome) return null;
-                          return (
-                            <div
-                              key={`${m.id}-tool-${unit.tool.toolCallId || unit.si}`}
-                              className="lobe-timeline-rail"
-                            >
-                              <TimelineToolRow
-                                tool={unit.tool}
-                                autoCollapse={toolStepsAutoCollapse}
-                                locale={locale}
-                              />
-                            </div>
-                          );
-                        }
-                        // Adjacent bare thoughts are coalesced into thought-group.
-                        if (
-                          unit.kind === "thought" ||
-                          unit.kind === "thought-group"
-                        ) {
-                          const texts =
-                            unit.kind === "thought-group"
-                              ? unit.texts
-                              : [unit.text];
-                          const joined = texts
-                            .map((t) => t.trim())
-                            .filter(Boolean)
-                            .join("\n\n");
-                          const streaming = unit.streaming;
-                          if (
-                            !joined &&
-                            !(m.streaming && streaming)
-                          ) {
-                            return null;
-                          }
-                          return (
-                            <div
-                              key={`${m.id}-th-${unit.si}`}
-                              className="lobe-timeline-rail"
-                            >
-                              <Thinking
-                                locale={locale}
-                                thinking={streaming}
-                                content={joined}
-                                streamingLabel={tr("chat.thinkingLabel")}
-                                doneLabel={tr("chat.thoughtDone")}
-                                thoughtForLabel={(n) =>
-                                  tr("chat.thoughtFor", { n })
-                                }
-                                onOpenExternalLink={onOpenExternalLink}
-                              />
-                            </div>
-                          );
-                        }
-                        // content — never folded into a work phase
-                        const segBase = contentOccBase;
-                        if (findQuery.trim()) {
-                          contentOccBase += findChatMatches(findQuery, [
-                            {
-                              id: `${m.id}-seg-${unit.si}`,
-                              role: "assistant",
-                              content: unit.text,
-                            },
-                          ]).length;
-                        }
-                        return (
-                          <AssistantMessageBody
-                            key={`${m.id}-c-${unit.si}`}
-                            content={unit.text}
-                            attachments={
-                              unit.si === lastContentSi
-                                ? m.attachments
-                                : undefined
-                            }
-                            streaming={unit.streaming}
-                            locale={locale}
-                            projectPath={projectPath}
-                            sessionPathMap={sessionPathMap}
-                            onOpenResource={onOpenResource}
-                            onOpenExternalLink={onOpenExternalLink}
-                            onAddAttachmentToComposer={
-                              onAddAttachmentToComposer
-                            }
-                            attachLabels={attachLabels}
-                            findQuery={findQuery}
-                            findActiveOccurrence={
-                              isFindCurrent
-                                ? (findActive?.occurrence ?? null)
-                                : null
-                            }
-                            findOccurrenceBase={segBase}
-                          />
-                        );
-                      });
-                    })()}
-                    {/* Body-less turn with only attachments */}
-                    {!contentSegCount && m.attachments?.length ? (
-                      <AssistantMessageBody
-                        content=""
-                        attachments={m.attachments}
-                        streaming={!!m.streaming}
-                        locale={locale}
-                        projectPath={projectPath}
-                        sessionPathMap={sessionPathMap}
-                        onOpenResource={onOpenResource}
-                        onOpenExternalLink={onOpenExternalLink}
-                        onAddAttachmentToComposer={onAddAttachmentToComposer}
-                        attachLabels={attachLabels}
-                        findQuery={findQuery}
-                        findActiveOccurrence={
-                          isFindCurrent
-                            ? (findActive?.occurrence ?? null)
-                            : null
-                        }
-                      />
-                    ) : null}
-                    {structuredOutputActive &&
-                    structuredOutputLabels &&
-                    (m.streaming || !!m.content.trim()) ? (
-                      <StructuredJsonPanel
-                        content={m.content}
-                        schemaText={structuredOutputSchema}
-                        labels={structuredOutputLabels}
-                        streaming={!!m.streaming}
-                        usage={
-                          m.id === structuredUsageMessageId
-                            ? structuredOutputUsage
-                            : null
-                        }
-                      />
-                    ) : null}
-                    {(() => {
-                      if (m.streaming || !showReplyLength) return null;
-                      const stats = computeMessageLength(m.content);
-                      if (stats.empty) return null;
-                      const words = String(stats.words);
-                      const chars = String(stats.chars);
-                      return (
-                        <div
-                          className="lobe-chat-reply-length"
-                          aria-label={tr("message.replyLengthAria", {
-                            words,
-                            chars,
-                          })}
-                        >
-                          {tr("message.replyLength", { words, chars })}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                }
-                belowMessage={
-                  showLiveToolBelow && liveTool ? (
-                    <LiveToolText message={liveTool} locale={locale} />
-                  ) : null
-                }
-                actions={(() => {
-                  if (m.streaming) return null;
-                  const showCopy = !!m.content.trim();
-                  const showRegen =
-                    !!onRegenerateAssistant && regenerableAssistantId === m.id;
-                  if (!showCopy && !showRegen) return null;
-                  const deepLink =
-                    sessionId != null
-                      ? formatMessageDeepLink(sessionId, m.id)
-                      : "";
-                  const showCopyLink = !!deepLink;
-                  if (!showCopy && !showRegen && !showCopyLink) return null;
-                  return (
-                    <>
-                      {showCopy ? (
-                        <>
-                          <MessageCopyButton
-                            text={m.content}
-                            copyLabel={tr("message.copy")}
-                            copiedLabel={tr("message.copied")}
-                          />
-                          <MessageActionButton
-                            label={tr("message.exportMd")}
-                            onClick={() => {
-                              const blob = new Blob([m.content], {
-                                type: "text/markdown;charset=utf-8",
-                              });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement("a");
-                              a.href = url;
-                              a.download = `grok-${m.id.slice(0, 8)}.md`;
-                              a.click();
-                              URL.revokeObjectURL(url);
-                            }}
-                          >
-                            <IconExportMd size={15} />
-                          </MessageActionButton>
-                        </>
-                      ) : null}
-                      {showCopyLink ? (
-                        <MessageCopyButton
-                          text={deepLink}
-                          copyLabel={tr("message.copyLink")}
-                          copiedLabel={tr("message.linkCopied")}
-                          idleIcon={<IconLink size={15} />}
-                        />
-                      ) : null}
-                      {showRegen ? (
-                        <MessageRegenerateButton
-                          label={tr("message.regenerate")}
-                          sameModelLabel={tr("message.regenerateSameModel")}
-                          pickModelLabel={tr("message.regeneratePickModel")}
-                          disabled={!canRegenerate}
-                          models={regenerateModels}
-                          currentModelId={regenerateModelId}
-                          onRegenerate={(modelId) => {
-                            if (!canRegenerate) return;
-                            onRegenerateAssistant?.(
-                              m,
-                              modelId ? { modelId } : undefined,
-                            );
-                          }}
-                        />
-                      ) : null}
-                    </>
-                  );
-                })()}
-              />,
-            );
-          })}
+          {visibleMessages.map(({ m, index: msgIndex }) => (
+            <TranscriptMessageRow
+              key={m.id}
+              m={m}
+              msgIndex={msgIndex}
+              virtualized={virtualized}
+              measureRef={measureRef}
+              locale={locale}
+              tr={tr}
+              projectPath={projectPath}
+              sessionPathMap={sessionPathMap}
+              sessionId={sessionId}
+              showToolChrome={showToolChrome}
+              toolStepsAutoCollapse={toolStepsAutoCollapse}
+              showTimestamps={showTimestamps}
+              messageTimeFormat={messageTimeFormat}
+              timeTick={relativeTick}
+              showReplyLength={showReplyLength}
+              lastUserMessageId={lastUserMessageId}
+              editingUserMessageId={editingUserMessageId}
+              editSubmitting={editSubmitting}
+              editAttachments={editAttachments}
+              canEditLastUser={canEditLastUser}
+              canRegenerate={canRegenerate}
+              canRewindSession={canRewindSession}
+              regenerableAssistantId={regenerableAssistantId}
+              regenerateModels={regenerateModels}
+              regenerateModelId={regenerateModelId}
+              activeAssistantId={activeAssistantId}
+              liveTool={liveTool}
+              wovenMessages={wovenMessages}
+              findQuery={findQuery}
+              findHitMessageIds={findHitMessageIds}
+              findActive={findActive}
+              focusMessageId={focusMessageId}
+              structuredUsageMessageId={structuredUsageMessageId}
+              structuredOutputActive={structuredOutputActive}
+              structuredOutputSchema={structuredOutputSchema}
+              structuredOutputUsage={structuredOutputUsage}
+              structuredOutputLabels={structuredOutputLabels}
+              attachLabels={attachLabels}
+              onEditUserMessage={onEditUserMessage}
+              onCancelEditUserMessage={onCancelEditUserMessage}
+              onSubmitEditUserMessage={onSubmitEditUserMessage}
+              onRemoveEditAttachment={onRemoveEditAttachment}
+              onRegenerateAssistant={onRegenerateAssistant}
+              onRewindToUserMessage={onRewindToUserMessage}
+              onForkFromUserMessage={onForkFromUserMessage}
+              onOpenResource={onOpenResource}
+              onOpenExternalLink={onOpenExternalLink}
+              onAddAttachmentToComposer={onAddAttachmentToComposer}
+            />
+          ))}
 
           {virtualized && paddingBottom > 0 ? (
             <div

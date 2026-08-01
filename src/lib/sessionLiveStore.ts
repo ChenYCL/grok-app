@@ -51,14 +51,34 @@ export function upsertLiveSnapshot(
   patch: Partial<SessionLiveSnapshot> & { sessionId: string },
   nowMs: number = Date.now(),
 ): SessionLiveMap {
-  const prev = map[patch.sessionId] ?? emptyLiveSnapshot(patch.sessionId, nowMs);
+  const existing = map[patch.sessionId];
+  const prev = existing ?? emptyLiveSnapshot(patch.sessionId, nowMs);
+  const next: SessionLiveSnapshot = {
+    ...prev,
+    ...patch,
+    updatedAt: nowMs,
+  };
+  // Bail out when an *existing* row is unchanged — stream tokens often
+  // re-project the same state/streamingMessageId and otherwise clone liveMap.
+  // Never skip the first insert (existing undefined), even if patch matches
+  // emptyLiveSnapshot defaults (e.g. state: "idle").
+  if (
+    existing &&
+    prev.state === next.state &&
+    prev.streamingMessageId === next.streamingMessageId &&
+    prev.liveToolTitle === next.liveToolTitle &&
+    prev.liveToolId === next.liveToolId &&
+    prev.terminalReason === next.terminalReason &&
+    prev.sawModelOutput === next.sawModelOutput &&
+    prev.sawToolActivity === next.sawToolActivity &&
+    prev.startedAt === next.startedAt &&
+    prev.awaitingPermission === next.awaitingPermission
+  ) {
+    return map;
+  }
   return {
     ...map,
-    [patch.sessionId]: {
-      ...prev,
-      ...patch,
-      updatedAt: nowMs,
-    },
+    [patch.sessionId]: next,
   };
 }
 
@@ -206,6 +226,10 @@ export function markSawModelOutput(
   sessionId: string,
   nowMs: number = Date.now(),
 ): SessionLiveMap {
+  // Sticky flag: once true for the turn, skip map copy + React setState thrash
+  // on every subsequent stream token.
+  const prev = map[sessionId];
+  if (prev?.sawModelOutput) return map;
   return upsertLiveSnapshot(
     map,
     { sessionId, sawModelOutput: true },
@@ -218,6 +242,8 @@ export function markSawToolActivity(
   sessionId: string,
   nowMs: number = Date.now(),
 ): SessionLiveMap {
+  const prev = map[sessionId];
+  if (prev?.sawToolActivity) return map;
   return upsertLiveSnapshot(
     map,
     { sessionId, sawToolActivity: true },
