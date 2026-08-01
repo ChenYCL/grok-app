@@ -11,6 +11,11 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+#### Settings / permissions
+- **Permission rules simulator pro honesty** (Settings → Permissions): sample tool-call chips (`git status` · `rm` · `edit`), deny/ask/allow count chips, list filter with empty honesty (no rules · filter empty + clear), severity-colored simulation result chips, honesty lines (preview-only / falls through to mode), and **Copy match summary** (stable plain-text; no `window.confirm`). Pure `permissionRulesPro` helpers (`resolvePermissionRulesEmptyState` · `countRulesByAction` · `formatSimulationResult` · `suggestSampleToolCalls`) + tests; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

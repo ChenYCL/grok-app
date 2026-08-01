@@ -5741,6 +5741,55 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   color: var(--text-tertiary);
 }
 
+.perm-rules__empty-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 0 16px 12px;
+}
+
+.perm-rules__empty-block .perm-rules__empty {
+  padding: 0;
+}
+
+.perm-rules__empty-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.perm-rules__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 8px;
+}
+
+.perm-rules__count-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.perm-rules__count-n {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.perm-rules__filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 10px;
+}
+
+.perm-rules__filter-row .perm-rules__filter {
+  flex: 1 1 160px;
+}
+
 .perm-rules__list {
   list-style: none;
   margin: 0;
@@ -5904,6 +5953,42 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   color: var(--text-tertiary);
   border-color: var(--border-subtle);
   background: var(--bg-hover);
+}
+
+.perm-rules__samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.perm-rules__sample-chip {
+  appearance: none;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  line-height: 1.3;
+}
+
+.perm-rules__sample-chip:hover {
+  border-color: color-mix(in srgb, var(--accent, #6b8cff) 40%, transparent);
+  color: var(--text-primary);
+}
+
+.perm-rules__sample-chip.is-active {
+  border-color: color-mix(in srgb, var(--accent, #6b8cff) 55%, transparent);
+  background: color-mix(in srgb, var(--accent, #6b8cff) 14%, transparent);
+  color: var(--text-primary);
+}
+
+.perm-rules__sim-honesty {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
 }
 
 .perm-rules__sim-match {
