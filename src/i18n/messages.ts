@@ -2104,7 +2104,13 @@ const en = {
   "processBudget.lead":
     "Live occupancy of warm agent processes (focused live, mid-turn background, idle parked). Cap is Max concurrent agents; idle parked are reclaimed before PROCESS_LIMIT.",
   "processBudget.loading": "Loading…",
+  "processBudget.loadingHint":
+    "Reading warm-agent occupancy from the host — not claiming the pool is empty yet.",
   "processBudget.unavailable": "Occupancy unavailable",
+  "processBudget.unavailableHint":
+    "Spawn policy is unchanged. Use Refresh, or open Reliability after agents are running.",
+  "processBudget.emptyPoolHint":
+    "Honest empty pool — not a host soft-fail. Cap remains {max}; idle recycle still applies when agents go idle.",
   "processBudget.refresh": "Refresh",
   "processBudget.counts": "{total} / {max}",
   "processBudget.countsAria":
@@ -2128,9 +2134,27 @@ const en = {
     "Warm processes ({total}) exceed the configured cap ({max}). New connects reclaim idle parked first; raise the limit if this persists.",
   "processBudget.idlePolicy":
     "Idle recycle: ready agents without activity for {idleMinutes} minutes are soft-killed (history kept; next message reconnects).",
+  "processBudget.error.hostOnly": "Process budget needs the desktop host",
+  "processBudget.error.hostOnlyHint":
+    "Occupancy is only available in the Grok App desktop shell — not in a plain browser tab.",
+  "processBudget.error.unavailable": "Process pool unavailable",
+  "processBudget.error.unavailableHint":
+    "The host manager is not ready yet. Try Refresh after agents have started.",
+  "processBudget.error.timeout": "Process budget timed out",
+  "processBudget.error.timeoutHint":
+    "Snapshot took too long. Try Refresh; spawn policy is unchanged.",
+  "processBudget.error.permission": "Process budget permission denied",
+  "processBudget.error.permissionHint":
+    "The host refused the occupancy snapshot. Check app permissions or restart the desktop app.",
+  "processBudget.error.other": "Could not load process budget",
+  "processBudget.error.otherHint":
+    "Try Refresh. Occupancy is unknown — we never invent busy slots.",
   "processBudget.limit.title": "Last process limit",
   "processBudget.limit.explain":
     "PROCESS_LIMIT fired (max {max}) — idle parked were already reclaimed; every remaining slot was a busy turn. Stop a running session or raise Max concurrent agents. {when}",
+  "processBudget.limit.noneTitle": "No recent process limit",
+  "processBudget.limit.noneBody":
+    "No PROCESS_LIMIT in the last 24 hours. Idle parked are reclaimed before a hard limit; only all-busy turns block a new connect.",
   "agent.streamStallBanner":
     "No stream or tool progress for about {seconds}s. Keep waiting or end this turn.",
   "agent.streamStallCancel": "End turn",
@@ -9437,7 +9461,13 @@ const zh: Record<MessageKey, string> = {
   "processBudget.lead":
     "当前热 Agent 进程占用（焦点 live、中途 background、闲置 parked）。上限即「最大并发 Agent 数」；触发 PROCESS_LIMIT 前会先回收闲置 parked。",
   "processBudget.loading": "加载中…",
+  "processBudget.loadingHint":
+    "正在从 Host 读取热 Agent 占用 — 不会把尚未加载的状态当作空池。",
   "processBudget.unavailable": "无法读取占用",
+  "processBudget.unavailableHint":
+    "生成策略未改变。可点刷新，或在有 Agent 运行后打开可靠性中心。",
+  "processBudget.emptyPoolHint":
+    "这是诚实的空池（不是 Host 读取失败）。上限仍为 {max}；Agent 闲置后仍会按策略回收。",
   "processBudget.refresh": "刷新",
   "processBudget.counts": "{total} / {max}",
   "processBudget.countsAria":
@@ -9461,9 +9491,27 @@ const zh: Record<MessageKey, string> = {
     "热进程数（{total}）超过配置上限（{max}）。新连接会优先回收闲置 parked；若持续出现请提高上限。",
   "processBudget.idlePolicy":
     "闲置回收：就绪 Agent 连续 {idleMinutes} 分钟无活动会被软结束（历史保留；下次发送重连）。",
+  "processBudget.error.hostOnly": "进程预算需在桌面 Host 中查看",
+  "processBudget.error.hostOnlyHint":
+    "占用数据仅在 Grok App 桌面壳中可用，普通浏览器标签页无法读取。",
+  "processBudget.error.unavailable": "进程池不可用",
+  "processBudget.error.unavailableHint":
+    "Host 管理器尚未就绪。可在 Agent 启动后再点刷新。",
+  "processBudget.error.timeout": "进程预算读取超时",
+  "processBudget.error.timeoutHint":
+    "快照耗时过长。可点刷新；生成策略未改变。",
+  "processBudget.error.permission": "进程预算权限被拒绝",
+  "processBudget.error.permissionHint":
+    "Host 拒绝了占用快照。请检查应用权限或重启桌面应用。",
+  "processBudget.error.other": "无法加载进程预算",
+  "processBudget.error.otherHint":
+    "可点刷新。占用未知 — 我们不会编造忙碌槽位。",
   "processBudget.limit.title": "最近一次进程上限",
   "processBudget.limit.explain":
     "已触发 PROCESS_LIMIT（上限 {max}）— 闲置 parked 已回收完毕，剩余槽位均为忙碌回合。请停止运行中的会话，或提高「最大并发 Agent 数」。{when}",
+  "processBudget.limit.noneTitle": "近期无进程上限事件",
+  "processBudget.limit.noneBody":
+    "过去 24 小时内未触发 PROCESS_LIMIT。闲置 parked 会在硬上限前被回收；只有槽位全是忙碌回合时才会阻止新连接。",
   "agent.streamStallBanner":
     "约 {seconds} 秒无流式片段或工具活动。可继续等待或结束本轮。",
   "agent.streamStallCancel": "结束本轮",

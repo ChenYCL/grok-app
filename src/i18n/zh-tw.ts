@@ -1996,7 +1996,13 @@ export const zhTW: Record<MessageKey, string> = {
   "processBudget.lead":
     "目前熱 Agent 行程佔用（焦點 live、中途 background、閒置 parked）。上限即「最大並發 Agent 數」；觸發 PROCESS_LIMIT 前會先回收閒置 parked。",
   "processBudget.loading": "載入中…",
+  "processBudget.loadingHint":
+    "正在從 Host 讀取熱 Agent 佔用 — 不會把尚未載入的狀態當作空池。",
   "processBudget.unavailable": "無法讀取佔用",
+  "processBudget.unavailableHint":
+    "產生策略未改變。可點重新整理，或在有 Agent 執行後開啟可靠性中心。",
+  "processBudget.emptyPoolHint":
+    "這是誠實的空池（不是 Host 讀取失敗）。上限仍為 {max}；Agent 閒置後仍會依策略回收。",
   "processBudget.refresh": "重新整理",
   "processBudget.counts": "{total} / {max}",
   "processBudget.countsAria":
@@ -2020,9 +2026,27 @@ export const zhTW: Record<MessageKey, string> = {
     "熱行程數（{total}）超過設定上限（{max}）。新連線會優先回收閒置 parked；若持續出現請提高上限。",
   "processBudget.idlePolicy":
     "閒置回收：就緒 Agent 連續 {idleMinutes} 分鐘無活動會被軟結束（歷史保留；下次傳送重連）。",
+  "processBudget.error.hostOnly": "行程預算需在桌面 Host 中檢視",
+  "processBudget.error.hostOnlyHint":
+    "佔用資料僅在 Grok App 桌面殼中可用，一般瀏覽器分頁無法讀取。",
+  "processBudget.error.unavailable": "行程池不可用",
+  "processBudget.error.unavailableHint":
+    "Host 管理器尚未就緒。可在 Agent 啟動後再點重新整理。",
+  "processBudget.error.timeout": "行程預算讀取逾時",
+  "processBudget.error.timeoutHint":
+    "快照耗時過長。可點重新整理；產生策略未改變。",
+  "processBudget.error.permission": "行程預算權限被拒絕",
+  "processBudget.error.permissionHint":
+    "Host 拒絕了佔用快照。請檢查應用程式權限或重新啟動桌面應用。",
+  "processBudget.error.other": "無法載入行程預算",
+  "processBudget.error.otherHint":
+    "可點重新整理。佔用未知 — 我們不會編造忙碌槽位。",
   "processBudget.limit.title": "最近一次行程上限",
   "processBudget.limit.explain":
     "已觸發 PROCESS_LIMIT（上限 {max}）— 閒置 parked 已回收完畢，剩餘槽位均為忙碌回合。請停止執行中的工作階段，或提高「最大並發 Agent 數」。{when}",
+  "processBudget.limit.noneTitle": "近期無行程上限事件",
+  "processBudget.limit.noneBody":
+    "過去 24 小時內未觸發 PROCESS_LIMIT。閒置 parked 會在硬上限前被回收；只有槽位全是忙碌回合時才會阻止新連線。",
   "agent.streamStallBanner":
     "約 {seconds} 秒無串流片段或工具活動。可繼續等待或結束本輪。",
   "agent.streamStallCancel": "結束本輪",
