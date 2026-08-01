@@ -3436,7 +3436,11 @@ export function SettingsPage({
                         ? () => setClearMemoryOpen(true)
                         : undefined
                     }
+                    onMemoryCleared={() =>
+                      setMemoryBrowserEpoch((n) => n + 1)
+                    }
                     clearAllBusy={clearMemoryBusy}
+                    onToast={showSettingsToast}
                   />
                 </div>
               ) : null}

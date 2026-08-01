@@ -22789,6 +22789,41 @@ div.composer__input:empty::before {
   gap: 10px;
 }
 
+.settings-memory-ops {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 2px;
+}
+
+.settings-memory-ops__modes,
+.settings-memory-ops__presence,
+.settings-memory-ops__clear {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.settings-memory-ops__hint {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+
+.settings-memory-ops__presence-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-memory-ops__presence-note {
+  margin: 0;
+  flex: 1 1 10rem;
+  opacity: 0.85;
+}
+
 .settings-memory-browser__embed-status {
   display: flex;
   flex-wrap: wrap;

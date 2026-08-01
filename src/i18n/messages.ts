@@ -1948,6 +1948,58 @@ const en = {
   "settings.memoryBrowser.searchEmptyHintHybridUnavailable":
     "No keyword matches. Embedding is configured for the agent, but App browser hybrid is unavailable (no host CLI path). Never invents embeddings client-side.",
   "settings.memoryBrowser.openEmbedSettings": "Memory embedding settings",
+  "settings.memoryOps": "Memory operations center",
+  "settings.memoryOpsDesc":
+    "Unified memory browser, embedding honesty, and clear scopes. App search is keyword-only — never invents embeddings. CLI hybrid needs an embedding model; browser hybrid stays unavailable without a host search path.",
+  "settings.memoryOps.modeLabel": "Memory search modes",
+  "settings.memoryOps.mode.appKeyword": "App: keyword",
+  "settings.memoryOps.mode.cliHybrid": "CLI agent: hybrid",
+  "settings.memoryOps.mode.hybridUnavailable": "Browser hybrid: unavailable",
+  "settings.memoryOps.mode.memoryOff": "Memory: off",
+  "settings.memoryOps.hybridUnavailableHint":
+    "Embedding model is set for the agent tool, but the App browser has no host hybrid CLI (grok memory search) — keyword scan only. Never invents embeddings.",
+  "settings.memoryOps.openEmbed": "Embedding settings",
+  "settings.memoryOps.presenceLabel": "Dream / watcher config presence",
+  "settings.memoryOps.dream": "Dream",
+  "settings.memoryOps.watcher": "Watcher",
+  "settings.memoryOps.presenceNote":
+    "Config presence only — not a live running status.",
+  "settings.memoryOps.clearLabel": "Clear memory scopes",
+  "settings.memoryOps.clear.workspace": "Clear workspace",
+  "settings.memoryOps.clear.session": "Clear session",
+  "settings.memoryOps.clear.all": "Clear all",
+  "settings.memoryOps.clear.busy": "Clearing…",
+  "settings.memoryOps.clear.confirmTitle.workspace": "Clear workspace memory?",
+  "settings.memoryOps.clear.confirmTitle.session": "Clear session memory?",
+  "settings.memoryOps.clear.confirmTitle.all": "Clear all memory?",
+  "settings.memoryOps.clear.confirmMsg.workspace":
+    "Runs grok memory clear --workspace for the current project (MEMORY.md, session logs, index). App chat history is kept. This cannot be undone.",
+  "settings.memoryOps.clear.confirmMsg.session":
+    "Session-only clear is not available from the App host yet (CLI has no session scope).",
+  "settings.memoryOps.clear.confirmMsg.all":
+    "Runs grok memory clear --all under the active GROK_HOME. Removes global and workspace memory files. App chat history is kept. This cannot be undone.",
+  "settings.memoryOps.clear.done.workspace": "Workspace memory cleared",
+  "settings.memoryOps.clear.done.session": "Session memory cleared",
+  "settings.memoryOps.clear.done.all": "All memory cleared",
+  "settings.memoryOps.clear.unavailable.session":
+    "Session-only clear is not supported by the host CLI yet.",
+  "settings.memoryOps.clear.unavailable.memoryOff":
+    "Turn on Cross-session memory before clearing.",
+  "settings.memoryOps.clear.unavailable.noCwd":
+    "Open a project to clear workspace memory.",
+  "settings.memoryOps.clear.unavailable.host":
+    "This clear scope is not available from the App host.",
+  "settings.memoryOps.empty.memoryOff": "Memory is off",
+  "settings.memoryOps.empty.memoryOffHint":
+    "Enable Cross-session memory above to browse files and clear scopes.",
+  "settings.memoryOps.empty.noProject": "No project selected",
+  "settings.memoryOps.empty.noProjectHint":
+    "Open a project for workspace-scoped memory. Global MEMORY.md may still appear.",
+  "settings.memoryOps.empty.catalog": "No memory files yet",
+  "settings.memoryOps.empty.catalogHint":
+    "Files appear after the agent writes MEMORY.md, session logs, or an index.",
+  "settings.memoryOps.empty.hybridUnavailable":
+    "No memory files · browser hybrid unavailable",
   "settings.memoryEmbed": "Memory embedding (CLI 0.2.117)",
   "settings.memoryEmbedDesc":
     "Read allowlisted `[memory.*]` keys from the active GROK_HOME config.toml (embedding, search, MMR, dream, watcher). Missing keys stay unset. Independent agent-home can write safe keys + soft-respawn; shared mode is read-only. App browser search is always keyword — never invents embeddings client-side.",
@@ -8524,6 +8576,57 @@ const zh: Record<MessageKey, string> = {
   "settings.memoryBrowser.searchEmptyHintHybridUnavailable":
     "没有关键词匹配。Agent 已配置 embedding，但应用内浏览器混合检索不可用（无 host CLI 路径）。不会在客户端伪造 embedding。",
   "settings.memoryBrowser.openEmbedSettings": "记忆 embedding 设置",
+  "settings.memoryOps": "记忆操作中心",
+  "settings.memoryOpsDesc":
+    "统一记忆浏览器、embedding 诚实状态与清除范围。应用内搜索仅为关键词 — 不会伪造 embedding。CLI 混合检索需配置 embedding 模型；无 host 搜索路径时浏览器混合检索不可用。",
+  "settings.memoryOps.modeLabel": "记忆搜索模式",
+  "settings.memoryOps.mode.appKeyword": "应用：关键词",
+  "settings.memoryOps.mode.cliHybrid": "CLI agent：混合",
+  "settings.memoryOps.mode.hybridUnavailable": "浏览器混合：不可用",
+  "settings.memoryOps.mode.memoryOff": "记忆：关闭",
+  "settings.memoryOps.hybridUnavailableHint":
+    "已为 agent 工具设置 embedding 模型，但应用内浏览器没有 host 混合检索 CLI（grok memory search）— 仅关键词扫描。不会伪造 embedding。",
+  "settings.memoryOps.openEmbed": "Embedding 设置",
+  "settings.memoryOps.presenceLabel": "Dream / Watcher 配置存在性",
+  "settings.memoryOps.dream": "Dream",
+  "settings.memoryOps.watcher": "Watcher",
+  "settings.memoryOps.presenceNote": "仅表示配置键是否设置 — 不是进程运行状态。",
+  "settings.memoryOps.clearLabel": "清除记忆范围",
+  "settings.memoryOps.clear.workspace": "清除工作区",
+  "settings.memoryOps.clear.session": "清除会话",
+  "settings.memoryOps.clear.all": "全部清除",
+  "settings.memoryOps.clear.busy": "清除中…",
+  "settings.memoryOps.clear.confirmTitle.workspace": "清除工作区记忆？",
+  "settings.memoryOps.clear.confirmTitle.session": "清除会话记忆？",
+  "settings.memoryOps.clear.confirmTitle.all": "清除全部记忆？",
+  "settings.memoryOps.clear.confirmMsg.workspace":
+    "对当前项目执行 grok memory clear --workspace（MEMORY.md、会话摘要、索引）。不会删除应用内聊天记录。此操作不可撤销。",
+  "settings.memoryOps.clear.confirmMsg.session":
+    "应用 host 尚不支持仅清除会话范围（CLI 无 session 作用域）。",
+  "settings.memoryOps.clear.confirmMsg.all":
+    "在当前 GROK_HOME 下执行 grok memory clear --all，将删除全局与工作区记忆文件。不会删除应用内聊天记录。此操作不可撤销。",
+  "settings.memoryOps.clear.done.workspace": "已清除工作区记忆",
+  "settings.memoryOps.clear.done.session": "已清除会话记忆",
+  "settings.memoryOps.clear.done.all": "已清除全部记忆",
+  "settings.memoryOps.clear.unavailable.session":
+    "host CLI 尚不支持仅清除会话范围。",
+  "settings.memoryOps.clear.unavailable.memoryOff":
+    "请先打开上方的「跨会话记忆」再清除。",
+  "settings.memoryOps.clear.unavailable.noCwd":
+    "请先打开项目以清除工作区记忆。",
+  "settings.memoryOps.clear.unavailable.host":
+    "应用 host 暂不支持此清除范围。",
+  "settings.memoryOps.empty.memoryOff": "记忆已关闭",
+  "settings.memoryOps.empty.memoryOffHint":
+    "请先打开上方的「跨会话记忆」以浏览文件与清除范围。",
+  "settings.memoryOps.empty.noProject": "未选择项目",
+  "settings.memoryOps.empty.noProjectHint":
+    "打开项目以匹配工作区记忆。全局 MEMORY.md 仍可能显示。",
+  "settings.memoryOps.empty.catalog": "尚无记忆文件",
+  "settings.memoryOps.empty.catalogHint":
+    "agent 写入 MEMORY.md、会话日志或索引后会出现文件。",
+  "settings.memoryOps.empty.hybridUnavailable":
+    "尚无记忆文件 · 浏览器混合检索不可用",
   "settings.memoryEmbed": "记忆 embedding（CLI 0.2.117）",
   "settings.memoryEmbedDesc":
     "从当前 GROK_HOME 的 config.toml 读取白名单 `[memory.*]` 键（embedding、search、MMR、dream、watcher）。缺失键保持未设置。独立 agent-home 可写入安全键并 soft-respawn；共享模式只读。应用内浏览器搜索始终为关键词，不会在客户端发明 embedding。",
