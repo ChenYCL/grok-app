@@ -21903,6 +21903,13 @@ export default function App() {
           void refreshLists();
         }}
         onOpenReliability={() => openReliability()}
+        onOpenSettings={(section, tab) => {
+          if (isSettingsSectionId(section)) {
+            navigateSettings(section, tab);
+          } else {
+            navigateSettings("about", tab);
+          }
+        }}
       />
       <ReliabilityCenterModal
         open={showReliability}

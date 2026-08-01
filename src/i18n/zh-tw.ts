@@ -4021,6 +4021,69 @@ export const zhTW: Record<MessageKey, string> = {
     "媒體迴路端點不可用 — 宿主媒體服務就緒前預覽可能 soft-fail。",
   "doctor.platformMatrix.msg.media.unknown":
     "此平台的媒體迴路能力未分類。",
+  // Windows day-use acceptance checklist (Doctor / Reliability)
+  "doctor.windowsDayuse.title": "Windows 日常驗收",
+  "doctor.windowsDayuse.lead":
+    "面向 Windows 日常使用的驗收清單。App 可自動探測部分項，其餘保持手動。未探測時不會臆造 SmartScreen / 未簽章狀態。",
+  "doctor.windowsDayuse.notTarget":
+    "macOS / Linux 不是本清單目標平台 — 項顯示為 N/A。請在 Windows 建置上驗證安裝、CLI、含空白路徑與鏡像日常使用。",
+  "doctor.windowsDayuse.summary":
+    "{pass} 通過 · {fail} 失敗 · {manual} 手動 · {na} 不適用",
+  "doctor.windowsDayuse.copy": "複製清單",
+  "doctor.windowsDayuse.copied": "已複製清單",
+  "doctor.windowsDayuse.copyFail": "無法複製清單",
+  "doctor.windowsDayuse.docs": "驗收文件",
+  "doctor.windowsDayuse.platform.win": "Windows",
+  "doctor.windowsDayuse.platform.mac": "macOS",
+  "doctor.windowsDayuse.platform.linux": "Linux",
+  "doctor.windowsDayuse.platform.other": "其他",
+  "doctor.windowsDayuse.status.pass": "通過",
+  "doctor.windowsDayuse.status.fail": "失敗",
+  "doctor.windowsDayuse.status.manual": "手動",
+  "doctor.windowsDayuse.status.na": "不適用",
+  "doctor.windowsDayuse.item.installPath": "安裝路徑（Release / SmartScreen）",
+  "doctor.windowsDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
+  "doctor.windowsDayuse.item.projectSpaces": "含空白的專案路徑",
+  "doctor.windowsDayuse.item.singleAttachment": "單次貼上附件",
+  "doctor.windowsDayuse.item.appUpdateCheck": "檢查更新（關於）",
+  "doctor.windowsDayuse.item.mirrorReadonly": "手機鏡像預設唯讀",
+  "doctor.windowsDayuse.detail.na": "目前平台不適用。",
+  "doctor.windowsDayuse.detail.installPath.manual":
+    "從 GitHub Release 安裝（setup.exe 或可攜 zip）。未簽章時 SmartScreen 可能提示 — App 在未探測時不會臆造該狀態。",
+  "doctor.windowsDayuse.detail.installPath.pass": "安裝簽章探測為已簽章 / 通過。",
+  "doctor.windowsDayuse.detail.installPath.fail": "安裝簽章探測為未簽章或被攔截。",
+  "doctor.windowsDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
+  "doctor.windowsDayuse.detail.cliFound.fail":
+    "未找到 CLI — 開啟 Setup 或 設定 → 執行階段 安裝 / 設定路徑。",
+  "doctor.windowsDayuse.detail.cliFound.manual":
+    "CLI 探測尚未就緒 — 重新執行 Doctor 或開啟 Setup。",
+  "doctor.windowsDayuse.detail.projectSpaces.pass":
+    "受信任專案路徑包含空白（不應再出現主控台閃爍風暴）。",
+  "doctor.windowsDayuse.detail.projectSpaces.fail":
+    "尚無受信任專案 — 請新增並信任一個資料夾（路徑可含空白）。",
+  "doctor.windowsDayuse.detail.projectSpaces.manual":
+    "已有受信任專案；若尚未驗證，請用含空白路徑再測一次。",
+  "doctor.windowsDayuse.detail.singleAttachment.manual":
+    "手動：完成一次工具對話，貼上一張截圖 — 確認只有單一附件（App 無法自動證明貼上）。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.pass":
+    "可用的更新檢查路徑（應用程式內或 GitHub 手動）。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.fail":
+    "此建置不支援更新檢查 — 請試 設定 → 關於。",
+  "doctor.windowsDayuse.detail.appUpdateCheck.manual":
+    "開啟 設定 → 關於 → 檢查更新（有新版本則下載安裝套件）。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.pass":
+    "手機鏡像為唯讀（寫入關閉）— 預設姿態。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.fail":
+    "手機鏡像寫入已開啟 — 日常驗收期望唯讀；可在 遠端控制 → 鏡像 關閉寫入。",
+  "doctor.windowsDayuse.detail.mirrorReadonly.manual":
+    "鏡像狀態未知 — 開啟 遠端控制 → 鏡像；日常驗收期望唯讀啟動 + 可重新產生連結。",
+  "doctor.windowsDayuse.link.about": "關於 / 更新",
+  "doctor.windowsDayuse.link.mirror": "鏡像",
+  "doctor.windowsDayuse.link.setup": "Setup / CLI",
+  "doctor.windowsDayuse.link.runtime": "執行階段",
+  "settings.runtime.platformTip": "平台",
+  "settings.runtime.platformTipDesc":
+    "用於介面文案的作業系統探測（檔案管理員、日常驗收清單）。Windows 建置可在 Doctor 中查看 day-use 驗收卡片。",
 
   "reliability.title": "可靠性",
   "reliability.close": "關閉可靠性中心",
