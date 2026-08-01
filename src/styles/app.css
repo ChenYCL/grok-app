@@ -25384,7 +25384,94 @@ div.composer__input:empty::before {
   cursor: pointer;
 }
 .voice-overlay__demo {
-  margin-top: 0.5rem;
+  margin-top: 0;
+}
+/* Command center — tool status + chips + keep-agents footer */
+.voice-overlay__tool-status {
+  display: flex;
+  align-items: center;
+  min-height: 1.35rem;
+  font-size: 0.78rem;
+}
+.voice-overlay__tool-idle {
+  opacity: 0.45;
+  font-size: 0.75rem;
+}
+.voice-overlay__chips-strip {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.55rem;
+}
+.voice-overlay__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+}
+.voice-overlay__chip-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  flex: 0 0 auto;
+}
+.voice-overlay__chip-dot.is-running {
+  background: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22);
+}
+.voice-overlay__chip-dot.is-permission {
+  background: #fbbf24;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.22);
+}
+.voice-overlay__chip-dot.is-done {
+  background: #34d399;
+}
+.voice-overlay__chip-dot.is-error {
+  background: #fb7185;
+}
+.voice-overlay__chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 10rem;
+}
+.voice-overlay__chip-tag {
+  font-size: 0.65rem;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.voice-overlay__chip.is-delegated {
+  border-color: rgba(52, 211, 153, 0.28);
+  background: rgba(52, 211, 153, 0.08);
+}
+.voice-overlay__chip.is-running {
+  border-color: rgba(56, 189, 248, 0.35);
+}
+.voice-overlay__chip.is-permission {
+  border-color: rgba(251, 191, 36, 0.4);
+}
+.voice-overlay__footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.voice-overlay__keep-banner {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  opacity: 0.85;
+}
+.voice-overlay__keep-banner.is-keep {
+  color: #6ee7b7;
+}
+.voice-overlay__keep-banner.is-cancel {
+  color: #fcd34d;
+}
+.voice-overlay__end-note {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  opacity: 0.5;
 }
 
 /* ── Remote control · IM (card-internal dual pane; page chrome is standard) ─ */
