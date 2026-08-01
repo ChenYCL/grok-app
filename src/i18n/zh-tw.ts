@@ -2420,6 +2420,42 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.askUserTimeout.60": "1 分鐘",
   "settings.askUserTimeout.120": "2 分鐘",
   "settings.askUserTimeout.300": "5 分鐘",
+  // Ask-user 示範路徑（設定 → 權限）— 僅準備設定；不編造 Agent 回合
+  "settings.askDemo.title": "Ask-user 示範路徑",
+  "settings.askDemo.desc":
+    "建議步驟：無需四處尋找設定，即可對比 Ask 與 YOLO。應用只準備權限與範例提示詞——真實問卷仍取決於模型與 CLI。",
+  "settings.askDemo.honesty":
+    "誠實說明：真正的 `ask_user_question` 取決於模型與 Grok Build CLI。應用不會自動傳送提示詞，也不會聲稱 Agent 一定會提問。",
+  "settings.askDemo.step.policyAsk": "將權限策略設為 Ask",
+  "settings.askDemo.step.policyAskHint": "使用產品 Ask，以便工具與提問可以彈出確認。",
+  "settings.askDemo.step.notYolo": "確保 YOLO / 一律核准已關閉",
+  "settings.askDemo.step.notYoloHint": "YOLO 會略過確認，不適合作為 Ask 對比基線。",
+  "settings.askDemo.step.askUserEnabled": "保持向使用者提問已啟用",
+  "settings.askDemo.step.askUserEnabledHint":
+    "關閉「停用向使用者提問」（Agent 分頁 / --no-ask-user），以允許問卷。",
+  "settings.askDemo.step.samplePrompt": "在對話中貼上範例提示詞（可選）",
+  "settings.askDemo.step.samplePromptHint":
+    "僅為建議措辭——請自行複製並傳送。不保證 Agent 會提問。",
+  "settings.askDemo.chip.pass": "就緒",
+  "settings.askDemo.chip.fail": "需設定",
+  "settings.askDemo.chip.next": "建議",
+  "settings.askDemo.blocker.policy": "權限策略不是 Ask。",
+  "settings.askDemo.blocker.yolo": "YOLO / 一律核准已開啟。",
+  "settings.askDemo.blocker.noAskUser": "向使用者提問已停用（--no-ask-user）。",
+  "settings.askDemo.apply": "套用建議的 Ask 策略",
+  "settings.askDemo.applied": "已套用 Ask 策略並重新啟用向使用者提問。",
+  "settings.askDemo.appliedPolicyOnly": "已套用 Ask 策略。",
+  "settings.askDemo.copyPrompt": "複製範例提示詞",
+  "settings.askDemo.copied": "範例提示詞已複製——請自行貼到對話中。",
+  "settings.askDemo.copyFailed": "無法複製到剪貼簿。",
+  "settings.askDemo.preview": "預覽範例問卷",
+  "settings.askDemo.previewTitle": "示範問卷（非來自 Agent）",
+  "settings.askDemo.previewBanner":
+    "僅預覽——此問卷由應用內建用於示範，並非即時 Agent 回合發出。",
+  "settings.askDemo.openDocs": "Ask-user 文件",
+  "settings.askDemo.openDocsFailed": "無法在瀏覽器中開啟文件。",
+  "settings.askDemo.ready": "設定看起來已適合 Ask 路徑示範。需要時再貼上範例提示詞。",
+  "settings.askDemo.blocked": "請先處理紅色清單項目，或點擊「套用建議的 Ask 策略」。",
   "settings.sandboxProfile": "沙箱設定檔",
   "settings.sandboxProfileDesc":
     "對 Agent 行程施加作業系統級檔案系統/網路隔離（Linux Landlock / macOS Seatbelt）。在新啟動 Agent 時生效——變更後請重新連線工作階段。可在專案選單中為單一專案覆寫。",
