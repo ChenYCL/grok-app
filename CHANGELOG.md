@@ -11,6 +11,11 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+#### Runtime / privacy
+- **External OTEL dual opt-in honesty** (Settings → Runtime → Privacy): surfaces CLI enterprise OpenTelemetry (`GROK_EXTERNAL_OTEL` + exporters) without inventing off when unset. Status chips (`unknown` · `incomplete` · `ready` · `off` · `host_only`), dual-opt-in checklist, content-free-by-default note, redacted env template copy (no secrets written by App). Soft-parses privacy redacted preview for `[telemetry] otel_*` when present. Pure `externalOtelHonesty` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

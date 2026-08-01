@@ -1445,6 +1445,45 @@ export const zhTW: Record<MessageKey, string> = {
     "儲存會寫入白名單鍵並 soft-respawn agent，使下一輪重新載入 config.toml。",
   "settings.privacy.apply.independentOnly":
     "僅在獨立 agent-home 模式下可寫。共用模式是對 ~/.grok 的唯讀探測。",
+  "settings.privacy.externalOtel": "外部 OpenTelemetry（企業）",
+  "settings.privacy.externalOtelDesc":
+    "CLI 雙重 opt-in：將用量匯出到客戶自有 OTLP 收集器（GROK_EXTERNAL_OTEL + exporter）。與產品遙測、/privacy 編碼資料無關；預設無內容（content-free）。未設定時本應用不會虛構為「關閉」，也從不寫入收集器密鑰。",
+  "settings.privacy.externalOtel.dualOptIn": "雙重 opt-in",
+  "settings.privacy.externalOtel.status.off":
+    "外部 OTEL 已關閉（主開關明確為關）",
+  "settings.privacy.externalOtel.status.incomplete":
+    "雙重 opt-in 不完整（僅有主開關或僅有 exporter）",
+  "settings.privacy.externalOtel.status.ready":
+    "外部 OTEL 就緒（主開關 + exporter）",
+  "settings.privacy.externalOtel.status.unknown":
+    "外部 OTEL 未設定 — 不宣稱已關閉",
+  "settings.privacy.externalOtel.status.hostOnly":
+    "外部 OTEL 狀態需要桌面應用程式",
+  "settings.privacy.externalOtel.unknownNotOff":
+    "「未設定」不等於「關閉」。缺失的 GROK_EXTERNAL_OTEL / exporter 保持未知——本應用不會把外部 OTEL 虛構為已停用。",
+  "settings.privacy.externalOtel.incompleteHint":
+    "雙重 opt-in 需要主開關（GROK_EXTERNAL_OTEL / otel_enabled）以及至少一個 exporter（otlp 或 console）。任一半單獨啟用都不會生效。",
+  "settings.privacy.externalOtel.check.master":
+    "主開關 — GROK_EXTERNAL_OTEL=1 或 [telemetry] otel_enabled = true",
+  "settings.privacy.externalOtel.check.exporter":
+    "Exporter — OTEL_METRICS_EXPORTER 或 OTEL_LOGS_EXPORTER = otlp | console",
+  "settings.privacy.externalOtel.check.contentFree":
+    "預設無內容 — 除非開啟內容門控，否則不匯出提示詞、程式碼、路徑或工具參數",
+  "settings.privacy.externalOtel.check.noAppSecrets":
+    "本應用從不寫入 OTEL 密鑰 — 收集器鑑權僅用 OTEL_EXPORTER_OTLP_HEADERS（不進 config.toml）",
+  "settings.privacy.externalOtel.check.independent":
+    "獨立資料流 — 非產品遙測、非 /privacy 編碼資料、不攜帶 SpaceXAI 憑證",
+  "settings.privacy.externalOtel.step.done": "已滿足",
+  "settings.privacy.externalOtel.step.missing": "缺失",
+  "settings.privacy.externalOtel.step.unknown": "未知 / 未設定",
+  "settings.privacy.externalOtel.contentFree":
+    "CLI 預設匯出無內容用量 schema。可選 OTEL_LOG_USER_PROMPTS / OTEL_LOG_TOOL_DETAILS 開啟有限內容。",
+  "settings.privacy.externalOtel.noSecrets":
+    "本應用不寫入 OTEL headers 或權杖。請僅在行程環境中設定收集器鑑權。",
+  "settings.privacy.externalOtel.sharedNote":
+    "共用模式下 App 隱私鍵為唯讀。外部 OTEL 由 CLI 行程透過環境變數 / [telemetry] otel_* 設定——本應用不會寫入。",
+  "settings.privacy.externalOtel.copyEnv": "複製環境變數範本",
+  "settings.privacy.externalOtel.copied": "已複製",
   "settings.tab.remoteIm": "IM 通訊",
   "settings.tab.phoneMirror": "手機鏡像",
   "settings.searchResults": "相符的設定",

@@ -32,6 +32,17 @@ import {
   type PrivacyValues,
   type PrivacyWritableKey,
 } from "@/lib/privacyConfig";
+import {
+  buildExternalOtelChecklist,
+  evidenceFromExternalOtelConfigText,
+  externalOtelSharedModeNoteKey,
+  externalOtelStatusMessageKey,
+  externalOtelStatusTone,
+  externalOtelToneClass,
+  formatExternalOtelEnvHints,
+  mergeExternalOtelEvidence,
+  resolveExternalOtelStatus,
+} from "@/lib/externalOtelHonesty";
 import { IconRefresh } from "@/components/icons";
 
 function Toggle({
@@ -180,6 +191,7 @@ export function PrivacyCenterPanel({
     valuesFromPrivacySnapshot({}),
   );
   const [copied, setCopied] = useState(false);
+  const [otelCopied, setOtelCopied] = useState(false);
 
   const applySnap = useCallback((s: PrivacyConfigSnapshot) => {
     setSnap(s);
@@ -295,6 +307,33 @@ export function PrivacyCenterPanel({
       // ignore — clipboard may be blocked
     }
   };
+
+  const copyOtelEnv = async () => {
+    try {
+      await navigator.clipboard.writeText(formatExternalOtelEnvHints());
+      setOtelCopied(true);
+      window.setTimeout(() => setOtelCopied(false), 1600);
+    } catch {
+      // ignore — clipboard may be blocked
+    }
+  };
+
+  /**
+   * Soft evidence only from privacy redacted preview (if any otel_* peers).
+   * No host invent: missing preview → unknown dual-opt-in status.
+   */
+  const externalOtel = useMemo(() => {
+    const fromPreview = evidenceFromExternalOtelConfigText(
+      snap?.redactedPreview ?? null,
+    );
+    const evidence = mergeExternalOtelEvidence(fromPreview, {
+      available: api.isTauri() ? true : false,
+    });
+    const status = resolveExternalOtelStatus(evidence);
+    const tone = externalOtelStatusTone(status);
+    const checklist = buildExternalOtelChecklist(evidence);
+    return { evidence, status, tone, checklist };
+  }, [snap?.redactedPreview]);
 
   const probeTone = probe ? privacyProbeToneClass(probe.tone) : "";
   const hardFail = probe != null && probe.outcome === "error" && !snap;
@@ -564,6 +603,134 @@ export function PrivacyCenterPanel({
           </div>
         </>
       ) : null}
+
+      {/* External OTEL: always visible (env template + dual opt-in honesty). */}
+      <div
+        className={
+          "settings-row settings-row--stack settings-privacy__external-otel " +
+          externalOtelToneClass(externalOtel.tone)
+        }
+        id="settings-anchor-privacy-externalOtel"
+        style={{ marginTop: 16 }}
+      >
+        <div className="settings-row__text">
+          <div className="settings-row__label">
+            {t("settings.privacy.externalOtel")}
+          </div>
+          <div className="settings-row__desc">
+            {t("settings.privacy.externalOtelDesc")}
+          </div>
+        </div>
+
+        <div
+          className={
+            "settings-config-edit__badges settings-privacy__probe " +
+            externalOtelToneClass(externalOtel.tone)
+          }
+          role="status"
+        >
+          <span
+            className={
+              "ext-badge" +
+              (externalOtel.tone === "warn"
+                ? " ext-badge--danger"
+                : externalOtel.tone === "muted" ||
+                    externalOtel.tone === "info"
+                  ? " ext-badge--muted"
+                  : "")
+            }
+          >
+            {t(
+              externalOtelStatusMessageKey(externalOtel.status) as MessageKey,
+            )}
+          </span>
+          <span className="ext-badge ext-badge--muted">
+            {t("settings.privacy.externalOtel.dualOptIn")}
+          </span>
+        </div>
+
+        {externalOtel.status === "unknown" ? (
+          <div className="ext-alert ext-alert--info" role="status">
+            <p className="ext-alert__body" style={{ margin: 0 }}>
+              {t("settings.privacy.externalOtel.unknownNotOff")}
+            </p>
+          </div>
+        ) : null}
+
+        {externalOtel.status === "incomplete" ? (
+          <div className="ext-alert ext-alert--warn" role="status">
+            <p className="ext-alert__body" style={{ margin: 0 }}>
+              {t("settings.privacy.externalOtel.incompleteHint")}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="settings-privacy__otel-checklist" role="list">
+          {externalOtel.checklist.map((step) => {
+            const mark =
+              step.done === true ? "✓" : step.done === false ? "✗" : "·";
+            const markLabel =
+              step.done === true
+                ? t("settings.privacy.externalOtel.step.done")
+                : step.done === false
+                  ? t("settings.privacy.externalOtel.step.missing")
+                  : t("settings.privacy.externalOtel.step.unknown");
+            return (
+              <div
+                key={step.id}
+                className="settings-row__hint"
+                role="listitem"
+                title={markLabel}
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "flex-start",
+                }}
+              >
+                <span aria-hidden style={{ minWidth: "1em" }}>
+                  {mark}
+                </span>
+                <span>{t(step.messageKey as MessageKey)}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="ext-field-hint" style={{ marginTop: 8 }}>
+          {t("settings.privacy.externalOtel.contentFree")}
+        </p>
+        <p className="ext-field-hint">
+          {t("settings.privacy.externalOtel.noSecrets")}
+        </p>
+        {snap && !writable ? (
+          <p className="ext-field-hint">
+            {t(externalOtelSharedModeNoteKey() as MessageKey)}
+          </p>
+        ) : null}
+
+        <div
+          className="settings-row__actions"
+          style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}
+        >
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => void copyOtelEnv()}
+          >
+            {otelCopied
+              ? t("settings.privacy.externalOtel.copied")
+              : t("settings.privacy.externalOtel.copyEnv")}
+          </button>
+        </div>
+
+        <pre
+          className="settings-config-edit__pre"
+          tabIndex={0}
+          style={{ marginTop: 8, maxHeight: 220, overflow: "auto" }}
+        >
+          {formatExternalOtelEnvHints()}
+        </pre>
+      </div>
     </div>
   );
 }
