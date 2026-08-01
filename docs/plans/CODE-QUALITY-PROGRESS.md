@@ -11,8 +11,8 @@
 | Program | `2026-08-01-code-quality-remediation` |
 | Spec | `docs/plans/2026-08-01-code-quality-remediation-GOAL.md` |
 | Started | `2026-08-01` |
-| Current wave | `wave-a` |
-| Current WP | `WP-A1` |
+| Current wave | `wave-c` |
+| Current WP | `WP-C1` |
 | **FINAL** | **PENDING** |
 
 ## Wave checklist
@@ -39,7 +39,7 @@
 | WP-B4 | Settings context / props collapse | PENDING | | |
 | WP-B5 | Dialog/modal host extraction | PENDING | | |
 | WP-B6 | CSS domain split (batch 1) | PENDING | | |
-| WP-C1 | commands/ directory split | PENDING | | |
+| WP-C1 | commands/ directory split | PASS | (local wp-c1) | `commands/` dir + 12 domain files; facade mod.rs 27 lines; largest worktree_agents.rs 1936; cargo test 943 pass |
 | WP-C2 | session_manager/ directory split | PENDING | | |
 | WP-C3 | api/ domain modules | PASS | (local wp-c3) | 17 modules under src/lib/api/; facade api.ts 26 lines; typecheck clean for api/*; tests 4599 pass |
 | WP-C4 | Further App.tsx shrink to wave-c numbers | PENDING | | |
@@ -53,6 +53,7 @@
 | baseline | 24843 | 318 | 111 | 30585 | 11622 | 7691 | 4947 | ~180 | ~53 |
 | 2026-08-01 A0 | 24842 | 318 | 111 | 30584 | 11621 | 7690 | 4946 | 204 | 53 |
 | 2026-08-01 C3 | — | — | — | — | — | — | 26 (facade) + 17 modules | — | — |
+| 2026-08-01 C1 | — | — | — | — | facade 27 / max 1936 (12 modules) | 7690 | — | — | — |
 
 ## Blockers
 
