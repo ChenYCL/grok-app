@@ -7451,6 +7451,39 @@ pub struct GitWorktreeRemoveResult {
     pub forced: bool,
 }
 
+/// One row from `git diff --name-status` (worktree compare).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeCompareEntry {
+    /// Status token: A, M, D, R100, C080, …
+    pub status: String,
+    /// Path (rename/copy destination when old_path is set).
+    pub path: String,
+    /// Rename/copy source path when present.
+    pub old_path: Option<String>,
+}
+
+/// Soft-fail result of comparing two worktree paths / refs (`git diff --name-status`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeCompareResult {
+    pub available: bool,
+    pub entries: Vec<GitWorktreeCompareEntry>,
+    /// Raw `git diff --name-status` stdout (for client re-parse / honesty).
+    pub raw: Option<String>,
+    pub reason: Option<String>,
+    pub base: String,
+    pub other: String,
+    /// Resolved left ref (branch or sha).
+    pub base_ref: Option<String>,
+    /// Resolved right ref (branch or sha).
+    pub other_ref: Option<String>,
+    /// True when host truncated the entry list (cap honesty).
+    pub truncated: bool,
+    /// Total entries before host cap (when truncated).
+    pub total: usize,
+}
+
 // from PR #77
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -8274,6 +8307,278 @@ pub async fn git_worktree_remove(
         path: remove_path,
         forced,
     })
+}
+
+/// Max name-status rows returned by the host (client may cap further for display).
+const GIT_WORKTREE_COMPARE_ENTRY_CAP: usize = 2_000;
+
+/// Soft-fail compare of two worktree paths via `git diff --name-status <base>...<other>`.
+///
+/// Prefer explicit branch names when provided; otherwise resolve each path's HEAD.
+/// Both paths must be directories inside the same git common dir. Never merges/applies.
+#[tauri::command]
+pub async fn git_worktree_compare(
+    base_path: String,
+    other_path: String,
+    base_branch: Option<String>,
+    other_branch: Option<String>,
+) -> Result<GitWorktreeCompareResult, String> {
+    let base = normalize_fs_path(&base_path);
+    let other = normalize_fs_path(&other_path);
+
+    let empty = |reason: &str| GitWorktreeCompareResult {
+        available: false,
+        entries: vec![],
+        raw: None,
+        reason: Some(reason.into()),
+        base: base.clone(),
+        other: other.clone(),
+        base_ref: None,
+        other_ref: None,
+        truncated: false,
+        total: 0,
+    };
+
+    if base.is_empty() || other.is_empty() {
+        return Ok(empty("missing_path"));
+    }
+    if worktree_paths_equal(&base, &other) {
+        return Ok(empty("same_path"));
+    }
+    if base.starts_with('-') || other.starts_with('-') {
+        return Ok(empty("invalid path"));
+    }
+
+    let base_pb = std::path::PathBuf::from(&base);
+    let other_pb = std::path::PathBuf::from(&other);
+    if !base_pb.is_dir() || !other_pb.is_dir() {
+        return Ok(empty("missing_path"));
+    }
+
+    if let Err(reason) = git_probe_work_tree(&base) {
+        return Ok(empty(&reason));
+    }
+    if let Err(reason) = git_probe_work_tree(&other) {
+        return Ok(empty(&reason));
+    }
+
+    // Same repository (shared common dir) — refuse unrelated paths.
+    let base_common = git_rev_parse_path(&base, "--git-common-dir");
+    let other_common = git_rev_parse_path(&other, "--git-common-dir");
+    match (base_common.as_ref(), other_common.as_ref()) {
+        (Some(a), Some(b)) if !worktree_paths_equal(a, b) => {
+            return Ok(empty("not same repository"));
+        }
+        (None, _) | (_, None) => {
+            return Ok(empty("not a git repository"));
+        }
+        _ => {}
+    }
+
+    let base_ref = resolve_compare_ref(&base, base_branch.as_deref());
+    let other_ref = resolve_compare_ref(&other, other_branch.as_deref());
+    let (Some(left), Some(right)) = (base_ref.as_ref(), other_ref.as_ref()) else {
+        return Ok(empty("could not resolve refs"));
+    };
+
+    // Safe argv — never go through a shell.
+    // `git -C <base> diff --name-status <left>...<right>`
+    let range = format!("{left}...{right}");
+    let out = crate::process_util::command("git")
+        .args(["-C", &base, "diff", "--name-status", &range])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let err = if err.is_empty() {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            err
+        };
+        return Ok(GitWorktreeCompareResult {
+            available: false,
+            entries: vec![],
+            raw: None,
+            reason: Some(if err.is_empty() {
+                "git diff failed".into()
+            } else {
+                err.chars().take(400).collect()
+            }),
+            base,
+            other,
+            base_ref: Some(left.clone()),
+            other_ref: Some(right.clone()),
+            truncated: false,
+            total: 0,
+        });
+    }
+
+    let raw_full = String::from_utf8_lossy(&out.stdout).to_string();
+    let parsed = parse_name_status(&raw_full);
+    let total = parsed.len();
+    let truncated = total > GIT_WORKTREE_COMPARE_ENTRY_CAP;
+    let entries: Vec<GitWorktreeCompareEntry> = parsed
+        .into_iter()
+        .take(GIT_WORKTREE_COMPARE_ENTRY_CAP)
+        .collect();
+    // Cap raw for IPC size honesty.
+    let raw = Some(raw_full.chars().take(200_000).collect::<String>());
+
+    Ok(GitWorktreeCompareResult {
+        available: true,
+        entries,
+        raw,
+        reason: None,
+        base,
+        other,
+        base_ref: Some(left.clone()),
+        other_ref: Some(right.clone()),
+        truncated,
+        total,
+    })
+}
+
+/// Resolve a compare ref: prefer sanitized branch name, else `rev-parse HEAD`.
+fn resolve_compare_ref(project: &str, branch: Option<&str>) -> Option<String> {
+    if let Some(b) = branch.map(str::trim).filter(|s| !s.is_empty()) {
+        if b.starts_with('-') || b.contains('\0') || b.contains('\n') || b.contains('\r') {
+            // Fall through to HEAD — never pass option-like / control refs.
+        } else if b.len() <= 256 && !b.contains("..") {
+            // Verify ref resolves under this worktree.
+            if let Some(full) = git_rev_parse_output(project, b) {
+                // Return the user-facing branch name when it resolves (nicer UI);
+                // three-dot range accepts branch names.
+                let _ = full;
+                return Some(b.to_string());
+            }
+        }
+    }
+    git_rev_parse_output(project, "HEAD")
+}
+
+fn git_rev_parse_output(project: &str, rev: &str) -> Option<String> {
+    let out = crate::process_util::command("git")
+        .args(["-C", project, "rev-parse", "--verify", rev])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+/// `git rev-parse <flag>` absolute-ish path (for --git-common-dir).
+fn git_rev_parse_path(project: &str, flag: &str) -> Option<String> {
+    let out = crate::process_util::command("git")
+        .args(["-C", project, "rev-parse", flag])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        return None;
+    }
+    // Relative common-dir → resolve against project.
+    let pb = std::path::PathBuf::from(&s);
+    let abs = if pb.is_absolute() {
+        pb
+    } else {
+        std::path::PathBuf::from(project).join(pb)
+    };
+    let canon = abs.canonicalize().unwrap_or(abs);
+    Some(normalize_fs_path(&canon.to_string_lossy()))
+}
+
+/// Parse `git diff --name-status` stdout (mirrors frontend `parseNameStatus`).
+fn parse_name_status(raw: &str) -> Vec<GitWorktreeCompareEntry> {
+    let text = raw.replace("\r\n", "\n");
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let t = line.trim_end();
+        if t.trim().is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = if t.contains('\t') {
+            t.split('\t').collect()
+        } else {
+            t.split_whitespace().collect()
+        };
+        if parts.len() < 2 {
+            continue;
+        }
+        let status = parts[0].trim();
+        if status.is_empty() {
+            continue;
+        }
+        if parts.len() >= 3 {
+            let old = parts[1].trim().replace('\\', "/");
+            let newp = parts[2].trim().replace('\\', "/");
+            if old.is_empty() && newp.is_empty() {
+                continue;
+            }
+            out.push(GitWorktreeCompareEntry {
+                status: status.to_string(),
+                path: if newp.is_empty() {
+                    old.clone()
+                } else {
+                    newp
+                },
+                old_path: if old.is_empty() { None } else { Some(old) },
+            });
+        } else {
+            let path = parts[1].trim().replace('\\', "/");
+            if path.is_empty() {
+                continue;
+            }
+            out.push(GitWorktreeCompareEntry {
+                status: status.to_string(),
+                path,
+                old_path: None,
+            });
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod git_worktree_compare_parse_tests {
+    use super::*;
+
+    #[test]
+    fn parse_name_status_amd() {
+        let raw = "A\tsrc/new.ts\nM\tREADME.md\nD\told.txt\n";
+        let list = parse_name_status(raw);
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0].status, "A");
+        assert_eq!(list[0].path, "src/new.ts");
+        assert!(list[0].old_path.is_none());
+        assert_eq!(list[1].status, "M");
+        assert_eq!(list[2].status, "D");
+    }
+
+    #[test]
+    fn parse_name_status_rename() {
+        let raw = "R100\told/a.ts\tnew/a.ts\n";
+        let list = parse_name_status(raw);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].status, "R100");
+        assert_eq!(list[0].path, "new/a.ts");
+        assert_eq!(list[0].old_path.as_deref(), Some("old/a.ts"));
+    }
+
+    #[test]
+    fn parse_name_status_empty() {
+        assert!(parse_name_status("").is_empty());
+        assert!(parse_name_status("\n\n").is_empty());
+    }
 }
 
 // ── Worktree ship flow (push + gh pr create) ────────────────────────────────

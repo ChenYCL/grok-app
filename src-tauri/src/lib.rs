@@ -517,6 +517,7 @@ pub fn run() {
             commands::git_worktree_add,
             commands::git_worktree_remove,
             commands::git_worktree_gc,
+            commands::git_worktree_compare,
             commands::git_push_branch,
             commands::gh_pr_create,
             git_pr_hub::git_pr_list,

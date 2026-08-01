@@ -3537,6 +3537,51 @@ export async function gitWorktreeRemove(opts: {
   });
 }
 
+/** One row from host `git_worktree_compare` (`git diff --name-status`). */
+export type GitWorktreeCompareEntry = {
+  status: string;
+  path: string;
+  oldPath?: string | null;
+};
+
+/**
+ * Soft-fail compare of two worktree paths / refs.
+ * `available: false` with `reason` when same path, missing, not git, etc.
+ */
+export type GitWorktreeCompareResult = {
+  available: boolean;
+  entries: GitWorktreeCompareEntry[];
+  /** Raw name-status stdout for client re-parse. */
+  raw?: string | null;
+  reason?: string | null;
+  base: string;
+  other: string;
+  baseRef?: string | null;
+  otherRef?: string | null;
+  /** True when host truncated entries (cap honesty). */
+  truncated?: boolean;
+  total?: number;
+};
+
+/**
+ * Compare two worktree paths via `git diff --name-status <base>...<other>`.
+ * Soft-fails when paths missing / not git / different repos.
+ * Does not merge or apply.
+ */
+export async function gitWorktreeCompare(opts: {
+  basePath: string;
+  otherPath: string;
+  baseBranch?: string | null;
+  otherBranch?: string | null;
+}): Promise<GitWorktreeCompareResult> {
+  return invoke<GitWorktreeCompareResult>("git_worktree_compare", {
+    basePath: opts.basePath,
+    otherPath: opts.otherPath,
+    baseBranch: opts.baseBranch?.trim() || null,
+    otherBranch: opts.otherBranch?.trim() || null,
+  });
+}
+
 /** Soft-fail result of `git push -u origin HEAD` (worktree ship flow). */
 export type GitPushBranchResult = {
   available: boolean;

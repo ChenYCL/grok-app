@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Worktree compare vs main**: branch menu **Compare with main…** (linked worktrees only) opens a GlassModal with short stats chips + scrollable `git diff --name-status` file list (A/M/D/R badges). Soft-fail when same path / missing / not git; overflow count honesty (display cap 500). Per-row **Copy path** / **Reveal**. No merge or selective apply (out of scope). Pure `worktreeCompare` helpers + host `git_worktree_compare`; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
