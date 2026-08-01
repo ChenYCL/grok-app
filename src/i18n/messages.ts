@@ -1718,6 +1718,45 @@ const en = {
     "Save writes allowlisted keys and soft-respawns the agent so the next turn reloads config.toml.",
   "settings.privacy.apply.independentOnly":
     "Writes apply only in independent agent-home mode. Shared mode is a read-only probe of ~/.grok.",
+  "settings.privacy.externalOtel": "External OpenTelemetry (enterprise)",
+  "settings.privacy.externalOtelDesc":
+    "CLI dual opt-in for a customer-owned OTLP collector (GROK_EXTERNAL_OTEL + exporters). Independent of product telemetry and /privacy coding-data. Content-free by default. This App never invents “off” when env/config is unset, and never writes collector secrets.",
+  "settings.privacy.externalOtel.dualOptIn": "Dual opt-in",
+  "settings.privacy.externalOtel.status.off":
+    "External OTEL off (master explicitly disabled)",
+  "settings.privacy.externalOtel.status.incomplete":
+    "Incomplete dual opt-in (master or exporter only)",
+  "settings.privacy.externalOtel.status.ready":
+    "External OTEL ready (master + exporter)",
+  "settings.privacy.externalOtel.status.unknown":
+    "External OTEL unset — not claimed off",
+  "settings.privacy.externalOtel.status.hostOnly":
+    "External OTEL status needs the desktop app",
+  "settings.privacy.externalOtel.unknownNotOff":
+    "Unset is not off. Missing GROK_EXTERNAL_OTEL / exporters stay unknown — this App never invents external OTEL as disabled.",
+  "settings.privacy.externalOtel.incompleteHint":
+    "Dual opt-in requires both the master switch (GROK_EXTERNAL_OTEL / otel_enabled) and at least one exporter (otlp or console). Either half alone enables nothing.",
+  "settings.privacy.externalOtel.check.master":
+    "Master switch — GROK_EXTERNAL_OTEL=1 or [telemetry] otel_enabled = true",
+  "settings.privacy.externalOtel.check.exporter":
+    "Exporter — OTEL_METRICS_EXPORTER or OTEL_LOGS_EXPORTER = otlp | console",
+  "settings.privacy.externalOtel.check.contentFree":
+    "Content-free by default — no prompts, code, paths, or tool args unless content gates are enabled",
+  "settings.privacy.externalOtel.check.noAppSecrets":
+    "App never writes OTEL secrets — collector auth is OTEL_EXPORTER_OTLP_HEADERS only (not config.toml)",
+  "settings.privacy.externalOtel.check.independent":
+    "Independent stream — not product telemetry, not /privacy coding-data, not SpaceXAI credentials",
+  "settings.privacy.externalOtel.step.done": "Done",
+  "settings.privacy.externalOtel.step.missing": "Missing",
+  "settings.privacy.externalOtel.step.unknown": "Unknown / unset",
+  "settings.privacy.externalOtel.contentFree":
+    "CLI ships a content-free usage schema by default. Optional OTEL_LOG_USER_PROMPTS / OTEL_LOG_TOOL_DETAILS re-enable limited content.",
+  "settings.privacy.externalOtel.noSecrets":
+    "This App does not write OTEL headers or tokens. Set collector auth in the process environment only.",
+  "settings.privacy.externalOtel.sharedNote":
+    "Shared mode is read-only for App privacy keys. External OTEL is configured on the CLI process via env / [telemetry] otel_* — not written by this App.",
+  "settings.privacy.externalOtel.copyEnv": "Copy env template",
+  "settings.privacy.externalOtel.copied": "Copied",
   "settings.searchResults": "Matching settings",
   "settings.searchOpen": "Open",
   "settings.inspect.manageInExtensions": "Manage in Extensions",
@@ -8735,6 +8774,45 @@ const zh: Record<MessageKey, string> = {
     "保存会写入白名单键并 soft-respawn agent，使下一轮重新加载 config.toml。",
   "settings.privacy.apply.independentOnly":
     "仅在独立 agent-home 模式下可写。共享模式是对 ~/.grok 的只读探测。",
+  "settings.privacy.externalOtel": "外部 OpenTelemetry（企业）",
+  "settings.privacy.externalOtelDesc":
+    "CLI 双重 opt-in：将用量导出到客户自有 OTLP 采集器（GROK_EXTERNAL_OTEL + exporter）。与产品遥测、/privacy 编码数据无关；默认无内容（content-free）。未设置时本应用不会虚构为「关闭」，也从不写入采集器密钥。",
+  "settings.privacy.externalOtel.dualOptIn": "双重 opt-in",
+  "settings.privacy.externalOtel.status.off":
+    "外部 OTEL 已关闭（主开关明确为关）",
+  "settings.privacy.externalOtel.status.incomplete":
+    "双重 opt-in 不完整（仅有主开关或仅有 exporter）",
+  "settings.privacy.externalOtel.status.ready":
+    "外部 OTEL 就绪（主开关 + exporter）",
+  "settings.privacy.externalOtel.status.unknown":
+    "外部 OTEL 未设置 — 不宣称已关闭",
+  "settings.privacy.externalOtel.status.hostOnly":
+    "外部 OTEL 状态需要桌面应用",
+  "settings.privacy.externalOtel.unknownNotOff":
+    "「未设置」不等于「关闭」。缺失的 GROK_EXTERNAL_OTEL / exporter 保持未知——本应用不会把外部 OTEL 虚构为已禁用。",
+  "settings.privacy.externalOtel.incompleteHint":
+    "双重 opt-in 需要主开关（GROK_EXTERNAL_OTEL / otel_enabled）以及至少一个 exporter（otlp 或 console）。任一半单独启用都不会生效。",
+  "settings.privacy.externalOtel.check.master":
+    "主开关 — GROK_EXTERNAL_OTEL=1 或 [telemetry] otel_enabled = true",
+  "settings.privacy.externalOtel.check.exporter":
+    "Exporter — OTEL_METRICS_EXPORTER 或 OTEL_LOGS_EXPORTER = otlp | console",
+  "settings.privacy.externalOtel.check.contentFree":
+    "默认无内容 — 除非开启内容门控，否则不导出提示词、代码、路径或工具参数",
+  "settings.privacy.externalOtel.check.noAppSecrets":
+    "本应用从不写入 OTEL 密钥 — 采集器鉴权仅用 OTEL_EXPORTER_OTLP_HEADERS（不进 config.toml）",
+  "settings.privacy.externalOtel.check.independent":
+    "独立数据流 — 非产品遥测、非 /privacy 编码数据、不携带 SpaceXAI 凭证",
+  "settings.privacy.externalOtel.step.done": "已满足",
+  "settings.privacy.externalOtel.step.missing": "缺失",
+  "settings.privacy.externalOtel.step.unknown": "未知 / 未设置",
+  "settings.privacy.externalOtel.contentFree":
+    "CLI 默认导出无内容用量 schema。可选 OTEL_LOG_USER_PROMPTS / OTEL_LOG_TOOL_DETAILS 开启有限内容。",
+  "settings.privacy.externalOtel.noSecrets":
+    "本应用不写入 OTEL headers 或令牌。请仅在进程环境中配置采集器鉴权。",
+  "settings.privacy.externalOtel.sharedNote":
+    "共享模式下 App 隐私键为只读。外部 OTEL 由 CLI 进程通过环境变量 / [telemetry] otel_* 配置——本应用不会写入。",
+  "settings.privacy.externalOtel.copyEnv": "复制环境变量模板",
+  "settings.privacy.externalOtel.copied": "已复制",
   "settings.tab.remoteIm": "IM 通信",
   "settings.tab.phoneMirror": "手机镜像",
   "settings.searchResults": "匹配的设置",
