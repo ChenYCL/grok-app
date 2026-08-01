@@ -6010,6 +6010,21 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   font-family: var(--font-mono);
 }
 
+/* CLI checksum trust chip (Settings → Runtime) */
+.settings-cli-trust {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-cli-trust .settings-row__hint {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-family: var(--font-sans, inherit);
+}
+
 /* CLI update check (Settings → Runtime / About + Doctor) */
 .settings-cli-update {
   display: flex;

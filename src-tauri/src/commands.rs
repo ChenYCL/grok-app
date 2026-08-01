@@ -1986,6 +1986,7 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
             "path": probe.path,
             "version": probe.version,
             "source": probe.source,
+            "checksumVerified": settings.last_cli_checksum_verified,
         },
         "auth": {
             "cliAuthJson": auth_ok,
@@ -2012,22 +2013,29 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
         }
     });
 
-    let mut checks: Vec<DoctorCheck> = Vec::with_capacity(5);
+    let mut checks: Vec<DoctorCheck> = Vec::with_capacity(6);
 
     // 1) CLI
+    let checksum_verified = settings.last_cli_checksum_verified;
     if probe.found {
         let ver = probe.version.as_deref().unwrap_or("unknown");
         let path = probe.path.as_deref().unwrap_or("—");
+        let checksum_note = match checksum_verified {
+            Some(true) => " · last install checksum verified",
+            Some(false) => " · last install missing checksum sidecar",
+            None => "",
+        };
         checks.push(doctor_check(
             "cli",
             "ok",
             "Grok Build CLI",
-            format!("Found {ver} ({}) at {path}", probe.source),
+            format!("Found {ver} ({}) at {path}{checksum_note}", probe.source),
             serde_json::json!({
                 "found": true,
                 "path": probe.path,
                 "version": probe.version,
                 "source": probe.source,
+                "checksumVerified": checksum_verified,
             }),
         ));
     } else {
@@ -2043,8 +2051,34 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
                 "version": probe.version,
                 "source": probe.source,
                 "candidatesTried": probe.candidates_tried,
+                "checksumVerified": checksum_verified,
             }),
         ));
+    }
+
+    // 1b) CLI install checksum trust (only when App recorded a last install).
+    // Never invents verified; mismatch never reaches install ok.
+    if let Some(verified) = checksum_verified {
+        if verified {
+            checks.push(doctor_check(
+                "cli_checksum",
+                "ok",
+                "CLI install checksum",
+                "Last App-managed CLI install matched a published SHA-256 sidecar."
+                    .into(),
+                serde_json::json!({ "checksumVerified": true }),
+            ));
+        } else {
+            checks.push(doctor_check(
+                "cli_checksum",
+                "warn",
+                "CLI install checksum",
+                "Last App-managed CLI install had no published SHA-256 sidecar \
+                 (HTTPS allowlist + binary probe only; not cryptographically verified)."
+                    .into(),
+                serde_json::json!({ "checksumVerified": false }),
+            ));
+        }
     }
 
     // 2) Auth — warn if no CLI auth, official key, or relay
