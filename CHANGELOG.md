@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Automations Inbox** (review queue): Scheduled tasks page turns observed run history into an Inbox — outcome chips + search, unread mark-read / mark-all, open linked session (or project) when known, soft **Run now** only if the task still exists, clear via GlassModal (no `window.confirm`). Process-bound honesty banner: never invents offline runs after Quit. Pure `automationsInbox` helpers + tests; optional `sessionId` / `projectId` on run records; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

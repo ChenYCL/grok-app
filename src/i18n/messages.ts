@@ -5072,6 +5072,32 @@ const en = {
   "automations.history.clearBody":
     "Removes the local observed run list on this device. This cannot be undone. Schedules themselves are unchanged.",
   "automations.history.clearConfirm": "Clear",
+  "automations.inbox.section": "Inbox",
+  "automations.inbox.desc":
+    "Review queue for schedule runs observed in this process. Open the linked session when known, retry when the task still exists, or mark items read.",
+  "automations.inbox.processBound":
+    "Runs are recorded only while Grok App is open or in the tray. Full Quit does not invent offline runs — empty Inbox after relaunch is normal until something fires.",
+  "automations.inbox.search": "Search inbox",
+  "automations.inbox.filterAria": "Filter inbox by outcome",
+  "automations.inbox.empty": "No inbox items.",
+  "automations.inbox.emptyFiltered": "No runs match this filter or search.",
+  "automations.inbox.emptyProcessBound":
+    "No observed runs yet. History fills when a schedule fires in this process or you use Run now — never after Quit offline.",
+  "automations.inbox.openSession": "Open session",
+  "automations.inbox.openProject": "Open project",
+  "automations.inbox.runNow": "Run now",
+  "automations.inbox.markRead": "Mark read",
+  "automations.inbox.markAllRead": "Mark all read",
+  "automations.inbox.clear": "Clear inbox",
+  "automations.inbox.clearTitle": "Clear inbox history?",
+  "automations.inbox.clearBody":
+    "Removes the local observed run list and read markers on this device. This cannot be undone. Schedules themselves are unchanged.",
+  "automations.inbox.clearConfirm": "Clear",
+  "automations.inbox.unreadCount": "{n} unread",
+  "automations.inbox.sessionMissing":
+    "That session is no longer available. It may have been deleted after the run.",
+  "automations.inbox.projectMissing":
+    "That project is no longer available.",
   "automations.oneshot.title": "One-shot schedule fire",
   "automations.oneshot.desc":
     "Tray residency keeps continuous ticks while the process is alive. After full Quit, invoke {flag} (helper script {script} under app data) to fire at most one due task without opening the full UI, then exit.",
@@ -11007,6 +11033,31 @@ const zh: Record<MessageKey, string> = {
   "automations.history.clearBody":
     "将删除本机已观察到的运行列表，且无法撤销。已安排任务本身不受影响。",
   "automations.history.clearConfirm": "清空",
+  "automations.inbox.section": "收件箱",
+  "automations.inbox.desc":
+    "本进程内观察到的调度运行审阅队列。可在已知时打开关联会话、在任务仍存在时重试，或标记已读。",
+  "automations.inbox.processBound":
+    "仅在 Grok 应用打开或收起到托盘期间记录运行。完全退出后不会虚构离线运行——重新打开后若尚未触发，收件箱为空是正常的。",
+  "automations.inbox.search": "搜索收件箱",
+  "automations.inbox.filterAria": "按结果筛选收件箱",
+  "automations.inbox.empty": "暂无收件箱条目。",
+  "automations.inbox.emptyFiltered": "没有匹配该筛选或搜索的运行。",
+  "automations.inbox.emptyProcessBound":
+    "暂无观察到的运行。当本进程内调度触发或你使用「立即运行」时会写入——完全退出后的离线触发不会出现。",
+  "automations.inbox.openSession": "打开会话",
+  "automations.inbox.openProject": "打开项目",
+  "automations.inbox.runNow": "立即运行",
+  "automations.inbox.markRead": "标为已读",
+  "automations.inbox.markAllRead": "全部标为已读",
+  "automations.inbox.clear": "清空收件箱",
+  "automations.inbox.clearTitle": "清空收件箱历史？",
+  "automations.inbox.clearBody":
+    "将删除本机已观察到的运行列表与已读标记，且无法撤销。已安排任务本身不受影响。",
+  "automations.inbox.clearConfirm": "清空",
+  "automations.inbox.unreadCount": "{n} 条未读",
+  "automations.inbox.sessionMissing":
+    "该会话已不存在，可能在运行后被删除。",
+  "automations.inbox.projectMissing": "该项目已不存在。",
   "automations.oneshot.title": "一次性触发已安排任务",
   "automations.oneshot.desc":
     "托盘驻留可在进程存活期间持续检查。完全退出后，可用 {flag}（应用数据目录中的助手脚本 {script}）最多触发一个到期任务（无需完整交互界面），然后退出。",

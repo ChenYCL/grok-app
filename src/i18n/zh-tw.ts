@@ -4863,6 +4863,31 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.history.clearBody":
     "將刪除本機已觀察到的執行列表，且無法復原。已排程任務本身不受影響。",
   "automations.history.clearConfirm": "清除",
+  "automations.inbox.section": "收件匣",
+  "automations.inbox.desc":
+    "本行程內觀察到的排程執行審閱佇列。可在已知時開啟關聯對話、在任務仍存在時重試，或標記已讀。",
+  "automations.inbox.processBound":
+    "僅在 Grok 應用開啟或收起到系統匣期間記錄執行。完全結束後不會虛構離線執行——重新開啟後若尚未觸發，收件匣為空是正常的。",
+  "automations.inbox.search": "搜尋收件匣",
+  "automations.inbox.filterAria": "依結果篩選收件匣",
+  "automations.inbox.empty": "暫無收件匣項目。",
+  "automations.inbox.emptyFiltered": "沒有符合此篩選或搜尋的執行。",
+  "automations.inbox.emptyProcessBound":
+    "尚無觀察到的執行。當本行程內排程觸發或你使用「立即執行」時會寫入——完全結束後的離線觸發不會出現。",
+  "automations.inbox.openSession": "開啟對話",
+  "automations.inbox.openProject": "開啟專案",
+  "automations.inbox.runNow": "立即執行",
+  "automations.inbox.markRead": "標為已讀",
+  "automations.inbox.markAllRead": "全部標為已讀",
+  "automations.inbox.clear": "清除收件匣",
+  "automations.inbox.clearTitle": "清除收件匣歷史？",
+  "automations.inbox.clearBody":
+    "將刪除本機已觀察到的執行列表與已讀標記，且無法復原。已排程任務本身不受影響。",
+  "automations.inbox.clearConfirm": "清除",
+  "automations.inbox.unreadCount": "{n} 則未讀",
+  "automations.inbox.sessionMissing":
+    "該對話已不存在，可能在執行後被刪除。",
+  "automations.inbox.projectMissing": "該專案已不存在。",
   "automations.oneshot.title": "一次性觸發已排程任務",
   "automations.oneshot.desc":
     "系統匣駐留可在行程存活期間持續檢查。完全結束後，可用 {flag}（應用資料目錄中的助手腳本 {script}）最多觸發一個到期任務（無需完整互動介面），然後退出。",

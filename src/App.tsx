@@ -6443,6 +6443,7 @@ export default function App() {
           outcome: "skipped",
           source: "run_now",
           error: "busy",
+          projectId: auto.projectId,
         });
         return false;
       }
@@ -6453,6 +6454,7 @@ export default function App() {
           outcome: "skipped",
           source: "run_now",
           error: "session_busy",
+          projectId: auto.projectId,
         });
         return false;
       }
@@ -6471,6 +6473,7 @@ export default function App() {
             outcome: "error",
             source: "run_now",
             error: detail,
+            projectId: auto.projectId,
           });
           return false;
         }
@@ -6483,6 +6486,7 @@ export default function App() {
             outcome: "error",
             source: "run_now",
             error: detail,
+            projectId: auto.projectId,
           });
           return false;
         }
@@ -6584,6 +6588,7 @@ export default function App() {
             outcome: "error",
             source: "run_now",
             error: detail,
+            projectId: auto.projectId,
           });
           // Drop empty shell sessions so sidebar does not show SuperGrok ghosts.
           if (createdSessionId && api.isTauri()) {
@@ -6664,6 +6669,8 @@ export default function App() {
             outcome: "error",
             source: "run_now",
             error: errText,
+            sessionId: sessionId,
+            projectId: auto.projectId,
           });
           return false;
         }
@@ -6686,6 +6693,8 @@ export default function App() {
           outcome: "ok",
           source: "run_now",
           at: lastRunAt,
+          sessionId: sessionId,
+          projectId: auto.projectId,
         });
         setToast(tr("automations.runningToast", { title: auto.title }));
         window.setTimeout(() => setToast(null), 3200);
@@ -6698,6 +6707,7 @@ export default function App() {
           outcome: "error",
           source: "run_now",
           error: e,
+          projectId: auto.projectId,
         });
         return false;
       } finally {
@@ -6736,6 +6746,7 @@ export default function App() {
           name: title,
           outcome: "ok",
           source: "host",
+          sessionId: p?.sessionId ?? null,
         });
         setToast(tr("automations.runningToast", { title }));
         window.setTimeout(() => setToast(null), 3200);
@@ -18569,6 +18580,57 @@ export default function App() {
                 window.setTimeout(() => setToast(null), 4200);
               }}
               onRunNow={(auto) => void runAutomation(auto)}
+              locale={locale}
+              onOpenSession={(sessionId, projectId) => {
+                const id = (sessionId || "").trim();
+                if (!id) return;
+                void (async () => {
+                  let found =
+                    sessionsRef.current.find((s) => s.id === id) ?? null;
+                  if (!found) {
+                    try {
+                      const list = await api.sessionsList();
+                      const hit = list.find((s) => s.id === id);
+                      if (hit) {
+                        found = mapSessionListRow(hit);
+                        setSessions(list.map((s) => mapSessionListRow(s)));
+                      }
+                    } catch {
+                      /* soft-fail */
+                    }
+                  }
+                  if (!found) {
+                    setToast(tr("automations.inbox.sessionMissing"));
+                    window.setTimeout(() => setToast(null), 2800);
+                    return;
+                  }
+                  const pid = projectId ?? found.projectId;
+                  const proj =
+                    (pid
+                      ? projects.find((p) => p.id === pid) ?? null
+                      : null) ??
+                    (found.projectId
+                      ? projects.find((p) => p.id === found!.projectId) ?? null
+                      : null);
+                  setMainPane("chat");
+                  setAppView("workbench");
+                  await openSessionRef.current(found, proj);
+                })();
+              }}
+              onOpenProject={(projectId) => {
+                const id = (projectId || "").trim();
+                if (!id) return;
+                const proj = projects.find((p) => p.id === id) ?? null;
+                if (!proj) {
+                  setToast(tr("automations.inbox.projectMissing"));
+                  window.setTimeout(() => setToast(null), 2800);
+                  return;
+                }
+                setMainPane("chat");
+                setAppView("workbench");
+                setActiveProject(proj);
+                setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+              }}
             />
           ) : (
           <>
