@@ -736,6 +736,16 @@ import {
   PromptHistoryPanel,
   type PromptHistoryScope,
 } from "@/components/PromptHistoryPanel";
+import { SkillsTaskPickerPanel } from "@/components/SkillsTaskPickerPanel";
+import {
+  filterPickerEligibleSkills,
+  loadRecentSkillIds,
+  planInsertSkill,
+  rankSkillsForTask,
+  recordRecentSkill,
+  SKILLS_RECENT_CHANGE_EVENT,
+  type SkillsPickerSkill,
+} from "@/lib/skillsTaskPicker";
 import {
   planClearSendQueue,
   queuePreviewText,
@@ -950,6 +960,7 @@ import {
   IconHelp,
   IconPlug,
   IconPuzzle,
+  IconSkills,
 } from "@/components/icons";
 import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
 import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
@@ -1607,6 +1618,20 @@ export default function App() {
   );
   /** Clear recent prompts — App-level GlassModal (avoids floating-menu dismiss). */
   const [promptHistoryClearOpen, setPromptHistoryClearOpen] = useState(false);
+  /**
+   * Task-level skills picker (search + recent + host catalog).
+   * Catalog rows only from host `skills_list` — never invent names.
+   */
+  const [skillsPickerOpen, setSkillsPickerOpen] = useState(false);
+  const [skillsPickerQuery, setSkillsPickerQuery] = useState("");
+  const [skillsPickerActive, setSkillsPickerActive] = useState(0);
+  const [skillsPickerRecent, setSkillsPickerRecent] = useState<string[]>(() =>
+    typeof localStorage !== "undefined" ? loadRecentSkillIds() : [],
+  );
+  const skillsPickerPanelRef = useRef<HTMLDivElement>(null);
+  const skillsPickerTriggerRef = useRef<HTMLButtonElement>(null);
+  const skillsPickerOpenRef = useRef(false);
+  skillsPickerOpenRef.current = skillsPickerOpen;
   /**
    * Archive-by-age pro confirm (GlassModal with preview count + title samples).
    * Null when closed. Built via pure `planArchiveOlderThan`.
@@ -9161,6 +9186,25 @@ export default function App() {
     liveSlashRef.current = cleared;
   }, []);
 
+  const closeSkillsPicker = useCallback(() => {
+    setSkillsPickerOpen(false);
+    setSkillsPickerQuery("");
+    setSkillsPickerActive(0);
+  }, []);
+
+  const openSkillsPicker = useCallback(() => {
+    // Don't stack with slash/plus or prompt history.
+    setShowComposerPlus(false);
+    setSlashQuery(null);
+    setLiveSlash({ present: false, query: "", start: 0, end: 0 });
+    liveSlashRef.current = { present: false, query: "", start: 0, end: 0 };
+    setPromptHistoryOpen(false);
+    setSkillsPickerRecent(loadRecentSkillIds());
+    setSkillsPickerQuery("");
+    setSkillsPickerActive(0);
+    setSkillsPickerOpen(true);
+  }, []);
+
   /**
    * Clear kind chip + typed slash query (keeps bare `/` so the palette stays
    * open). Never uses window.confirm.
@@ -10079,6 +10123,90 @@ export default function App() {
     ],
   });
 
+  /** Host skills eligible for the task picker (enabled + invocable only). */
+  const skillsPickerCatalog = useMemo(
+    () => filterPickerEligibleSkills(skillInfos as SkillsPickerSkill[]),
+    [skillInfos],
+  );
+  const skillsPickerRanked = useMemo(
+    () =>
+      rankSkillsForTask({
+        skills: skillsPickerCatalog,
+        recentIds: skillsPickerRecent,
+        query: skillsPickerQuery,
+      }),
+    [skillsPickerCatalog, skillsPickerRecent, skillsPickerQuery],
+  );
+
+  const applySkillsPickerSkill = useCallback(
+    (skill: SkillsPickerSkill) => {
+      setDraft((d) => planInsertSkill(d, skill.name));
+      setSkillsPickerRecent(recordRecentSkill(skill.name));
+      closeSkillsPicker();
+      requestAnimationFrame(() => {
+        composerInputRef.current?.focus?.();
+      });
+    },
+    [closeSkillsPicker],
+  );
+
+  const { pos: skillsPickerPos, style: skillsPickerStyle } = useFloatingMenu({
+    open: skillsPickerOpen,
+    triggerRef: composerShellRef,
+    panelRef: skillsPickerPanelRef,
+    roots: [
+      composerShellRef,
+      composerInputRef,
+      skillsPickerPanelRef,
+      skillsPickerTriggerRef,
+    ],
+    onClose: closeSkillsPicker,
+    placement: "up",
+    fitContent: false,
+    matchTriggerWidth: true,
+    minWidth: 280,
+    estHeight: 320,
+    gap: 8,
+    deps: [skillsPickerQuery, skillsPickerRanked.length],
+  });
+
+  // Keep highlight in range when the ranked list shrinks; reset on filter.
+  const prevSkillsPickerQueryRef = useRef(skillsPickerQuery);
+  useEffect(() => {
+    if (!skillsPickerOpen) return;
+    if (prevSkillsPickerQueryRef.current !== skillsPickerQuery) {
+      prevSkillsPickerQueryRef.current = skillsPickerQuery;
+      setSkillsPickerActive(0);
+      return;
+    }
+    if (skillsPickerRanked.length === 0) {
+      setSkillsPickerActive(0);
+      return;
+    }
+    if (skillsPickerActive >= skillsPickerRanked.length) {
+      setSkillsPickerActive(skillsPickerRanked.length - 1);
+    }
+  }, [
+    skillsPickerOpen,
+    skillsPickerQuery,
+    skillsPickerRanked.length,
+    skillsPickerActive,
+  ]);
+
+  // Cross-tab / multi-window recent skill ring sync.
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<string[]>).detail;
+      if (Array.isArray(detail)) {
+        setSkillsPickerRecent(detail);
+      } else {
+        setSkillsPickerRecent(loadRecentSkillIds());
+      }
+    };
+    window.addEventListener(SKILLS_RECENT_CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(SKILLS_RECENT_CHANGE_EVENT, onChange);
+  }, []);
+
   // Keep highlight in range when the filtered list shrinks; reset on filter/scope.
   const prevPromptHistoryFilterRef = useRef(promptHistoryFilter);
   const prevPromptHistoryScopeRef = useRef(promptHistoryScope);
@@ -10373,11 +10501,12 @@ export default function App() {
         showToast(tr("slash.historyEmpty"), 2400);
         return;
       }
-      // Don't stack with slash/plus menu.
+      // Don't stack with slash/plus or skills picker.
       setShowComposerPlus(false);
       setSlashQuery(null);
       setLiveSlash({ present: false, query: "", start: 0, end: 0 });
       liveSlashRef.current = { present: false, query: "", start: 0, end: 0 };
+      setSkillsPickerOpen(false);
 
       // Prefer this chat; fall back to recent when the session has no prompts yet.
       const initialScope: PromptHistoryScope =
@@ -12016,11 +12145,9 @@ export default function App() {
         if (q) {
           setDraft((d) => applySkillAtSlash(d, q.start, q.end, item.name));
         } else {
-          setDraft((d) => {
-            const needsSpace = d.length > 0 && !/\s$/.test(d);
-            return `${d}${needsSpace ? " " : ""}[[skill:${item.name}]] `;
-          });
+          setDraft((d) => planInsertSkill(d, item.name));
         }
+        setSkillsPickerRecent(recordRecentSkill(item.name));
         return;
       }
 
@@ -17061,7 +17188,11 @@ export default function App() {
     askUserOpen: !!askUser,
     chatFindOpen: showChatFind,
     slashOrMenuOpen:
-      composerMenuOpen || phoneToolsOpen || !!ctxMenu || showUserMenu,
+      composerMenuOpen ||
+      phoneToolsOpen ||
+      !!ctxMenu ||
+      showUserMenu ||
+      skillsPickerOpen,
     promptHistoryOpen,
   };
 
@@ -20636,6 +20767,42 @@ export default function App() {
                     onSelect={applyAtFile}
                     style={{
                       ...composerAtStyle,
+              {skillsPickerOpen &&
+                skillsPickerPos &&
+                typeof document !== "undefined" &&
+                createPortal(
+                  <SkillsTaskPickerPanel
+                    open
+                    panelRef={skillsPickerPanelRef}
+                    skills={skillsPickerCatalog}
+                    ranked={skillsPickerRanked}
+                    recentIds={skillsPickerRecent}
+                    query={skillsPickerQuery}
+                    activeIndex={skillsPickerActive}
+                    loading={skillsLoading}
+                    hostError={skillsLoadError}
+                    catalogCount={skillsPickerCatalog.length}
+                    focusFilter
+                    labels={{
+                      aria: tr("skillsPicker.aria"),
+                      placeholder: tr("skillsPicker.placeholder"),
+                      recent: tr("skillsPicker.recent"),
+                      all: tr("skillsPicker.all"),
+                      loading: tr("skillsPicker.loading"),
+                      empty: tr("skillsPicker.empty"),
+                      emptyHint: tr("skillsPicker.emptyHint"),
+                      filterEmpty: tr("skillsPicker.filterEmpty"),
+                      filterEmptyHint: tr("skillsPicker.filterEmptyHint"),
+                      hostOnly: tr("skillsPicker.hostOnly"),
+                      hostOnlyHint: tr("skillsPicker.hostOnlyHint"),
+                      clearFilter: tr("skillsPicker.clearFilter"),
+                    }}
+                    onQueryChange={setSkillsPickerQuery}
+                    onActiveIndexChange={setSkillsPickerActive}
+                    onSelect={applySkillsPickerSkill}
+                    onClearFilter={() => setSkillsPickerQuery("")}
+                    style={{
+                      ...skillsPickerStyle,
                       zIndex: 10050,
                     }}
                   />,
@@ -20956,6 +21123,10 @@ export default function App() {
                     }
                   }
                   if (e.key === "Escape") {
+                    if (skillsPickerOpenRef.current) {
+                      closeSkillsPicker();
+                      return;
+                    }
                     if (promptHistoryOpenRef.current) {
                       closePromptHistory();
                       return;
@@ -20982,11 +21153,13 @@ export default function App() {
                       if (phoneLayout) {
                         setPhoneToolsOpen((v) => !v);
                         closeComposerMenu();
+                        closeSkillsPicker();
                         return;
                       }
                       if (composerMenuOpen) {
                         closeComposerMenu();
                       } else {
+                        closeSkillsPicker();
                         setShowComposerPlus(true);
                       }
                     }}
@@ -20994,6 +21167,29 @@ export default function App() {
                     <IconPlus size={18} />
                   </button>
                 </Tip>
+                {!phoneLayout ? (
+                  <Tip label={tr("composer.skillsPicker")}>
+                    <button
+                      ref={skillsPickerTriggerRef}
+                      type="button"
+                      className={
+                        "icon-btn" + (skillsPickerOpen ? " is-open" : "")
+                      }
+                      aria-label={tr("composer.skillsPicker")}
+                      aria-expanded={skillsPickerOpen}
+                      aria-haspopup="listbox"
+                      onClick={() => {
+                        if (skillsPickerOpen) {
+                          closeSkillsPicker();
+                        } else {
+                          openSkillsPicker();
+                        }
+                      }}
+                    >
+                      <IconSkills size={18} />
+                    </button>
+                  </Tip>
+                ) : null}
                 {!phoneLayout ? (
                   <>
                     {goalMode ? (

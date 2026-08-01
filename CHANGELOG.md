@@ -34,6 +34,7 @@ See `docs/llm-wiki/release.md`.
 #### Agent / search
 - **Code graph product honesty** (Settings → Agent): unify codebase indexing status + project search mode chips so users see honest **keyword vs graph** states. Pure `codeGraphProduct` helpers (`resolveCodeGraphMode`, `buildCodeGraphStatusChips`, `annotateSearchHits`, `resolveCodeGraphEmptyState`, `planCodeGraphRebuild`) — **never invent graph hits** when only keyword (rg/walk) search exists; rebuild stays CLI-only until a host API lands. Indexing panel status line + soft “App search remains keyword” note; search panel mode chips + link to indexing. en/zh/zh-TW + `settingsCatalog` + tests.
 - **Composer model / effort apply honesty**: after changing model or reasoning in the composer menus, a short toast states when it takes effect (immediate `session/set_model` · soft-respawn next message · next message when idle). Nested model/effort lists show a live-agent footer note; prefs errors are classified (set_model / soft-respawn / invalid / disconnected / busy). Pure `modelEffortApply` helpers + tests; en/zh/zh-TW. Spawn flags unchanged.
+- **Skills task-level picker**: composer toolbar button opens a search + **recent** (localStorage ring, max 12) + host catalog list for the next prompt; pick inserts `[[skill:name]]` chip tokens (never invents skill rows). Soft empty states: no skills / filter empty / host-only CLI gap. Pure `skillsTaskPicker` helpers + tests; en/zh/zh-TW.
 
 ## [0.2.3] - 2026-07-31
 
