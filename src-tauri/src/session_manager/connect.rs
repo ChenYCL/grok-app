@@ -7,24 +7,17 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 use uuid::Uuid;
 
-use crate::acp_client::{
-    AcpClient, AcpEvent,
-};
+use crate::acp_client::{AcpClient, AcpEvent};
 use crate::cli_probe;
 use crate::error::{AgentError, AgentErrorCode};
 use crate::journal_throttle::JournalWriteThrottle;
 use crate::mock_acp::MockConnectMode;
-use crate::permission::{
-    PermissionPolicy, SessionAllowCache,
-};
-use crate::process_limits::{
-    can_spawn_process, normalize_max_concurrent, process_limit_message,
-};
+use crate::permission::{PermissionPolicy, SessionAllowCache};
+use crate::process_limits::{can_spawn_process, normalize_max_concurrent, process_limit_message};
 use crate::session_fsm::{SessionFsm, SessionState};
 use crate::store::{self};
 
 use super::*;
-
 
 impl SessionManager {
     pub async fn connect(
@@ -112,10 +105,8 @@ impl SessionManager {
         );
 
         // Resolve model / effort / permission / mode for this project+session scope.
-        let prefs = store::resolve_composer_prefs(
-            meta.project_id.as_deref(),
-            Some(meta.id.as_str()),
-        );
+        let prefs =
+            store::resolve_composer_prefs(meta.project_id.as_deref(), Some(meta.id.as_str()));
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
         let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
 
@@ -157,11 +148,7 @@ impl SessionManager {
                 .lock()
                 .remove(&meta.id)
                 .and_then(|mut bg| bg.acp.take());
-            let parked_acp = self
-                .parked
-                .lock()
-                .remove(&meta.id)
-                .map(|p| p.acp);
+            let parked_acp = self.parked.lock().remove(&meta.id).map(|p| p.acp);
             if let Some(acp) = acp_to_kill {
                 acp.kill().await;
             }
@@ -185,9 +172,7 @@ impl SessionManager {
         if !pending_fork {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
-                if s.app_session_id == meta.id
-                    && s.acp.as_ref().is_some_and(|c| c.is_alive())
-                {
+                if s.app_session_id == meta.id && s.acp.as_ref().is_some_and(|c| c.is_alive()) {
                     let preserve = Self::should_preserve_live_process(s);
                     let ready_match = matches!(s.fsm.state(), SessionState::Ready)
                         && !Self::live_session_is_busy(s)
@@ -264,11 +249,7 @@ impl SessionManager {
         // rebind). Each chat keeps its own ACP child — park Ready / background
         // busy, then unpark or cold-spawn for the target.
         {
-            let live_sid = self
-                .inner
-                .lock()
-                .as_ref()
-                .map(|s| s.app_session_id.clone());
+            let live_sid = self.inner.lock().as_ref().map(|s| s.app_session_id.clone());
             if live_sid.as_deref() != Some(meta.id.as_str()) {
                 if let Err(e) = self.try_park_live_emit(&app) {
                     Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
@@ -276,15 +257,11 @@ impl SessionManager {
                 }
                 // Never Drop a shell that still holds a live ACP — re-park/demote.
                 {
-                    let still_busy = self
-                        .inner
-                        .lock()
-                        .as_ref()
-                        .is_some_and(|s| {
-                            s.acp.as_ref().is_some_and(|c| c.is_alive())
-                                && (Self::live_session_is_busy(s)
-                                    || matches!(s.fsm.state(), SessionState::Ready))
-                        });
+                    let still_busy = self.inner.lock().as_ref().is_some_and(|s| {
+                        s.acp.as_ref().is_some_and(|c| c.is_alive())
+                            && (Self::live_session_is_busy(s)
+                                || matches!(s.fsm.state(), SessionState::Ready))
+                    });
                     if still_busy {
                         // try_park should have moved it; force another demote/park.
                         let _ = self.try_park_live();
@@ -374,11 +351,11 @@ impl SessionManager {
                 terminal_tool_ids: HashSet::new(),
                 deferred_prompt_complete: None,
                 tools_this_turn: 0,
-            saw_model_output: false,
+                saw_model_output: false,
                 prompt_in_flight: false,
-            pending_stream_emit: None,
-            stream_emit_flush_gen: 0,
-            last_tool_heartbeat_emit: None,
+                pending_stream_emit: None,
+                stream_emit_flush_gen: 0,
+                last_tool_heartbeat_emit: None,
             });
         }
         Self::emit_state(&app, &self.snapshot());
@@ -455,10 +432,8 @@ impl SessionManager {
                 .find(|p| p.id == pid)
                 .and_then(|p| p.sandbox_profile)
         });
-        let effective_sandbox = store::resolve_sandbox_profile(
-            &settings.sandbox_profile,
-            project_sandbox.as_deref(),
-        );
+        let effective_sandbox =
+            store::resolve_sandbox_profile(&settings.sandbox_profile, project_sandbox.as_deref());
         // One-shot CLI --fork-session: only when meta asks and we have a source id.
         let fork_agent = meta.fork_agent_session
             && resume_agent_sid
@@ -495,8 +470,7 @@ impl SessionManager {
             empty_mcp_servers: false,
         };
 
-        let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
-        {
+        let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts) {
             Ok(v) => {
                 tracing::info!(
                     target: "session",
@@ -929,4 +903,3 @@ mod connect_preserve_tests {
         assert!(!SessionManager::should_preserve_live_process(&s));
     }
 }
-

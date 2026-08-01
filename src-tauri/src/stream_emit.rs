@@ -110,10 +110,32 @@ mod tests {
 
     #[test]
     fn merge_rules() {
-        assert!(stream_emit_can_merge("assistant", "m1", "assistant", "m1", "none"));
-        assert!(stream_emit_can_merge("thought", "m1", "thought", "m1", "continue"));
-        assert!(!stream_emit_can_merge("thought", "m1", "thought", "m1", "new"));
-        assert!(!stream_emit_can_merge("assistant", "m1", "thought", "m1", "none"));
-        assert!(!stream_emit_can_merge("assistant", "m1", "assistant", "m2", "none"));
+        assert!(stream_emit_can_merge(
+            "assistant",
+            "m1",
+            "assistant",
+            "m1",
+            "none"
+        ));
+        assert!(stream_emit_can_merge(
+            "thought", "m1", "thought", "m1", "continue"
+        ));
+        assert!(!stream_emit_can_merge(
+            "thought", "m1", "thought", "m1", "new"
+        ));
+        assert!(!stream_emit_can_merge(
+            "assistant",
+            "m1",
+            "thought",
+            "m1",
+            "none"
+        ));
+        assert!(!stream_emit_can_merge(
+            "assistant",
+            "m1",
+            "assistant",
+            "m2",
+            "none"
+        ));
     }
 }

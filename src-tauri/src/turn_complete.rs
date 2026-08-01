@@ -155,7 +155,12 @@ mod tests {
         ));
         assert!(open.is_empty());
         assert!(terminal.contains(id));
-        assert!(!should_defer_prompt_complete(false, false, false, open.len()));
+        assert!(!should_defer_prompt_complete(
+            false,
+            false,
+            false,
+            open.len()
+        ));
     }
 
     #[test]
@@ -167,14 +172,7 @@ mod tests {
         let now = Instant::now();
         let id = "call-f1b6b6f2-5e0f-413e-bafa-42a7ba048a01-10";
 
-        note_tool_open_status(
-            &mut open,
-            &mut terminal,
-            &mut seen,
-            id,
-            "in_progress",
-            now,
-        );
+        note_tool_open_status(&mut open, &mut terminal, &mut seen, id, "in_progress", now);
         assert_eq!(open.len(), 1);
 
         note_tool_open_status(&mut open, &mut terminal, &mut seen, id, "completed", now);
@@ -194,7 +192,12 @@ mod tests {
             open.is_empty(),
             "bg stdout must not re-open a terminal tool"
         );
-        assert!(!should_defer_prompt_complete(false, false, false, open.len()));
+        assert!(!should_defer_prompt_complete(
+            false,
+            false,
+            false,
+            open.len()
+        ));
     }
 
     #[test]
@@ -205,14 +208,7 @@ mod tests {
         let now = Instant::now();
         let id = "call-bg-1";
 
-        note_tool_open_status(
-            &mut open,
-            &mut terminal,
-            &mut seen,
-            id,
-            "in_progress",
-            now,
-        );
+        note_tool_open_status(&mut open, &mut terminal, &mut seen, id, "in_progress", now);
         assert!(release_tool_from_open(
             &mut open,
             &mut terminal,
@@ -223,14 +219,7 @@ mod tests {
         assert!(terminal.contains(id));
 
         // Later stdout updates still ignored.
-        note_tool_open_status(
-            &mut open,
-            &mut terminal,
-            &mut seen,
-            id,
-            "in_progress",
-            now,
-        );
+        note_tool_open_status(&mut open, &mut terminal, &mut seen, id, "in_progress", now);
         assert!(open.is_empty());
     }
 
@@ -241,27 +230,18 @@ mod tests {
         let mut seen = HashMap::new();
         let now = Instant::now();
 
-        note_tool_open_status(
-            &mut open,
-            &mut terminal,
-            &mut seen,
-            "a",
-            "in_progress",
-            now,
-        );
-        note_tool_open_status(
-            &mut open,
-            &mut terminal,
-            &mut seen,
-            "b",
-            "in_progress",
-            now,
-        );
+        note_tool_open_status(&mut open, &mut terminal, &mut seen, "a", "in_progress", now);
+        note_tool_open_status(&mut open, &mut terminal, &mut seen, "b", "in_progress", now);
         note_tool_open_status(&mut open, &mut terminal, &mut seen, "a", "completed", now);
         assert!(open.contains("b"));
         assert!(!open.contains("a"));
         // b still open → defer
-        assert!(should_defer_prompt_complete(false, false, false, open.len()));
+        assert!(should_defer_prompt_complete(
+            false,
+            false,
+            false,
+            open.len()
+        ));
         note_tool_open_status(&mut open, &mut terminal, &mut seen, "b", "failed", now);
         assert!(open.is_empty());
     }

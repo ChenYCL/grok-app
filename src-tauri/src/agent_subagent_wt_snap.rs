@@ -100,10 +100,7 @@ mod tests {
 
     #[test]
     fn version_gate() {
-        assert_eq!(
-            cli_supports_subagent_wt_snap("0.2.117"),
-            Some(true)
-        );
+        assert_eq!(cli_supports_subagent_wt_snap("0.2.117"), Some(true));
         assert_eq!(
             cli_supports_subagent_wt_snap("grok 0.2.117 (f1c06093089f)"),
             Some(true)

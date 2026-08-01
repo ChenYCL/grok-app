@@ -55,10 +55,7 @@ pub fn lock_exclusive(target: &Path) -> Result<ExclusiveLock, String> {
     loop {
         match file.try_lock_exclusive() {
             Ok(()) => {
-                return Ok(ExclusiveLock {
-                    _file: file,
-                    path,
-                });
+                return Ok(ExclusiveLock { _file: file, path });
             }
             Err(_) if Instant::now() < deadline => {
                 thread::sleep(LOCK_POLL);

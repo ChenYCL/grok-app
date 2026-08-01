@@ -74,7 +74,10 @@ pub fn effective_agent_session_id(s: &AppSessionEntry) -> String {
 }
 
 /// After project select: bind path, clear agent session, next speak is new.
-pub fn binding_after_project_select(_prev: &ScopeBinding, project: &TrustedProject) -> ScopeBinding {
+pub fn binding_after_project_select(
+    _prev: &ScopeBinding,
+    project: &TrustedProject,
+) -> ScopeBinding {
     ScopeBinding {
         project_id: Some(project.id.clone()),
         work_dir: project.path.clone(),
@@ -149,7 +152,10 @@ pub fn binding_after_agent_turn(
     returned_session_id: Option<&str>,
 ) -> ScopeBinding {
     let mut next = prev.clone();
-    if let Some(sid) = returned_session_id.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(sid) = returned_session_id
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         next.agent_session_id = Some(sid.to_string());
     }
     next.pending_mode = PendingMode::Continue;
@@ -193,15 +199,17 @@ pub fn normalize_pick_query(query: &str) -> String {
 }
 
 /// Pick project by 1-based index or name/id substring.
-pub fn pick_project<'a>(
-    projects: &'a [TrustedProject],
-    query: &str,
-) -> Option<&'a TrustedProject> {
+pub fn pick_project<'a>(projects: &'a [TrustedProject], query: &str) -> Option<&'a TrustedProject> {
     // Strip zero-width / BOM noise from IM clients pasting button labels.
     let q_raw: String = query
         .trim()
         .chars()
-        .filter(|c| !matches!(c, '\u{200b}' | '\u{200c}' | '\u{200d}' | '\u{feff}' | '\u{00a0}'))
+        .filter(|c| {
+            !matches!(
+                c,
+                '\u{200b}' | '\u{200c}' | '\u{200d}' | '\u{feff}' | '\u{00a0}'
+            )
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -261,9 +269,7 @@ pub fn pick_session<'a>(
         }
     }
     sessions.iter().find(|s| {
-        s.id == q
-            || s.agent_session_id.as_deref() == Some(q)
-            || s.title.eq_ignore_ascii_case(q)
+        s.id == q || s.agent_session_id.as_deref() == Some(q) || s.title.eq_ignore_ascii_case(q)
     })
 }
 
@@ -502,9 +508,10 @@ pub fn apply_session_pick(
     sessions: &[AppSessionEntry],
     query_or_id: &str,
 ) -> Result<ScopeBinding, String> {
-    if let Some(s) = sessions.iter().find(|s| {
-        s.id == query_or_id || s.agent_session_id.as_deref() == Some(query_or_id)
-    }) {
+    if let Some(s) = sessions
+        .iter()
+        .find(|s| s.id == query_or_id || s.agent_session_id.as_deref() == Some(query_or_id))
+    {
         return Ok(binding_after_session_resume(binding, s));
     }
     match pick_session(sessions, query_or_id) {
@@ -571,7 +578,11 @@ pub fn build_feishu_session_card(sessions: &[AppSessionEntry], lang: &str) -> se
     })];
     let mut actions = Vec::new();
     for (i, s) in sessions.iter().take(20).enumerate() {
-        let label = format!("{}. {}", i + 1, s.title.chars().take(40).collect::<String>());
+        let label = format!(
+            "{}. {}",
+            i + 1,
+            s.title.chars().take(40).collect::<String>()
+        );
         actions.push(serde_json::json!({
             "tag": "button",
             "text": { "tag": "plain_text", "content": label },
@@ -986,16 +997,19 @@ mod tests {
         ];
         let listed = list_sessions_for_project(&all, Some("p1"));
         assert_eq!(listed.len(), 2);
-        assert_eq!(pick_session(&listed, "2").map(|s| s.id.as_str()), Some("s3"));
+        assert_eq!(
+            pick_session(&listed, "2").map(|s| s.id.as_str()),
+            Some("s3")
+        );
         assert_eq!(
             pick_session(&listed, "a1").map(|s| s.id.as_str()),
             Some("s1")
         );
-        let projects = vec![
-            proj("p1", "One", "/a"),
-            proj("p2", "Two", "/b"),
-        ];
-        assert_eq!(pick_project(&projects, "2").map(|p| p.id.as_str()), Some("p2"));
+        let projects = vec![proj("p1", "One", "/a"), proj("p2", "Two", "/b")];
+        assert_eq!(
+            pick_project(&projects, "2").map(|p| p.id.as_str()),
+            Some("p2")
+        );
         let b = ScopeBinding::fresh("/tmp");
         let bound = apply_session_pick(&b, &listed, "1").unwrap();
         assert_eq!(bound.agent_session_id.as_deref(), Some("a1"));
@@ -1018,10 +1032,7 @@ mod tests {
         let enc = encode_card_action(&a);
         assert_eq!(parse_card_action(&enc), Some(a));
         let b = CardAction::Session { id: "s9".into() };
-        assert_eq!(
-            parse_card_action(&encode_card_action(&b)),
-            Some(b)
-        );
+        assert_eq!(parse_card_action(&encode_card_action(&b)), Some(b));
         assert_eq!(
             parse_card_action(r#"{"value":"{\"kind\":\"project\",\"id\":\"px\"}"}"#),
             Some(CardAction::Project { id: "px".into() })
@@ -1114,9 +1125,7 @@ mod tests {
             .map(|i| proj(&format!("p{i}"), &format!("Project {i}"), "/tmp"))
             .collect();
         let card = build_telegram_project_card(&projects, "en", 1);
-        let keyboard = card["reply_markup"]["inline_keyboard"]
-            .as_array()
-            .unwrap();
+        let keyboard = card["reply_markup"]["inline_keyboard"].as_array().unwrap();
         assert_eq!(
             keyboard[0][0]["callback_data"].as_str(),
             Some("project:p21")
@@ -1132,10 +1141,7 @@ mod tests {
 
     #[test]
     fn pick_project_accepts_feishu_button_label() {
-        let projects = vec![
-            proj("p1", "塔家军", "/a"),
-            proj("p2", "cc-workspace", "/b"),
-        ];
+        let projects = vec![proj("p1", "塔家军", "/a"), proj("p2", "cc-workspace", "/b")];
         assert_eq!(
             pick_project(&projects, "2. cc-workspace").map(|p| p.id.as_str()),
             Some("p2")
@@ -1176,7 +1182,9 @@ mod tests {
     #[test]
     fn grok_cli_args_include_resume_when_set() {
         let with = grok_turn_cli_args("hi", Some("sess-1"), true);
-        assert!(with.windows(2).any(|w| w[0] == "--resume" && w[1] == "sess-1"));
+        assert!(with
+            .windows(2)
+            .any(|w| w[0] == "--resume" && w[1] == "sess-1"));
         let without = grok_turn_cli_args("hi", None, false);
         assert!(!without.iter().any(|a| a == "--resume"));
     }
@@ -1184,9 +1192,9 @@ mod tests {
     #[test]
     fn grok_cli_args_default_streaming_json() {
         let args = grok_turn_cli_args("hi", None, false);
-        assert!(args.windows(2).any(|w| {
-            w[0] == "--output-format" && w[1] == "streaming-json"
-        }));
+        assert!(args
+            .windows(2)
+            .any(|w| { w[0] == "--output-format" && w[1] == "streaming-json" }));
         assert!(!args.iter().any(|a| a == "--include-partial-messages"));
     }
 
@@ -1199,9 +1207,9 @@ mod tests {
             "streaming-messages-json",
             &["--include-partial-messages"],
         );
-        assert!(args.windows(2).any(|w| {
-            w[0] == "--output-format" && w[1] == "streaming-messages-json"
-        }));
+        assert!(args
+            .windows(2)
+            .any(|w| { w[0] == "--output-format" && w[1] == "streaming-messages-json" }));
         assert!(args.iter().any(|a| a == "--include-partial-messages"));
     }
 

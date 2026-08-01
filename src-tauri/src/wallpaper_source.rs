@@ -255,9 +255,7 @@ pub(crate) fn require_cli_ready() -> Result<String, String> {
     if !probe.found {
         return Err("cli_missing".into());
     }
-    let path = probe
-        .path
-        .ok_or_else(|| "cli_missing".to_string())?;
+    let path = probe.path.ok_or_else(|| "cli_missing".to_string())?;
     if !cli_probe::cli_auth_json_present() {
         // Official API key in app secrets also works for some flows, but
         // headless grok prefers ~/.grok/auth.json — surface login.
@@ -466,7 +464,9 @@ fn harvest_media_urls_as_items(text: &str) -> Option<serde_json::Value> {
                     || c == '`'
             })
             .unwrap_or(after.len());
-        let mut url = after[..end_rel].trim_end_matches(['.', ',', ';', ':']).to_string();
+        let mut url = after[..end_rel]
+            .trim_end_matches(['.', ',', ';', ':'])
+            .to_string();
         // Strip trailing backslash escapes from JSON strings
         while url.ends_with('\\') {
             url.pop();
@@ -518,10 +518,9 @@ pub(crate) fn run_grok_headless(
     {
         let settings = crate::store::load_settings();
         let ver = crate::cli_probe::read_version_of(std::path::Path::new(cli_path));
-        for a in crate::acp_client::background_wait_spawn_flags_from_settings(
-            &settings,
-            ver.as_deref(),
-        ) {
+        for a in
+            crate::acp_client::background_wait_spawn_flags_from_settings(&settings, ver.as_deref())
+        {
             cmd.arg(a);
         }
     }
@@ -543,7 +542,10 @@ pub(crate) fn run_grok_headless(
     if started.elapsed() > timeout {
         // Process already finished; still flag if it was slow — real kill needs
         // async child which we skip for v1 simplicity.
-        tracing::warn!("wallpaper source: headless grok took {:?}", started.elapsed());
+        tracing::warn!(
+            "wallpaper source: headless grok took {:?}",
+            started.elapsed()
+        );
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -872,20 +874,18 @@ pub fn x_search(query: &str, sort: Option<&str>) -> WallpaperSearchResult {
 pub async fn x_search_async(query: &str, sort: Option<&str>) -> WallpaperSearchResult {
     let query = query.to_string();
     let sort = sort.map(|s| s.to_string());
-    let mut result = match tauri::async_runtime::spawn_blocking(move || {
-        x_search(&query, sort.as_deref())
-    })
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return WallpaperSearchResult {
-                items: vec![],
-                error_code: Some("search_failed".into()),
-                message: Some(format!("join: {e}")),
-            };
-        }
-    };
+    let mut result =
+        match tauri::async_runtime::spawn_blocking(move || x_search(&query, sort.as_deref())).await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                return WallpaperSearchResult {
+                    items: vec![],
+                    error_code: Some("search_failed".into()),
+                    message: Some(format!("join: {e}")),
+                };
+            }
+        };
 
     if result.error_code.is_some() || result.items.is_empty() {
         return result;
@@ -1001,10 +1001,7 @@ fn file_to_fetch_result(path: &Path) -> Result<WallpaperFetchResult, String> {
         .and_then(|s| s.to_str())
         .unwrap_or("wallpaper")
         .to_string();
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("jpg");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("jpg");
     crate::path_scope::grant_path(path);
     Ok(WallpaperFetchResult {
         path: path.display().to_string(),
@@ -1164,7 +1161,11 @@ Requirements:
     }
 }
 
-fn scan_dir_as_gallery(dir: &Path, source: &str, prompt: Option<&str>) -> Vec<WallpaperGalleryItem> {
+fn scan_dir_as_gallery(
+    dir: &Path,
+    source: &str,
+    prompt: Option<&str>,
+) -> Vec<WallpaperGalleryItem> {
     let mut entries: Vec<_> = fs::read_dir(dir)
         .into_iter()
         .flatten()
@@ -1405,7 +1406,9 @@ mod tests {
             "expected real media urls, got {:?}",
             real.iter().map(|i| &i.full_url).collect::<Vec<_>>()
         );
-        assert!(real.iter().all(|i| i.full_url.contains("pbs.twimg.com/media/")));
+        assert!(real
+            .iter()
+            .all(|i| i.full_url.contains("pbs.twimg.com/media/")));
     }
 
     #[test]

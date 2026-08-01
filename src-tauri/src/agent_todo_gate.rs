@@ -79,8 +79,14 @@ mod tests {
 
     #[test]
     fn normalize_and_flags() {
-        assert_eq!(normalize_todo_gate_max_fires(None), DEFAULT_TODO_GATE_MAX_FIRES);
-        assert_eq!(normalize_todo_gate_max_fires(Some(0)), DEFAULT_TODO_GATE_MAX_FIRES);
+        assert_eq!(
+            normalize_todo_gate_max_fires(None),
+            DEFAULT_TODO_GATE_MAX_FIRES
+        );
+        assert_eq!(
+            normalize_todo_gate_max_fires(Some(0)),
+            DEFAULT_TODO_GATE_MAX_FIRES
+        );
         assert_eq!(normalize_todo_gate_max_fires(Some(1)), 1);
         assert_eq!(normalize_todo_gate_max_fires(Some(20)), 20);
         assert_eq!(normalize_todo_gate_max_fires(Some(99)), 20);

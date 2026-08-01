@@ -48,9 +48,9 @@ impl Locale {
         }
         let primary = bare.split('-').next().unwrap_or("");
         if primary == "zh" {
-            let is_trad = bare.split('-').any(|p| {
-                p == "hant" || p == "tw" || p == "hk" || p == "mo"
-            });
+            let is_trad = bare
+                .split('-')
+                .any(|p| p == "hant" || p == "tw" || p == "hk" || p == "mo");
             return if is_trad { Locale::ZhTw } else { Locale::Zh };
         }
         if primary == "en" {

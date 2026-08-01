@@ -194,20 +194,12 @@ fn allowed_origins() -> &'static [&'static str] {
 }
 
 fn cors_origin_from_headers(headers: &HeaderMap) -> Option<&'static str> {
-    let origin = headers
-        .get(header::ORIGIN)
-        .and_then(|v| v.to_str().ok())?;
-    allowed_origins()
-        .iter()
-        .find(|o| **o == origin)
-        .copied()
+    let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok())?;
+    allowed_origins().iter().find(|o| **o == origin).copied()
 }
 
 fn request_origin_allowed(headers: &HeaderMap) -> bool {
-    match headers
-        .get(header::ORIGIN)
-        .and_then(|v| v.to_str().ok())
-    {
+    match headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
         None => true, // same-document / <img>/<video> from main webview
         Some(origin) => allowed_origins().contains(&origin),
     }
@@ -232,9 +224,7 @@ async fn media_options(req: Request<Body>) -> Response {
     );
     headers.insert(
         header::ACCESS_CONTROL_EXPOSE_HEADERS,
-        HeaderValue::from_static(
-            "content-range, accept-ranges, content-length, content-type",
-        ),
+        HeaderValue::from_static("content-range, accept-ranges, content-length, content-type"),
     );
     headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
     headers.insert(header::VARY, HeaderValue::from_static("Origin"));
@@ -322,9 +312,7 @@ impl IntoResponse for FileChunk {
         headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
         headers.insert(
             header::ACCESS_CONTROL_EXPOSE_HEADERS,
-            HeaderValue::from_static(
-                "content-range, accept-ranges, content-length, content-type",
-            ),
+            HeaderValue::from_static("content-range, accept-ranges, content-length, content-type"),
         );
         // Images remount often in chat virtual lists — allow short private cache.
         // Streaming media keeps no-cache so Range windows stay fresh.
@@ -341,10 +329,9 @@ impl IntoResponse for FileChunk {
             headers.insert(header::VARY, HeaderValue::from_static("Origin"));
         }
         if self.partial && self.total > 0 {
-            if let Ok(v) = HeaderValue::from_str(&format!(
-                "bytes {}-{}/{}",
-                self.start, self.end, self.total
-            )) {
+            if let Ok(v) =
+                HeaderValue::from_str(&format!("bytes {}-{}/{}", self.start, self.end, self.total))
+            {
                 headers.insert(header::CONTENT_RANGE, v);
             }
         }
@@ -372,12 +359,7 @@ fn read_file_chunk(
     range_hdr: Option<&str>,
     head_only: bool,
 ) -> Result<FileChunk, (StatusCode, &'static str)> {
-    let mut file = std::fs::File::open(path).map_err(|_| {
-        (
-            StatusCode::FORBIDDEN,
-            "open failed",
-        )
-    })?;
+    let mut file = std::fs::File::open(path).map_err(|_| (StatusCode::FORBIDDEN, "open failed"))?;
     let len = file
         .metadata()
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "stat failed"))?
@@ -454,11 +436,7 @@ fn text_status(status: StatusCode, msg: &str) -> Response {
     (status, msg.to_string()).into_response()
 }
 
-fn text_status_cors(
-    status: StatusCode,
-    msg: &str,
-    cors_origin: Option<&'static str>,
-) -> Response {
+fn text_status_cors(status: StatusCode, msg: &str, cors_origin: Option<&'static str>) -> Response {
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
@@ -486,11 +464,7 @@ fn tokens_equal(a: &str, b: &str) -> bool {
 }
 
 fn mime_from_path(path: &str) -> &'static str {
-    let ext = path
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     match ext.as_str() {
         "mp4" | "m4v" => "video/mp4",
         "webm" => "video/webm",
@@ -552,7 +526,10 @@ mod tests {
     #[test]
     fn parse_range_suffix_and_cap() {
         assert_eq!(parse_range("bytes=0-9", 100), Some((0, 9)));
-        assert_eq!(parse_range("bytes=0-", 100), Some((0, 99.min(MAX_CHUNK - 1))));
+        assert_eq!(
+            parse_range("bytes=0-", 100),
+            Some((0, 99.min(MAX_CHUNK - 1)))
+        );
         assert_eq!(parse_range("bytes=-10", 100), Some((90, 99)));
     }
 

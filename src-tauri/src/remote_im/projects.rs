@@ -29,10 +29,7 @@ pub fn load_trusted_projects() -> Vec<TrustedProject> {
         };
         let mut out = Vec::new();
         for p in arr {
-            let trusted = p
-                .get("trusted")
-                .and_then(|x| x.as_bool())
-                .unwrap_or(false);
+            let trusted = p.get("trusted").and_then(|x| x.as_bool()).unwrap_or(false);
             if !trusted {
                 continue;
             }

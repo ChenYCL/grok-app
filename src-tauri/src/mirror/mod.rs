@@ -193,9 +193,7 @@ impl MirrorHost {
 
     pub fn rpc_ctx(&self) -> Option<(AppHandle, Arc<SessionManager>)> {
         let g = self.inner.lock();
-        g.ctx
-            .as_ref()
-            .map(|c| (c.app.clone(), c.mgr.clone()))
+        g.ctx.as_ref().map(|c| (c.app.clone(), c.mgr.clone()))
     }
 
     /// Fan-out a session event to all mirror WS clients (payload as JSON).
@@ -208,11 +206,7 @@ impl MirrorHost {
     }
 
     pub fn active_token(&self) -> Option<String> {
-        self.inner
-            .lock()
-            .runtime
-            .as_ref()
-            .map(|r| r.token.clone())
+        self.inner.lock().runtime.as_ref().map(|r| r.token.clone())
     }
 
     pub fn is_read_only(&self) -> bool {
@@ -308,7 +302,9 @@ impl MirrorHost {
                     if tun.poll_exited() {
                         r.phase = MirrorPhase::TunnelDead;
                         r.error = Some("cloudflared tunnel process exited".into());
-                        tracing::warn!("mirror tunnel dead — host still up; panel should leave 已上線");
+                        tracing::warn!(
+                            "mirror tunnel dead — host still up; panel should leave 已上線"
+                        );
                     }
                 }
             }
@@ -346,7 +342,7 @@ impl MirrorHost {
         // Mark starting so concurrent status is coherent.
         {
             let mut g = self.inner.lock();
-                        let read_only = g.read_only;
+            let read_only = g.read_only;
             g.runtime = Some(Runtime {
                 token: token.clone(),
                 port: prefer_port,
@@ -358,7 +354,6 @@ impl MirrorHost {
                 dist_dir: dist_dir.clone(),
                 read_only,
             });
-
         }
 
         let (bound_port, shutdown_tx) =
@@ -404,12 +399,7 @@ impl MirrorHost {
                 Err(e) => {
                     tracing::error!(error = %e, "mirror cloudflared tunnel failed");
                     // Keep local server up so panel can show error + still copy loopback for debug.
-                    (
-                        MirrorPhase::Error,
-                        local_url.clone(),
-                        None,
-                        Some(e),
-                    )
+                    (MirrorPhase::Error, local_url.clone(), None, Some(e))
                 }
             }
         };
@@ -492,9 +482,10 @@ impl MirrorHost {
                 let tail = auth::token_tail(&r.token, 6);
                 MirrorStatus {
                     running: true,
-                    public_url: r.public_url.clone().or_else(|| {
-                        Some(format!("http://127.0.0.1:{}/t/{}/", r.port, r.token))
-                    }),
+                    public_url: r
+                        .public_url
+                        .clone()
+                        .or_else(|| Some(format!("http://127.0.0.1:{}/t/{}/", r.port, r.token))),
                     local_port: Some(r.port),
                     token: Some(r.token.clone()),
                     token_tail: Some(tail),
@@ -504,7 +495,7 @@ impl MirrorHost {
                     error: r.error.clone(),
                     read_only: r.read_only,
                 }
-            },
+            }
         }
     }
 }
@@ -531,9 +522,7 @@ pub fn resolve_dist_dir(override_dir: Option<&PathBuf>) -> PathBuf {
     // Packaged / dev: Tauri frontendDist is ../dist relative to src-tauri.
     let manifest_dist = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dist");
     if manifest_dist.join("index.html").is_file() {
-        return manifest_dist
-            .canonicalize()
-            .unwrap_or(manifest_dist);
+        return manifest_dist.canonicalize().unwrap_or(manifest_dist);
     }
     for cand in [
         PathBuf::from("dist"),
@@ -672,7 +661,10 @@ mod tests {
 
         let index = client
             .get(format!("http://127.0.0.1:{port}/t/{token}/"))
-            .header("user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)")
+            .header(
+                "user-agent",
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+            )
             .send()
             .await
             .expect("index");
@@ -704,10 +696,8 @@ mod tests {
     /// so phones never permanently cache "Mirror host online (dist not found)".
     #[tokio::test]
     async fn placeholder_index_has_no_store_cache_control() {
-        let missing = std::env::temp_dir().join(format!(
-            "grok-mirror-missing-dist-{}",
-            std::process::id()
-        ));
+        let missing =
+            std::env::temp_dir().join(format!("grok-mirror-missing-dist-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&missing);
         std::fs::create_dir_all(&missing).expect("temp dist dir");
         // intentionally no index.html
@@ -760,7 +750,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&missing);
     }
 }
-
 
 #[tauri::command]
 pub async fn mirror_rotate_token(host: State<'_, Arc<MirrorHost>>) -> Result<MirrorStatus, String> {

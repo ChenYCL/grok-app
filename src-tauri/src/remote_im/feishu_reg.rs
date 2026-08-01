@@ -38,10 +38,7 @@ async fn registration_call(
         .map_err(|e| format!("registration request failed: {e}"))?;
 
     let status = res.status();
-    let body = res
-        .text()
-        .await
-        .map_err(|e| format!("read body: {e}"))?;
+    let body = res.text().await.map_err(|e| format!("read body: {e}"))?;
     let data: Value = serde_json::from_str(&body).map_err(|_| {
         format!(
             "bad registration response HTTP {status}: {}",
@@ -109,10 +106,7 @@ pub async fn scan_begin(channel: &str) -> Result<ScanBeginDto, String> {
     Ok(ScanBeginDto {
         device_code,
         verification_uri: uri,
-        interval_sec: begin
-            .get("interval")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(5) as u32,
+        interval_sec: begin.get("interval").and_then(|v| v.as_u64()).unwrap_or(5) as u32,
         expire_in_sec: begin
             .get("expire_in")
             .and_then(|v| v.as_u64())
@@ -167,7 +161,7 @@ pub async fn scan_poll(channel: &str, device_code: &str) -> Result<ScanPollDto, 
                 }),
                 error: None,
                 ..Default::default()
-        });
+            });
         }
 
         let err = data
@@ -184,7 +178,7 @@ pub async fn scan_poll(channel: &str, device_code: &str) -> Result<ScanPollDto, 
                 platform: None,
                 error: None,
                 ..Default::default()
-        },
+            },
             "access_denied" => ScanPollDto {
                 status: "denied".into(),
                 app_id: None,
@@ -193,7 +187,7 @@ pub async fn scan_poll(channel: &str, device_code: &str) -> Result<ScanPollDto, 
                 platform: None,
                 error: Some("authorization denied".into()),
                 ..Default::default()
-        },
+            },
             "expired_token" => ScanPollDto {
                 status: "expired".into(),
                 app_id: None,
@@ -202,7 +196,7 @@ pub async fn scan_poll(channel: &str, device_code: &str) -> Result<ScanPollDto, 
                 platform: None,
                 error: Some("session expired".into()),
                 ..Default::default()
-        },
+            },
             other => ScanPollDto {
                 status: "error".into(),
                 app_id: None,
@@ -216,7 +210,7 @@ pub async fn scan_poll(channel: &str, device_code: &str) -> Result<ScanPollDto, 
                         .unwrap_or("")
                 )),
                 ..Default::default()
-        },
+            },
         });
     }
     Ok(ScanPollDto {
@@ -227,5 +221,5 @@ pub async fn scan_poll(channel: &str, device_code: &str) -> Result<ScanPollDto, 
         platform: None,
         error: None,
         ..Default::default()
-        })
+    })
 }

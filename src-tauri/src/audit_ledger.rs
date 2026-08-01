@@ -32,7 +32,8 @@ pub const RETENTION_UNLIMITED: u32 = 0;
 pub const RETENTION_7: u32 = 7;
 pub const RETENTION_30: u32 = 30;
 pub const RETENTION_90: u32 = 90;
-pub const RETENTION_PRESETS: [u32; 4] = [RETENTION_7, RETENTION_30, RETENTION_90, RETENTION_UNLIMITED];
+pub const RETENTION_PRESETS: [u32; 4] =
+    [RETENTION_7, RETENTION_30, RETENTION_90, RETENTION_UNLIMITED];
 
 /// Event kinds written to the ledger.
 pub const EVENT_PERMISSION: &str = "permission";
@@ -175,9 +176,7 @@ fn parse_bound_ms(raw: Option<&str>) -> Option<i64> {
     }
     // Date-only `YYYY-MM-DD` → start of that UTC day.
     if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        let dt = d
-            .and_hms_opt(0, 0, 0)
-            .map(|ndt| ndt.and_utc())?;
+        let dt = d.and_hms_opt(0, 0, 0).map(|ndt| ndt.and_utc())?;
         return Some(dt.timestamp_millis());
     }
     None
@@ -220,11 +219,7 @@ pub fn filter_entries(
                 }
             }
             if let Some(ref want) = sid {
-                let got = e
-                    .session_id
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_ascii_lowercase();
+                let got = e.session_id.as_deref().unwrap_or("").to_ascii_lowercase();
                 if got != *want {
                     return false;
                 }
@@ -333,12 +328,7 @@ pub fn build_entry(
 }
 
 /// Remember a pending UI permission so resolve can attribute tool_name.
-pub fn remember_permission(
-    session_id: &str,
-    rpc_id: u64,
-    tool_name: &str,
-    summary: Option<&str>,
-) {
+pub fn remember_permission(session_id: &str, rpc_id: u64, tool_name: &str, summary: Option<&str>) {
     let sid = session_id.trim();
     if sid.is_empty() {
         return;
@@ -398,7 +388,8 @@ fn append_entry_locked(entry: &AuditLedgerEntry) -> Result<(), String> {
         .map_err(|e| format!("open: {e}"))?;
     file.write_all(line.as_bytes())
         .map_err(|e| format!("write: {e}"))?;
-    file.write_all(b"\n").map_err(|e| format!("write nl: {e}"))?;
+    file.write_all(b"\n")
+        .map_err(|e| format!("write nl: {e}"))?;
     file.flush().map_err(|e| format!("flush: {e}"))?;
 
     maybe_rotate_locked(&path)?;
@@ -786,6 +777,5 @@ pub fn export_redacted_jsonl_filtered(filter: &AuditLedgerFilter) -> String {
         }
     }
 }
-
 
 include!("audit_ledger_tests_ext.rs");

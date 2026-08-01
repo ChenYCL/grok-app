@@ -129,7 +129,10 @@ pub fn generate_serve_secret() -> String {
 
 /// Normalize / validate a bind string (`host:port`). Empty → default.
 pub fn normalize_bind(bind: Option<&str>) -> Result<String, String> {
-    let raw = bind.map(str::trim).filter(|s| !s.is_empty()).unwrap_or(DEFAULT_SERVE_BIND);
+    let raw = bind
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(DEFAULT_SERVE_BIND);
     // Reject whitespace and scheme prefixes so we only accept host:port.
     if raw.contains("://") || raw.contains('/') || raw.contains(' ') {
         return Err(format!("invalid serve bind (expected host:port): {raw}"));
@@ -212,7 +215,14 @@ pub fn normalize_remote_url(remote: Option<&str>) -> Result<Option<String>, Stri
     // Reject credential-bearing query / fragment that look like secrets.
     if let Some(q_start) = normalized.find('?') {
         let q = normalized[q_start + 1..].to_ascii_lowercase();
-        for key in ["server-key", "secret", "token", "password", "api_key", "apikey"] {
+        for key in [
+            "server-key",
+            "secret",
+            "token",
+            "password",
+            "api_key",
+            "apikey",
+        ] {
             if q.contains(&format!("{key}=")) || q.starts_with(&format!("{key}=")) {
                 return Err(
                     "invalid serve --remote URL: do not include secrets in the URL query".into(),
@@ -764,9 +774,7 @@ pub fn normalize_probe_addr(raw: &str) -> Result<String, String> {
     }
     // Fail closed on anything that might carry a secret or non-TCP target.
     if s.contains("://") || s.contains('/') || s.contains('?') || s.contains('#') {
-        return Err(
-            "probe address must be host:port only (no URL scheme, path, or query)".into(),
-        );
+        return Err("probe address must be host:port only (no URL scheme, path, or query)".into());
     }
     if s.to_ascii_lowercase().contains("server-key") || s.to_ascii_lowercase().contains("secret=") {
         return Err("probe address must not include a secret".into());
@@ -848,6 +856,5 @@ pub async fn serve_tcp_probe(addr: String) -> Result<ServeTcpProbeResult, String
 
     Ok(result)
 }
-
 
 include!("serve_tests_ext.rs");

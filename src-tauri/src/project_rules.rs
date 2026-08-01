@@ -255,7 +255,10 @@ fn walk_rules(
         };
         // Reject path traversal components.
         if Path::new(&child_rel).components().any(|c| {
-            matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_))
+            matches!(
+                c,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
         }) {
             continue;
         }
@@ -379,9 +382,18 @@ mod tests {
 
     #[test]
     fn classify_root_and_grok_paths() {
-        assert_eq!(classify_rule_path("AGENTS.md").map(|x| x.0), Some("agents_md"));
-        assert_eq!(classify_rule_path("Agents.md").map(|x| x.0), Some("agents_md"));
-        assert_eq!(classify_rule_path("CLAUDE.md").map(|x| x.0), Some("claude_md"));
+        assert_eq!(
+            classify_rule_path("AGENTS.md").map(|x| x.0),
+            Some("agents_md")
+        );
+        assert_eq!(
+            classify_rule_path("Agents.md").map(|x| x.0),
+            Some("agents_md")
+        );
+        assert_eq!(
+            classify_rule_path("CLAUDE.md").map(|x| x.0),
+            Some("claude_md")
+        );
         assert_eq!(
             classify_rule_path(".grok/rules.md").map(|x| x.0),
             Some("grok_rules")
@@ -401,10 +413,7 @@ mod tests {
 
     #[test]
     fn list_and_ensure_template() {
-        let dir = std::env::temp_dir().join(format!(
-            "grok-app-rules-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("grok-app-rules-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join(".grok/rules")).unwrap();
         fs::create_dir_all(dir.join(".grok/team")).unwrap();
@@ -414,7 +423,11 @@ mod tests {
 
         let listed = list_project_rules(dir.to_str().unwrap()).unwrap();
         assert!(!listed.has_agents_md);
-        let paths: Vec<_> = listed.rules.iter().map(|r| r.relative_path.as_str()).collect();
+        let paths: Vec<_> = listed
+            .rules
+            .iter()
+            .map(|r| r.relative_path.as_str())
+            .collect();
         assert!(paths.contains(&"CLAUDE.md"));
         assert!(paths.contains(&".grok/rules/base.md"));
         assert!(paths.contains(&".grok/team/AGENTS.md"));

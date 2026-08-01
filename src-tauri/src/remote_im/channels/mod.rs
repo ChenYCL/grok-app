@@ -73,8 +73,7 @@ pub fn spawn_instance(
     cancel: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     // Inject instance id for outbound helpers (webhooks, weixin context)
-    inst.secrets
-        .insert("_instance_id".into(), inst.id.clone());
+    inst.secrets.insert("_instance_id".into(), inst.id.clone());
     let channel = inst.channel.clone();
     tokio::spawn(async move {
         let id = inst.id.clone();
@@ -110,10 +109,7 @@ mod tests {
     fn every_catalog_channel_has_real_protocol_entry() {
         for ch in CATALOG_CHANNELS {
             let p = protocol_for(ch);
-            assert!(
-                !p.is_empty(),
-                "channel {ch} missing protocol"
-            );
+            assert!(!p.is_empty(), "channel {ch} missing protocol");
             // Core IM must not be generic-health
             if matches!(
                 *ch,
@@ -142,10 +138,13 @@ mod tests {
 
     #[test]
     fn dingtalk_and_wecom_not_token_only_names() {
-        assert!(protocol_for("dingtalk").contains("stream") || protocol_for("dingtalk").contains("gateway"));
         assert!(
-            protocol_for("wecom").contains("ws") || protocol_for("wecom").contains("webhook")
+            protocol_for("dingtalk").contains("stream")
+                || protocol_for("dingtalk").contains("gateway")
         );
-        assert!(protocol_for("weixin").contains("ilink") || protocol_for("weixin").contains("longpoll"));
+        assert!(protocol_for("wecom").contains("ws") || protocol_for("wecom").contains("webhook"));
+        assert!(
+            protocol_for("weixin").contains("ilink") || protocol_for("weixin").contains("longpoll")
+        );
     }
 }

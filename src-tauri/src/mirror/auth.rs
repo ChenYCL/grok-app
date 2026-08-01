@@ -101,10 +101,19 @@ mod tests {
             extract_token_from_path("/t/secret/api/health").as_deref(),
             Some("secret")
         );
-        assert_eq!(extract_token_from_path("/t/secret/").as_deref(), Some("secret"));
-        assert_eq!(extract_token_from_path("/t/secret").as_deref(), Some("secret"));
+        assert_eq!(
+            extract_token_from_path("/t/secret/").as_deref(),
+            Some("secret")
+        );
+        assert_eq!(
+            extract_token_from_path("/t/secret").as_deref(),
+            Some("secret")
+        );
         assert_eq!(extract_token_from_path("/nope"), None);
-        assert_eq!(path_after_token("/t/secret/api/health").as_deref(), Some("api/health"));
+        assert_eq!(
+            path_after_token("/t/secret/api/health").as_deref(),
+            Some("api/health")
+        );
         assert_eq!(path_after_token("/t/secret/").as_deref(), Some(""));
         assert_eq!(path_after_token("/t/secret").as_deref(), Some(""));
     }

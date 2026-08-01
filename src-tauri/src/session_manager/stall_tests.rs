@@ -189,6 +189,33 @@ fn orphan_open_tools_pruned_then_maybe_done_auto_end() {
     });
 }
 
+/// #453: after authoritative prompt RPC (`prompt_in_flight=false`), leftover
+/// open_tool_ids must not keep Streaming/busy forever when no human gate remains.
+#[test]
+fn deferred_prompt_complete_force_clears_open_tools_after_rpc() {
+    with_temp_app_home(|| {
+        let t0 = Instant::now();
+        let mut s = streaming_session(t0, |s| {
+            s.prompt_in_flight = false;
+            s.deferred_prompt_complete = Some("end_turn".into());
+            s.open_tool_ids.insert("ghost_bg_tool".into());
+            s.open_tool_seen_at.insert("ghost_bg_tool".into(), t0);
+            s.tools_this_turn = 1;
+            s.saw_model_output = true;
+        });
+        let finished = SessionManager::try_finish_deferred_prompt_complete(&mut s, None);
+        assert!(
+            finished.is_some(),
+            "expected deferred finish after force-clear open tools"
+        );
+        assert!(s.open_tool_ids.is_empty());
+        assert!(s.deferred_prompt_complete.is_none());
+        assert!(!s.prompt_in_flight);
+        assert_eq!(s.fsm.state(), SessionState::Ready);
+        assert!(s.streaming_message_id.is_none());
+    });
+}
+
 #[test]
 fn enrich_recovers_mcp_tool_name_from_sparse_completed() {
     let raw = json!({
@@ -229,4 +256,3 @@ fn enrich_recovers_search_tool_from_variant() {
         "title={title}"
     );
 }
-

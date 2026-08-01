@@ -253,10 +253,7 @@ fn path_hints(id: &str) -> Vec<PathBuf> {
                 "/usr/local/bin/stree",
                 "/Applications/SourceTree.app/Contents/Resources/stree",
             ],
-            "github-desktop" => vec![
-                "/usr/local/bin/github",
-                "/opt/homebrew/bin/github",
-            ],
+            "github-desktop" => vec!["/usr/local/bin/github", "/opt/homebrew/bin/github"],
             _ => vec![],
         };
         for a in apps {
@@ -273,22 +270,21 @@ fn path_hints(id: &str) -> Vec<PathBuf> {
         let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
 
         // Absolute / system paths first
-        let abs: Vec<PathBuf> = match id {
-            "cmd" => vec![PathBuf::from(&system_root).join(r"System32\cmd.exe")],
-            "powershell" => vec![
-                PathBuf::from(&system_root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe"),
-            ],
-            "pwsh" => vec![
-                PathBuf::from(&prog).join(r"PowerShell\7\pwsh.exe"),
-                PathBuf::from(&prog_x86).join(r"PowerShell\7\pwsh.exe"),
-            ],
-            "wt" => vec![
-                PathBuf::from(&local)
-                    .join(r"Microsoft\WindowsApps\wt.exe"),
-                PathBuf::from(&prog).join(r"Windows Terminal\wt.exe"),
-            ],
-            _ => vec![],
-        };
+        let abs: Vec<PathBuf> =
+            match id {
+                "cmd" => vec![PathBuf::from(&system_root).join(r"System32\cmd.exe")],
+                "powershell" => vec![PathBuf::from(&system_root)
+                    .join(r"System32\WindowsPowerShell\v1.0\powershell.exe")],
+                "pwsh" => vec![
+                    PathBuf::from(&prog).join(r"PowerShell\7\pwsh.exe"),
+                    PathBuf::from(&prog_x86).join(r"PowerShell\7\pwsh.exe"),
+                ],
+                "wt" => vec![
+                    PathBuf::from(&local).join(r"Microsoft\WindowsApps\wt.exe"),
+                    PathBuf::from(&prog).join(r"Windows Terminal\wt.exe"),
+                ],
+                _ => vec![],
+            };
         out.extend(abs);
 
         let rel = match id {
@@ -305,10 +301,7 @@ fn path_hints(id: &str) -> Vec<PathBuf> {
                 r"Programs\Windsurf\bin\windsurf.cmd",
                 r"Programs\windsurf\bin\windsurf.cmd",
             ],
-            "sublime" => vec![
-                r"Sublime Text\subl.exe",
-                r"Sublime Text 3\subl.exe",
-            ],
+            "sublime" => vec![r"Sublime Text\subl.exe", r"Sublime Text 3\subl.exe"],
             "fork" => vec![r"Fork\Fork.exe"],
             "sourcetree" => vec![
                 r"Atlassian\SourceTree\SourceTree.exe",
@@ -318,12 +311,15 @@ fn path_hints(id: &str) -> Vec<PathBuf> {
                 r"GitHubDesktop\GitHubDesktop.exe",
                 r"Apps\GitHubDesktop\GitHubDesktop.exe",
             ],
-            "idea" => vec![
-                r"JetBrains\IntelliJ IDEA *\bin\idea64.exe",
-            ],
+            "idea" => vec![r"JetBrains\IntelliJ IDEA *\bin\idea64.exe"],
             _ => vec![],
         };
-        for root in [local.as_str(), prog.as_str(), prog_x86.as_str(), user.as_str()] {
+        for root in [
+            local.as_str(),
+            prog.as_str(),
+            prog_x86.as_str(),
+            user.as_str(),
+        ] {
             if root.is_empty() {
                 continue;
             }
@@ -355,7 +351,11 @@ fn path_hints(id: &str) -> Vec<PathBuf> {
         let bins: Vec<&str> = match id {
             "code" => vec!["/usr/bin/code", "/usr/local/bin/code", "/snap/bin/code"],
             "cursor" => vec!["/usr/bin/cursor", "/usr/local/bin/cursor"],
-            "codium" => vec!["/usr/bin/codium", "/usr/local/bin/codium", "/snap/bin/codium"],
+            "codium" => vec![
+                "/usr/bin/codium",
+                "/usr/local/bin/codium",
+                "/snap/bin/codium",
+            ],
             "windsurf" => vec!["/usr/bin/windsurf", "/usr/local/bin/windsurf"],
             "zed" => vec!["/usr/bin/zed", "/usr/local/bin/zed"],
             "sublime" => vec!["/usr/bin/subl", "/usr/local/bin/subl"],
@@ -734,10 +734,7 @@ fn save_disk_cache(r: &EditorsListResult) {
     }
 }
 
-fn merge_icons_from_cache(
-    fast: &mut EditorsListResult,
-    cached: &EditorsListResult,
-) {
+fn merge_icons_from_cache(fast: &mut EditorsListResult, cached: &EditorsListResult) {
     for ed in &mut fast.editors {
         if ed.icon_data_url.is_some() {
             continue;
@@ -792,10 +789,7 @@ pub fn schedule_background_refresh(app: Option<tauri::AppHandle>) {
                 use tauri::Emitter;
                 let _ = app.emit("editors://updated", &result);
             }
-            tracing::debug!(
-                n = result.editors.len(),
-                "editors background scan complete"
-            );
+            tracing::debug!(n = result.editors.len(), "editors background scan complete");
         });
 }
 

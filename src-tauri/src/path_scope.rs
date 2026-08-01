@@ -46,8 +46,7 @@ pub fn refresh_from_store() {
     // Independent mode is already under app_data; shared mode is `~/.grok` and
     // must be listed so chat image/video cards can load via media HTTP.
     let settings = crate::store::load_settings();
-    let agent_home =
-        crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+    let agent_home = crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
     if let Ok(c) = agent_home.canonicalize() {
         next.push(c);
     } else {
@@ -64,9 +63,7 @@ pub fn refresh_from_store() {
 /// Grant a one-off absolute path (e.g. user-picked file outside projects).
 /// Parent directory of a file is granted so re-reads of the same file work.
 pub fn grant_path(path: &Path) {
-    let canonical = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf());
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let grant = if canonical.is_file() {
         canonical
             .parent()
@@ -89,9 +86,7 @@ pub fn grant_path(path: &Path) {
 
 /// True when `path` sits under an allowed root (after canonicalize when possible).
 pub fn is_allowed(path: &Path) -> bool {
-    let candidate = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf());
+    let candidate = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     is_allowed_canonical(&candidate)
 }
 

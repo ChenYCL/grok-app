@@ -184,10 +184,7 @@ pub fn parse_prompt_agent_args(raw: &str) -> Result<PromptAgentArgs, String> {
         .and_then(|x| x.as_str())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    Ok(PromptAgentArgs {
-        session_id,
-        prompt,
-    })
+    Ok(PromptAgentArgs { session_id, prompt })
 }
 
 pub fn parse_session_ref_args(raw: &str) -> Result<SessionRefArgs, String> {
@@ -287,10 +284,7 @@ pub fn classify_tool_error(raw: &str) -> &'static str {
 /// Soft-fail classes: return structured tool result instead of killing the loop.
 /// CLI missing, user permission deny, and voice-stop cancel keep voice open.
 pub fn is_soft_tool_error(class: &str) -> bool {
-    matches!(
-        class,
-        "cli_missing" | "permission_denied" | "cancelled"
-    )
+    matches!(class, "cli_missing" | "permission_denied" | "cancelled")
 }
 
 /// Whether stopping Live Voice should cancel delegated Build agent turns.
@@ -406,11 +400,8 @@ mod tests {
 
     #[test]
     fn mock_create() {
-        let v = mock_execute_tool(
-            "create_agent_session",
-            r#"{"prompt":"run cargo test"}"#,
-        )
-        .unwrap();
+        let v =
+            mock_execute_tool("create_agent_session", r#"{"prompt":"run cargo test"}"#).unwrap();
         assert_eq!(v["session_id"], "mock-new");
     }
 
@@ -424,7 +415,9 @@ mod tests {
     #[test]
     fn classifies_cli_missing_as_soft() {
         assert_eq!(
-            classify_tool_error("Grok Build CLI not found. Install Grok Build or set path in Settings."),
+            classify_tool_error(
+                "Grok Build CLI not found. Install Grok Build or set path in Settings."
+            ),
             "cli_missing"
         );
         assert!(is_soft_tool_error("cli_missing"));
@@ -437,10 +430,7 @@ mod tests {
 
     #[test]
     fn classifies_auth_and_network() {
-        assert_eq!(
-            classify_tool_error("No xAI credentials found"),
-            "auth"
-        );
+        assert_eq!(classify_tool_error("No xAI credentials found"), "auth");
         assert_eq!(
             classify_tool_error("voice websocket connect failed"),
             "network"
@@ -475,7 +465,10 @@ mod tests {
     fn normalizes_tool_status_tokens() {
         assert_eq!(normalize_tool_status("running"), "tool_running");
         assert_eq!(normalize_tool_status("ok"), "completed");
-        assert_eq!(normalize_tool_status("permission_pending"), "permission_pending");
+        assert_eq!(
+            normalize_tool_status("permission_pending"),
+            "permission_pending"
+        );
         assert_eq!(normalize_tool_status("cancelled"), "soft_fail");
     }
 }

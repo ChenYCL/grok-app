@@ -84,10 +84,7 @@ fn media_worker_loop(rx: Arc<Mutex<mpsc::Receiver<MediaJob>>>) {
             guard.recv()
         };
         match job {
-            Ok(MediaJob {
-                request,
-                responder,
-            }) => {
+            Ok(MediaJob { request, responder }) => {
                 // Outer catch: a job must never take down the pool thread.
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     run_request_safe(request, responder);
@@ -103,10 +100,7 @@ fn media_worker_loop(rx: Arc<Mutex<mpsc::Receiver<MediaJob>>>) {
 /// Never panics. Queue overflow → HTTP 503 (true back-pressure). Handler /
 /// `responder.respond` panics are caught so the GUI process stays alive.
 pub fn dispatch(request: Request<Vec<u8>>, responder: UriSchemeResponder) {
-    let job = MediaJob {
-        request,
-        responder,
-    };
+    let job = MediaJob { request, responder };
     match media_pool().tx.try_send(job) {
         Ok(()) => {}
         Err(mpsc::TrySendError::Full(MediaJob { responder, .. })) => {
@@ -119,18 +113,13 @@ pub fn dispatch(request: Request<Vec<u8>>, responder: UriSchemeResponder) {
                 .name("media-proto-busy".into())
                 .spawn(move || {
                     let _ = catch_unwind(AssertUnwindSafe(|| {
-                        let response = error_response_static(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "media busy",
-                        );
+                        let response =
+                            error_response_static(StatusCode::SERVICE_UNAVAILABLE, "media busy");
                         safe_respond(responder, response);
                     }));
                 });
         }
-        Err(mpsc::TrySendError::Disconnected(MediaJob {
-            request,
-            responder,
-        })) => {
+        Err(mpsc::TrySendError::Disconnected(MediaJob { request, responder })) => {
             tracing::error!("media protocol: pool disconnected — one-shot fallback");
             let _ = thread::Builder::new()
                 .name("media-proto-fallback".into())
@@ -149,10 +138,7 @@ fn run_request_safe(request: Request<Vec<u8>>, responder: UriSchemeResponder) {
         Err(payload) => {
             let msg = panic_payload_str(&payload);
             tracing::error!(panic = %msg, "media protocol: handler panicked — returning 500");
-            error_response_static(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "media handler error",
-            )
+            error_response_static(StatusCode::INTERNAL_SERVER_ERROR, "media handler error")
         }
     };
     safe_respond(responder, response);
@@ -190,11 +176,7 @@ fn error_response_static(status: StatusCode, msg: &str) -> Response<Vec<u8>> {
 }
 
 fn mime_from_path(path: &str) -> &'static str {
-    let ext = path
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     match ext.as_str() {
         "mp4" | "m4v" => "video/mp4",
         "webm" => "video/webm",
@@ -325,17 +307,10 @@ fn cors_origin_header(request: &Request<Vec<u8>>) -> Option<&'static str> {
         .headers()
         .get(header::ORIGIN)
         .and_then(|v| v.to_str().ok())?;
-    allowed_origins()
-        .iter()
-        .find(|o| **o == origin)
-        .copied()
+    allowed_origins().iter().find(|o| **o == origin).copied()
 }
 
-fn error_response(
-    request: &Request<Vec<u8>>,
-    status: StatusCode,
-    msg: &str,
-) -> Response<Vec<u8>> {
+fn error_response(request: &Request<Vec<u8>>, status: StatusCode, msg: &str) -> Response<Vec<u8>> {
     let mut builder = Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
@@ -453,11 +428,7 @@ pub fn handle_request(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         // Full body for images (any size ≤ MAX_FULL_BODY) and small non-images.
         // `<img src>` never sends Range and cannot decode a 206 first-chunk.
         if len > MAX_FULL_BODY {
-            return error_response(
-                &request,
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "file too large",
-            );
+            return error_response(&request, StatusCode::PAYLOAD_TOO_LARGE, "file too large");
         }
         (0, len - 1, false)
     } else {
@@ -555,10 +526,7 @@ pub fn handle_request(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     }
 
     if partial && len > 0 {
-        builder = builder.header(
-            header::CONTENT_RANGE,
-            format!("bytes {start}-{end}/{len}"),
-        );
+        builder = builder.header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{len}"));
     }
 
     builder
@@ -587,10 +555,7 @@ mod tests {
         assert_eq!(parse_range("bytes=100-", 1000), Some((100, 999)));
         assert_eq!(parse_range("bytes=0-999999999", 500), Some((0, 499)));
         let big = MAX_CHUNK * 4;
-        assert_eq!(
-            parse_range("bytes=0-", big),
-            Some((0, MAX_CHUNK - 1))
-        );
+        assert_eq!(parse_range("bytes=0-", big), Some((0, MAX_CHUNK - 1)));
     }
 
     #[test]

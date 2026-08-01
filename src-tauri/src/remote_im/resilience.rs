@@ -47,9 +47,7 @@ pub fn reconnect_backoff_secs(attempt: u32) -> u64 {
         return 0;
     }
     let exp = attempt.min(BACKOFF_MAX_EXP);
-    BACKOFF_BASE_SECS
-        .saturating_pow(exp)
-        .min(BACKOFF_CAP_SECS)
+    BACKOFF_BASE_SECS.saturating_pow(exp).min(BACKOFF_CAP_SECS)
 }
 
 /// After `failed_attempt` failures (0-based count), wait this long before next try.
@@ -284,7 +282,9 @@ pub fn rate_limit_user_message(lang: &str, retry_after: Duration) -> String {
             "Rate limited: too many remote turns. Try again in about {secs}s. (Bridge soft-limit; not a silent drop.)"
         )
     } else {
-        format!("已触发速率限制：远程回合过于频繁。约 {secs} 秒后再试。（Bridge 软限制，非静默丢弃）")
+        format!(
+            "已触发速率限制：远程回合过于频繁。约 {secs} 秒后再试。（Bridge 软限制，非静默丢弃）"
+        )
     }
 }
 
@@ -349,7 +349,10 @@ mod tests {
     #[test]
     fn classify_errors() {
         assert_eq!(classify_rim_error("HTTP 429"), RimErrorKind::RateLimit);
-        assert_eq!(classify_rim_error("quota exceeded"), RimErrorKind::RateLimit);
+        assert_eq!(
+            classify_rim_error("quota exceeded"),
+            RimErrorKind::RateLimit
+        );
         assert_eq!(classify_rim_error("401 unauthorized"), RimErrorKind::Auth);
         assert_eq!(
             classify_rim_error("no enabled channel with credentials"),

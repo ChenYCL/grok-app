@@ -20,8 +20,7 @@ use serde_json::Value;
 
 const DEFAULT_RELEASES_API_URL: &str =
     "https://api.github.com/repos/RongleCat/grok-app/releases/latest";
-const DEFAULT_RELEASES_HTML_URL: &str =
-    "https://github.com/RongleCat/grok-app/releases/latest";
+const DEFAULT_RELEASES_HTML_URL: &str = "https://github.com/RongleCat/grok-app/releases/latest";
 const DEFAULT_RELEASES_PAGE: &str = "https://github.com/RongleCat/grok-app/releases";
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(12);
@@ -161,7 +160,11 @@ pub fn parse_github_release(current_version: &str, v: &Value) -> Result<AppUpdat
     let asset_names = assets
         .map(|arr| {
             arr.iter()
-                .filter_map(|a| a.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+                .filter_map(|a| {
+                    a.get("name")
+                        .and_then(|n| n.as_str())
+                        .map(|s| s.to_string())
+                })
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
@@ -266,10 +269,7 @@ fn http_client(user_agent: &str) -> Result<reqwest::Client, String> {
 }
 
 /// Primary path: GitHub REST releases/latest.
-async fn fetch_via_api(
-    client: &reqwest::Client,
-    url: &str,
-) -> Result<Value, String> {
+async fn fetch_via_api(client: &reqwest::Client, url: &str) -> Result<Value, String> {
     let mut req = client
         .get(url)
         .header("Accept", "application/vnd.github+json")
@@ -491,7 +491,10 @@ mod tests {
             extract_tag_from_release_url("/RongleCat/grok-app/releases/tag/v1.0.0").as_deref(),
             Some("v1.0.0")
         );
-        assert!(extract_tag_from_release_url("https://github.com/RongleCat/grok-app/releases").is_none());
+        assert!(
+            extract_tag_from_release_url("https://github.com/RongleCat/grok-app/releases")
+                .is_none()
+        );
         assert!(extract_tag_from_release_url("https://example.com/nope").is_none());
     }
 

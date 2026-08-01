@@ -151,13 +151,29 @@ fn parse_event(inst: &ChannelInstance, payload: &Value) -> Option<IncomingMessag
     if event.get("bot_id").is_some() || event.get("subtype").is_some() {
         return None;
     }
-    let text = event.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
+    let text = event
+        .get("text")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
     if text.is_empty() {
         return None;
     }
-    let chat_id = event.get("channel").and_then(|c| c.as_str()).unwrap_or("").to_string();
-    let sender_id = event.get("user").and_then(|u| u.as_str()).unwrap_or("").to_string();
-    let message_id = event.get("ts").and_then(|t| t.as_str()).unwrap_or("").to_string();
+    let chat_id = event
+        .get("channel")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string();
+    let sender_id = event
+        .get("user")
+        .and_then(|u| u.as_str())
+        .unwrap_or("")
+        .to_string();
+    let message_id = event
+        .get("ts")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
     let channel_type = event
         .get("channel_type")
         .and_then(|t| t.as_str())

@@ -14,9 +14,7 @@ use crate::agent_home_config::{
     SHARED_MODE_REFUSED,
 };
 use crate::paths::agent_config_toml;
-use crate::providers::{
-    is_custom_provider_id, list_custom_providers, OFFICIAL_CATALOG_MODEL,
-};
+use crate::providers::{is_custom_provider_id, list_custom_providers, OFFICIAL_CATALOG_MODEL};
 use crate::secrets;
 use crate::store;
 
@@ -288,10 +286,7 @@ fn load_official_api_key() -> Option<String> {
 
 /// After writing aux slots that target `grok-4.5`, ensure the model section is
 /// routable. Returns error when on custom main route without any credential.
-pub fn ensure_official_reachable(
-    text: &str,
-    active_source: &str,
-) -> Result<String, String> {
+pub fn ensure_official_reachable(text: &str, active_source: &str) -> Result<String, String> {
     let key = load_official_api_key();
     let has_key = key.is_some();
     // Official main route can use auth.json / OIDC without a pasted API key.
@@ -304,10 +299,7 @@ pub fn ensure_official_reachable(
                 .into(),
         );
     }
-    Ok(ensure_official_aux_model_section(
-        text,
-        key.as_deref(),
-    ))
+    Ok(ensure_official_aux_model_section(text, key.as_deref()))
 }
 
 fn read_config_text() -> String {
@@ -634,13 +626,18 @@ pub fn main_is_text_only(text: &str, list: &crate::providers::ProvidersListResul
         return list.active_source != "official";
     }
     if let Some(p) = list.providers.iter().find(|p| p.id == def) {
-        if looks_text_only_model(&p.id) || looks_text_only_model(&p.model) || looks_text_only_model(&p.name)
+        if looks_text_only_model(&p.id)
+            || looks_text_only_model(&p.model)
+            || looks_text_only_model(&p.name)
         {
             return true;
         }
         // Custom multimodal channel (Amux grok-4.5)
-        if !looks_text_only_model(&p.model) && (p.model.to_ascii_lowercase().contains("grok")
-            || p.models.iter().any(|m| m.id.to_ascii_lowercase().contains("grok")))
+        if !looks_text_only_model(&p.model)
+            && (p.model.to_ascii_lowercase().contains("grok")
+                || p.models
+                    .iter()
+                    .any(|m| m.id.to_ascii_lowercase().contains("grok")))
         {
             return false;
         }
@@ -678,10 +675,7 @@ fn parse_at_abs_path(trimmed: &str) -> Option<&str> {
     }
     // Windows `C:\` or `C:/`
     let b = path.as_bytes();
-    if b.len() >= 3
-        && b[0].is_ascii_alphabetic()
-        && b[1] == b':'
-        && (b[2] == b'\\' || b[2] == b'/')
+    if b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/')
     {
         return Some(path);
     }
@@ -962,12 +956,7 @@ Instructions:
 5. Final answer: short markdown with findings + link list."#
     );
 
-    run_aux_headless(
-        &model,
-        &prompt,
-        8,
-        std::time::Duration::from_secs(180),
-    )
+    run_aux_headless(&model, &prompt, 8, std::time::Duration::from_secs(180))
 }
 struct VisionEndpoint {
     base_url: String,
@@ -983,10 +972,18 @@ fn resolve_vision_endpoint(
     let slot = get_slot(config, "image_description");
     let target = normalize_slot_value(&slot)?;
     if target == OFFICIAL_CATALOG_MODEL {
-        let base = get_table_string(config, &format!("model.{OFFICIAL_CATALOG_MODEL}"), "base_url")
-            .unwrap_or_else(|| OFFICIAL_GROK_BASE_URL.into());
-        let key = get_table_string(config, &format!("model.{OFFICIAL_CATALOG_MODEL}"), "api_key")
-            .unwrap_or_default();
+        let base = get_table_string(
+            config,
+            &format!("model.{OFFICIAL_CATALOG_MODEL}"),
+            "base_url",
+        )
+        .unwrap_or_else(|| OFFICIAL_GROK_BASE_URL.into());
+        let key = get_table_string(
+            config,
+            &format!("model.{OFFICIAL_CATALOG_MODEL}"),
+            "api_key",
+        )
+        .unwrap_or_default();
         if key.is_empty() {
             return None;
         }
@@ -1324,9 +1321,9 @@ pub async fn prepare_agent_prompt_for_main_detailed(
     // text as-is, the main CLI re-attaches image_url → DeepSeek 400. Neutralize.
     let inject = neutralize_image_at_refs(&blocks.join("\n\n"));
     let ok = !blocks.is_empty()
-        && !blocks.iter().all(|b| {
-            b.contains("failed") || b.contains("not described") || b.contains("omitted")
-        });
+        && !blocks
+            .iter()
+            .all(|b| b.contains("failed") || b.contains("not described") || b.contains("omitted"));
     // Non-technical chip detail (UI must not show `grok -p` command lines).
     let detail = if ok {
         format!("{} image(s)", batch.len().min(MAX_VISION_IMAGES))
@@ -1402,8 +1399,12 @@ pub fn repair_orphaned_official_aux() -> Result<bool, String> {
     if !slots_reference_official(&slots) {
         return Ok(false);
     }
-    let base = get_table_string(&existing, &format!("model.{OFFICIAL_CATALOG_MODEL}"), "base_url")
-        .unwrap_or_default();
+    let base = get_table_string(
+        &existing,
+        &format!("model.{OFFICIAL_CATALOG_MODEL}"),
+        "base_url",
+    )
+    .unwrap_or_default();
     if base.contains("cli-chat-proxy.grok.com") || base.contains("api.x.ai") {
         // Section already points at official; ensure api_key if we have one.
         let key = load_official_api_key();
@@ -1572,7 +1573,10 @@ yolo = false
         assert!(!out.contains("@/Users/me/pic.png"), "{out}");
         assert!(out.contains("@/Users/me/note.txt"), "{out}");
         assert!(out.contains("/Users/me/pic.png"), "{out}");
-        assert!(out.contains("text-only") || out.contains("not injected"), "{out}");
+        assert!(
+            out.contains("text-only") || out.contains("not injected"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -1611,7 +1615,9 @@ web_search = "amux"
                 env.push((name, v));
             }
         }
-        assert!(env.iter().any(|(k, v)| *k == "GROK_WEB_SEARCH_MODEL" && v == "amux"));
+        assert!(env
+            .iter()
+            .any(|(k, v)| *k == "GROK_WEB_SEARCH_MODEL" && v == "amux"));
         assert!(env
             .iter()
             .any(|(k, v)| *k == "GROK_IMAGE_DESCRIPTION_MODEL" && v == "amux"));
@@ -1619,7 +1625,8 @@ web_search = "amux"
 
     #[test]
     fn extract_and_strip_images_from_bootstrap() {
-        let prompt = "[Prior…]\n### User\n你好\n\n@/tmp/a.png\n\n### Assistant\nok\n\n新问题\n@/tmp/b.jpg";
+        let prompt =
+            "[Prior…]\n### User\n你好\n\n@/tmp/a.png\n\n### Assistant\nok\n\n新问题\n@/tmp/b.jpg";
         let imgs = extract_image_at_paths(prompt);
         assert_eq!(imgs.len(), 2);
         let (body, stripped) = strip_image_at_paths(prompt);
@@ -1642,7 +1649,10 @@ A red button.
             !out.contains("@/tmp/a.png"),
             "must not re-inject attachable @image: {out}"
         );
-        assert!(out.contains("red button") || out.contains("image_description"), "{out}");
+        assert!(
+            out.contains("red button") || out.contains("image_description"),
+            "{out}"
+        );
     }
 
     #[test]

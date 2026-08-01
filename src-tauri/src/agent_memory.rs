@@ -263,9 +263,7 @@ pub fn classify_memory_relative(rel: &str) -> (&'static str, Option<String>) {
     match parts.as_slice() {
         ["MEMORY.md"] => ("global", None),
         [slug, "MEMORY.md"] => ("workspace", Some((*slug).to_string())),
-        [slug, "sessions", name] if !name.is_empty() => {
-            ("session", Some((*slug).to_string()))
-        }
+        [slug, "sessions", name] if !name.is_empty() => ("session", Some((*slug).to_string())),
         [slug, name]
             if name.starts_with("index.sqlite")
                 || name.ends_with(".sqlite")
@@ -389,10 +387,13 @@ pub fn extract_project_path_hints(text: &str) -> Vec<String> {
             }
         }
         // Fallback: first absolute path-looking token on early lines.
-        if (t.starts_with('/') || (t.len() > 2 && t.as_bytes()[1] == b':' && t.as_bytes()[0].is_ascii_alphabetic()))
-            && t.len() > 2 && !out.iter().any(|x| x == t) {
-                out.push(t.to_string());
-            }
+        if (t.starts_with('/')
+            || (t.len() > 2 && t.as_bytes()[1] == b':' && t.as_bytes()[0].is_ascii_alphabetic()))
+            && t.len() > 2
+            && !out.iter().any(|x| x == t)
+        {
+            out.push(t.to_string());
+        }
     }
     out
 }
@@ -567,12 +568,7 @@ fn read_preview_text(path: &Path, kind: &str) -> String {
     redact_memory_preview(&chars)
 }
 
-fn push_entry(
-    out: &mut Vec<MemoryFileEntry>,
-    root: &Path,
-    path: &Path,
-    matched: bool,
-) {
+fn push_entry(out: &mut Vec<MemoryFileEntry>, root: &Path, path: &Path, matched: bool) {
     let meta = match fs::metadata(path) {
         Ok(m) if m.is_file() => m,
         _ => return,
@@ -606,10 +602,7 @@ fn name_from_rel(rel: &str) -> String {
 /// Resilient when the memory dir is missing: returns empty entries.
 /// Includes global `MEMORY.md` (matched=true) plus files under matched workspace
 /// dirs. When no workspace matches, still returns global only.
-pub fn list_workspace_memory(
-    cwd: Option<&Path>,
-    session_data_mode: &str,
-) -> MemoryListResult {
+pub fn list_workspace_memory(cwd: Option<&Path>, session_data_mode: &str) -> MemoryListResult {
     let grok_home = resolve_agent_grok_home(session_data_mode);
     let root = grok_home.join("memory");
     let root_exists = root.is_dir();
@@ -778,7 +771,10 @@ pub fn delete_memory_file(
     let canon = path
         .canonicalize()
         .map_err(|e| format!("cannot resolve path: {e}"))?;
-    let rel = path_to_rel(&root.canonicalize().unwrap_or_else(|_| root.clone()), &canon);
+    let rel = path_to_rel(
+        &root.canonicalize().unwrap_or_else(|_| root.clone()),
+        &canon,
+    );
     let (kind, _) = classify_memory_relative(&rel);
     // Do not delete arbitrary non-memory-looking files if somehow nested.
     if kind == "other" {
@@ -884,7 +880,9 @@ pub fn resolve_app_memory_search_kind(embedding_configured: bool) -> &'static st
 
 /// Clamp UI/host limit into the hard search cap range (pure).
 pub fn clamp_memory_search_limit(limit: Option<usize>) -> usize {
-    limit.unwrap_or(MEMORY_SEARCH_MAX_HITS).clamp(1, MEMORY_SEARCH_MAX_HITS)
+    limit
+        .unwrap_or(MEMORY_SEARCH_MAX_HITS)
+        .clamp(1, MEMORY_SEARCH_MAX_HITS)
 }
 
 /// Whether a memory kind/name is text-searchable (pure). Index/binary never scanned.
@@ -1105,13 +1103,11 @@ pub fn search_workspace_memory_with_kind(
 
     // Prefer content matches first, then name-only; stable by relative path.
     hits.sort_by(|a, b| {
-        b.content_match
-            .cmp(&a.content_match)
-            .then_with(|| {
-                a.relative_path
-                    .to_ascii_lowercase()
-                    .cmp(&b.relative_path.to_ascii_lowercase())
-            })
+        b.content_match.cmp(&a.content_match).then_with(|| {
+            a.relative_path
+                .to_ascii_lowercase()
+                .cmp(&b.relative_path.to_ascii_lowercase())
+        })
     });
     let truncated = hits.len() > limit;
     if truncated {
@@ -1224,7 +1220,10 @@ mod tests {
     fn extract_project_path_from_header() {
         let text = "# Project Memory — /Users/me/work/proj\n\n> note\n";
         let hints = extract_project_path_hints(text);
-        assert!(hints.iter().any(|h| h.contains("/Users/me/work/proj")), "{hints:?}");
+        assert!(
+            hints.iter().any(|h| h.contains("/Users/me/work/proj")),
+            "{hints:?}"
+        );
     }
 
     #[test]
@@ -1266,7 +1265,10 @@ mod tests {
         fs::write(mem.join("MEMORY.md"), "# Global Memory\n\nprefs\n").unwrap();
         fs::write(
             ws.join("MEMORY.md"),
-            format!("# Project Memory — {}\n\nfacts\napi_key = sk-abcdefghijklmnopqrstuv\n", tmp.display()),
+            format!(
+                "# Project Memory — {}\n\nfacts\napi_key = sk-abcdefghijklmnopqrstuv\n",
+                tmp.display()
+            ),
         )
         .unwrap();
         fs::write(sessions.join("2026-01-01-session.md"), "session log\n").unwrap();
@@ -1292,10 +1294,7 @@ mod tests {
         )
         .unwrap();
         fs::write(
-            agent_mem
-                .join(slug)
-                .join("sessions")
-                .join("log.md"),
+            agent_mem.join(slug).join("sessions").join("log.md"),
             "session\n",
         )
         .unwrap();
@@ -1392,10 +1391,7 @@ mod tests {
             assert!(!CLI_MEMORY_HYBRID_SEARCH_AVAILABLE);
         }
         assert_eq!(resolve_app_memory_search_kind(false), "keyword");
-        assert_eq!(
-            resolve_app_memory_search_kind(true),
-            "hybrid_unavailable"
-        );
+        assert_eq!(resolve_app_memory_search_kind(true), "hybrid_unavailable");
     }
 
     #[test]
@@ -1409,12 +1405,12 @@ mod tests {
 
     #[test]
     fn name_match_is_case_insensitive() {
+        assert!(memory_name_matches("MEMORY.md", "proj/MEMORY.md", "memory"));
         assert!(memory_name_matches(
-            "MEMORY.md",
-            "proj/MEMORY.md",
-            "memory"
+            "log.md",
+            "proj/sessions/log.md",
+            "sessions"
         ));
-        assert!(memory_name_matches("log.md", "proj/sessions/log.md", "sessions"));
         assert!(!memory_name_matches("MEMORY.md", "proj/MEMORY.md", "zzz"));
         assert!(!memory_name_matches("a", "b", ""));
     }
@@ -1425,7 +1421,10 @@ mod tests {
         let idx = content.find("TARGET").unwrap();
         let snip = make_memory_search_snippet(content, idx, "TARGET".len());
         assert!(snip.contains("TARGET"), "{snip}");
-        assert!(snip.chars().count() <= MEMORY_SEARCH_SNIPPET_MAX + 1, "{snip}");
+        assert!(
+            snip.chars().count() <= MEMORY_SEARCH_SNIPPET_MAX + 1,
+            "{snip}"
+        );
     }
 
     #[test]
@@ -1445,7 +1444,11 @@ mod tests {
         let proj_path = tmp.join("demo-search");
         fs::create_dir_all(agent_mem.join(slug).join("sessions")).unwrap();
         fs::create_dir_all(&proj_path).unwrap();
-        fs::write(agent_mem.join("MEMORY.md"), "# Global Memory\nunique-global-token\n").unwrap();
+        fs::write(
+            agent_mem.join("MEMORY.md"),
+            "# Global Memory\nunique-global-token\n",
+        )
+        .unwrap();
         fs::write(
             agent_mem.join(slug).join("MEMORY.md"),
             format!(
@@ -1455,19 +1458,24 @@ mod tests {
         )
         .unwrap();
         fs::write(
-            agent_mem
-                .join(slug)
-                .join("sessions")
-                .join("log.md"),
+            agent_mem.join(slug).join("sessions").join("log.md"),
             "session only name match here\n",
         )
         .unwrap();
         fs::write(agent_mem.join(slug).join("index.sqlite"), b"SQLite\0bin").unwrap();
 
         // Content match deep in body (not only in list preview head for large files is covered by read cap)
-        let found = search_workspace_memory("unique-body-fact", Some(&proj_path), "independent", Some(20));
+        let found = search_workspace_memory(
+            "unique-body-fact",
+            Some(&proj_path),
+            "independent",
+            Some(20),
+        );
         assert!(
-            found.hits.iter().any(|h| h.content_match && h.relative_path.contains("MEMORY.md")),
+            found
+                .hits
+                .iter()
+                .any(|h| h.content_match && h.relative_path.contains("MEMORY.md")),
             "{:?}",
             found.hits
         );
@@ -1476,7 +1484,13 @@ mod tests {
             .iter()
             .find(|h| h.content_match)
             .expect("content hit");
-        assert!(hit.snippet.to_ascii_lowercase().contains("unique-body-fact"), "{}", hit.snippet);
+        assert!(
+            hit.snippet
+                .to_ascii_lowercase()
+                .contains("unique-body-fact"),
+            "{}",
+            hit.snippet
+        );
         // Secrets redacted in snippet path when present near match
         let secret_q = search_workspace_memory("api_key", Some(&proj_path), "independent", None);
         if let Some(s) = secret_q.hits.iter().find(|h| h.content_match) {
@@ -1505,10 +1519,12 @@ mod tests {
         );
 
         // Index is not content-searched for binary body
-        let idx_hits =
-            search_workspace_memory("SQLite", Some(&proj_path), "independent", None);
+        let idx_hits = search_workspace_memory("SQLite", Some(&proj_path), "independent", None);
         assert!(
-            !idx_hits.hits.iter().any(|h| h.kind == "index" && h.content_match),
+            !idx_hits
+                .hits
+                .iter()
+                .any(|h| h.kind == "index" && h.content_match),
             "{:?}",
             idx_hits.hits
         );
@@ -1518,8 +1534,7 @@ mod tests {
         assert!(empty.hits.is_empty());
 
         // Cap truncates
-        let capped =
-            search_workspace_memory("md", Some(&proj_path), "independent", Some(1));
+        let capped = search_workspace_memory("md", Some(&proj_path), "independent", Some(1));
         assert!(capped.hits.len() <= 1);
         // "md" matches several .md files → truncated when limit=1
         if listed_match_count_md_like(&proj_path) > 1 {

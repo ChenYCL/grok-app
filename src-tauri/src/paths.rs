@@ -187,10 +187,7 @@ pub fn find_agent_session_dir(
 
 /// Join agent session root + relative path like `images/1.jpg`.
 /// Rejects `..` segments. Returns None if the resolved file is missing.
-pub fn resolve_session_relative_media(
-    session_root: &Path,
-    relative: &str,
-) -> Option<PathBuf> {
+pub fn resolve_session_relative_media(session_root: &Path, relative: &str) -> Option<PathBuf> {
     let rel = relative.trim().trim_start_matches("./");
     if rel.is_empty() {
         return None;

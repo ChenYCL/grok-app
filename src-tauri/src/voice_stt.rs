@@ -162,11 +162,7 @@ pub async fn voice_transcribe(
     {
         Ok(r) => r,
         Err(e) => {
-            let class = if e.is_timeout() {
-                "timeout"
-            } else {
-                "network"
-            };
+            let class = if e.is_timeout() { "timeout" } else { "network" };
             return VoiceTranscribeResult {
                 ok: false,
                 text: None,
@@ -262,7 +258,6 @@ pub fn extract_transcript(body: &str) -> String {
     }
     String::new()
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

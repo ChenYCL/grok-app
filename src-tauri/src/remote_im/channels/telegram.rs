@@ -39,9 +39,8 @@ pub async fn run(
         if *cancel.borrow() {
             return Ok(());
         }
-        let url = format!(
-            "https://api.telegram.org/bot{token}/getUpdates?timeout=25&offset={offset}"
-        );
+        let url =
+            format!("https://api.telegram.org/bot{token}/getUpdates?timeout=25&offset={offset}");
         let fut = client.get(&url).send();
         let res = tokio::select! {
             _ = cancel.changed() => {
@@ -105,13 +104,7 @@ pub async fn run(
             let chat_type = msg
                 .pointer("/chat/type")
                 .and_then(|x| x.as_str())
-                .map(|t| {
-                    if t == "private" {
-                        "p2p"
-                    } else {
-                        "group"
-                    }
-                })
+                .map(|t| if t == "private" { "p2p" } else { "group" })
                 .unwrap_or("p2p")
                 .to_string();
             let sender_id = msg
@@ -265,10 +258,7 @@ fn json_id_to_string(value: &Value) -> String {
 }
 
 /// Register default + Chinese command lists with Telegram Bot API.
-pub async fn register_native_commands(
-    client: &reqwest::Client,
-    token: &str,
-) -> Result<(), String> {
+pub async fn register_native_commands(client: &reqwest::Client, token: &str) -> Result<(), String> {
     let base = format!("https://api.telegram.org/bot{token}/setMyCommands");
 
     let en_cmds: Vec<Value> = native_bot_commands()
@@ -342,7 +332,11 @@ pub fn normalize_bot_command_text(text: &str, entities: Option<&Vec<Value>>) -> 
     }) else {
         return strip_at_in_leading_slash(text);
     };
-    let Some(len) = ent.get("length").and_then(|l| l.as_u64()).map(|n| n as usize) else {
+    let Some(len) = ent
+        .get("length")
+        .and_then(|l| l.as_u64())
+        .map(|n| n as usize)
+    else {
         return strip_at_in_leading_slash(text);
     };
     let utf16: Vec<u16> = text.encode_utf16().collect();
@@ -514,9 +508,9 @@ mod tests {
     #[test]
     fn command_menu_language_codes_are_telegram_compatible() {
         assert_eq!(COMMAND_LANGUAGE_CODES_ZH, &["zh"]);
-        assert!(COMMAND_LANGUAGE_CODES_ZH.iter().all(|code| {
-            code.len() == 2 && code.bytes().all(|byte| byte.is_ascii_lowercase())
-        }));
+        assert!(COMMAND_LANGUAGE_CODES_ZH
+            .iter()
+            .all(|code| { code.len() == 2 && code.bytes().all(|byte| byte.is_ascii_lowercase()) }));
     }
 
     #[test]
@@ -528,10 +522,7 @@ mod tests {
             "length": text.encode_utf16().count(),
             "type": "bot_command"
         })];
-        assert_eq!(
-            normalize_bot_command_text(text, Some(&entities)),
-            "/help"
-        );
+        assert_eq!(normalize_bot_command_text(text, Some(&entities)), "/help");
     }
 
     #[test]
@@ -542,22 +533,13 @@ mod tests {
             "length": "/p@MyBot".encode_utf16().count(),
             "type": "bot_command"
         })];
-        assert_eq!(
-            normalize_bot_command_text(text, Some(&entities)),
-            "/p 1"
-        );
+        assert_eq!(normalize_bot_command_text(text, Some(&entities)), "/p 1");
     }
 
     #[test]
     fn fallback_strip_without_entities() {
-        assert_eq!(
-            normalize_bot_command_text("/status@BotX", None),
-            "/status"
-        );
-        assert_eq!(
-            normalize_bot_command_text("/r@Bot 3", None),
-            "/r 3"
-        );
+        assert_eq!(normalize_bot_command_text("/status@BotX", None), "/status");
+        assert_eq!(normalize_bot_command_text("/r@Bot 3", None), "/r 3");
     }
 
     #[test]

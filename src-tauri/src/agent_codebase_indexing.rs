@@ -178,14 +178,18 @@ pub fn extract_codebase_indexing_preview(text: &str) -> String {
             if (trimmed.starts_with("codebase_indexing")
                 || trimmed.is_empty()
                 || trimmed.starts_with('#'))
-                && (trimmed.starts_with("codebase_indexing") || !out.is_empty()) {
-                    out.push_str(line);
-                    out.push('\n');
-                }
+                && (trimmed.starts_with("codebase_indexing") || !out.is_empty())
+            {
+                out.push_str(line);
+                out.push('\n');
+            }
         }
     }
     // If we only got the header with no key, still return the header when key missing? Keep empty.
-    if out.lines().any(|l| l.trim().starts_with("codebase_indexing")) {
+    if out
+        .lines()
+        .any(|l| l.trim().starts_with("codebase_indexing"))
+    {
         out
     } else {
         String::new()

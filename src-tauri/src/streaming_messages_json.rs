@@ -102,9 +102,7 @@ fn soft_fail(
 /// - Known version &lt; 0.2.117 → `cli_too_old` (no spawn)
 /// - Version unparsed → still attempt spawn (unknown flag risk is acceptable for
 ///   an explicit diagnostics probe; older CLIs surface clap errors as `spawn_failed`)
-pub fn probe_streaming_messages_json(
-    include_partial: bool,
-) -> StreamingMessagesJsonProbeResult {
+pub fn probe_streaming_messages_json(include_partial: bool) -> StreamingMessagesJsonProbeResult {
     let started = Instant::now();
     let settings = store::load_settings();
     let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());

@@ -19,21 +19,21 @@
 //!   prompt + Ready), then at most one soft `session://stream_stall` per turn;
 //!   hard silence force-ends the turn while keeping the journal.
 
-mod types;
-mod stream;
-mod watchdog;
-mod process;
 mod connect;
+mod control;
 mod events;
 mod events_bg;
 mod journal;
+mod process;
+mod stream;
 mod turn;
-mod control;
+mod types;
+mod watchdog;
 
 #[cfg(test)]
-mod routing_tests;
-#[cfg(test)]
 mod media_tests;
+#[cfg(test)]
+mod routing_tests;
 #[cfg(test)]
 mod stall_tests;
 
@@ -44,7 +44,6 @@ use parking_lot::Mutex;
 use crate::session_fsm::SessionState;
 
 use types::*;
-
 
 pub use types::{RewindExecuteResult, RewindPointDto, SessionSnapshot, UiPermissionRequest};
 

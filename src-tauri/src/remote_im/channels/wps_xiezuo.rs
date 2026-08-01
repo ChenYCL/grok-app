@@ -26,16 +26,7 @@ pub async fn run(
         if *cancel.borrow() {
             return Ok(());
         }
-        match run_once(
-            &inst,
-            &base,
-            &app_id,
-            &app_secret,
-            tx.clone(),
-            &mut cancel,
-        )
-        .await
-        {
+        match run_once(&inst, &base, &app_id, &app_secret, tx.clone(), &mut cancel).await {
             Ok(()) => {
                 if *cancel.borrow() {
                     return Ok(());

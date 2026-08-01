@@ -17,8 +17,7 @@ mod tests {
     fn scan_support_gui_matches_host() {
         for ch in GUI_SCAN_TRUE {
             assert!(
-                weixin_reg::channel_supports_scan(ch)
-                    || matches!(*ch, "feishu" | "lark"),
+                weixin_reg::channel_supports_scan(ch) || matches!(*ch, "feishu" | "lark"),
                 "GUI scanSupport true but Host rejects {ch}"
             );
         }
@@ -75,19 +74,8 @@ mod tests {
     fn catalog_matches_required_sidebar_ids() {
         // Align with frontend REQUIRED_CHANNEL_IDS (active picker; WPS retired)
         let required = [
-            "feishu",
-            "lark",
-            "dingtalk",
-            "wecom",
-            "weixin",
-            "weibo",
-            "qq",
-            "qqbot",
-            "telegram",
-            "slack",
-            "discord",
-            "matrix",
-            "line",
+            "feishu", "lark", "dingtalk", "wecom", "weixin", "weibo", "qq", "qqbot", "telegram",
+            "slack", "discord", "matrix", "line",
         ];
         for id in required {
             assert!(

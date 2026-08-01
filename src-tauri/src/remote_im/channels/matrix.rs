@@ -25,9 +25,8 @@ pub async fn run(
         if *cancel.borrow() {
             return Ok(());
         }
-        let mut url = format!(
-            "{base}/_matrix/client/v3/sync?timeout=30000&access_token={access_token}"
-        );
+        let mut url =
+            format!("{base}/_matrix/client/v3/sync?timeout=30000&access_token={access_token}");
         if !since.is_empty() {
             url.push_str(&format!("&since={since}"));
         }

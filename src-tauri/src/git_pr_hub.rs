@@ -357,23 +357,14 @@ pub fn parse_gh_pr_object(raw: &serde_json::Value) -> Option<GitPrHubEntry> {
         return None;
     }
     let title = json_str(raw, &["title", "Title"]).unwrap_or_default();
-    let url = json_str(
-        raw,
-        &["url", "URL", "htmlUrl", "html_url", "permalink"],
-    )
-    .unwrap_or_default();
+    let url =
+        json_str(raw, &["url", "URL", "htmlUrl", "html_url", "permalink"]).unwrap_or_default();
     let (author, author_login) = author_from_value(raw.get("author"));
     let state = json_str(raw, &["state", "State"]);
     let is_draft = json_bool(raw, &["isDraft", "is_draft", "draft"]);
     let mergeable = json_str(raw, &["mergeable", "mergeableState", "mergeable_state"]);
-    let head_ref_name = json_str(
-        raw,
-        &["headRefName", "head_ref_name", "headBranch", "head"],
-    );
-    let base_ref_name = json_str(
-        raw,
-        &["baseRefName", "base_ref_name", "baseBranch", "base"],
-    );
+    let head_ref_name = json_str(raw, &["headRefName", "head_ref_name", "headBranch", "head"]);
+    let base_ref_name = json_str(raw, &["baseRefName", "base_ref_name", "baseBranch", "base"]);
     let created_at = json_str(raw, &["createdAt", "created_at"]);
     let updated_at = json_str(raw, &["updatedAt", "updated_at"]);
     let mut body = json_str(raw, &["body", "Body"]);
@@ -477,10 +468,7 @@ pub fn parse_gh_pr_check_object(raw: &serde_json::Value) -> Option<GitPrCheckEnt
         json_str(raw, &["conclusion", "Conclusion"]).as_deref(),
         json_str(raw, &["status", "Status"]).as_deref(),
     );
-    let link = json_str(
-        raw,
-        &["link", "Link", "detailsUrl", "details_url", "url"],
-    );
+    let link = json_str(raw, &["link", "Link", "detailsUrl", "details_url", "url"]);
     let description = json_str(raw, &["description", "Description"]);
     let workflow = json_str(raw, &["workflow", "Workflow", "workflowName"]);
     Some(GitPrCheckEntry {
@@ -595,19 +583,10 @@ pub fn parse_gh_pr_comment_object(raw: &serde_json::Value) -> Option<GitPrCommen
     let id = id_from_value(raw.get("id"))
         .or_else(|| id_from_value(raw.get("databaseId")))
         .or_else(|| id_from_value(raw.get("node_id")))
-        .unwrap_or_else(|| {
-            format!(
-                "comment:{}:{}",
-                author,
-                created_at.as_deref().unwrap_or("")
-            )
-        });
+        .unwrap_or_else(|| format!("comment:{}:{}", author, created_at.as_deref().unwrap_or("")));
     let body = cap_body(body_raw);
     let excerpt = excerpt_comment_body(&body, EXCERPT_CAP);
-    let url = json_str(
-        raw,
-        &["url", "URL", "htmlUrl", "html_url", "permalink"],
-    );
+    let url = json_str(raw, &["url", "URL", "htmlUrl", "html_url", "permalink"]);
     Some(GitPrCommentEntry {
         id,
         author,
@@ -652,13 +631,7 @@ pub fn parse_gh_pr_review_object(raw: &serde_json::Value) -> Option<GitPrComment
     let id = id_from_value(raw.get("id"))
         .or_else(|| id_from_value(raw.get("databaseId")))
         .or_else(|| id_from_value(raw.get("node_id")))
-        .unwrap_or_else(|| {
-            format!(
-                "review:{}:{}",
-                author,
-                created_at.as_deref().unwrap_or("")
-            )
-        });
+        .unwrap_or_else(|| format!("review:{}:{}", author, created_at.as_deref().unwrap_or("")));
     let body = cap_body(body_raw);
     let mut excerpt = excerpt_comment_body(&body, EXCERPT_CAP);
     if excerpt.is_empty() {
@@ -666,10 +639,7 @@ pub fn parse_gh_pr_review_object(raw: &serde_json::Value) -> Option<GitPrComment
             excerpt = st.trim().to_string();
         }
     }
-    let url = json_str(
-        raw,
-        &["url", "URL", "htmlUrl", "html_url", "permalink"],
-    );
+    let url = json_str(raw, &["url", "URL", "htmlUrl", "html_url", "permalink"]);
     Some(GitPrCommentEntry {
         id,
         author,
@@ -858,10 +828,7 @@ fn run_gh_in_project(project: &str, args: &[&str]) -> Result<Output, String> {
                 if start.elapsed() > timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err(format!(
-                        "gh timed out after {}s",
-                        GH_PR_TIMEOUT_SECS
-                    ));
+                    return Err(format!("gh timed out after {}s", GH_PR_TIMEOUT_SECS));
                 }
                 std::thread::sleep(Duration::from_millis(40));
             }
@@ -1028,10 +995,7 @@ pub async fn git_pr_list(
 
 /// View a single pull request (`gh pr view <n> --json`).
 #[tauri::command]
-pub async fn git_pr_view(
-    project_path: String,
-    number: u64,
-) -> Result<GitPrHubViewResult, String> {
+pub async fn git_pr_view(project_path: String, number: u64) -> Result<GitPrHubViewResult, String> {
     if number == 0 {
         return Ok(soft_fail_view("invalid PR number", false));
     }
@@ -1086,10 +1050,7 @@ pub async fn git_pr_view(
 
 /// List CI checks for a PR (`gh pr checks <n> --json`).
 #[tauri::command]
-pub async fn git_pr_checks(
-    project_path: String,
-    number: u64,
-) -> Result<GitPrChecksResult, String> {
+pub async fn git_pr_checks(project_path: String, number: u64) -> Result<GitPrChecksResult, String> {
     if number == 0 {
         return Ok(soft_fail_checks("invalid PR number", false, None));
     }
@@ -1255,7 +1216,10 @@ mod tests {
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].number, 359);
         assert_eq!(list[0].author, "sonnemusk");
-        assert_eq!(list[0].head_ref_name.as_deref(), Some("feat/partial-stream"));
+        assert_eq!(
+            list[0].head_ref_name.as_deref(),
+            Some("feat/partial-stream")
+        );
         let s = list[0].checks.as_ref().unwrap();
         assert_eq!(s.pass, 1);
         assert_eq!(s.pending, 1);
@@ -1405,7 +1369,9 @@ mod tests {
         assert!(c.is_empty());
         assert!(url.is_none());
         assert!(n.is_none());
-        let (c2, _, _) = parse_gh_pr_comments_json(r#"{"number":1,"url":"u","comments":[],"reviews":[]}"#).unwrap();
+        let (c2, _, _) =
+            parse_gh_pr_comments_json(r#"{"number":1,"url":"u","comments":[],"reviews":[]}"#)
+                .unwrap();
         assert!(c2.is_empty());
     }
 }

@@ -100,10 +100,7 @@ mod tests {
 
     #[test]
     fn version_gate() {
-        assert_eq!(
-            cli_supports_two_pass_compaction("0.2.117"),
-            Some(true)
-        );
+        assert_eq!(cli_supports_two_pass_compaction("0.2.117"), Some(true));
         assert_eq!(
             cli_supports_two_pass_compaction("grok 0.2.117 (f1c06093089f)"),
             Some(true)
@@ -133,10 +130,7 @@ mod tests {
 
         let again = set_two_pass_compaction_in_toml(&next, true);
         assert!(again.contains("two_pass_compaction_enabled = true"));
-        assert_eq!(
-            again.matches("two_pass_compaction_enabled").count(),
-            1
-        );
+        assert_eq!(again.matches("two_pass_compaction_enabled").count(), 1);
     }
 
     #[test]

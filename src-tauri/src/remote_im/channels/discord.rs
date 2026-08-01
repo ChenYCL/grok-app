@@ -144,15 +144,31 @@ async fn run_once(
 }
 
 fn parse_message(inst: &ChannelInstance, d: &Value) -> Option<IncomingMessage> {
-    if d.get("author").and_then(|a| a.get("bot")).and_then(|b| b.as_bool()) == Some(true) {
+    if d.get("author")
+        .and_then(|a| a.get("bot"))
+        .and_then(|b| b.as_bool())
+        == Some(true)
+    {
         return None;
     }
-    let content = d.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+    let content = d
+        .get("content")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string();
     if content.is_empty() {
         return None;
     }
-    let chat_id = d.get("channel_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    let message_id = d.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let chat_id = d
+        .get("channel_id")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let message_id = d
+        .get("id")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
     let sender_id = d
         .pointer("/author/id")
         .and_then(|x| x.as_str())

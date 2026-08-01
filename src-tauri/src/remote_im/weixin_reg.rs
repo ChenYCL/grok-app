@@ -100,7 +100,11 @@ fn urlencoding_bot_type(s: &str) -> String {
     s.to_string()
 }
 
-async fn poll_status(base: &str, qr_key: &str, route_tag: &str) -> Result<QrStatusResponse, String> {
+async fn poll_status(
+    base: &str,
+    qr_key: &str,
+    route_tag: &str,
+) -> Result<QrStatusResponse, String> {
     let url = format!(
         "{}/ilink/bot/get_qrcode_status?qrcode={}",
         base.trim_end_matches('/'),
@@ -198,7 +202,9 @@ pub async fn scan_begin(options: Option<&HashMap<String, String>>) -> Result<Sca
 pub async fn scan_poll(_device_code: &str) -> Result<ScanPollDto, String> {
     let (qr_key, base, route_tag, bot_type, fetched_at, mut refresh_count) = {
         let g = QR_STATE.lock().map_err(|e| e.to_string())?;
-        let st = g.as_ref().ok_or_else(|| "weixin: no active QR session".to_string())?;
+        let st = g
+            .as_ref()
+            .ok_or_else(|| "weixin: no active QR session".to_string())?;
         (
             st.qr_key.clone(),
             st.base_url.clone(),
@@ -319,16 +325,9 @@ pub async fn scan_poll(_device_code: &str) -> Result<ScanPollDto, String> {
 }
 
 /// Verify token with a short getUpdates call.
-pub async fn verify_token(
-    base_url: &str,
-    token: &str,
-    route_tag: &str,
-) -> Result<(), String> {
+pub async fn verify_token(base_url: &str, token: &str, route_tag: &str) -> Result<(), String> {
     let client = http()?;
-    let url = format!(
-        "{}/ilink/bot/getupdates",
-        base_url.trim_end_matches('/')
-    );
+    let url = format!("{}/ilink/bot/getupdates", base_url.trim_end_matches('/'));
     let body = serde_json::json!({
         "get_updates_buf": "",
         "base_info": { "channel_version": "grok-app-weixin/1.0" }
@@ -364,7 +363,11 @@ pub mod test_parse {
     pub fn parse_qr_json(raw: &str) -> Result<BotQrResponse, String> {
         let v: Value = serde_json::from_str(raw).map_err(|e| e.to_string())?;
         Ok(BotQrResponse {
-            qrcode: v.get("qrcode").and_then(|x| x.as_str()).unwrap_or("").into(),
+            qrcode: v
+                .get("qrcode")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .into(),
             qrcode_img_content: v
                 .get("qrcode_img_content")
                 .and_then(|x| x.as_str())
@@ -386,10 +389,8 @@ pub mod test_parse {
 
     #[test]
     fn parses_qr_payload() {
-        let q = parse_qr_json(
-            r#"{"qrcode":"key1","qrcode_img_content":"https://example.com/qr"}"#,
-        )
-        .unwrap();
+        let q = parse_qr_json(r#"{"qrcode":"key1","qrcode_img_content":"https://example.com/qr"}"#)
+            .unwrap();
         assert_eq!(q.qrcode, "key1");
         assert!(q.qrcode_img_content.starts_with("https://"));
     }

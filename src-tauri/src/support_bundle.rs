@@ -203,11 +203,7 @@ pub fn write_session_bundle(
     let project_path = project.as_ref().map(|p| p.path.clone());
 
     let agent_dir = meta.agent_session_id.as_ref().and_then(|aid| {
-        paths::find_agent_session_dir(
-            aid,
-            project_path.as_deref(),
-            &settings.session_data_mode,
-        )
+        paths::find_agent_session_dir(aid, project_path.as_deref(), &settings.session_data_mode)
     });
 
     let stamp = Utc::now().format("%Y%m%d-%H%M%S");
@@ -236,12 +232,7 @@ pub fn write_session_bundle(
         "messageCount": messages.len(),
         "hasRuntimeSnapshot": runtime_json.is_some(),
     });
-    write_zip_str(
-        &mut zip,
-        opts,
-        "meta.json",
-        &pretty_json(&export_meta)?,
-    )?;
+    write_zip_str(&mut zip, opts, "meta.json", &pretty_json(&export_meta)?)?;
 
     // ── host/session_meta.json ─────────────────────────────────────────────
     let meta_json = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
@@ -288,12 +279,7 @@ pub fn write_session_bundle(
 
     // ── host/runtime.json (optional live process) ──────────────────────────
     if let Some(rt) = runtime_json {
-        write_zip_str(
-            &mut zip,
-            opts,
-            "host/runtime.json",
-            &pretty_json(&rt)?,
-        )?;
+        write_zip_str(&mut zip, opts, "host/runtime.json", &pretty_json(&rt)?)?;
     }
 
     // ── host/project.json ──────────────────────────────────────────────────
@@ -305,12 +291,7 @@ pub fn write_session_bundle(
             "trusted": p.trusted,
             "permissionPolicy": p.permission_policy,
         });
-        write_zip_str(
-            &mut zip,
-            opts,
-            "host/project.json",
-            &pretty_json(&safe)?,
-        )?;
+        write_zip_str(&mut zip, opts, "host/project.json", &pretty_json(&safe)?)?;
     }
 
     // ── host/cli_probe.json ────────────────────────────────────────────────
@@ -339,12 +320,7 @@ pub fn write_session_bundle(
             // Path is useful for maintainers; home prefix is fine, no secrets.
             "resolvedPath": dir.display().to_string(),
         });
-        write_zip_str(
-            &mut zip,
-            opts,
-            "agent/resolved.json",
-            &pretty_json(&note)?,
-        )?;
+        write_zip_str(&mut zip, opts, "agent/resolved.json", &pretty_json(&note)?)?;
     } else {
         write_zip_str(
             &mut zip,
@@ -490,10 +466,7 @@ fn messages_to_markdown(
     out
 }
 
-fn append_app_logs(
-    zip: &mut ZipWriter<fs::File>,
-    opts: SimpleFileOptions,
-) -> Result<(), String> {
+fn append_app_logs(zip: &mut ZipWriter<fs::File>, opts: SimpleFileOptions) -> Result<(), String> {
     let log_dir = paths::app_data_root().join("logs");
     if !log_dir.is_dir() {
         return Ok(());
@@ -698,10 +671,7 @@ pub fn reset_app_data(keep_secrets: bool) -> Result<serde_json::Value, String> {
     paths::ensure_app_dirs().map_err(|e| format!("recreate dirs: {e}"))?;
 
     if !errors.is_empty() {
-        return Err(format!(
-            "Reset partially failed: {}",
-            errors.join("; ")
-        ));
+        return Err(format!("Reset partially failed: {}", errors.join("; ")));
     }
 
     Ok(serde_json::json!({
@@ -715,13 +685,10 @@ pub fn reset_app_data(keep_secrets: bool) -> Result<serde_json::Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-        #[test]
+    #[test]
     fn reset_keeps_secrets_when_requested() {
         let _g = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-reset-test-{}",
-            std::process::id()
-        ));
+        let tmp = std::env::temp_dir().join(format!("grok-app-reset-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(tmp.join("sessions")).unwrap();
         fs::write(tmp.join("sessions_index.json"), "[]").unwrap();
@@ -741,15 +708,20 @@ mod tests {
     #[test]
     fn support_bundle_creates_zip_without_secrets() {
         let _g = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-bundle-test-{}",
-            std::process::id()
-        ));
+        let tmp = std::env::temp_dir().join(format!("grok-app-bundle-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(tmp.join("logs")).unwrap();
-        fs::write(tmp.join("logs").join("app.log"), "hello sk-thisisalongfaketoken123456 and ok").unwrap();
+        fs::write(
+            tmp.join("logs").join("app.log"),
+            "hello sk-thisisalongfaketoken123456 and ok",
+        )
+        .unwrap();
         fs::write(tmp.join("settings.json"), r#"{"locale":"en"}"#).unwrap();
-        fs::write(tmp.join("secrets.json"), r#"{"officialApiKey":"sk-secret"}"#).unwrap();
+        fs::write(
+            tmp.join("secrets.json"),
+            r#"{"officialApiKey":"sk-secret"}"#,
+        )
+        .unwrap();
 
         std::env::set_var("GROK_APP_HOME", &tmp);
         let zip_path = write_support_bundle(r#"{"summary":{"ok":1}}"#, None).expect("bundle");
@@ -768,10 +740,8 @@ mod tests {
     #[test]
     fn support_bundle_includes_redacted_stall_timeline() {
         let _g = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-bundle-stall-{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("grok-app-bundle-stall-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
         fs::write(tmp.join("settings.json"), r#"{"locale":"en"}"#).unwrap();
@@ -838,15 +808,25 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(tmp.join("sessions")).unwrap();
         fs::create_dir_all(tmp.join("logs")).unwrap();
-        fs::write(tmp.join("settings.json"), r#"{"locale":"en","sessionDataMode":"independent"}"#)
-            .unwrap();
-        fs::write(tmp.join("secrets.json"), r#"{"officialApiKey":"sk-session-secret-value"}"#)
-            .unwrap();
-        fs::write(tmp.join("logs").join("app.log"), "log sk-session-secret-value end").unwrap();
+        fs::write(
+            tmp.join("settings.json"),
+            r#"{"locale":"en","sessionDataMode":"independent"}"#,
+        )
+        .unwrap();
+        fs::write(
+            tmp.join("secrets.json"),
+            r#"{"officialApiKey":"sk-session-secret-value"}"#,
+        )
+        .unwrap();
+        fs::write(
+            tmp.join("logs").join("app.log"),
+            "log sk-session-secret-value end",
+        )
+        .unwrap();
 
         std::env::set_var("GROK_APP_HOME", &tmp);
-        let session = store::create_session(None, Some("Export test".into()), false)
-            .expect("create session");
+        let session =
+            store::create_session(None, Some("Export test".into()), false).expect("create session");
         store::append_message(
             &session.id,
             store::ChatMessageStored {

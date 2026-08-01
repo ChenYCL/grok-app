@@ -2,14 +2,14 @@
 
 #![allow(dead_code)] // residual-clippy: ephemeral engine API
 use super::app_sessions;
+use super::context::{
+    estimate_visible_tokens, format_tokens, latest_compact_from_messages, ContextCompactSnapshot,
+    ContextUsageSnapshot,
+};
 use super::control_plane::{
     self, apply_project_pick, apply_session_pick, binding_after_agent_turn, channel_uses_cards,
     format_project_menu, format_session_menu, list_sessions_for_project, parse_card_action,
     resolve_turn_intent, AppSessionEntry, CardAction, PendingMode, ScopeBinding, TurnIntent,
-};
-use super::context::{
-    estimate_visible_tokens, format_tokens, latest_compact_from_messages, ContextCompactSnapshot,
-    ContextUsageSnapshot,
 };
 use super::grok_agent;
 use super::outbound::{self, OutboundRouter};
@@ -168,12 +168,8 @@ impl Engine {
             return;
         }
 
-        let scope = SessionStore::scope_key(
-            &msg.channel,
-            &msg.instance_id,
-            &msg.chat_id,
-            &msg.sender_id,
-        );
+        let scope =
+            SessionStore::scope_key(&msg.channel, &msg.instance_id, &msg.chat_id, &msg.sender_id);
         let alt_scope = SessionStore::scope_key(
             &msg.channel,
             &msg.instance_id,
@@ -241,7 +237,8 @@ impl Engine {
             return;
         }
         tracing::info!("remote_im: agent turn");
-        self.run_agent_turn(&msg, &scope, &default_wd, &content).await;
+        self.run_agent_turn(&msg, &scope, &default_wd, &content)
+            .await;
         tracing::info!("remote_im: agent turn done");
     }
 
@@ -264,12 +261,8 @@ impl Engine {
             let _ = self.reply_msg(msg, text).await;
             return;
         }
-        let scope = SessionStore::scope_key(
-            &msg.channel,
-            &msg.instance_id,
-            &msg.chat_id,
-            &msg.sender_id,
-        );
+        let scope =
+            SessionStore::scope_key(&msg.channel, &msg.instance_id, &msg.chat_id, &msg.sender_id);
         // Also clear pending under sender-only scopes (chat_id may differ on card callback).
         let alt_scope = SessionStore::scope_key(
             &msg.channel,
@@ -394,7 +387,9 @@ impl Engine {
             "project" => {
                 let projects = load_trusted_projects();
                 if projects.is_empty() {
-                    let _ = self.reply_msg(msg, &format_project_menu(&projects, &self.lang)).await;
+                    let _ = self
+                        .reply_msg(msg, &format_project_menu(&projects, &self.lang))
+                        .await;
                     return;
                 }
                 self.insert_pending(
@@ -411,7 +406,9 @@ impl Engine {
             "session" => {
                 let sessions = app_sessions::sessions_for_project(binding.project_id.as_deref());
                 if sessions.is_empty() {
-                    let _ = self.reply_msg(msg, &format_session_menu(&sessions, &self.lang)).await;
+                    let _ = self
+                        .reply_msg(msg, &format_session_menu(&sessions, &self.lang))
+                        .await;
                     return;
                 }
                 self.insert_pending(
@@ -538,32 +535,30 @@ impl Engine {
                     }
                 }
             }
-            PickKind::Session => {
-                match apply_session_pick(&binding, &pending.sessions, content) {
-                    Ok(next) => {
-                        self.pending.lock().remove(scope);
-                        let aid = next
-                            .agent_session_id
-                            .clone()
-                            .unwrap_or_else(|| next.local_session_id.clone());
-                        self.store.set(scope, next);
-                        let t = if self.lang == "en" {
-                            format!("Resumed session `{aid}`. Continue chatting.")
-                        } else {
-                            format!("已恢复会话 `{aid}`。继续对话即可。")
-                        };
-                        let _ = self.reply_msg(msg, &t).await;
-                    }
-                    Err(_) => {
-                        let t = if self.lang == "en" {
-                            "Invalid pick. Send number, or 0 to cancel. (No session was bound.)"
-                        } else {
-                            "无效选择。请发送序号，或 0 取消。（未绑定任何会话）"
-                        };
-                        let _ = self.reply_msg(msg, t).await;
-                    }
+            PickKind::Session => match apply_session_pick(&binding, &pending.sessions, content) {
+                Ok(next) => {
+                    self.pending.lock().remove(scope);
+                    let aid = next
+                        .agent_session_id
+                        .clone()
+                        .unwrap_or_else(|| next.local_session_id.clone());
+                    self.store.set(scope, next);
+                    let t = if self.lang == "en" {
+                        format!("Resumed session `{aid}`. Continue chatting.")
+                    } else {
+                        format!("已恢复会话 `{aid}`。继续对话即可。")
+                    };
+                    let _ = self.reply_msg(msg, &t).await;
                 }
-            }
+                Err(_) => {
+                    let t = if self.lang == "en" {
+                        "Invalid pick. Send number, or 0 to cancel. (No session was bound.)"
+                    } else {
+                        "无效选择。请发送序号，或 0 取消。（未绑定任何会话）"
+                    };
+                    let _ = self.reply_msg(msg, t).await;
+                }
+            },
             PickKind::Account => {
                 match account_profiles::resolve_account_pick(content, &pending.accounts) {
                     Ok(id) => {
@@ -661,8 +656,7 @@ impl Engine {
                 .iter()
                 .map(|account| (account.id.clone(), account.label.clone()))
                 .collect();
-            let card =
-                control_plane::build_telegram_account_card(&text, &choices, &self.lang, 0);
+            let card = control_plane::build_telegram_account_card(&text, &choices, &self.lang, 0);
             let _ = self
                 .outbound
                 .reply_card(&msg.instance_id, &msg.chat_id, Some(&msg.message_id), &card)
@@ -752,9 +746,8 @@ impl Engine {
                                 line.used_percent = Some(f64::from(snap.used_percent));
                                 line.remaining_percent = Some(f64::from(snap.remaining_percent));
                             } else {
-                                line.quota_note = snap
-                                    .last_error
-                                    .or_else(|| Some("quota unavailable".into()));
+                                line.quota_note =
+                                    snap.last_error.or_else(|| Some("quota unavailable".into()));
                             }
                         }
                         None => {
@@ -821,9 +814,7 @@ impl Engine {
     ) {
         match cmd {
             BuiltinCommand::Help => {
-                let _ = self
-                    .reply_msg(msg, &slash::help_text(&self.lang))
-                    .await;
+                let _ = self.reply_msg(msg, &slash::help_text(&self.lang)).await;
             }
             BuiltinCommand::Whoami => {
                 let text = format!(
@@ -943,7 +934,12 @@ impl Engine {
             .context_usage
             .as_ref()
             .and_then(|usage| usage.total_tokens)
-            .or_else(|| binding.last_compact.as_ref().and_then(|item| item.tokens_after));
+            .or_else(|| {
+                binding
+                    .last_compact
+                    .as_ref()
+                    .and_then(|item| item.tokens_after)
+            });
         let result = grok_agent::run_turn(
             &PathBuf::from(&binding.work_dir),
             &compact_prompt,
@@ -964,7 +960,10 @@ impl Engine {
             tokens_before: before,
             tokens_after: result.usage.as_ref().and_then(|usage| usage.total_tokens),
             summary_preview: None,
-            note: note.map(str::trim).filter(|note| !note.is_empty()).map(str::to_string),
+            note: note
+                .map(str::trim)
+                .filter(|note| !note.is_empty())
+                .map(str::to_string),
         });
         if compact.tokens_before.is_none() {
             compact.tokens_before = before;
@@ -973,12 +972,18 @@ impl Engine {
             compact.tokens_after = result.usage.as_ref().and_then(|usage| usage.total_tokens);
         }
         if compact.note.is_none() {
-            compact.note = note.map(str::trim).filter(|note| !note.is_empty()).map(str::to_string);
+            compact.note = note
+                .map(str::trim)
+                .filter(|note| !note.is_empty())
+                .map(str::to_string);
         }
 
         let mut next = binding_after_agent_turn(
             &binding,
-            result.session_id.as_deref().or(Some(agent_session_id.as_str())),
+            result
+                .session_id
+                .as_deref()
+                .or(Some(agent_session_id.as_str())),
         );
         next.last_compact = Some(compact.clone());
         next.context_usage = result.usage.or_else(|| {
@@ -1064,9 +1069,7 @@ impl Engine {
         if channel_uses_cards(&msg.channel) {
             let card = match msg.channel.as_str() {
                 "dingtalk" => control_plane::build_dingtalk_project_card(&projects, &self.lang),
-                "telegram" => {
-                    control_plane::build_telegram_project_card(&projects, &self.lang, 0)
-                }
+                "telegram" => control_plane::build_telegram_project_card(&projects, &self.lang, 0),
                 _ => control_plane::build_feishu_project_card(&projects, &self.lang),
             };
             let _ = self
@@ -1169,9 +1172,7 @@ impl Engine {
         if channel_uses_cards(&msg.channel) {
             let card = match msg.channel.as_str() {
                 "dingtalk" => control_plane::build_dingtalk_session_card(&sessions, &self.lang),
-                "telegram" => {
-                    control_plane::build_telegram_session_card(&sessions, &self.lang, 0)
-                }
+                "telegram" => control_plane::build_telegram_session_card(&sessions, &self.lang, 0),
                 _ => control_plane::build_feishu_session_card(&sessions, &self.lang),
             };
             let _ = self
@@ -1311,13 +1312,7 @@ impl Engine {
 
         let is_error = had_error || text.starts_with("Error:");
         // Sync into App sessions_index + messages.json so sidebar /r and App UI share state.
-        next = app_sessions::sync_turn_to_app(
-            &next,
-            prompt,
-            &text,
-            is_error,
-            &msg.channel,
-        );
+        next = app_sessions::sync_turn_to_app(&next, prompt, &text, is_error, &msg.channel);
         if let Some(compact) = compact.as_ref() {
             app_sessions::sync_compact_to_app(&next, compact);
         }
@@ -1337,12 +1332,7 @@ impl Engine {
         );
         match self
             .outbound
-            .reply(
-                &msg.instance_id,
-                &msg.chat_id,
-                Some(&msg.message_id),
-                text,
-            )
+            .reply(&msg.instance_id, &msg.chat_id, Some(&msg.message_id), text)
             .await
         {
             Ok(()) => {
@@ -1592,7 +1582,10 @@ fn format_context_report(
     } else if let Some(usage) = binding.context_usage.as_ref() {
         if let Some(total) = usage.total_tokens {
             lines.push(if lang == "en" {
-                format!("- used: **{} tokens** (agent-reported)", format_tokens(total))
+                format!(
+                    "- used: **{} tokens** (agent-reported)",
+                    format_tokens(total)
+                )
             } else {
                 format!("- 已用：**{} tokens**（agent 上报）", format_tokens(total))
             });
@@ -1606,8 +1599,14 @@ fn format_context_report(
         if usage.input_tokens.is_some() || usage.output_tokens.is_some() {
             lines.push(format!(
                 "- input / output: {} / {}",
-                usage.input_tokens.map(format_tokens).unwrap_or_else(|| "-".into()),
-                usage.output_tokens.map(format_tokens).unwrap_or_else(|| "-".into())
+                usage
+                    .input_tokens
+                    .map(format_tokens)
+                    .unwrap_or_else(|| "-".into()),
+                usage
+                    .output_tokens
+                    .map(format_tokens)
+                    .unwrap_or_else(|| "-".into())
             ));
         }
     } else if last_compact
@@ -1676,7 +1675,11 @@ fn format_context_report(
     if let Some(compact) = last_compact.as_ref() {
         let span = match (compact.tokens_before, compact.tokens_after) {
             (Some(before), Some(after)) => {
-                format!("{} → {} tokens", format_tokens(before), format_tokens(after))
+                format!(
+                    "{} → {} tokens",
+                    format_tokens(before),
+                    format_tokens(after)
+                )
             }
             (Some(before), None) => format!("before {} tokens", format_tokens(before)),
             (None, Some(after)) => format!("after {} tokens", format_tokens(after)),

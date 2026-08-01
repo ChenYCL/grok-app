@@ -218,12 +218,7 @@ pub fn list_available_models() -> AvailableModelsResult {
         .keys()
         .find(|k| k.as_str() == "grok-4.5")
         .cloned()
-        .or_else(|| {
-            settings
-                .model_id
-                .clone()
-                .filter(|s| by_id.contains_key(s))
-        })
+        .or_else(|| settings.model_id.clone().filter(|s| by_id.contains_key(s)))
         .unwrap_or_else(|| {
             by_id
                 .keys()
@@ -252,10 +247,7 @@ mod tests {
 
     #[test]
     fn read_cache_parses_official_entry() {
-        let dir = std::env::temp_dir().join(format!(
-            "grok-app-models-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("grok-app-models-test-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         let path = dir.join("models_cache.json");
         fs::write(
@@ -349,10 +341,8 @@ mod tests {
 
     #[test]
     fn read_cache_includes_reasoning_efforts() {
-        let dir = std::env::temp_dir().join(format!(
-            "grok-app-models-efforts-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("grok-app-models-efforts-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         let path = dir.join("models_cache.json");
         fs::write(

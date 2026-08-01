@@ -11,7 +11,6 @@ use crate::store::{self};
 
 use super::*;
 
-
 impl SessionManager {
     pub async fn rewind_drop_last_user_turn(
         self: &Arc<Self>,
@@ -113,7 +112,10 @@ impl SessionManager {
 
     /// List rewind points for an app session journal (one per user prompt).
     /// Prefer the local journal so the UI timeline always matches what the user sees.
-    pub fn list_rewind_points(&self, session_id: Option<String>) -> Result<Vec<RewindPointDto>, String> {
+    pub fn list_rewind_points(
+        &self,
+        session_id: Option<String>,
+    ) -> Result<Vec<RewindPointDto>, String> {
         let app_sid = match session_id {
             Some(id) if !id.trim().is_empty() => id,
             _ => {
@@ -123,9 +125,7 @@ impl SessionManager {
             }
         };
         // Ensure session exists in the index (or at least has a journal dir).
-        let known = store::load_sessions_index()
-            .iter()
-            .any(|s| s.id == app_sid);
+        let known = store::load_sessions_index().iter().any(|s| s.id == app_sid);
         if !known && store::load_messages(&app_sid).is_empty() {
             return Err(format!("session not found: {app_sid}"));
         }

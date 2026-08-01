@@ -70,9 +70,8 @@ async fn run_ws_once(
     cancel: &mut watch::Receiver<bool>,
 ) -> Result<(), String> {
     // WeCom aibot long-connection endpoint
-    let ws_url = format!(
-        "wss://openws.work.weixin.qq.com/?bot_id={bot_id}&bot_secret={bot_secret}"
-    );
+    let ws_url =
+        format!("wss://openws.work.weixin.qq.com/?bot_id={bot_id}&bot_secret={bot_secret}");
     let (ws, _) = connect_async(&ws_url)
         .await
         .map_err(|e| format!("wecom ws connect: {e}"))?;
@@ -84,9 +83,7 @@ async fn run_ws_once(
         "bot_id": bot_id,
         "bot_secret": bot_secret
     });
-    let _ = write
-        .send(Message::Text(auth.to_string().into()))
-        .await;
+    let _ = write.send(Message::Text(auth.to_string().into())).await;
 
     loop {
         tokio::select! {
@@ -139,11 +136,7 @@ fn parse_ws_msg(inst: &ChannelInstance, v: &Value) -> Option<IncomingMessage> {
     Some(IncomingMessage {
         channel: inst.channel.clone(),
         instance_id: inst.id.clone(),
-        message_id: v
-            .get("msgid")
-            .and_then(|x| x.as_str())
-            .unwrap_or("")
-            .into(),
+        message_id: v.get("msgid").and_then(|x| x.as_str()).unwrap_or("").into(),
         chat_id: chat,
         chat_type: "p2p".into(),
         sender_id: sender,

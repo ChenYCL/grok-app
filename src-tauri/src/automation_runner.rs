@@ -41,12 +41,10 @@ pub const FIRE_DUE_FLAG: &str = "--fire-due-schedules";
 const FIRE_DUE_ENV: &str = "GROK_FIRE_DUE_SCHEDULES";
 
 /// Process-wide claimed fire keys (`id:nextRunAt`) for this process lifetime.
-static FIRED: LazyLock<Mutex<HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+static FIRED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
 static STARTED: AtomicBool = AtomicBool::new(false);
-static LAST_TICK_RFC3339: LazyLock<Mutex<Option<String>>> =
-    LazyLock::new(|| Mutex::new(None));
+static LAST_TICK_RFC3339: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -390,12 +388,7 @@ async fn run_one(
 
     let project_path = proj.map(|p| p.path.clone());
     let snap = mgr
-        .connect(
-            app.clone(),
-            project_path,
-            Some(session_id.clone()),
-            None,
-        )
+        .connect(app.clone(), project_path, Some(session_id.clone()), None)
         .await
         .map_err(|e| {
             // Drop empty shell so sidebar stays clean.
@@ -479,11 +472,7 @@ pub fn compute_next_run_at(
             "weekdays" => {
                 matches!(
                     wd,
-                    Weekday::Mon
-                        | Weekday::Tue
-                        | Weekday::Wed
-                        | Weekday::Thu
-                        | Weekday::Fri
+                    Weekday::Mon | Weekday::Tue | Weekday::Wed | Weekday::Thu | Weekday::Fri
                 )
             }
             "weekly" => {
@@ -595,10 +584,7 @@ mod tests {
 
     #[test]
     fn wants_fire_due_from_flag() {
-        let argv = vec![
-            "grok-app".into(),
-            FIRE_DUE_FLAG.into(),
-        ];
+        let argv = vec!["grok-app".into(), FIRE_DUE_FLAG.into()];
         assert!(wants_fire_due_schedules_from(&argv, None));
         assert!(!wants_fire_due_schedules_from(
             &["grok-app".into(), "--start-in-tray".into()],
@@ -630,6 +616,10 @@ mod tests {
             honesty: fire_due_honesty(),
         };
         assert_eq!(o.kind, "none_due");
-        assert!(o.honesty.contains("Not a KeepAlive daemon") || o.honesty.contains("one-shot") || o.honesty.contains("One-shot"));
+        assert!(
+            o.honesty.contains("Not a KeepAlive daemon")
+                || o.honesty.contains("one-shot")
+                || o.honesty.contains("One-shot")
+        );
     }
 }

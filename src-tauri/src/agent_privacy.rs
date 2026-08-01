@@ -120,9 +120,7 @@ pub fn parse_privacy_flags(text: &str) -> PrivacyFlags {
             ("telemetry", "trace_upload") => flags.trace_upload = Some(b),
             ("telemetry", "mixpanel_enabled") => flags.mixpanel_enabled = Some(b),
             ("harness", "disable_codebase_upload") => flags.disable_codebase_upload = Some(b),
-            ("harness", "disable_workspace_teleport") => {
-                flags.disable_workspace_teleport = Some(b)
-            }
+            ("harness", "disable_workspace_teleport") => flags.disable_workspace_teleport = Some(b),
             _ => {}
         }
     }
@@ -419,14 +417,8 @@ base_url = "https://example.com/v1"
         assert!(next.contains("mixpanel_enabled = false"), "{next}");
         assert!(next.contains("[harness]"), "{next}");
         assert!(next.contains("disable_codebase_upload = true"), "{next}");
-        assert!(
-            next.contains("disable_workspace_teleport = true"),
-            "{next}"
-        );
-        assert!(
-            next.contains("sk-abcdefghijklmnopqrstuvwxyz0123"),
-            "{next}"
-        );
+        assert!(next.contains("disable_workspace_teleport = true"), "{next}");
+        assert!(next.contains("sk-abcdefghijklmnopqrstuvwxyz0123"), "{next}");
         assert!(next.contains("base_url"), "{next}");
         // One telemetry assignment under [features].
         assert_eq!(

@@ -229,11 +229,7 @@ fn cc_switch_store_path() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         if let Ok(appdata) = std::env::var("APPDATA") {
-            return Some(
-                PathBuf::from(appdata)
-                    .join(STORE_APP_ID)
-                    .join(STORE_FILE),
-            );
+            return Some(PathBuf::from(appdata).join(STORE_APP_ID).join(STORE_FILE));
         }
         return Some(
             process_util::user_home()
@@ -311,7 +307,9 @@ pub fn scan_cc_switch_providers() -> CcSwitchScanResult {
     }
 }
 
-pub fn import_cc_switch_providers(req: CcSwitchImportRequest) -> Result<CcSwitchImportResult, String> {
+pub fn import_cc_switch_providers(
+    req: CcSwitchImportRequest,
+) -> Result<CcSwitchImportResult, String> {
     // Default overwrite: re-importing the same slug updates key/base_url in place.
     let on_conflict = req
         .on_conflict
@@ -354,9 +352,7 @@ pub fn import_cc_switch_providers(req: CcSwitchImportRequest) -> Result<CcSwitch
             }
         };
 
-        if row.category.as_deref() == Some("official")
-            || parsed.base_url.trim().is_empty()
-        {
+        if row.category.as_deref() == Some("official") || parsed.base_url.trim().is_empty() {
             failed.push(CcSwitchImportFailure {
                 source_id: sid.clone(),
                 reason: "official or empty base_url cannot be imported as custom".into(),
@@ -479,12 +475,11 @@ struct ParsedModel {
 
 fn read_grokbuild_rows(db_path: &Path) -> Result<Vec<DbRow>, String> {
     // Read-only open (no create). Prefer path form over URI for Windows drive letters.
-    let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(
-        |e| {
+    let conn =
+        Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| {
             // Common when CC Switch holds a write lock.
             format!("open CC Switch db (read-only): {e}")
-        },
-    )?;
+        })?;
 
     // Busy timeout if another process briefly locks.
     let _ = conn.busy_timeout(std::time::Duration::from_millis(1500));
@@ -518,7 +513,10 @@ fn read_grokbuild_rows(db_path: &Path) -> Result<Vec<DbRow>, String> {
     Ok(out)
 }
 
-fn row_to_preview(row: DbRow, existing: &std::collections::HashSet<String>) -> CcSwitchProviderPreview {
+fn row_to_preview(
+    row: DbRow,
+    existing: &std::collections::HashSet<String>,
+) -> CcSwitchProviderPreview {
     let suggested = slugify_id(&row.name, "");
     let mut preview = CcSwitchProviderPreview {
         source_id: row.id.clone(),
@@ -557,8 +555,7 @@ fn row_to_preview(row: DbRow, existing: &std::collections::HashSet<String>) -> C
                 preview.status_detail = Some("missing api_key".into());
             } else if is_proxy_managed(&p) {
                 preview.status = "proxy_managed".into();
-                preview.status_detail =
-                    Some("local proxy takeover — import may not work".into());
+                preview.status_detail = Some("local proxy takeover — import may not work".into());
             } else if existing.contains(&suggested) {
                 preview.status = "exists".into();
                 preview.status_detail =
@@ -631,7 +628,10 @@ fn parse_grok_toml(config: &str, fallback_name: &str) -> Result<ParsedModel, Str
             continue;
         }
         if let Some(ref pid) = current_profile {
-            tables.entry(pid.clone()).or_default().insert(key.to_string(), val);
+            tables
+                .entry(pid.clone())
+                .or_default()
+                .insert(key.to_string(), val);
         }
     }
 
@@ -657,7 +657,11 @@ fn parse_grok_toml(config: &str, fallback_name: &str) -> Result<ParsedModel, Str
         .unwrap_or_else(|| fallback_name.to_string());
     let mut api_key = fields.get("api_key").cloned().unwrap_or_default();
     if api_key.is_empty() {
-        if let Some(env_key) = fields.get("env_key").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if let Some(env_key) = fields
+            .get("env_key")
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
             if let Ok(v) = std::env::var(env_key) {
                 api_key = v.trim().to_string();
             }
@@ -719,7 +723,14 @@ fn key_hint(key: &str) -> Option<String> {
     if t.is_empty() {
         return None;
     }
-    let tail: String = t.chars().rev().take(4).collect::<String>().chars().rev().collect();
+    let tail: String = t
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
     Some(format!("…{tail}"))
 }
 
@@ -887,12 +898,17 @@ api_key = "sk-testkey1234"
         let rows = read_grokbuild_rows(&db).expect("read");
         assert_eq!(rows.len(), 2);
         let existing = std::collections::HashSet::new();
-        let previews: Vec<_> = rows.into_iter().map(|r| row_to_preview(r, &existing)).collect();
+        let previews: Vec<_> = rows
+            .into_iter()
+            .map(|r| row_to_preview(r, &existing))
+            .collect();
         let amux = previews.iter().find(|p| p.name == "Amux").expect("amux");
         assert_eq!(amux.status, "importable");
         assert_eq!(amux.base_url, "https://api.amux.ai/v1");
         assert!(amux.has_api_key);
-        let off = previews.iter().find(|p| p.category.as_deref() == Some("official"));
+        let off = previews
+            .iter()
+            .find(|p| p.category.as_deref() == Some("official"));
         assert_eq!(off.map(|p| p.status.as_str()), Some("official"));
     }
 

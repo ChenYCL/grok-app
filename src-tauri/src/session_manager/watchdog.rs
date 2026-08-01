@@ -7,11 +7,11 @@ use tauri::{AppHandle, Emitter};
 
 use crate::session_fsm::SessionState;
 use crate::stream_stall::{
-    hard_stall_seconds, is_hard_stalled, is_stream_stalled, should_auto_end_maybe_done, should_emit_soft_stall, stall_tier_from_evidence,
+    hard_stall_seconds, is_hard_stalled, is_stream_stalled, should_auto_end_maybe_done,
+    should_emit_soft_stall, stall_tier_from_evidence,
 };
 
 use super::*;
-
 
 impl SessionManager {
     pub fn start_idle_watchdog(self: &Arc<Self>, app: AppHandle) {
@@ -48,9 +48,9 @@ impl SessionManager {
         // Heal live focus slot.
         let live_action = {
             let mut guard = self.inner.lock();
-            guard.as_mut().and_then(|s| {
-                Self::tick_stream_stall_on_session(s, Some(app), stall_secs, now)
-            })
+            guard
+                .as_mut()
+                .and_then(|s| Self::tick_stream_stall_on_session(s, Some(app), stall_secs, now))
         };
         self.apply_stall_tick_action(app, live_action);
 
@@ -61,11 +61,11 @@ impl SessionManager {
                 .filter_map(|s| {
                     Self::tick_stream_stall_on_session(s, Some(app), stall_secs, now).and_then(
                         |a| {
-                        // Background: heal/hard only — do not steal focus with soft banner.
-                        match a {
-                            StallTickAction::SoftStall { .. } => None,
-                            other => Some(other),
-                        }
+                            // Background: heal/hard only — do not steal focus with soft banner.
+                            match a {
+                                StallTickAction::SoftStall { .. } => None,
+                                other => Some(other),
+                            }
                         },
                     )
                 })
@@ -96,12 +96,11 @@ impl SessionManager {
         // every 25s while open tools exist, so a leaked open id would otherwise
         // never reach the stall path and the UI stays "running" forever.
         // Normal mid-turn tools (journal not terminal, still young) are not pruned.
-        if s.deferred_prompt_complete.is_some()
-            && Self::heal_stuck_streaming_turn(s, app, now) {
-                return Some(StallTickAction::Healed {
-                    session_id: s.app_session_id.clone(),
-                });
-            }
+        if s.deferred_prompt_complete.is_some() && Self::heal_stuck_streaming_turn(s, app, now) {
+            return Some(StallTickAction::Healed {
+                session_id: s.app_session_id.clone(),
+            });
+        }
         // No silence yet — keep working.
         if !is_stream_stalled(s.last_stream_progress, stall_secs, now) {
             return None;
@@ -116,16 +115,15 @@ impl SessionManager {
 
         // This-turn body only (do not use prior-turn journal — that false-triggers
         // maybe_done auto-end on a new turn that has not produced text yet).
-        let saw_model_this_turn =
-            s.saw_model_output || !s.stream_buf.trim().is_empty();
+        let saw_model_this_turn = s.saw_model_output || !s.stream_buf.trim().is_empty();
         if saw_model_this_turn {
             s.saw_model_output = true;
         }
         let saw_tools = s.tools_this_turn > 0 || !s.open_tool_ids.is_empty();
         // Soft-banner tier may look at prior journal so we never say pre-token
         // after a full earlier answer in the same chat.
-        let saw_model_for_tier = saw_model_this_turn
-            || Self::journal_has_assistant_body(&s.app_session_id);
+        let saw_model_for_tier =
+            saw_model_this_turn || Self::journal_has_assistant_body(&s.app_session_id);
         // Terminal candidate: **this turn** already has body and tools are idle.
         let terminal_candidate = should_auto_end_maybe_done(
             saw_model_this_turn,
@@ -280,5 +278,4 @@ impl SessionManager {
             }
         }
     }
-
 }

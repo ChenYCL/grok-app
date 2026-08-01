@@ -5,10 +5,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
-use crate::acp_client::{
-    AcpEvent, PermissionOutcome,
-    StreamKind,
-};
+use crate::acp_client::{AcpEvent, PermissionOutcome, StreamKind};
 use crate::journal_throttle::is_paragraph_break;
 use crate::permission::{
     extract_path_target, extract_shell_command, may_auto_allow, may_auto_deny, pick_option_id,
@@ -18,7 +15,6 @@ use crate::session_fsm::SessionState;
 use crate::store::{self, ChatMessageStored};
 
 use super::*;
-
 
 impl SessionManager {
     pub(super) async fn handle_acp_event_on_background(
@@ -88,18 +84,10 @@ impl SessionManager {
                     let para = is_paragraph_break(&text);
                     Self::maybe_flush_stream_journal(s, done, para);
                     let mid = s.streaming_message_id.clone().unwrap_or_default();
-                    let need = Self::queue_stream_emit(
-                        s,
-                        app,
-                        kind,
-                        mid,
-                        text,
-                        thought_phase,
-                        done,
-                    );
+                    let need =
+                        Self::queue_stream_emit(s, app, kind, mid, text, thought_phase, done);
                     if need {
-                        s.stream_emit_flush_gen =
-                            s.stream_emit_flush_gen.wrapping_add(1);
+                        s.stream_emit_flush_gen = s.stream_emit_flush_gen.wrapping_add(1);
                         Some((s.app_session_id.clone(), s.stream_emit_flush_gen))
                     } else {
                         None
@@ -223,10 +211,7 @@ impl SessionManager {
                             .or_else(|| pick_option_id(&options, "allow"))
                             .unwrap_or_else(|| "allow_once".into());
                         let _ = acp
-                            .respond_permission(
-                                rpc_id,
-                                PermissionOutcome::Selected { option_id },
-                            )
+                            .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                             .await;
                         crate::audit_ledger::record_permission(
                             Some(&session_id),
@@ -248,10 +233,7 @@ impl SessionManager {
                             .or_else(|| pick_option_id(&options, "reject"))
                             .unwrap_or_else(|| "reject".into());
                         let _ = acp
-                            .respond_permission(
-                                rpc_id,
-                                PermissionOutcome::Selected { option_id },
-                            )
+                            .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                             .await;
                         crate::audit_ledger::record_permission(
                             Some(&session_id),
@@ -320,8 +302,7 @@ impl SessionManager {
                 } else {
                     kind_j
                 };
-                let live_title =
-                    tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
+                let live_title = tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
                 let live_title = if live_title.is_empty() || live_title.eq_ignore_ascii_case("tool")
                 {
                     if !title_enriched.is_empty() {
@@ -332,7 +313,15 @@ impl SessionManager {
                 } else {
                     live_title
                 };
-                let (app_sid, project_path, live_title, st, finished, open_changed, already_terminal) = {
+                let (
+                    app_sid,
+                    project_path,
+                    live_title,
+                    st,
+                    finished,
+                    open_changed,
+                    already_terminal,
+                ) = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
                         // Defensive: background turns never load-replay, but if
@@ -345,8 +334,8 @@ impl SessionManager {
                             return;
                         }
                         Self::touch_stream_progress_locked(s);
-                        let already_terminal = !tool_call_id.is_empty()
-                            && s.terminal_tool_ids.contains(&tool_call_id);
+                        let already_terminal =
+                            !tool_call_id.is_empty() && s.terminal_tool_ids.contains(&tool_call_id);
                         let open_changed = if !tool_call_id.is_empty() {
                             Self::note_tool_status_on_session(s, &tool_call_id, &status)
                         } else {
@@ -361,10 +350,8 @@ impl SessionManager {
                             status.clone()
                         };
                         // Persist tool_step like live path so journal survives switch.
-                        if matches!(
-                            st.as_str(),
-                            "completed" | "failed" | "error" | "cancelled"
-                        ) && !tool_call_id.is_empty()
+                        if matches!(st.as_str(), "completed" | "failed" | "error" | "cancelled")
+                            && !tool_call_id.is_empty()
                         {
                             let kind_store = if kind_j.is_empty() {
                                 if kind_enriched.is_empty() {
@@ -375,8 +362,7 @@ impl SessionManager {
                             } else {
                                 kind_j.clone()
                             };
-                            let mut content =
-                                format!("tool_step|{st}|{kind_store}|{live_title}");
+                            let mut content = format!("tool_step|{st}|{kind_store}|{live_title}");
                             if let Some(ref d) = detail {
                                 content.push('\n');
                                 content.push_str(&d.chars().take(400).collect::<String>());

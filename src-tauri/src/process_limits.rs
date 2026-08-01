@@ -329,16 +329,7 @@ mod tests {
 
     #[test]
     fn process_budget_snapshot_normalizes_caps() {
-        let snap = ProcessBudgetSnapshot::from_counts(
-            0,
-            0,
-            0,
-            0,
-            0,
-            vec![],
-            vec![],
-            vec![],
-        );
+        let snap = ProcessBudgetSnapshot::from_counts(0, 0, 0, 0, 0, vec![], vec![], vec![]);
         assert_eq!(snap.max_concurrent, MIN_CONCURRENT_AGENTS);
         assert_eq!(snap.idle_minutes, MIN_IDLE_MINUTES);
     }

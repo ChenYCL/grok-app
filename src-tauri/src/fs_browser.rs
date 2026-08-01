@@ -2,11 +2,11 @@
 //! All paths are resolved under an explicit project root (no escape).
 
 #![allow(dead_code)] // residual-clippy: MAX_BINARY_BYTES const
+use base64::Engine;
+use serde::Serialize;
 use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use base64::Engine;
-use serde::Serialize;
 
 const MAX_TEXT_BYTES: u64 = 2 * 1024 * 1024; // 2 MiB text preview
 const MAX_BINARY_BYTES: u64 = 8 * 1024 * 1024; // 8 MiB image / pdf
@@ -225,9 +225,7 @@ fn mime_of(ext: &str, kind: &str) -> String {
         ("docx", _) => {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document".into()
         }
-        ("xlsx", _) => {
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".into()
-        }
+        ("xlsx", _) => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".into(),
         ("pptx", _) => {
             "application/vnd.openxmlformats-officedocument.presentationml.presentation".into()
         }
@@ -262,9 +260,10 @@ fn xml_to_plain(xml: &str) -> String {
                 || lower.starts_with("a:p ")
                 || lower.starts_with("a:p>")
                 || lower.starts_with("/a:p"))
-                && !out.ends_with('\n') {
-                    out.push('\n');
-                }
+                && !out.ends_with('\n')
+            {
+                out.push('\n');
+            }
             continue;
         }
         if c == '>' {
@@ -336,7 +335,11 @@ fn read_zip_entry_text(path: &Path, entry_name: &str) -> Result<String, String> 
     Ok(buf)
 }
 
-fn read_zip_entries_matching(path: &Path, prefix: &str, suffix: &str) -> Result<Vec<String>, String> {
+fn read_zip_entries_matching(
+    path: &Path,
+    prefix: &str,
+    suffix: &str,
+) -> Result<Vec<String>, String> {
     let file = fs::File::open(path).map_err(|e| format!("open zip: {e}"))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("zip: {e}"))?;
     let mut names: Vec<String> = Vec::new();
@@ -553,9 +556,7 @@ fn write_text_at_path(
         .ok_or_else(|| "invalid parent directory".to_string())?;
     let tmp_name = format!(
         ".{}.grok-save-{}",
-        path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("file"),
+        path.file_name().and_then(|s| s.to_str()).unwrap_or("file"),
         std::process::id()
     );
     let tmp = parent.join(tmp_name);
@@ -942,7 +943,9 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                     let segs: Vec<_> = Path::new(rel)
                         .components()
                         .filter_map(|c| match c {
-                            std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+                            std::path::Component::Normal(s) => {
+                                Some(s.to_string_lossy().into_owned())
+                            }
                             _ => None,
                         })
                         .collect();
@@ -1161,10 +1164,7 @@ fn find_one_suffix(root: &Path, suffix: &str) -> Option<PathBuf> {
 
 /// Build suffix search keys from a path: full rel, then shorter tails.
 fn suffix_candidates(path: &str) -> Vec<String> {
-    let t = path
-        .trim()
-        .trim_start_matches("./")
-        .replace('\\', "/");
+    let t = path.trim().trim_start_matches("./").replace('\\', "/");
     let t = t.trim_start_matches('/');
     if t.is_empty() {
         return Vec::new();
@@ -1265,17 +1265,7 @@ fn read_path(path: PathBuf, rel_in: String) -> Result<FsReadResult, String> {
     // Video / audio — always stream via absolute path (no base64; supports multi‑GB files)
     if matches!(kind.as_str(), "video" | "audio") {
         return Ok(ok_result(
-            &path,
-            rel_in,
-            name,
-            size,
-            kind,
-            mime,
-            None,
-            None,
-            true,
-            false,
-            None,
+            &path, rel_in, name, size, kind, mime, None, None, true, false, None,
         ));
     }
 
@@ -1300,17 +1290,7 @@ fn read_path(path: PathBuf, rel_in: String) -> Result<FsReadResult, String> {
         // Prefer stream for anything over 2 MiB (webview loads via asset protocol)
         if size > 2 * 1024 * 1024 {
             return Ok(ok_result(
-                &path,
-                rel_in,
-                name,
-                size,
-                kind,
-                mime,
-                None,
-                None,
-                true,
-                false,
-                None,
+                &path, rel_in, name, size, kind, mime, None, None, true, false, None,
             ));
         }
         let bytes = fs::read(&path).map_err(|e| format!("read: {e}"))?;
@@ -1514,10 +1494,7 @@ mod tests {
     fn open_path_smart_bare_filename_under_projects() {
         // Agent often writes just `continuation-handoff.md` after citing the full path.
         let dir = tempfile_dir();
-        let nested = dir
-            .join("projects")
-            .join("2026-07-demo")
-            .join("05-handoff");
+        let nested = dir.join("projects").join("2026-07-demo").join("05-handoff");
         fs::create_dir_all(&nested).unwrap();
         // noise that would exhaust a shallow/unprioritized walk
         for i in 0..40 {
@@ -1593,7 +1570,10 @@ mod tests {
         fs::write(b.join(name), b"b\n").unwrap();
         // Two same basenames → must not pick either arbitrarily.
         let r = open_path_smart(Some(dir.to_str().unwrap()), name);
-        assert!(r.is_err(), "expected ambiguous bare name to fail, got {r:?}");
+        assert!(
+            r.is_err(),
+            "expected ambiguous bare name to fail, got {r:?}"
+        );
         // Multi-segment still works when unique.
         let r2 = open_path_smart(
             Some(dir.to_str().unwrap()),
@@ -1616,7 +1596,10 @@ mod tests {
             .join("进行中")
             .join("2026-06-22-codex画布标注指哪打哪")
             .join("04-正文");
-        let t = dir.join("_templates").join("article-folder").join("04-正文");
+        let t = dir
+            .join("_templates")
+            .join("article-folder")
+            .join("04-正文");
         fs::create_dir_all(&a).unwrap();
         fs::create_dir_all(&b).unwrap();
         fs::create_dir_all(&t).unwrap();
@@ -1689,7 +1672,11 @@ mod tests {
             b"# long\n",
         )
         .unwrap();
-        fs::write(plans.join("2026-03-15-tiezhu-picture-book.md"), b"# short\n").unwrap();
+        fs::write(
+            plans.join("2026-03-15-tiezhu-picture-book.md"),
+            b"# short\n",
+        )
+        .unwrap();
         let pattern = "docs/plans/2026-03-15-tiezhu-picture-book*.md";
         let r = open_path_smart(Some(dir.to_str().unwrap()), pattern);
         assert!(r.is_ok(), "{r:?}");
@@ -1729,13 +1716,7 @@ mod tests {
         fs::write(dir.join(rel), b"v1\n").unwrap();
         let r = read_file(dir.to_str().unwrap(), rel).unwrap();
         assert!(r.mtime_ms > 0 || cfg!(target_os = "windows"));
-        let w = write_text_file(
-            dir.to_str().unwrap(),
-            rel,
-            "v2\n",
-            Some(r.mtime_ms),
-        )
-        .unwrap();
+        let w = write_text_file(dir.to_str().unwrap(), rel, "v2\n", Some(r.mtime_ms)).unwrap();
         assert_eq!(fs::read_to_string(dir.join(rel)).unwrap(), "v2\n");
         assert_eq!(w.size, 3);
         let _ = fs::remove_dir_all(&dir);
@@ -1753,12 +1734,8 @@ mod tests {
         } else {
             r.mtime_ms.wrapping_add(1_000_000)
         };
-        let err = write_text_file(dir.to_str().unwrap(), rel, "mine\n", Some(stale))
-            .unwrap_err();
-        assert!(
-            err.starts_with("CONFLICT:"),
-            "expected conflict, got {err}"
-        );
+        let err = write_text_file(dir.to_str().unwrap(), rel, "mine\n", Some(stale)).unwrap_err();
+        assert!(err.starts_with("CONFLICT:"), "expected conflict, got {err}");
         assert_eq!(fs::read_to_string(dir.join(rel)).unwrap(), "disk\n");
         // Force overwrite without expected mtime.
         write_text_file(dir.to_str().unwrap(), rel, "mine\n", None).unwrap();
@@ -1803,4 +1780,3 @@ mod tests {
         p
     }
 }
-

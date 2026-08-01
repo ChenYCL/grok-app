@@ -85,7 +85,9 @@ pub fn join_hooks_path(dir: &Path, name: &str) -> Option<PathBuf> {
     if p.is_absolute() {
         return None;
     }
-    if p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+    if p.components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         return None;
     }
     Some(dir.join(n))
@@ -337,22 +339,17 @@ pub fn resolve_hooks_try_path(
         ));
     }
     // Must exist and be a regular file (canonicalize fails for missing).
-    let meta = fs::symlink_metadata(&p).map_err(|e| {
-        (
-            "not_found".into(),
-            format!("path not found: {e}"),
-        )
-    })?;
+    let meta = fs::symlink_metadata(&p)
+        .map_err(|e| ("not_found".into(), format!("path not found: {e}")))?;
     if meta.file_type().is_dir() {
-        return Err(("not_a_file".into(), "path is a directory, not a script".into()));
+        return Err((
+            "not_a_file".into(),
+            "path is a directory, not a script".into(),
+        ));
     }
     // Follow symlinks for the final path; gate on the resolved target.
-    let canonical = fs::canonicalize(&p).map_err(|e| {
-        (
-            "not_found".into(),
-            format!("path not found: {e}"),
-        )
-    })?;
+    let canonical =
+        fs::canonicalize(&p).map_err(|e| ("not_found".into(), format!("path not found: {e}")))?;
     if !canonical.is_file() {
         return Err(("not_a_file".into(), "path is not a regular file".into()));
     }
@@ -362,7 +359,10 @@ pub fn resolve_hooks_try_path(
         if path_under_hooks_root(&canonical, &root_canon) {
             // Disallow the root directory itself as a "script".
             if canonical == root_canon {
-                return Err(("not_a_file".into(), "path is the hooks folder, not a script".into()));
+                return Err((
+                    "not_a_file".into(),
+                    "path is the hooks folder, not a script".into(),
+                ));
             }
             return Ok((canonical, scope.clone()));
         }
@@ -485,10 +485,7 @@ fn redact_hooks_token_spans(line: &str) -> String {
         let after = idx + "bearer ".len();
         if after < result.len() {
             let rest = &result[after..];
-            let tok_len = rest
-                .chars()
-                .take_while(|c| !c.is_whitespace())
-                .count();
+            let tok_len = rest.chars().take_while(|c| !c.is_whitespace()).count();
             if tok_len >= 8 {
                 let end = after + tok_len;
                 result.replace_range(after..end, "[REDACTED]");
@@ -526,7 +523,10 @@ pub fn hooks_try_command(script: &Path) -> std::process::Command {
             .to_ascii_lowercase();
         if ext == "ps1" {
             let mut cmd = process_util::command("powershell");
-            cmd.arg("-NoProfile").arg("-ExecutionPolicy").arg("Bypass").arg("-File");
+            cmd.arg("-NoProfile")
+                .arg("-ExecutionPolicy")
+                .arg("Bypass")
+                .arg("-File");
             cmd.arg(script);
             return cmd;
         }
@@ -755,6 +755,5 @@ fn join_pipe(handle: Option<std::thread::JoinHandle<Vec<u8>>>) -> String {
         None => String::new(),
     }
 }
-
 
 include!("hooks_tests_ext.rs");

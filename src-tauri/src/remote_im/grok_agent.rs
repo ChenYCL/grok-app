@@ -5,9 +5,7 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use super::context::{
-    extract_context_signals, ContextCompactSnapshot, ContextUsageSnapshot,
-};
+use super::context::{extract_context_signals, ContextCompactSnapshot, ContextUsageSnapshot};
 
 pub struct GrokTurnResult {
     pub text: String,
@@ -83,14 +81,10 @@ pub async fn run_turn(
     // Soft-fail older CLIs for bg-wait flags and partial stream format upgrade.
     let settings = crate::store::load_settings();
     let cli_ver = crate::cli_probe::read_version_of(&binary);
-    let bg_wait = crate::acp_client::background_wait_spawn_flags_from_settings(
-        &settings,
-        cli_ver.as_deref(),
-    );
-    let (fmt, partial) = crate::acp_client::resolve_headless_stream_from_settings(
-        &settings,
-        cli_ver.as_deref(),
-    );
+    let bg_wait =
+        crate::acp_client::background_wait_spawn_flags_from_settings(&settings, cli_ver.as_deref());
+    let (fmt, partial) =
+        crate::acp_client::resolve_headless_stream_from_settings(&settings, cli_ver.as_deref());
     let args = super::control_plane::grok_turn_cli_args_full(
         prompt,
         session_id,
@@ -240,9 +234,7 @@ pub async fn run_turn(
             || err_msg
                 .as_ref()
                 .map(|e| {
-                    e.contains("not found")
-                        || e.contains("404")
-                        || e.contains("Failed to restore")
+                    e.contains("not found") || e.contains("404") || e.contains("Failed to restore")
                 })
                 .unwrap_or(false));
 
@@ -376,7 +368,11 @@ async fn run_turn_simple(
 
 /// Exposed for unit tests: simple-path argv must include resume.
 #[cfg(test)]
-pub fn simple_turn_cli_args(prompt: &str, session_id: Option<&str>, always_approve: bool) -> Vec<String> {
+pub fn simple_turn_cli_args(
+    prompt: &str,
+    session_id: Option<&str>,
+    always_approve: bool,
+) -> Vec<String> {
     let mut args = vec!["-p".to_string(), prompt.to_string()];
     if always_approve {
         args.push("--always-approve".into());
@@ -396,7 +392,8 @@ mod tests {
     fn simple_fallback_keeps_resume_flag() {
         let args = simple_turn_cli_args("hi", Some("sess-abc"), false);
         assert!(
-            args.windows(2).any(|w| w[0] == "--resume" && w[1] == "sess-abc"),
+            args.windows(2)
+                .any(|w| w[0] == "--resume" && w[1] == "sess-abc"),
             "simple path must pass --resume for multi-turn after /r: {args:?}"
         );
         let no = simple_turn_cli_args("hi", None, true);

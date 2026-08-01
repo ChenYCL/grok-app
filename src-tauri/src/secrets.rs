@@ -460,9 +460,7 @@ pub fn apply_keychain_preference(enabled: bool) -> Result<(), String> {
 
     if enabled {
         if !keychain_platform_ok() {
-            return Err(
-                "OS keychain is not available; keys stay in secrets.json".into(),
-            );
+            return Err("OS keychain is not available; keys stay in secrets.json".into());
         }
         // Re-read any values already in keychain so we don't drop them.
         if disk.keychain_has_official && !non_empty(&disk.official_api_key) {
@@ -615,7 +613,10 @@ mod tests {
         let disk = strip_keys_for_disk(&s);
         assert!(disk.official_api_key.is_none());
         assert!(disk.relay_api_key.is_none());
-        assert_eq!(disk.relay_base_url.as_deref(), Some("https://relay.example"));
+        assert_eq!(
+            disk.relay_base_url.as_deref(),
+            Some("https://relay.example")
+        );
         assert_eq!(disk.default_model.as_deref(), Some("grok-4"));
         assert!(disk.keychain_has_official);
         assert!(disk.keychain_has_relay);
@@ -689,19 +690,14 @@ mod tests {
         entry.set_password("unit-test-secret").expect("set");
         assert_eq!(entry.get_password().unwrap(), "unit-test-secret");
         entry.delete_credential().expect("delete");
-        assert!(matches!(
-            entry.get_password(),
-            Err(keyring::Error::NoEntry)
-        ));
+        assert!(matches!(entry.get_password(), Err(keyring::Error::NoEntry)));
     }
 
     #[test]
     fn soft_probe_does_not_require_write() {
         // Soft probe must not create credentials; leftover probe accounts should stay absent.
         let _ = probe_keychain();
-        if let Ok(entry) =
-            keyring::Entry::new(KEYRING_SERVICE, "__grok_app_keychain_probe__")
-        {
+        if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, "__grok_app_keychain_probe__") {
             // After soft probe, either NoEntry or we cleaned a legacy probe write.
             match entry.get_password() {
                 Err(keyring::Error::NoEntry) => {}
@@ -736,10 +732,8 @@ mod tests {
 
     #[test]
     fn file_write_preserves_keys_when_using_full_payload() {
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-secrets-file-{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("grok-app-secrets-file-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
         let path = tmp.join("secrets.json");

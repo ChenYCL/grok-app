@@ -153,8 +153,8 @@ pub fn parse_leader_list_json(stdout: &str) -> Result<Vec<LeaderProcessDto>, Str
     if trimmed.is_empty() {
         return Ok(Vec::new());
     }
-    let value: serde_json::Value = serde_json::from_str(trimmed)
-        .map_err(|e| format!("invalid leader list JSON: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(trimmed).map_err(|e| format!("invalid leader list JSON: {e}"))?;
     let items: Vec<serde_json::Value> = if let Some(arr) = value.as_array() {
         arr.clone()
     } else if let Some(arr) = value
@@ -223,7 +223,9 @@ pub fn parse_leader_list_json(stdout: &str) -> Result<Vec<LeaderProcessDto>, Str
 
 fn json_u64(v: &serde_json::Value, keys: &[&str]) -> Option<u64> {
     for k in keys {
-        if let Some(n) = v.get(*k).and_then(|x| x.as_u64().or_else(|| x.as_i64().map(|i| i as u64)))
+        if let Some(n) = v
+            .get(*k)
+            .and_then(|x| x.as_u64().or_else(|| x.as_i64().map(|i| i as u64)))
         {
             return Some(n);
         }
@@ -249,8 +251,8 @@ pub fn parse_leader_info_json(stdout: &str) -> Result<LeaderInfoDto, String> {
     if trimmed.is_empty() {
         return Err("empty leader info response".into());
     }
-    let value: serde_json::Value = serde_json::from_str(trimmed)
-        .map_err(|e| format!("invalid leader info JSON: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(trimmed).map_err(|e| format!("invalid leader info JSON: {e}"))?;
     // Some CLIs wrap under `info` / `leader`.
     let root = value
         .get("info")
@@ -437,8 +439,8 @@ fn probe_cli_supports_leader() -> (bool, bool, Option<String>) {
     match run_grok_cli_args(&["leader", "--help"], 8) {
         Ok((stdout, stderr, ok)) => {
             let blob = format!("{stdout}\n{stderr}").to_ascii_lowercase();
-            let supports = ok
-                && (blob.contains("list") || blob.contains("kill") || blob.contains("leader"));
+            let supports =
+                ok && (blob.contains("list") || blob.contains("kill") || blob.contains("leader"));
             if supports {
                 return (true, true, None);
             }
@@ -610,16 +612,13 @@ fn collect_status_sync() -> LeaderStatusDto {
         .and_then(|g| g.as_ref().map(|t| t.pid as u64));
 
     // Prefer live list fields; fall back to tracked pid.
-    let pid = primary
-        .and_then(|l| l.pid)
-        .or(tracked)
-        .or_else(|| {
-            // If socket exists and tracked is alive, surface it.
-            TRACKED_LEADER
-                .lock()
-                .ok()
-                .and_then(|g| g.as_ref().map(|t| t.pid as u64))
-        });
+    let pid = primary.and_then(|l| l.pid).or(tracked).or_else(|| {
+        // If socket exists and tracked is alive, surface it.
+        TRACKED_LEADER
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|t| t.pid as u64))
+    });
 
     let version = primary.and_then(|l| l.version.clone());
     let classification = primary.and_then(|l| l.classification.clone());
@@ -721,14 +720,14 @@ pub async fn leader_list() -> Result<serde_json::Value, String> {
     let result = tauri::async_runtime::spawn_blocking(|| {
         let (cli_found, cli_supports, support_msg) = probe_cli_supports_leader();
         if !cli_found {
-            return soft_list_error(support_msg.unwrap_or_else(|| "Grok Build CLI not found".into()));
+            return soft_list_error(
+                support_msg.unwrap_or_else(|| "Grok Build CLI not found".into()),
+            );
         }
         if !cli_supports {
-            return soft_list_error(
-                support_msg.unwrap_or_else(|| {
-                    "This Grok Build CLI version does not expose `grok leader list`.".into()
-                }),
-            );
+            return soft_list_error(support_msg.unwrap_or_else(|| {
+                "This Grok Build CLI version does not expose `grok leader list`.".into()
+            }));
         }
         match run_grok_cli_args(&["leader", "list", "--json"], LEADER_CMD_TIMEOUT_SECS) {
             Ok((stdout, stderr, ok)) => {
@@ -837,9 +836,9 @@ pub async fn leader_start() -> Result<LeaderStatusDto, String> {
             return Err("Grok Build CLI not found".into());
         }
         if !current.cli_supports_leader {
-            return Err(current.message.unwrap_or_else(|| {
-                "This CLI version cannot run `grok agent leader`".into()
-            }));
+            return Err(current
+                .message
+                .unwrap_or_else(|| "This CLI version cannot run `grok agent leader`".into()));
         }
 
         let settings = store::load_settings();
@@ -978,6 +977,5 @@ pub async fn leader_kill_all(
         "message": st.message,
     }))
 }
-
 
 include!("leader_tests_ext.rs");

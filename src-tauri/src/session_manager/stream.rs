@@ -7,29 +7,24 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
-use crate::acp_client::{
-    AcpClient,
-    StreamKind,
-};
+use crate::acp_client::{AcpClient, StreamKind};
+use crate::session_fsm::SessionState;
+use crate::store::{self, ChatMessageStored};
 use crate::stream_emit::{
     should_flush_stream_emit, stream_emit_can_merge, DEFAULT_STREAM_EMIT_MAX_CHARS,
     DEFAULT_STREAM_EMIT_MS,
 };
-use crate::tool_heartbeat::should_emit_tool_heartbeat;
-use crate::session_fsm::SessionState;
-use crate::store::{self, ChatMessageStored};
 use crate::stream_stall::{
-    journal_tool_is_terminal,
-    normalize_stream_stall_seconds,
-    should_prune_open_tool_id, stream_stall_message, StallTier,
+    journal_tool_is_terminal, normalize_stream_stall_seconds, should_prune_open_tool_id,
+    stream_stall_message, StallTier,
 };
+use crate::tool_heartbeat::should_emit_tool_heartbeat;
 use crate::turn_complete::{
     is_terminal_tool_status, note_tool_open_status, release_tool_from_open,
     should_defer_prompt_complete,
 };
 
 use super::*;
-
 
 impl SessionManager {
     pub(super) fn touch_activity_locked(s: &mut LiveSession) {
@@ -99,14 +94,18 @@ impl SessionManager {
         let Some(ui) = last_user else {
             return false;
         };
-        msgs[ui + 1..].iter().any(|m| {
-            m.role == "assistant" && !m.is_error && !m.content.trim().is_empty()
-        })
+        msgs[ui + 1..]
+            .iter()
+            .any(|m| m.role == "assistant" && !m.is_error && !m.content.trim().is_empty())
     }
 
     /// Apply tool_call status to open/terminal sets (live + background paths).
     /// Returns true when open-set membership changed (insert or remove).
-    pub(super) fn note_tool_status_on_session(s: &mut LiveSession, tool_call_id: &str, status: &str) -> bool {
+    pub(super) fn note_tool_status_on_session(
+        s: &mut LiveSession,
+        tool_call_id: &str,
+        status: &str,
+    ) -> bool {
         note_tool_open_status(
             &mut s.open_tool_ids,
             &mut s.terminal_tool_ids,
@@ -130,7 +129,11 @@ impl SessionManager {
         if tool_name.is_empty() && summary.is_none() {
             // Still record with "unknown" when we have a real lifecycle edge.
         }
-        let name = if tool_name.is_empty() { "tool" } else { tool_name };
+        let name = if tool_name.is_empty() {
+            "tool"
+        } else {
+            tool_name
+        };
         if is_terminal_tool_status(status) {
             if already_terminal {
                 return;
@@ -145,12 +148,7 @@ impl SessionManager {
                 summary,
             );
         } else if open_changed {
-            crate::audit_ledger::record_tool_start(
-                Some(session_id),
-                project_path,
-                name,
-                summary,
-            );
+            crate::audit_ledger::record_tool_start(Some(session_id), project_path, name, summary);
         }
     }
 
@@ -198,14 +196,36 @@ impl SessionManager {
         if s.prompt_in_flight {
             return None;
         }
+        // Drop journal-terminal / aged open tools first so bg handoff leftovers
+        // do not keep `should_defer_prompt_complete` true forever (#453).
+        Self::prune_orphan_open_tools(s, Instant::now());
         let awaiting_perm = s.fsm.state() == SessionState::AwaitingPermission;
+        let pending_plan = s.pending_plan_rpc_id.is_some();
+        let pending_ask = s.pending_ask_user_rpc_id.is_some();
         if should_defer_prompt_complete(
             awaiting_perm,
-            s.pending_plan_rpc_id.is_some(),
-            s.pending_ask_user_rpc_id.is_some(),
+            pending_plan,
+            pending_ask,
             s.open_tool_ids.len(),
         ) {
-            return None;
+            // #453: prompt RPC already resolved (`prompt_in_flight` false) and no
+            // human gate remains — leftover `open_tool_ids` are Host accounting
+            // leaks (bg task id mismatch / missing terminal tool_call_update).
+            // Holding Streaming/busy here blocks reconnect and new-session send.
+            if !awaiting_perm && !pending_plan && !pending_ask && !s.open_tool_ids.is_empty() {
+                tracing::warn!(
+                    target: "session",
+                    session = %s.app_session_id,
+                    open_tools = s.open_tool_ids.len(),
+                    "force-clear open_tool_ids after authoritative prompt complete (#453)"
+                );
+                for id in s.open_tool_ids.drain() {
+                    s.terminal_tool_ids.insert(id);
+                }
+                s.open_tool_seen_at.clear();
+            } else {
+                return None;
+            }
         }
         let empty = Self::empty_run_signal_from_live(s, &stop_reason);
         s.deferred_prompt_complete = None;
@@ -230,9 +250,7 @@ impl SessionManager {
         s.active_turn_id = None;
         s.stream_message_id_locked = false;
         s.last_stall_emit = None;
-        tracing::info!(
-            "acp turn finished after deferred prompt_complete stop={stop_reason}"
-        );
+        tracing::info!("acp turn finished after deferred prompt_complete stop={stop_reason}");
         s.stall_soft_emits = 0;
         s.saw_model_output = false;
         s.open_tool_seen_at.clear();
@@ -259,9 +277,10 @@ impl SessionManager {
     /// True when the journal has a non-empty, non-error assistant body (any turn).
     /// Used only as a silent heal signal when Host is stuck Streaming after work finished.
     pub(super) fn journal_has_assistant_body(app_session_id: &str) -> bool {
-        store::load_messages(app_session_id).iter().rev().any(|m| {
-            m.role == "assistant" && !m.is_error && !m.content.trim().is_empty()
-        })
+        store::load_messages(app_session_id)
+            .iter()
+            .rev()
+            .any(|m| m.role == "assistant" && !m.is_error && !m.content.trim().is_empty())
     }
 
     /// Drop leaked open tool ids (journal already terminal, or aged without updates).
@@ -362,9 +381,7 @@ impl SessionManager {
         }
 
         // Pure stuck FSM: RPC done, no tools, no deferred finish left.
-        if !s.prompt_in_flight
-            && s.open_tool_ids.is_empty()
-            && s.deferred_prompt_complete.is_none()
+        if !s.prompt_in_flight && s.open_tool_ids.is_empty() && s.deferred_prompt_complete.is_none()
         {
             Self::force_end_streaming_turn(s, app, "ready_eligible_silent_heal");
             return true;
@@ -374,10 +391,7 @@ impl SessionManager {
     }
 
     /// Emit empty-run toast event if the finish result says so.
-    pub(super) fn emit_empty_run_if_any(
-        app: &AppHandle,
-        empty: Option<(String, String, String)>,
-    ) {
+    pub(super) fn emit_empty_run_if_any(app: &AppHandle, empty: Option<(String, String, String)>) {
         let Some((app_sid, reason, mode)) = empty else {
             return;
         };
@@ -433,7 +447,11 @@ impl SessionManager {
     }
 
     /// Persist accumulated assistant stream (I04). `force` bypasses the throttle.
-    pub(super) fn maybe_flush_stream_journal(s: &mut LiveSession, force: bool, paragraph_break: bool) {
+    pub(super) fn maybe_flush_stream_journal(
+        s: &mut LiveSession,
+        force: bool,
+        paragraph_break: bool,
+    ) {
         let has_content = !s.stream_buf.is_empty()
             || !s.stream_thought.is_empty()
             || !s.stream_attachments.is_empty();
@@ -441,10 +459,7 @@ impl SessionManager {
             return;
         }
         let now = Instant::now();
-        if !s
-            .journal_throttle
-            .should_flush(now, force, paragraph_break)
-        {
+        if !s.journal_throttle.should_flush(now, force, paragraph_break) {
             return;
         }
         let mid = s
@@ -546,9 +561,7 @@ impl SessionManager {
             pending.text.push_str(&text);
             pending.done = pending.done || done;
             // Keep first non-none thought phase for the batch (UI phase open).
-            if pending.thought_phase == "none"
-                || pending.thought_phase.is_empty()
-            {
+            if pending.thought_phase == "none" || pending.thought_phase.is_empty() {
                 pending.thought_phase = thought_phase.to_string();
             }
             let flush = should_flush_stream_emit(
@@ -774,11 +787,7 @@ impl SessionManager {
         expected_app_session_id: &str,
         expected_turn_id: &str,
     ) -> Result<(), String> {
-        if !Self::is_interjection_turn_active(
-            s,
-            expected_app_session_id,
-            expected_turn_id,
-        ) {
+        if !Self::is_interjection_turn_active(s, expected_app_session_id, expected_turn_id) {
             return Err("interjection turn is no longer active".into());
         }
         Self::maybe_flush_stream_journal(s, true, false);
@@ -802,7 +811,11 @@ impl SessionManager {
     }
 
     /// Adopt agent message id unless host locked the id after an interjection split.
-    pub(super) fn ensure_stream_message_id(s: &mut LiveSession, kind: StreamKind, message_id: Option<String>) {
+    pub(super) fn ensure_stream_message_id(
+        s: &mut LiveSession,
+        kind: StreamKind,
+        message_id: Option<String>,
+    ) {
         if !s.stream_message_id_locked {
             if let Some(ref mid_in) = message_id {
                 if s.streaming_message_id.as_ref() != Some(mid_in)
@@ -813,8 +826,7 @@ impl SessionManager {
             }
         }
         if s.streaming_message_id.is_none() {
-            s.streaming_message_id =
-                Some(message_id.unwrap_or_else(|| Uuid::new_v4().to_string()));
+            s.streaming_message_id = Some(message_id.unwrap_or_else(|| Uuid::new_v4().to_string()));
         }
     }
 }

@@ -19,7 +19,6 @@ struct RuntimeSlot {
     connected: Vec<ConnectedChannelDto>,
 }
 
-
 fn runtime_slot() -> &'static AsyncMutex<RuntimeSlot> {
     static SLOT: OnceLock<AsyncMutex<RuntimeSlot>> = OnceLock::new();
     SLOT.get_or_init(|| AsyncMutex::new(RuntimeSlot::default()))
@@ -299,7 +298,9 @@ impl BridgeRuntime {
             }
         };
         if dead {
-            tracing::warn!("remote_im: runtime handle finished while enabled — marking not running");
+            tracing::warn!(
+                "remote_im: runtime handle finished while enabled — marking not running"
+            );
             {
                 let mut slot = runtime_slot().lock().await;
                 slot.handle = None;

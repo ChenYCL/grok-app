@@ -8,7 +8,7 @@ use std::thread;
 
 /// User home directory.
 ///
-/// - **Windows:** prefer `USERPROFILE` (matches PowerShell / install.ps1).  
+/// - **Windows:** prefer `USERPROFILE` (matches PowerShell / install.ps1).
 ///   Fall back to `HOME` only if USERPROFILE is missing (Git Bash sometimes sets HOME).
 /// - **Unix/macOS:** `HOME`.
 pub fn user_home() -> PathBuf {
@@ -101,7 +101,10 @@ pub fn looks_runnable(path: &Path) -> bool {
             return false;
         }
         // Symlink that does not resolve: not runnable
-        if !std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false) {
+        if !std::fs::metadata(path)
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
             return false;
         }
     }

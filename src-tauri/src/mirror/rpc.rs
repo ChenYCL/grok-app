@@ -139,8 +139,7 @@ pub async fn dispatch(
         "composer.prefsResolve" => {
             let project_id = param_string(&params, &["projectId", "project_id"]);
             let session_id = param_string(&params, &["sessionId", "session_id"]);
-            let prefs =
-                store::resolve_composer_prefs(project_id.as_deref(), session_id.as_deref());
+            let prefs = store::resolve_composer_prefs(project_id.as_deref(), session_id.as_deref());
             Ok(serde_json::to_value(prefs).map_err(|e| RpcError::host(e.to_string()))?)
         }
 
@@ -200,7 +199,8 @@ pub async fn dispatch(
                 .get("scheduled")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let meta = store::create_session(project_id, title, scheduled).map_err(RpcError::host)?;
+            let meta =
+                store::create_session(project_id, title, scheduled).map_err(RpcError::host)?;
             // Desktop + every other mirror client must see the new row without a
             // manual refresh (the index was mutated behind their back).
             notify_sessions_changed(app, "create", &meta.id);
@@ -275,10 +275,7 @@ pub async fn dispatch(
             let app = app.ok_or_else(RpcError::no_ctx)?.clone();
             let mgr = mgr.ok_or_else(RpcError::no_ctx)?.clone();
             let session_id = param_string(&params, &["sessionId", "session_id"]);
-            let snap = mgr
-                .stop(app, session_id)
-                .await
-                .map_err(RpcError::host)?;
+            let snap = mgr.stop(app, session_id).await.map_err(RpcError::host)?;
             Ok(serde_json::to_value(snap).map_err(|e| RpcError::host(e.to_string()))?)
         }
 
@@ -329,10 +326,7 @@ pub async fn dispatch(
             let mgr = mgr.ok_or_else(RpcError::no_ctx)?.clone();
             let decision = param_string(&params, &["decision"])
                 .ok_or_else(|| RpcError::bad_params("decision required"))?;
-            let answers = params
-                .get("answers")
-                .cloned()
-                .filter(|v| !v.is_null());
+            let answers = params.get("answers").cloned().filter(|v| !v.is_null());
             let rpc_id = param_u64(&params, &["rpcId", "rpc_id"]);
             let snap = mgr
                 .resolve_ask_user(
@@ -348,19 +342,11 @@ pub async fn dispatch(
         }
 
         // Explicitly unsupported desktop-only (never crash UI)
-        "pick_directory"
-        | "pick_attach_files"
-        | "pick_cli_binary"
-        | "pick_agent_profile"
-        | "path_open"
-        | "path_reveal"
-        | "open_in_editor"
-        | "cli_install_latest"
-        | "account_login"
-        | "account.login"
-        | "reset_app_data"
-        | "fs_list_dir"
-        | "fs_read_file" => Err(RpcError::unsupported(method)),
+        "pick_directory" | "pick_attach_files" | "pick_cli_binary" | "pick_agent_profile"
+        | "path_open" | "path_reveal" | "open_in_editor" | "cli_install_latest"
+        | "account_login" | "account.login" | "reset_app_data" | "fs_list_dir" | "fs_read_file" => {
+            Err(RpcError::unsupported(method))
+        }
 
         _ => Err(RpcError::unsupported(method)),
     }

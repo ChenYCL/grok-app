@@ -321,7 +321,10 @@ async fn proxy_fallback(req: Request) -> Response {
             tracing::warn!(target: "relay_stream_proxy", "proxy error: {e}");
             (
                 StatusCode::BAD_GATEWAY,
-                format!(r#"{{"error":{{"message":{},"type":"proxy_error"}}}}"#, json_escape(&e)),
+                format!(
+                    r#"{{"error":{{"message":{},"type":"proxy_error"}}}}"#,
+                    json_escape(&e)
+                ),
             )
                 .into_response()
         }
@@ -508,12 +511,15 @@ mod tests {
 
     #[test]
     fn drops_ping() {
-        assert!(should_drop_sse_data_payload(r#"{"type":"ping","cost":"0"}"#));
+        assert!(should_drop_sse_data_payload(
+            r#"{"type":"ping","cost":"0"}"#
+        ));
     }
 
     #[test]
     fn keeps_normal_chunk() {
-        let raw = r#"{"id":"x","object":"chat.completion.chunk","choices":[{"delta":{"content":"hi"}}]}"#;
+        let raw =
+            r#"{"id":"x","object":"chat.completion.chunk","choices":[{"delta":{"content":"hi"}}]}"#;
         assert!(!should_drop_sse_data_payload(raw));
     }
 
@@ -524,15 +530,13 @@ mod tests {
 
     #[test]
     fn filter_event_drops_cost() {
-        let ev =
-            "data: {\"choices\":[],\"x-opencode-type\":\"inference-cost\",\"cost\":\"1\"}\n\n";
+        let ev = "data: {\"choices\":[],\"x-opencode-type\":\"inference-cost\",\"cost\":\"1\"}\n\n";
         assert!(filter_sse_event(ev).is_empty());
     }
 
     #[test]
     fn filter_event_keeps_chunk() {
-        let ev =
-            "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\n";
+        let ev = "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\n";
         let out = filter_sse_event(ev);
         assert!(out.contains("chat.completion.chunk"));
     }

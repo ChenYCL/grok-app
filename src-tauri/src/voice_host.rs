@@ -177,10 +177,8 @@ impl VoiceHost {
         }
 
         let token = voice_auth::resolve_bearer_token()?;
-        let instructions = voice_tools::live_voice_instructions(
-            project_path.as_deref(),
-            project_name.as_deref(),
-        );
+        let instructions =
+            voice_tools::live_voice_instructions(project_path.as_deref(), project_name.as_deref());
         let tools = voice_tools::tool_definitions();
 
         let host = Arc::clone(self);
@@ -209,11 +207,7 @@ impl VoiceHost {
         Ok(self.snapshot())
     }
 
-    pub async fn stop(
-        &self,
-        app: &AppHandle,
-        mgr: &Arc<SessionManager>,
-    ) -> VoiceSessionState {
+    pub async fn stop(&self, app: &AppHandle, mgr: &Arc<SessionManager>) -> VoiceSessionState {
         self.stop_internal(app, Some(mgr), true).await;
         self.emit_state(app);
         self.snapshot()
@@ -487,12 +481,10 @@ async fn execute_tool(
                     .map(|o| o.insert("sessionId".into(), json!(sid)));
             }
             // Surface permission wait honestly when agent reports awaiting_permission.
-            if out
-                .get("awaiting_permission")
-                .and_then(|x| x.as_bool())
-                == Some(true)
-            {
-                if let Some(o) = payload.as_object_mut() { o.insert("status".into(), json!("permission_pending")); }
+            if out.get("awaiting_permission").and_then(|x| x.as_bool()) == Some(true) {
+                if let Some(o) = payload.as_object_mut() {
+                    o.insert("status".into(), json!("permission_pending"));
+                }
                 set_active_tool(host, app, Some(name), Some("permission_pending"));
             }
             emit_tool_event(app, payload.clone());
@@ -573,8 +565,8 @@ async fn execute_tool_inner(
         return Ok(out);
     }
 
-    let tool = voice_tools::VoiceToolName::parse(name)
-        .ok_or_else(|| format!("unknown tool: {name}"))?;
+    let tool =
+        voice_tools::VoiceToolName::parse(name).ok_or_else(|| format!("unknown tool: {name}"))?;
 
     let out = match tool {
         voice_tools::VoiceToolName::ListSessions => {

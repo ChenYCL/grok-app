@@ -297,7 +297,6 @@ pub struct SpawnOptions {
     pub empty_mcp_servers: bool,
 }
 
-
 /// Pure helper: top-level CLI args for `--fork-session`.
 ///
 /// `["--fork-session"]` when enabled; empty otherwise. The TUI requires this
@@ -315,7 +314,10 @@ pub fn fork_session_spawn_flags(enabled: bool) -> Vec<&'static str> {
 ///
 /// Accepts standard `sessionId` or Grok extension `newSessionId`. Rejects empty
 /// and equal-to-source ids (fork must allocate a **new** id).
-pub fn parse_fork_session_id(result: &serde_json::Value, source_session_id: &str) -> Option<String> {
+pub fn parse_fork_session_id(
+    result: &serde_json::Value,
+    source_session_id: &str,
+) -> Option<String> {
     let raw = result
         .get("sessionId")
         .and_then(|v| v.as_str())
@@ -328,7 +330,6 @@ pub fn parse_fork_session_id(result: &serde_json::Value, source_session_id: &str
     }
     Some(raw.to_string())
 }
-
 
 /// Pure helper: top-level CLI args for session extra rules (before `agent`).
 ///
@@ -347,8 +348,7 @@ pub fn extra_rules_spawn_flags(rules: Option<&str>) -> Vec<String> {
 /// Trims, strips NUL, drops empty, clamps length. Prefer the long flag name
 /// (CLI also accepts `--system-prompt`).
 pub fn system_prompt_override_spawn_flags(prompt: Option<&str>) -> Vec<String> {
-    let normalized =
-        crate::store::sanitize_system_prompt_override(prompt.map(|s| s.to_string()));
+    let normalized = crate::store::sanitize_system_prompt_override(prompt.map(|s| s.to_string()));
     match normalized {
         Some(text) => vec!["--system-prompt-override".into(), text],
         None => Vec::new(),
@@ -408,10 +408,7 @@ pub fn resolve_cli_permission_mode(policy: &str, product_mode: Option<&str>) -> 
 }
 
 /// Top-level spawn args: `["--permission-mode", "<mode>"]`.
-pub fn permission_mode_spawn_flags(
-    policy: &str,
-    product_mode: Option<&str>,
-) -> [String; 2] {
+pub fn permission_mode_spawn_flags(policy: &str, product_mode: Option<&str>) -> [String; 2] {
     let mode = resolve_cli_permission_mode(policy, product_mode);
     ["--permission-mode".into(), mode.into()]
 }
@@ -663,9 +660,7 @@ pub fn normalize_background_wait_policy(raw: &str) -> BackgroundWaitPolicy {
     let s = raw.trim().to_ascii_lowercase().replace('-', "_");
     match s.as_str() {
         "" | "wait" | "default" => BackgroundWaitPolicy::Wait,
-        "no_wait" | "nowait" | "no_wait_for_background" | "false" => {
-            BackgroundWaitPolicy::NoWait
-        }
+        "no_wait" | "nowait" | "no_wait_for_background" | "false" => BackgroundWaitPolicy::NoWait,
         "timeout" | "timed" | "secs" | "seconds" => BackgroundWaitPolicy::Timeout,
         _ => BackgroundWaitPolicy::Wait,
     }
@@ -686,10 +681,7 @@ pub fn background_wait_spawn_flags(policy: &str, timeout_sec: u32) -> Vec<String
         BackgroundWaitPolicy::NoWait => vec!["--no-wait-for-background".into()],
         BackgroundWaitPolicy::Timeout => {
             let secs = normalize_background_wait_timeout_sec(timeout_sec);
-            vec![
-                "--background-wait-timeout".into(),
-                secs.to_string(),
-            ]
+            vec!["--background-wait-timeout".into(), secs.to_string()]
         }
     }
 }
@@ -821,9 +813,7 @@ pub fn resolve_headless_stream_for_partial(
     include_partial: bool,
     raw_cli_version: Option<&str>,
 ) -> (&'static str, Vec<&'static str>) {
-    let can = raw_cli_version
-        .and_then(cli_supports_include_partial_messages)
-        == Some(true);
+    let can = raw_cli_version.and_then(cli_supports_include_partial_messages) == Some(true);
     if include_partial && can {
         (
             HEADLESS_FORMAT_STREAMING_MESSAGES_JSON,
@@ -976,7 +966,6 @@ pub fn agents_json_spawn_flags(raw: &str) -> Option<Vec<String>> {
     crate::agents_catalog::agents_json_spawn_cli_args(raw)
 }
 
-
 impl AcpClient {
     pub fn use_mock() -> bool {
         std::env::var("GROK_APP_ACP")
@@ -1067,10 +1056,8 @@ impl AcpClient {
             // Official → sync OIDC; custom → strip auth.json (api_key only).
             crate::providers::prepare_route_auth_for_agent();
             if let Some(ref pol) = opts.permission_policy {
-                let _ = crate::agent_prefs::sync_permission_to_agent_profile(
-                    session_data_mode,
-                    pol,
-                );
+                let _ =
+                    crate::agent_prefs::sync_permission_to_agent_profile(session_data_mode, pol);
             }
         }
 
@@ -1142,10 +1129,7 @@ impl AcpClient {
         // Headless-only in effect; still pass top-level when CLI ≥ 0.2.117 so
         // automations / future ACP paths share one policy. Soft-fail older CLIs.
         let cli_ver = crate::cli_probe::read_version_of(&cli_path);
-        let bg_wait_args = background_wait_spawn_flags_from_settings(
-            &settings,
-            cli_ver.as_deref(),
-        );
+        let bg_wait_args = background_wait_spawn_flags_from_settings(&settings, cli_ver.as_deref());
         // Soft-fail known-old CLIs: omit --sandbox / GROK_SANDBOX.
         let sandbox = if should_apply_sandbox(cli_ver.as_deref()) {
             SandboxSpawnSpec::from_setting(&sandbox_raw_owned)
@@ -1184,7 +1168,8 @@ impl AcpClient {
             // Custom + inject: PreToolUse hook blocks native Imagine (ACP ignores
             // --disallowed-tools which is headless-only). Official route / inject
             // off removes the managed hook file.
-            let _ = crate::official_aux::sync_native_media_block_hook_for_current(session_data_mode);
+            let _ =
+                crate::official_aux::sync_native_media_block_hook_for_current(session_data_mode);
         }
 
         let mut cmd = Command::new(&cli_path);
@@ -1371,15 +1356,18 @@ impl AcpClient {
             )
         })?;
 
-        let stdin = child.stdin.take().ok_or_else(|| {
-            AgentError::new(AgentErrorCode::AgentCrashed, "no stdin on child")
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            AgentError::new(AgentErrorCode::AgentCrashed, "no stdout on child")
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            AgentError::new(AgentErrorCode::AgentCrashed, "no stderr on child")
-        })?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| AgentError::new(AgentErrorCode::AgentCrashed, "no stdin on child"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| AgentError::new(AgentErrorCode::AgentCrashed, "no stdout on child"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| AgentError::new(AgentErrorCode::AgentCrashed, "no stderr on child"))?;
 
         let client = Arc::new(Self {
             child: AsyncMutex::new(Some(child)),
@@ -1563,30 +1551,27 @@ impl AcpClient {
                         warn!("acp ← {} id={id} error: {}", p.method, full);
                         let _ = p.tx.send(Err(full));
                     } else {
-                        let _ = p.tx.send(Ok(msg.get("result").cloned().unwrap_or(Value::Null)));
+                        let _ =
+                            p.tx.send(Ok(msg.get("result").cloned().unwrap_or(Value::Null)));
                     }
                 } else if let Some(err) = msg.get("error") {
                     // Race: prompt_complete fallback already resolved pending, but the
                     // real RPC error arrived later (official subscription / provider fails).
                     // Must still surface the error — do not drop as "unknown id".
                     let full = format_jsonrpc_error(err);
-                    warn!(
-                        "acp late error response id={id} (pending already resolved): {full}"
-                    );
+                    warn!("acp late error response id={id} (pending already resolved): {full}");
                     let _ = self.event_tx.send(AcpEvent::Error {
                         error: classify_rpc_error(&full),
                     });
                 } else {
                     debug!(
                         "acp late ok response id={id} (pending already resolved); keys={:?}",
-                        msg.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>())
+                        msg.as_object()
+                            .map(|o| o.keys().cloned().collect::<Vec<_>>())
                     );
                 }
                 // also surface prompt complete via result stopReason
-                if let Some(sr) = msg
-                    .pointer("/result/stopReason")
-                    .and_then(|v| v.as_str())
-                {
+                if let Some(sr) = msg.pointer("/result/stopReason").and_then(|v| v.as_str()) {
                     let _ = self.event_tx.send(AcpEvent::PromptComplete {
                         stop_reason: sr.to_string(),
                         authoritative: true,
@@ -1632,10 +1617,7 @@ impl AcpClient {
                             plan_content.as_ref().map(|s| s.len()).unwrap_or(0)
                         );
                         let _ = self.event_tx.send(AcpEvent::Plan {
-                            entries: params
-                                .get("entries")
-                                .cloned()
-                                .unwrap_or(json!([])),
+                            entries: params.get("entries").cloned().unwrap_or(json!([])),
                             body: plan_content,
                             rpc_id: Some(rpc_id),
                             tool_call_id,
@@ -1919,13 +1901,16 @@ pub fn parse_usage_update(kind: &str, update: &Value) -> Option<AcpEvent> {
         (Some(i), Some(o)) => Some(i.saturating_add(o)),
         _ => None,
     });
-    let system = json_token_u64(
-        root,
-        &["systemTokens", "system_tokens", "system"],
-    );
+    let system = json_token_u64(root, &["systemTokens", "system_tokens", "system"]);
     let tools = json_token_u64(
         root,
-        &["toolsTokens", "tools_tokens", "toolTokens", "tool_tokens", "tools"],
+        &[
+            "toolsTokens",
+            "tools_tokens",
+            "toolTokens",
+            "tool_tokens",
+            "tools",
+        ],
     );
     let history = json_token_u64(
         root,
@@ -2011,8 +1996,7 @@ fn parse_context_compact_update(
         .or_else(|| update.get("triggerType"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let trigger = if trigger_raw.eq_ignore_ascii_case("manual") || kind.contains("manual")
-    {
+    let trigger = if trigger_raw.eq_ignore_ascii_case("manual") || kind.contains("manual") {
         "manual".to_string()
     } else if trigger_raw.eq_ignore_ascii_case("auto")
         || kind.contains("auto")
@@ -2033,13 +2017,7 @@ fn parse_context_compact_update(
         || kind == "tokens_used"
         || kind == "compaction_checkpoint"
     {
-        Some((
-            trigger,
-            tokens_before,
-            tokens_after,
-            summary_preview,
-            note,
-        ))
+        Some((trigger, tokens_before, tokens_after, summary_preview, note))
     } else {
         None
     }
@@ -2095,8 +2073,7 @@ impl AcpClient {
                 }
             },
             Ok(Err(_)) => {
-                let head =
-                    format!("rpc channel closed while waiting for {method} (id={id})");
+                let head = format!("rpc channel closed while waiting for {method} (id={id})");
                 error!("{}", self.format_exit_detail(&head));
                 Err(head)
             }
@@ -2322,9 +2299,7 @@ impl AcpClient {
         if let Some(rid) = resume_session_id.map(str::trim).filter(|s| !s.is_empty()) {
             // CLI `--fork-session`: new agent session id with parent context.
             if fork_session {
-                if let Some((sid, model_id)) = self
-                    .try_fork_session(rid, &cwd, &mcp_servers)
-                    .await
+                if let Some((sid, model_id)) = self.try_fork_session(rid, &cwd, &mcp_servers).await
                 {
                     *self.agent_session_id.lock() = Some(sid.clone());
                     let _ = self.event_tx.send(AcpEvent::State {
@@ -2403,7 +2378,9 @@ impl AcpClient {
                     AgentErrorCode::AgentCrashed,
                     format!(
                         "session/new missing sessionId; keys={:?}",
-                        result.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>())
+                        result
+                            .as_object()
+                            .map(|o| o.keys().cloned().collect::<Vec<_>>())
                     ),
                 )
             })?
@@ -2432,9 +2409,7 @@ impl AcpClient {
         cwd: &str,
         mcp_servers: &serde_json::Value,
     ) -> Option<(String, Option<String>)> {
-        info!(
-            "acp session/fork begin sourceSessionId={source_session_id} cwd={cwd}"
-        );
+        info!("acp session/fork begin sourceSessionId={source_session_id} cwd={cwd}");
         // Standard ACP ForkSessionRequest: sessionId + cwd + mcpServers.
         match self
             .request_timeout(
@@ -2647,13 +2622,10 @@ impl AcpClient {
             .lock()
             .clone()
             .ok_or_else(|| "no agent session".to_string())?;
-        self.request(
-            "_x.ai/interject",
-            wire_session_interject_params(&sid, text),
-        )
-        .await
-        .map(|_| ())
-        .map_err(|e| format!("_x.ai/interject: {e}"))
+        self.request("_x.ai/interject", wire_session_interject_params(&sid, text))
+            .await
+            .map(|_| ())
+            .map_err(|e| format!("_x.ai/interject: {e}"))
     }
 
     /// Cancel in-flight prompt (ACP notification — no id).
@@ -2675,11 +2647,8 @@ impl AcpClient {
             .lock()
             .clone()
             .ok_or_else(|| "no session".to_string())?;
-        self.request(
-            "x.ai/rewind/points",
-            json!({ "sessionId": sid }),
-        )
-        .await
+        self.request("x.ai/rewind/points", json!({ "sessionId": sid }))
+            .await
     }
 
     /// Truncate agent conversation to a user-prompt index (and optionally restore files).
@@ -2768,7 +2737,10 @@ impl AcpClient {
         let msg = wire_jsonrpc_result(rpc_id, result.clone());
         info!(
             "acp → ask_user_question reply id={rpc_id} outcome={}",
-            if matches!(result.get("outcome").and_then(|v| v.as_str()), Some("accepted")) {
+            if matches!(
+                result.get("outcome").and_then(|v| v.as_str()),
+                Some("accepted")
+            ) {
                 "accepted"
             } else {
                 "cancelled"
@@ -2799,7 +2771,9 @@ pub enum PermissionOutcome {
 #[derive(Debug, Clone)]
 pub enum AskUserOutcome {
     /// Map of question text → selected label(s) and/or free-text answer.
-    Accepted { answers: Value },
+    Accepted {
+        answers: Value,
+    },
     Cancelled,
 }
 
@@ -2978,9 +2952,7 @@ pub fn parse_hook_activity_update(kind: &str, update: &Value) -> Option<AcpEvent
                         || st.contains("error")
                         || st.contains("denied")
                         || st.contains("timeout")
-                        || e.get("status")
-                            .and_then(|v| v.get("Failed"))
-                            .is_some()
+                        || e.get("status").and_then(|v| v.get("Failed")).is_some()
                         || e.get("ok") == Some(&Value::Bool(false))
                 });
                 Some(!any_fail)
@@ -3241,10 +3213,7 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
             }
         }
         "retry_state" => {
-            let attempt = update
-                .get("attempt")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
+            let attempt = update.get("attempt").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
             let max_retries = update
                 .get("max_retries")
                 .or_else(|| update.get("maxRetries"))
@@ -3290,13 +3259,8 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 out.push(ev);
             }
         }
-        "usage"
-        | "token_usage"
-        | "tokenUsage"
-        | "context_usage"
-        | "contextUsage"
-        | "turn_usage"
-        | "turnUsage" => {
+        "usage" | "token_usage" | "tokenUsage" | "context_usage" | "contextUsage"
+        | "turn_usage" | "turnUsage" => {
             if let Some(ev) = parse_usage_update(kind, update) {
                 out.push(ev);
             }
@@ -3315,9 +3279,7 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
         }
         _ => {
             // Soft-recognize other goal_* sessionUpdate kinds without inventing state.
-            if kind.starts_with("goal_")
-                || (kind.starts_with("goal") && kind.contains("update"))
-            {
+            if kind.starts_with("goal_") || (kind.starts_with("goal") && kind.contains("update")) {
                 if let Some(ev) = parse_goal_updated(update) {
                     out.push(ev);
                 }
@@ -4086,7 +4048,10 @@ pub fn parse_acp_server_addr(raw: &str) -> Result<ParsedAcpServerAddr, String> {
     if port_raw.is_empty() {
         return Err("missing port".into());
     }
-    if host.chars().any(|c| c.is_whitespace() || c == '/' || c == '?' || c == '#') {
+    if host
+        .chars()
+        .any(|c| c.is_whitespace() || c == '/' || c == '?' || c == '#')
+    {
         return Err("invalid host".into());
     }
     let host_ok = host
@@ -4099,9 +4064,7 @@ pub fn parse_acp_server_addr(raw: &str) -> Result<ParsedAcpServerAddr, String> {
     if !port_raw.chars().all(|c| c.is_ascii_digit()) || port_raw.len() > 5 {
         return Err("invalid port".into());
     }
-    let port: u16 = port_raw
-        .parse()
-        .map_err(|_| "invalid port".to_string())?;
+    let port: u16 = port_raw.parse().map_err(|_| "invalid port".to_string())?;
     if port == 0 {
         return Err("invalid port".into());
     }
@@ -4218,9 +4181,7 @@ pub async fn probe_acp_server(addr: &str) -> AcpProbeResult {
             let v: Value = serde_json::from_str(line.trim()).unwrap_or(Value::Null);
             let result = &v["result"];
             if !result.is_object() {
-                return AcpProbeResult::fail(
-                    "connected, but no ACP initialize result in response",
-                );
+                return AcpProbeResult::fail("connected, but no ACP initialize result in response");
             }
             let meta = &result["_meta"];
             AcpProbeResult {
@@ -4232,9 +4193,7 @@ pub async fn probe_acp_server(addr: &str) -> AcpProbeResult {
                 error: None,
             }
         }
-        Ok(Ok(_)) => {
-            AcpProbeResult::fail("server closed the connection (EOF) before responding")
-        }
+        Ok(Ok(_)) => AcpProbeResult::fail("server closed the connection (EOF) before responding"),
         Ok(Err(e)) => AcpProbeResult::fail(format!("read failed: {e}")),
         Err(_) => AcpProbeResult::fail("connected, but no ACP response within 20s"),
     }
@@ -4462,17 +4421,11 @@ mod background_wait_policy_tests {
         );
         assert_eq!(
             background_wait_spawn_flags("timeout", 90),
-            vec![
-                "--background-wait-timeout".to_string(),
-                "90".to_string()
-            ]
+            vec!["--background-wait-timeout".to_string(), "90".to_string()]
         );
         assert_eq!(
             background_wait_spawn_flags("timeout", 0),
-            vec![
-                "--background-wait-timeout".to_string(),
-                "1".to_string()
-            ]
+            vec!["--background-wait-timeout".to_string(), "1".to_string()]
         );
     }
 
@@ -4493,10 +4446,7 @@ mod background_wait_policy_tests {
         );
         assert_eq!(
             background_wait_spawn_flags_soft("timeout", 45, Some("0.2.120")),
-            vec![
-                "--background-wait-timeout".to_string(),
-                "45".to_string()
-            ]
+            vec!["--background-wait-timeout".to_string(), "45".to_string()]
         );
     }
 
@@ -4506,7 +4456,9 @@ mod background_wait_policy_tests {
         assert!(background_wait_settings_equal("no_wait", 1, "no_wait", 2));
         assert!(!background_wait_settings_equal("wait", 1, "no_wait", 1));
         assert!(background_wait_settings_equal("timeout", 60, "timeout", 60));
-        assert!(!background_wait_settings_equal("timeout", 60, "timeout", 120));
+        assert!(!background_wait_settings_equal(
+            "timeout", 60, "timeout", 120
+        ));
     }
 
     #[test]
@@ -4566,7 +4518,10 @@ mod disallowed_tools_spawn_tests {
             &["a".into(), "b".into()],
             &["B".into(), "A".into()]
         ));
-        assert!(!disallowed_tools_equal(&["a".into()], &["a".into(), "b".into()]));
+        assert!(!disallowed_tools_equal(
+            &["a".into()],
+            &["a".into(), "b".into()]
+        ));
     }
 }
 
@@ -4616,7 +4571,10 @@ mod allowed_tools_spawn_tests {
             &["a".into(), "b".into()],
             &["B".into(), "A".into()]
         ));
-        assert!(!allowed_tools_equal(&["a".into()], &["a".into(), "b".into()]));
+        assert!(!allowed_tools_equal(
+            &["a".into()],
+            &["a".into(), "b".into()]
+        ));
     }
 }
 
@@ -4720,24 +4678,15 @@ mod permission_mode_spawn_tests {
             resolve_cli_permission_mode("accept_edits", Some("plan")),
             "plan"
         );
-        assert_eq!(
-            resolve_cli_permission_mode("ask", Some("agent")),
-            "default"
-        );
-        assert_eq!(
-            resolve_cli_permission_mode("auto", Some("agent")),
-            "auto"
-        );
+        assert_eq!(resolve_cli_permission_mode("ask", Some("agent")), "default");
+        assert_eq!(resolve_cli_permission_mode("auto", Some("agent")), "auto");
     }
 
     #[test]
     fn spawn_flags_pin_permission_mode_and_yolo() {
         assert_eq!(
             permission_mode_spawn_flags("accept_edits", Some("agent")),
-            [
-                "--permission-mode".to_string(),
-                "acceptEdits".to_string()
-            ]
+            ["--permission-mode".to_string(), "acceptEdits".to_string()]
         );
         assert_eq!(
             permission_mode_spawn_flags("ask", Some("plan")),
@@ -4748,7 +4697,6 @@ mod permission_mode_spawn_tests {
         assert!(!should_pass_always_approve("ask", Some("plan")));
     }
 }
-
 
 #[cfg(test)]
 mod plugin_dir_spawn_tests {
@@ -4762,11 +4710,8 @@ mod plugin_dir_spawn_tests {
 
     #[test]
     fn builds_repeatable_plugin_dir_pairs() {
-        let args = plugin_dir_spawn_flags(&[
-            "  /tmp/p1  ".into(),
-            "/tmp/p2".into(),
-            "/tmp/p1".into(),
-        ]);
+        let args =
+            plugin_dir_spawn_flags(&["  /tmp/p1  ".into(), "/tmp/p2".into(), "/tmp/p1".into()]);
         assert_eq!(
             args,
             vec![
@@ -4829,10 +4774,7 @@ mod system_prompt_override_spawn_tests {
         let args = system_prompt_override_spawn_flags(Some("a\0b\0c"));
         assert_eq!(
             args,
-            vec![
-                "--system-prompt-override".to_string(),
-                "abc".to_string()
-            ]
+            vec!["--system-prompt-override".to_string(), "abc".to_string()]
         );
     }
 }
@@ -4853,18 +4795,12 @@ mod max_turns_spawn_tests {
 
     #[test]
     fn resolve_prefers_session_over_global() {
-        assert_eq!(
-            resolve_max_agent_turns(Some(40), Some(10)),
-            Some(40)
-        );
+        assert_eq!(resolve_max_agent_turns(Some(40), Some(10)), Some(40));
         assert_eq!(resolve_max_agent_turns(None, Some(10)), Some(10));
         assert_eq!(resolve_max_agent_turns(Some(0), Some(10)), Some(10));
         assert_eq!(resolve_max_agent_turns(None, None), None);
         assert_eq!(resolve_max_agent_turns(Some(0), Some(0)), None);
-        assert_eq!(
-            resolve_max_agent_turns(Some(999), Some(10)),
-            Some(200)
-        );
+        assert_eq!(resolve_max_agent_turns(Some(999), Some(10)), Some(200));
     }
 
     #[test]
@@ -4903,12 +4839,8 @@ mod include_partial_messages_tests {
 
     #[test]
     fn format_gate() {
-        assert!(is_streaming_messages_json_format(
-            "streaming-messages-json"
-        ));
-        assert!(is_streaming_messages_json_format(
-            "STREAMING_MESSAGES_JSON"
-        ));
+        assert!(is_streaming_messages_json_format("streaming-messages-json"));
+        assert!(is_streaming_messages_json_format("STREAMING_MESSAGES_JSON"));
         assert!(!is_streaming_messages_json_format("streaming-json"));
         assert!(!is_streaming_messages_json_format("json"));
         assert!(!is_streaming_messages_json_format("plain"));
@@ -4933,12 +4865,10 @@ mod include_partial_messages_tests {
             Some("0.2.112")
         )
         .is_empty());
-        assert!(include_partial_messages_spawn_flags_soft(
-            true,
-            "streaming-messages-json",
-            None
-        )
-        .is_empty());
+        assert!(
+            include_partial_messages_spawn_flags_soft(true, "streaming-messages-json", None)
+                .is_empty()
+        );
         assert!(include_partial_messages_spawn_flags_soft(
             true,
             "streaming-messages-json",
@@ -4976,7 +4906,10 @@ mod include_partial_messages_tests {
             cli_supports_include_partial_messages("grok 0.2.117"),
             Some(true)
         );
-        assert_eq!(cli_supports_include_partial_messages("0.2.116"), Some(false));
+        assert_eq!(
+            cli_supports_include_partial_messages("0.2.116"),
+            Some(false)
+        );
         assert_eq!(cli_supports_include_partial_messages(""), None);
     }
 }
@@ -5151,19 +5084,21 @@ mod live_handshake_tests {
             eprintln!("skip live ACP (set GROK_APP_LIVE_ACP=1)");
             return;
         }
-        let cli = which::which("grok").or_else(|_| {
-            let p = crate::process_util::user_home().join(".grok/bin/grok");
-            if p.exists() {
-                Ok(p)
-            } else {
-                let p2 = crate::process_util::user_home().join(r".grok\bin\grok.exe");
-                if p2.exists() {
-                    Ok(p2)
+        let cli = which::which("grok")
+            .or_else(|_| {
+                let p = crate::process_util::user_home().join(".grok/bin/grok");
+                if p.exists() {
+                    Ok(p)
                 } else {
-                    Err(which::Error::CannotFindBinaryPath)
+                    let p2 = crate::process_util::user_home().join(r".grok\bin\grok.exe");
+                    if p2.exists() {
+                        Ok(p2)
+                    } else {
+                        Err(which::Error::CannotFindBinaryPath)
+                    }
                 }
-            }
-        }).expect("grok cli");
+            })
+            .expect("grok cli");
         let cwd = std::env::current_dir().unwrap();
         let t0 = std::time::Instant::now();
         let (client, mut events) = AcpClient::spawn(cli, cwd).expect("spawn");
@@ -5173,10 +5108,11 @@ mod live_handshake_tests {
                 eprintln!("ev: {:?}", std::mem::discriminant(&ev));
             }
         });
-        let sid = tokio::time::timeout(Duration::from_secs(45), client.initialize_and_new_session())
-            .await
-            .expect("overall timeout")
-            .expect("handshake");
+        let sid =
+            tokio::time::timeout(Duration::from_secs(45), client.initialize_and_new_session())
+                .await
+                .expect("overall timeout")
+                .expect("handshake");
         eprintln!("OK session={} in {:?}", sid, t0.elapsed());
         client.kill().await;
         assert!(!sid.is_empty());

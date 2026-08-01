@@ -2,6 +2,8 @@
 
 mod app_sessions;
 mod bridge;
+#[cfg(test)]
+mod catalog_ac4_tests;
 mod channels;
 mod config;
 mod context;
@@ -14,11 +16,9 @@ mod grok_agent;
 mod outbound;
 mod pb_frame;
 mod projects;
-mod resilience;
-#[cfg(test)]
-mod catalog_ac4_tests;
 #[cfg(test)]
 mod protocol_start_tests;
+mod resilience;
 mod runtime;
 mod session;
 mod slash;

@@ -143,7 +143,11 @@ async fn run_once(
 }
 
 fn parse_dispatch(inst: &ChannelInstance, d: &Value) -> Option<IncomingMessage> {
-    let content = d.get("content").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let content = d
+        .get("content")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
     if content.is_empty() {
         return None;
     }

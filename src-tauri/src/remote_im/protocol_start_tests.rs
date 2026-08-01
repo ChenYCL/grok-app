@@ -36,7 +36,10 @@ mod tests {
             );
         }
         assert_eq!(feishu::protocol_name(), channels::protocol_for("feishu"));
-        assert_eq!(dingtalk::protocol_name(), channels::protocol_for("dingtalk"));
+        assert_eq!(
+            dingtalk::protocol_name(),
+            channels::protocol_for("dingtalk")
+        );
         assert_eq!(wecom::protocol_name(), channels::protocol_for("wecom"));
         assert_eq!(weixin::protocol_name(), channels::protocol_for("weixin"));
     }
@@ -82,7 +85,7 @@ mod tests {
         secrets.insert("corp_id".into(), "ww".into());
         secrets.insert("corp_secret".into(), "sec".into());
         secrets.insert("port".into(), "0".into()); // may fail bind 0 — use high port
-        // pick ephemeral by binding ourselves to find free port then re-use - simpler: use 19876
+                                                   // pick ephemeral by binding ourselves to find free port then re-use - simpler: use 19876
         secrets.insert("port".into(), "19876".into());
         secrets.insert("callback_path".into(), "/wecom/callback".into());
         let i = inst("wecom", secrets);

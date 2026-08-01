@@ -37,7 +37,16 @@ pub async fn run(
         if *cancel.borrow() {
             return Ok(());
         }
-        match run_once(&inst, &app_id, &app_secret, &domain, tx.clone(), &mut cancel).await {
+        match run_once(
+            &inst,
+            &app_id,
+            &app_secret,
+            &domain,
+            tx.clone(),
+            &mut cancel,
+        )
+        .await
+        {
             Ok(()) => {
                 if *cancel.borrow() {
                     return Ok(());
@@ -69,8 +78,7 @@ async fn run_once(
     tx: mpsc::Sender<IncomingMessage>,
     cancel: &mut watch::Receiver<bool>,
 ) -> Result<(), String> {
-    let (ws_url, service_id, ping_interval_ms) =
-        pull_endpoint(domain, app_id, app_secret).await?;
+    let (ws_url, service_id, ping_interval_ms) = pull_endpoint(domain, app_id, app_secret).await?;
     let (ws, _) = connect_async(&ws_url)
         .await
         .map_err(|e| format!("ws connect: {e}"))?;
@@ -307,9 +315,15 @@ fn parse_im_event(inst: &ChannelInstance, root: &Value) -> Option<IncomingMessag
     }
 
     let message = event.get("message")?;
-    let msg_type = message.get("message_type").and_then(|x| x.as_str()).unwrap_or("text");
+    let msg_type = message
+        .get("message_type")
+        .and_then(|x| x.as_str())
+        .unwrap_or("text");
 
-    let content_raw = message.get("content").and_then(|x| x.as_str()).unwrap_or("{}");
+    let content_raw = message
+        .get("content")
+        .and_then(|x| x.as_str())
+        .unwrap_or("{}");
     let content_json: Value = serde_json::from_str(content_raw).unwrap_or(json!({}));
     let mut text = content_json
         .get("text")
@@ -663,8 +677,7 @@ fn build_reply_payload(text: &str) -> (&'static str, String) {
 
 fn contains_markdown(s: &str) -> bool {
     const INDS: &[&str] = &[
-        "```", "**", "~~", "`", "\n- ", "\n* ", "\n1. ", "\n# ", "\n## ", "---", "| ",
-        "](http",
+        "```", "**", "~~", "`", "\n- ", "\n* ", "\n1. ", "\n# ", "\n## ", "---", "| ", "](http",
     ];
     INDS.iter().any(|ind| s.contains(ind))
         || s.lines().any(|l| {
@@ -813,8 +826,7 @@ pub fn card_action_to_content(event: &Value) -> Option<String> {
         .or_else(|| event.get("type"))
         .and_then(|x| x.as_str())
         .unwrap_or("");
-    let has_action = event.pointer("/event/action").is_some()
-        || event.get("action").is_some();
+    let has_action = event.pointer("/event/action").is_some() || event.get("action").is_some();
     if !et.contains("card.action") && !et.contains("card.action.trigger") && !has_action {
         // Still allow if action.value looks like our payload
         let probe = event
@@ -892,4 +904,3 @@ mod md_tests {
         assert_eq!(ty, "post");
     }
 }
-

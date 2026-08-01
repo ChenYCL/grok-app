@@ -169,7 +169,10 @@ mod tests {
             }
         }
         handle.join.await.unwrap();
-        assert!(texts.len() > 1, "expected multi-chunk stream, got {texts:?}");
+        assert!(
+            texts.len() > 1,
+            "expected multi-chunk stream, got {texts:?}"
+        );
         assert!(done);
         let joined: String = texts.concat();
         assert!(joined.contains("Mock ACP"));

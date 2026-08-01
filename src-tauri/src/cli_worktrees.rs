@@ -139,7 +139,10 @@ fn path_is_dir(path: &str) -> bool {
 /// Pure parse helper for `grok worktree list --json`.
 ///
 /// Accepts a top-level array, or `{ worktrees: [...] }` / `{ items: [...] }`.
-pub fn parse_cli_worktree_list_json(stdout: &str, home: &Path) -> Result<Vec<CliWorktreeEntry>, String> {
+pub fn parse_cli_worktree_list_json(
+    stdout: &str,
+    home: &Path,
+) -> Result<Vec<CliWorktreeEntry>, String> {
     let trimmed = stdout.trim();
     if trimmed.is_empty() {
         return Ok(Vec::new());
@@ -149,8 +152,8 @@ pub fn parse_cli_worktree_list_json(stdout: &str, home: &Path) -> Result<Vec<Cli
         .find(['[', '{'])
         .ok_or_else(|| "cli worktree list: no JSON object/array".to_string())?;
     let slice = &trimmed[json_start..];
-    let value: serde_json::Value = serde_json::from_str(slice)
-        .map_err(|e| format!("invalid cli worktree list JSON: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(slice).map_err(|e| format!("invalid cli worktree list JSON: {e}"))?;
 
     let items: Vec<serde_json::Value> = if let Some(arr) = value.as_array() {
         arr.clone()
@@ -182,15 +185,22 @@ pub fn parse_cli_worktree_list_json(stdout: &str, home: &Path) -> Result<Vec<Cli
         }
         let branch = json_str_field(
             &item,
-            &["git_ref", "gitRef", "branch", "ref", "worktree_ref", "worktreeRef"],
+            &[
+                "git_ref",
+                "gitRef",
+                "branch",
+                "ref",
+                "worktree_ref",
+                "worktreeRef",
+            ],
         );
         let status = json_str_field(&item, &["status", "state"]);
         let kind = json_str_field(&item, &["kind", "type", "worktree_type", "worktreeType"]);
         let repo_name = json_str_field(&item, &["repo_name", "repoName", "repo"]);
         let source_repo = json_str_field(&item, &["source_repo", "sourceRepo", "source"])
             .map(|s| expand_tilde_path(&s, home));
-        let head = json_str_field(&item, &["head_commit", "headCommit", "head", "commit"])
-            .map(|h| {
+        let head =
+            json_str_field(&item, &["head_commit", "headCommit", "head", "commit"]).map(|h| {
                 if h.len() > 12 {
                     h.chars().take(12).collect()
                 } else {
@@ -240,7 +250,10 @@ fn is_cli_worktree_text_noise(line: &str) -> bool {
         && (lower.contains(" subagent")
             || lower.ends_with("worktrees")
             || lower.contains(" worktrees "))
-        && t.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+        && t.chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
     {
         return true;
     }
@@ -303,7 +316,8 @@ pub fn parse_cli_worktree_list_text(stdout: &str, home: &Path) -> Vec<CliWorktre
         let branch = branch.filter(|b| {
             b == "HEAD"
                 || b.contains('/')
-                || b.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+                || b.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
         });
         let effective_id = if id.is_empty() { path.clone() } else { id };
         let name = derive_cli_worktree_name(&effective_id, &path);
@@ -343,7 +357,10 @@ fn is_age_token(s: &str) -> bool {
     if i == 0 {
         return false;
     }
-    matches!(&lower[i..], "d" | "h" | "m" | "s" | "w" | "mo" | "y" | "min" | "mins" | "hr" | "hrs")
+    matches!(
+        &lower[i..],
+        "d" | "h" | "m" | "s" | "w" | "mo" | "y" | "min" | "mins" | "hr" | "hrs"
+    )
 }
 
 /// Extract a trailing filesystem path token from a table row.
@@ -380,10 +397,7 @@ fn looks_like_path(s: &str) -> bool {
     }
     // Windows drive
     let b = s.as_bytes();
-    if b.len() >= 3
-        && b[0].is_ascii_alphabetic()
-        && b[1] == b':'
-        && (b[2] == b'\\' || b[2] == b'/')
+    if b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/')
     {
         return true;
     }
@@ -621,14 +635,13 @@ fn apply_stats_kv(stats: &mut CliWorktreeDbStats, key: &str, val: &str) {
                 stats.dead = parse_first_u64(val);
             }
         }
-        "db size" | "size" | "database size" | "file size"
-            if stats.db_size.is_none() => {
-                let cleaned = val.trim().to_string();
-                if !cleaned.is_empty() {
-                    stats.db_size = Some(cleaned.clone());
-                    stats.db_size_bytes = parse_human_size_bytes(&cleaned);
-                }
+        "db size" | "size" | "database size" | "file size" if stats.db_size.is_none() => {
+            let cleaned = val.trim().to_string();
+            if !cleaned.is_empty() {
+                stats.db_size = Some(cleaned.clone());
+                stats.db_size_bytes = parse_human_size_bytes(&cleaned);
             }
+        }
         _ => {}
     }
 }
@@ -676,10 +689,7 @@ pub fn parse_cli_worktree_db_stats_json(stdout: &str) -> Result<CliWorktreeDbSta
     let mut stats = CliWorktreeDbStats::default();
     if let Some(map) = obj.as_object() {
         for (k, v) in map {
-            let key = k
-                .trim()
-                .to_ascii_lowercase()
-                .replace(['_', '-'], " ");
+            let key = k.trim().to_ascii_lowercase().replace(['_', '-'], " ");
             let val = if let Some(s) = v.as_str() {
                 s.to_string()
             } else if let Some(n) = v.as_u64() {
@@ -699,9 +709,10 @@ pub fn parse_cli_worktree_db_stats_json(stdout: &str) -> Result<CliWorktreeDbSta
             apply_stats_kv(&mut stats, &key, &val);
             // Direct camelCase / snake aliases for size fields
             if (key == "dbsize" || key == "db size bytes" || key == "size bytes")
-                && stats.db_size_bytes.is_none() {
-                    stats.db_size_bytes = parse_first_u64(&val);
-                }
+                && stats.db_size_bytes.is_none()
+            {
+                stats.db_size_bytes = parse_first_u64(&val);
+            }
         }
     }
     Ok(stats)
@@ -766,10 +777,9 @@ pub fn parse_cli_worktree_db_rebuild_text(stdout: &str) -> (Option<u64>, Option<
                         registered = parse_first_u64(&val);
                     }
                 }
-                "already tracked" | "already" | "tracked" | "unchanged"
-                    if already.is_none() => {
-                        already = parse_first_u64(&val);
-                    }
+                "already tracked" | "already" | "tracked" | "unchanged" if already.is_none() => {
+                    already = parse_first_u64(&val);
+                }
                 _ => {}
             }
         }
@@ -873,9 +883,7 @@ pub async fn cli_worktrees_list(
     repo: Option<String>,
 ) -> Result<CliWorktreesResult, String> {
     let all = all.unwrap_or(false);
-    let repo = repo
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    let repo = repo.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
     // Never pass shell-like junk into argv.
     if let Some(ref r) = repo {
         if r.starts_with('-') || r.contains('\0') || r.len() > 256 {
@@ -890,9 +898,10 @@ pub async fn cli_worktrees_list(
     }
 
     let home = user_home();
-    let result = tauri::async_runtime::spawn_blocking(move || list_cli_worktrees_blocking(all, repo, home))
-        .await
-        .map_err(|e| format!("cli worktree list worker panicked: {e}"))?;
+    let result =
+        tauri::async_runtime::spawn_blocking(move || list_cli_worktrees_blocking(all, repo, home))
+            .await
+            .map_err(|e| format!("cli worktree list worker panicked: {e}"))?;
     Ok(result)
 }
 
@@ -1258,10 +1267,7 @@ fn cli_worktree_db_rebuild_blocking() -> CliWorktreeDbRebuildResult {
     if !cli_found {
         return soft_db_rebuild_err(false, false, "Grok Build CLI not found");
     }
-    match run_grok_cli_args(
-        &["worktree", "db", "rebuild"],
-        CLI_WORKTREE_DB_TIMEOUT_SECS,
-    ) {
+    match run_grok_cli_args(&["worktree", "db", "rebuild"], CLI_WORKTREE_DB_TIMEOUT_SECS) {
         Ok((stdout, stderr, ok)) => {
             if looks_like_unsupported_worktree_db(&stderr, &stdout) {
                 return soft_db_rebuild_err(
@@ -1270,8 +1276,7 @@ fn cli_worktree_db_rebuild_blocking() -> CliWorktreeDbRebuildResult {
                     "CLI worktree DB requires Grok Build CLI 0.2.117+",
                 );
             }
-            let (discovered, registered, already) =
-                parse_cli_worktree_db_rebuild_text(&stdout);
+            let (discovered, registered, already) = parse_cli_worktree_db_rebuild_text(&stdout);
             let msg = {
                 let body = stdout.trim();
                 if body.is_empty() {
@@ -1386,7 +1391,10 @@ mod tests {
         assert_eq!(list[0].branch.as_deref(), Some("HEAD"));
         assert_eq!(list[0].status.as_deref(), Some("alive"));
         assert_eq!(list[0].head.as_deref(), Some("ea837bbb4f3f"));
-        assert_eq!(list[1].path, "/Users/me/.grok/worktrees/oss-grok-app/feat-x");
+        assert_eq!(
+            list[1].path,
+            "/Users/me/.grok/worktrees/oss-grok-app/feat-x"
+        );
         assert_eq!(list[1].branch.as_deref(), Some("feat/x"));
         assert_eq!(list[1].name, "feat-x");
     }
@@ -1402,8 +1410,12 @@ mod tests {
 
     #[test]
     fn parse_json_empty() {
-        assert!(parse_cli_worktree_list_json("", &home()).unwrap().is_empty());
-        assert!(parse_cli_worktree_list_json("[]", &home()).unwrap().is_empty());
+        assert!(parse_cli_worktree_list_json("", &home())
+            .unwrap()
+            .is_empty());
+        assert!(parse_cli_worktree_list_json("[]", &home())
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

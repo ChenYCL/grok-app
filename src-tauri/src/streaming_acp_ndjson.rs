@@ -19,8 +19,7 @@ pub const STREAMING_ACP_NDJSON_OUTPUT_FORMAT: &str = "streaming-json";
 #[allow(dead_code)]
 pub const STREAMING_MESSAGES_JSON_OUTPUT_FORMAT: &str = "streaming-messages-json";
 
-pub const DEFAULT_PROBE_PROMPT: &str =
-    "Reply with exactly the word ok and nothing else.";
+pub const DEFAULT_PROBE_PROMPT: &str = "Reply with exactly the word ok and nothing else.";
 
 /// Soft-gate: `Some(true)` ≥ 0.2.117, `Some(false)` older, `None` unparseable.
 pub fn cli_supports_streaming_acp_ndjson(raw_version: &str) -> Option<bool> {
@@ -30,9 +29,7 @@ pub fn cli_supports_streaming_acp_ndjson(raw_version: &str) -> Option<bool> {
 }
 
 /// `--output-format streaming-json` when version is known ≥ 0.2.117; else empty.
-pub fn streaming_json_output_format_args_soft(
-    raw_cli_version: Option<&str>,
-) -> Vec<String> {
+pub fn streaming_json_output_format_args_soft(raw_cli_version: Option<&str>) -> Vec<String> {
     match raw_cli_version {
         Some(v) if cli_supports_streaming_acp_ndjson(v) == Some(true) => vec![
             "--output-format".into(),
@@ -78,9 +75,8 @@ pub fn streaming_acp_ndjson_probe_args(
 }
 
 pub fn probe_args_include_streaming_json(args: &[String]) -> bool {
-    args.windows(2).any(|w| {
-        w[0] == "--output-format" && w[1] == STREAMING_ACP_NDJSON_OUTPUT_FORMAT
-    })
+    args.windows(2)
+        .any(|w| w[0] == "--output-format" && w[1] == STREAMING_ACP_NDJSON_OUTPUT_FORMAT)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,19 +158,11 @@ pub fn run_streaming_acp_ndjson_probe(
         .and_then(cli_supports_streaming_acp_ndjson);
 
     let prompt_s = prompt.unwrap_or(DEFAULT_PROBE_PROMPT);
-    let args = streaming_acp_ndjson_probe_args(
-        prompt_s,
-        version.as_deref(),
-        true,
-        1,
-        cwd,
-    );
+    let args = streaming_acp_ndjson_probe_args(prompt_s, version.as_deref(), true, 1, cwd);
     let used_streaming_json = probe_args_include_streaming_json(&args);
 
     if supported == Some(false) {
-        let err = format!(
-            "CLI too old for ACP-shaped streaming-json (need ≥ {min_version})"
-        );
+        let err = format!("CLI too old for ACP-shaped streaming-json (need ≥ {min_version})");
         return StreamingAcpNdjsonProbeResult {
             ok: false,
             supported: Some(false),
@@ -206,8 +194,7 @@ pub fn run_streaming_acp_ndjson_probe(
             stderr: String::new(),
             timed_out: false,
             error: Some(
-                "Could not soft-enable --output-format streaming-json (unknown CLI version)"
-                    .into(),
+                "Could not soft-enable --output-format streaming-json (unknown CLI version)".into(),
             ),
             duration_ms: 0,
         };
@@ -278,10 +265,7 @@ pub fn run_streaming_acp_ndjson_probe(
                 error: if ok {
                     None
                 } else {
-                    Some(format!(
-                        "probe exit {:?}",
-                        code.unwrap_or(-1)
-                    ))
+                    Some(format!("probe exit {:?}", code.unwrap_or(-1)))
                 },
                 duration_ms,
             }
@@ -340,16 +324,8 @@ fn wait_with_timeout(mut child: std::process::Child, timeout: Duration) -> WaitO
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                let stdout = child
-                    .stdout
-                    .take()
-                    .map(read_to_string)
-                    .unwrap_or_default();
-                let stderr = child
-                    .stderr
-                    .take()
-                    .map(read_to_string)
-                    .unwrap_or_default();
+                let stdout = child.stdout.take().map(read_to_string).unwrap_or_default();
+                let stderr = child.stderr.take().map(read_to_string).unwrap_or_default();
                 return WaitOutcome::Done {
                     status,
                     stdout,
@@ -360,16 +336,8 @@ fn wait_with_timeout(mut child: std::process::Child, timeout: Duration) -> WaitO
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    let stdout = child
-                        .stdout
-                        .take()
-                        .map(read_to_string)
-                        .unwrap_or_default();
-                    let stderr = child
-                        .stderr
-                        .take()
-                        .map(read_to_string)
-                        .unwrap_or_default();
+                    let stdout = child.stdout.take().map(read_to_string).unwrap_or_default();
+                    let stderr = child.stderr.take().map(read_to_string).unwrap_or_default();
                     return WaitOutcome::TimedOut { stdout, stderr };
                 }
                 std::thread::sleep(Duration::from_millis(50));
@@ -419,10 +387,8 @@ mod tests {
 
     #[test]
     fn soft_args_only_when_supported() {
-        let expected: Vec<String> = vec![
-            "--output-format".to_string(),
-            "streaming-json".to_string(),
-        ];
+        let expected: Vec<String> =
+            vec!["--output-format".to_string(), "streaming-json".to_string()];
         assert_eq!(
             streaming_json_output_format_args_soft(Some("grok 0.2.117")),
             expected
@@ -433,17 +399,13 @@ mod tests {
 
     #[test]
     fn probe_args_include_format_when_gated() {
-        let args = streaming_acp_ndjson_probe_args(
-            "ping",
-            Some("0.2.117"),
-            true,
-            1,
-            Some("/tmp"),
-        );
+        let args = streaming_acp_ndjson_probe_args("ping", Some("0.2.117"), true, 1, Some("/tmp"));
         assert!(probe_args_include_streaming_json(&args));
         assert!(args.iter().any(|a| a == "--always-approve"));
         assert!(args.iter().any(|a| a == "ping"));
-        assert!(!args.iter().any(|a| a == STREAMING_MESSAGES_JSON_OUTPUT_FORMAT));
+        assert!(!args
+            .iter()
+            .any(|a| a == STREAMING_MESSAGES_JSON_OUTPUT_FORMAT));
 
         let old = streaming_acp_ndjson_probe_args("ping", Some("0.2.50"), true, 1, None);
         assert!(!probe_args_include_streaming_json(&old));
@@ -451,10 +413,11 @@ mod tests {
 
     #[test]
     fn empty_prompt_uses_default() {
-        let args =
-            streaming_acp_ndjson_probe_args("  ", Some("0.2.117"), false, 9, None);
+        let args = streaming_acp_ndjson_probe_args("  ", Some("0.2.117"), false, 9, None);
         assert!(args.iter().any(|a| a == DEFAULT_PROBE_PROMPT));
-        assert!(args.windows(2).any(|w| w[0] == "--max-turns" && w[1] == "4"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--max-turns" && w[1] == "4"));
         assert!(!args.iter().any(|a| a == "--always-approve"));
     }
 }

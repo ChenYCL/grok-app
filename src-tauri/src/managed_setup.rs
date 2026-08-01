@@ -112,7 +112,13 @@ pub fn extract_managed_settings_from_inspect(
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(|s| crate::store::redact_text(s).trim().chars().take(400).collect());
+        .map(|s| {
+            crate::store::redact_text(s)
+                .trim()
+                .chars()
+                .take(400)
+                .collect()
+        });
     (active, exists, path)
 }
 
@@ -120,9 +126,7 @@ pub fn extract_managed_settings_from_inspect(
 ///
 /// Looks for known boolean fields only — never invents `true` from path presence
 /// or `managedSettingsActive`. Returns `(verified, source)` when found.
-pub fn extract_signature_verification(
-    root: &serde_json::Value,
-) -> (Option<bool>, Option<String>) {
+pub fn extract_signature_verification(root: &serde_json::Value) -> (Option<bool>, Option<String>) {
     // Candidate objects that may carry an explicit verification flag.
     let candidates: Vec<(&str, Option<&serde_json::Value>)> = vec![
         ("inspect", Some(root)),
@@ -200,7 +204,11 @@ pub fn build_managed_setup_status(
     // Presence only when CLI did not report an explicit verification claim.
     let presence_only = sig_verified.is_none();
     // Soft-fail honesty note when we only have path presence.
-    let reason = match (&reason, presence_only, cfg || req || cfg_sig || id_sig || system_managed) {
+    let reason = match (
+        &reason,
+        presence_only,
+        cfg || req || cfg_sig || id_sig || system_managed,
+    ) {
         (Some(r), _, _) => Some(r.clone()),
         (None, true, true) => {
             Some("presence only — App does not re-verify cryptographic signatures".into())
@@ -247,11 +255,7 @@ fn run_inspect_json_soft(cli_path: &Path) -> Result<serde_json::Value, String> {
         Ok(Ok(output)) => {
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let body = if !stdout.is_empty() {
-                stdout
-            } else {
-                stderr
-            };
+            let body = if !stdout.is_empty() { stdout } else { stderr };
             if body.is_empty() {
                 return Err("inspect returned no output".into());
             }
@@ -413,11 +417,7 @@ mod tests {
         // Never invent verify_ok from active + files.
         assert!(st.presence_only);
         assert!(st.signature_verified.is_none());
-        assert!(st
-            .reason
-            .as_deref()
-            .unwrap_or("")
-            .contains("presence only"));
+        assert!(st.reason.as_deref().unwrap_or("").contains("presence only"));
     }
 
     #[test]

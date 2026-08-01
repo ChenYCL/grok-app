@@ -191,7 +191,10 @@ fn parse_msg(inst: &ChannelInstance, m: &Value) -> Option<IncomingMessage> {
     };
 
     let mut text = String::new();
-    if let Some(items) = m.get("item_list").or_else(|| m.get("itemList")).and_then(|x| x.as_array())
+    if let Some(items) = m
+        .get("item_list")
+        .or_else(|| m.get("itemList"))
+        .and_then(|x| x.as_array())
     {
         for it in items {
             let ty = it.get("type").and_then(|x| x.as_i64()).unwrap_or(0);
@@ -353,7 +356,9 @@ pub async fn send_text(
         .unwrap_or("");
     let peer = chat_id.trim();
     if instance_id.is_empty() {
-        tracing::error!("weixin send: missing _instance_id in secrets — context_token lookup will fail");
+        tracing::error!(
+            "weixin send: missing _instance_id in secrets — context_token lookup will fail"
+        );
     }
     let ctx = get_context_token(instance_id, peer).ok_or_else(|| {
         format!(

@@ -163,8 +163,8 @@ fn title_case_skill_name(name: &str) -> String {
 
 /// Pure: default SKILL.md frontmatter + body template (mirrors TS `defaultSkillMdContent`).
 pub fn default_skill_md_content(name: &str, description: &str) -> String {
-    let safe_name = sanitize_skill_folder_name(name)
-        .unwrap_or_else(|_| name.trim().to_ascii_lowercase());
+    let safe_name =
+        sanitize_skill_folder_name(name).unwrap_or_else(|_| name.trim().to_ascii_lowercase());
     let desc_line = skill_description_for_frontmatter(description);
     let body_desc = {
         let n = normalize_skill_description(description);
@@ -276,9 +276,7 @@ pub fn skill_create(
     let content = default_skill_md_content(&safe_name, description);
     let bytes = content.as_bytes();
     if bytes.len() as u64 > MAX_SKILL_BYTES {
-        return Err(format!(
-            "template too large (max {MAX_SKILL_BYTES} bytes)"
-        ));
+        return Err(format!("template too large (max {MAX_SKILL_BYTES} bytes)"));
     }
 
     // Atomic-ish write: temp then rename.
@@ -332,12 +330,8 @@ pub fn build_skill_edit_roots(project_path: Option<&str>) -> Vec<PathBuf> {
 
 /// True when any component is ParentDir / CurDir (after empty check).
 pub fn path_has_traversal(path: &Path) -> bool {
-    path.components().any(|c| {
-        matches!(
-            c,
-            Component::ParentDir | Component::CurDir
-        )
-    })
+    path.components()
+        .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
 }
 
 /// Component-wise: path is equal to root or a descendant.
@@ -383,10 +377,7 @@ pub fn resolve_skill_md_path(raw: &str) -> Result<PathBuf, String> {
 }
 
 /// Require that the path is `{root}/{skillName}/SKILL.md` under a known root.
-pub fn require_skill_md_allowed(
-    path: &Path,
-    roots: &[PathBuf],
-) -> Result<PathBuf, String> {
+pub fn require_skill_md_allowed(path: &Path, roots: &[PathBuf]) -> Result<PathBuf, String> {
     if path_has_traversal(path) {
         return Err("path not allowed: traversal".into());
     }
@@ -401,10 +392,7 @@ pub fn require_skill_md_allowed(
     let parent = path
         .parent()
         .ok_or_else(|| "path not allowed: missing skill directory".to_string())?;
-    let skill_name = parent
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let skill_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
     if skill_name.is_empty() || skill_name == ".." || skill_name == "." {
         return Err("path not allowed: invalid skill name".into());
     }
@@ -576,7 +564,9 @@ mod tests {
     fn traversal_rejected() {
         assert!(path_has_traversal(Path::new("../etc")));
         assert!(path_has_traversal(Path::new("/a/../b")));
-        assert!(!path_has_traversal(Path::new("/Users/me/.grok/skills/help/SKILL.md")));
+        assert!(!path_has_traversal(Path::new(
+            "/Users/me/.grok/skills/help/SKILL.md"
+        )));
     }
 
     #[test]
@@ -618,10 +608,7 @@ mod tests {
 
     #[test]
     fn read_write_roundtrip() {
-        let dir = std::env::temp_dir().join(format!(
-            "grok-skill-edit-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("grok-skill-edit-test-{}", std::process::id()));
         let skill_dir = dir.join("skills").join("demo");
         fs::create_dir_all(&skill_dir).unwrap();
         let skill_md = skill_dir.join("SKILL.md");
@@ -650,8 +637,14 @@ mod tests {
 
     #[test]
     fn sanitize_skill_name_rules() {
-        assert_eq!(sanitize_skill_folder_name("deploy-k8s").unwrap(), "deploy-k8s");
-        assert_eq!(sanitize_skill_folder_name("  My Skill  ").unwrap(), "my-skill");
+        assert_eq!(
+            sanitize_skill_folder_name("deploy-k8s").unwrap(),
+            "deploy-k8s"
+        );
+        assert_eq!(
+            sanitize_skill_folder_name("  My Skill  ").unwrap(),
+            "my-skill"
+        );
         assert_eq!(sanitize_skill_folder_name("foo_bar").unwrap(), "foo-bar");
         assert!(sanitize_skill_folder_name("x").is_err());
         assert!(sanitize_skill_folder_name("").is_err());
@@ -671,10 +664,8 @@ mod tests {
 
     #[test]
     fn skill_create_project_scope_idempotent() {
-        let proj = std::env::temp_dir().join(format!(
-            "grok-skill-create-proj-{}",
-            std::process::id()
-        ));
+        let proj =
+            std::env::temp_dir().join(format!("grok-skill-create-proj-{}", std::process::id()));
         let _ = fs::remove_dir_all(&proj);
         fs::create_dir_all(&proj).unwrap();
         let proj_s = proj.to_string_lossy().to_string();

@@ -207,11 +207,19 @@ const SELECT_COLS: &str = "evidence_id, status_id, url, author, text, created_at
 fn list_evidence(conn: &Connection, filter: &EvidenceFilter) -> Result<Vec<EvidenceItem>, String> {
     let mut sql = format!("SELECT {SELECT_COLS} FROM evidence WHERE 1=1");
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    if let Some(tag) = filter.session_tag.as_deref().filter(|s| !s.trim().is_empty()) {
+    if let Some(tag) = filter
+        .session_tag
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+    {
         sql.push_str(" AND session_tag = ?");
         args.push(Box::new(tag.trim().to_string()));
     }
-    if let Some(q) = filter.query_contains.as_deref().filter(|s| !s.trim().is_empty()) {
+    if let Some(q) = filter
+        .query_contains
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+    {
         sql.push_str(" AND query LIKE ?");
         args.push(Box::new(format!("%{}%", q.trim())));
     }
@@ -222,7 +230,9 @@ fn list_evidence(conn: &Connection, filter: &EvidenceFilter) -> Result<Vec<Evide
     let limit = filter.limit.unwrap_or(100).clamp(1, 500);
     sql.push_str(&format!(" ORDER BY fetched_at DESC LIMIT {limit}"));
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("x-evidence list: {e}"))?;
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("x-evidence list: {e}"))?;
     let params_ref: Vec<&dyn rusqlite::ToSql> = args.iter().map(|b| b.as_ref()).collect();
     let rows = stmt
         .query_map(params_ref.as_slice(), row_to_item)
@@ -234,20 +244,22 @@ fn list_evidence(conn: &Connection, filter: &EvidenceFilter) -> Result<Vec<Evide
 fn get_evidence(conn: &Connection, ids: &[String]) -> Result<Vec<EvidenceItem>, String> {
     let mut out = Vec::with_capacity(ids.len());
     let mut stmt = conn
-        .prepare(&format!("SELECT {SELECT_COLS} FROM evidence WHERE evidence_id = ?1"))
+        .prepare(&format!(
+            "SELECT {SELECT_COLS} FROM evidence WHERE evidence_id = ?1"
+        ))
         .map_err(|e| format!("x-evidence get: {e}"))?;
     for id in ids {
         let id = id.trim();
         if id.is_empty() {
             continue;
         }
-        if let Some(item) = stmt
-            .query_row(params![id], row_to_item)
-            .map(Some)
-            .or_else(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => Ok(None),
-                other => Err(format!("x-evidence get: {other}")),
-            })?
+        if let Some(item) =
+            stmt.query_row(params![id], row_to_item)
+                .map(Some)
+                .or_else(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                    other => Err(format!("x-evidence get: {other}")),
+                })?
         {
             out.push(item);
         }
@@ -423,8 +435,7 @@ fn count_recent_packs(dir: &Path, days: u64) -> i64 {
     let Ok(entries) = fs::read_dir(dir) else {
         return 0;
     };
-    let cutoff = std::time::SystemTime::now()
-        .checked_sub(Duration::from_secs(days * 24 * 3600));
+    let cutoff = std::time::SystemTime::now().checked_sub(Duration::from_secs(days * 24 * 3600));
     let Some(cutoff) = cutoff else {
         return 0;
     };
@@ -440,7 +451,11 @@ fn count_recent_packs(dir: &Path, days: u64) -> i64 {
         .count() as i64
 }
 
-fn stats_from(conn: &Connection, today_start_ms: i64, packs: &Path) -> Result<EvidenceStats, String> {
+fn stats_from(
+    conn: &Connection,
+    today_start_ms: i64,
+    packs: &Path,
+) -> Result<EvidenceStats, String> {
     let total: i64 = conn
         .query_row("SELECT COUNT(*) FROM evidence", [], |r| r.get(0))
         .map_err(|e| format!("x-evidence stats: {e}"))?;
@@ -535,12 +550,23 @@ pub fn x_search(query: &str, limit: Option<u32>, session_tag: Option<&str>) -> X
         Err(code) => return err_envelope(q, &code, None),
     };
     let prompt = build_x_evidence_prompt(q, limit);
-    let stdout = match run_grok_headless(&cli, &prompt, X_EVIDENCE_SCHEMA, 14, X_EVIDENCE_TIMEOUT, None) {
+    let stdout = match run_grok_headless(
+        &cli,
+        &prompt,
+        X_EVIDENCE_SCHEMA,
+        14,
+        X_EVIDENCE_TIMEOUT,
+        None,
+    ) {
         Ok(s) => s,
         Err(code) => return err_envelope(q, &code, None),
     };
     let Some(value) = extract_items_value(&stdout) else {
-        return err_envelope(q, "search_failed", Some("could not parse evidence JSON".into()));
+        return err_envelope(
+            q,
+            "search_failed",
+            Some("could not parse evidence JSON".into()),
+        );
     };
     let mut items = items_to_evidence(&value, q, session_tag, "x_search");
     items.truncate(limit as usize);
@@ -615,13 +641,7 @@ fn build_pack_markdown(items: &[EvidenceItem], title: Option<&str>, date: &str) 
     let mut md = format!("## {title} · {date}\n\n");
     for (i, it) in items.iter().enumerate() {
         let author = it.author.as_deref().unwrap_or("unknown");
-        let excerpt: String = it
-            .text
-            .as_deref()
-            .unwrap_or("")
-            .chars()
-            .take(160)
-            .collect();
+        let excerpt: String = it.text.as_deref().unwrap_or("").chars().take(160).collect();
         let anchor = match it.url.as_deref() {
             Some(u) if it.verified => format!("[链接]({u})"),
             Some(u) => format!("[链接·未验证]({u})"),
@@ -679,7 +699,10 @@ mod tests {
         // 幻觉/短 id、非 status 页面一律拒绝。
         assert_eq!(extract_status_id("https://x.com/xai/status/123"), None);
         assert_eq!(extract_status_id("https://x.com/xai"), None);
-        assert_eq!(extract_status_id("https://example.com/status/1234567890"), None);
+        assert_eq!(
+            extract_status_id("https://example.com/status/1234567890"),
+            None
+        );
     }
 
     #[test]
@@ -688,7 +711,10 @@ mod tests {
         let a = sample(Some("https://x.com/xai/status/1234567890123"), "hello");
         assert!(upsert_evidence(&conn, &a).unwrap());
         // Same status id again → refresh, not a new row.
-        let mut b = sample(Some("https://x.com/xai/status/1234567890123"), "hello again");
+        let mut b = sample(
+            Some("https://x.com/xai/status/1234567890123"),
+            "hello again",
+        );
         b.likes = Some(42);
         assert!(!upsert_evidence(&conn, &b).unwrap());
         let rows = list_evidence(&conn, &EvidenceFilter::default()).unwrap();
@@ -770,7 +796,10 @@ mod tests {
 
     #[test]
     fn quote_pack_markdown_marks_unverified() {
-        let a = sample(Some("https://x.com/xai/status/1234567890123"), "verified post");
+        let a = sample(
+            Some("https://x.com/xai/status/1234567890123"),
+            "verified post",
+        );
         let b = sample(None, "unverified note");
         let md = build_pack_markdown(&[a.clone(), b], Some("测试包"), "2026-07-31");
         assert!(md.starts_with("## 测试包 · 2026-07-31"));

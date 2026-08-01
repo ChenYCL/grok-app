@@ -222,7 +222,10 @@ pub fn parse_allowlisted(text: &str) -> AllowlistedFlags {
             continue;
         }
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            table = trimmed.trim_start_matches('[').trim_end_matches(']').to_string();
+            table = trimmed
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .to_string();
             continue;
         }
         let Some(eq) = trimmed.find('=') else {
@@ -559,7 +562,9 @@ pub fn load_agent_config_edit() -> Result<AgentConfigEditSnapshot, String> {
 ///
 /// Also mirrors matching App settings fields so spawn flags stay consistent.
 /// New feature/workflow keys are config.toml-only (no invented AppSettings).
-pub fn save_agent_config_edit(patch: &AgentConfigEditPatch) -> Result<AgentConfigEditSnapshot, String> {
+pub fn save_agent_config_edit(
+    patch: &AgentConfigEditPatch,
+) -> Result<AgentConfigEditSnapshot, String> {
     let settings = store::load_settings();
     let mode = normalize_mode(&settings.session_data_mode);
     if mode != "independent" {
@@ -591,7 +596,9 @@ pub fn save_agent_config_edit(patch: &AgentConfigEditPatch) -> Result<AgentConfi
     // Never write redacted markers back — apply patch to raw disk text only.
     if existing.contains("[REDACTED]") {
         // Defensive: refuse if disk already looks redacted (should not happen).
-        tracing::warn!("agent_config_edit: on-disk config contains [REDACTED]; writing patch carefully");
+        tracing::warn!(
+            "agent_config_edit: on-disk config contains [REDACTED]; writing patch carefully"
+        );
     }
     let next = apply_patch_to_toml(&existing, patch)?;
     fs::write(&path, &next).map_err(|e| format!("write config: {e}"))?;
@@ -606,11 +613,10 @@ pub fn save_agent_config_edit(patch: &AgentConfigEditPatch) -> Result<AgentConfi
             s.permission_policy = policy.to_string();
             settings_dirty = true;
         }
-    } else if patch.yolo == Some(true)
-        && s.permission_policy != "always_approve" {
-            s.permission_policy = "always_approve".into();
-            settings_dirty = true;
-        }
+    } else if patch.yolo == Some(true) && s.permission_policy != "always_approve" {
+        s.permission_policy = "always_approve".into();
+        settings_dirty = true;
+    }
     if let Some(en) = patch.subagents_enabled {
         if s.subagents_enabled != en {
             s.subagents_enabled = en;
@@ -671,7 +677,10 @@ mod tests {
         assert_eq!(normalize_mode("SHARED"), "shared");
         assert_eq!(normalize_mode(""), "independent");
         assert_eq!(normalize_permission_mode("default").unwrap(), "default");
-        assert_eq!(normalize_permission_mode("accept_edits").unwrap(), "acceptEdits");
+        assert_eq!(
+            normalize_permission_mode("accept_edits").unwrap(),
+            "acceptEdits"
+        );
         assert_eq!(normalize_permission_mode("dontAsk").unwrap(), "dontAsk");
         assert_eq!(
             normalize_permission_mode("always-approve").unwrap(),
@@ -774,17 +783,17 @@ base_url = "https://example.com/v1"
         assert!(next.contains("auto_wake_enabled = true"), "{next}");
         assert!(next.contains("auto_wake = true"), "{next}");
         assert!(next.contains("two_pass_compaction = true"), "{next}");
-        assert!(next.contains("two_pass_compaction_enabled = true"), "{next}");
+        assert!(
+            next.contains("two_pass_compaction_enabled = true"),
+            "{next}"
+        );
         assert!(next.contains("lsp_tools = false"), "{next}");
         assert!(next.contains("codebase_indexing = true"), "{next}");
         assert!(next.contains("remote_fetch = false"), "{next}");
         // Existing features key preserved.
         assert!(next.contains("telemetry = false"), "{next}");
         // Secrets untouched.
-        assert!(
-            next.contains("sk-abcdefghijklmnopqrstuvwxyz0123"),
-            "{next}"
-        );
+        assert!(next.contains("sk-abcdefghijklmnopqrstuvwxyz0123"), "{next}");
         assert!(next.contains("base_url"), "{next}");
         assert_eq!(next.matches("permission_mode").count(), 1);
     }
@@ -815,7 +824,10 @@ two_pass_compaction = true
         assert!(preview.contains("[features]"));
         assert!(!preview.contains("[model.x]"));
         let red = redact_config_text(&preview);
-        assert!(red.contains("[REDACTED]") || !red.contains("should-not-show"), "{red}");
+        assert!(
+            red.contains("[REDACTED]") || !red.contains("should-not-show"),
+            "{red}"
+        );
     }
 
     #[test]
@@ -877,8 +889,10 @@ two_pass_compaction = true
         assert!(disk.contains("[workflows]"));
         assert!(disk.contains("workflows_enabled = true"));
         assert!(disk.contains("auto_wake_enabled = false"));
-        assert!(disk.contains("two_pass_compaction = true")
-            || disk.contains("two_pass_compaction_enabled = true"));
+        assert!(
+            disk.contains("two_pass_compaction = true")
+                || disk.contains("two_pass_compaction_enabled = true")
+        );
         assert!(!disk.contains("[REDACTED]"));
 
         match prev {

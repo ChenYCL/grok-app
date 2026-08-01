@@ -461,8 +461,13 @@ fn try_rg_content(
                 }
             }
         };
-        if let Some(hit) = hit_from_path(root, &canon, true, snippet, Some(line_no).filter(|&n| n > 0))
-        {
+        if let Some(hit) = hit_from_path(
+            root,
+            &canon,
+            true,
+            snippet,
+            Some(line_no).filter(|&n| n > 0),
+        ) {
             hits.push(hit);
         }
     }
@@ -600,13 +605,11 @@ fn walk_search(
 
     // Prefer content matches first, then name-only; stable by relative path.
     hits.sort_by(|a, b| {
-        b.content_match
-            .cmp(&a.content_match)
-            .then_with(|| {
-                a.relative_path
-                    .to_ascii_lowercase()
-                    .cmp(&b.relative_path.to_ascii_lowercase())
-            })
+        b.content_match.cmp(&a.content_match).then_with(|| {
+            a.relative_path
+                .to_ascii_lowercase()
+                .cmp(&b.relative_path.to_ascii_lowercase())
+        })
     });
     if hits.len() > limit {
         hits.truncate(limit);
@@ -664,23 +667,14 @@ pub fn search_project_codebase(
     };
 
     if !crate::path_scope::is_allowed(&canonical) {
-        return empty_result(
-            raw,
-            q,
-            mode,
-            limit,
-            true,
-            true,
-            Some("untrusted_project"),
-        );
+        return empty_result(raw, q, mode, limit, true, true, Some("untrusted_project"));
     }
 
     // Empty query: name mode lists recent files (composer `@` panel).
     // Content / all still soft-fail so we never full-scan on blank.
     if !should_run_codebase_search(q) {
         if mode == "name" {
-            let (mut hits, truncated, _) =
-                walk_search(&canonical, "", "name", limit, false, true);
+            let (mut hits, truncated, _) = walk_search(&canonical, "", "name", limit, false, true);
             // Prefer recently modified when listing without a filter.
             hits.sort_by_key(|b| std::cmp::Reverse(b.mtime_ms));
             if hits.len() > limit {
@@ -759,8 +753,7 @@ pub fn search_project_codebase(
         }
     } else {
         // name only
-        let (walk_hits, walk_trunc, _) =
-            walk_search(&canonical, q, "name", limit, false, true);
+        let (walk_hits, walk_trunc, _) = walk_search(&canonical, q, "name", limit, false, true);
         ("walk".to_string(), walk_hits, walk_trunc)
     };
 

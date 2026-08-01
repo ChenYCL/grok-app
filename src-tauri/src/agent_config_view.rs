@@ -368,7 +368,10 @@ theme = "dark"
 "#;
         let out = redact_config_toml(raw);
         assert!(out.contains("[REDACTED]"), "{out}");
-        assert!(!out.contains("sk-abcdefghijklmnopqrstuvwxyz012345"), "{out}");
+        assert!(
+            !out.contains("sk-abcdefghijklmnopqrstuvwxyz012345"),
+            "{out}"
+        );
         assert!(!out.contains("deploy-secret-should-never-show"), "{out}");
         assert!(!out.contains("supersecrettokenvalue123"), "{out}");
         assert!(!out.contains("dep_abcdefghijklmnop"), "{out}");
@@ -383,7 +386,10 @@ theme = "dark"
     #[test]
     fn redacts_inline_token_prefix_without_key() {
         let s = redact_config_toml("note = \"see sk-abcdefghijklmnopqrstuvwxyz0123\"");
-        assert!(s.contains("sk-[REDACTED]") || s.contains("[REDACTED]"), "{s}");
+        assert!(
+            s.contains("sk-[REDACTED]") || s.contains("[REDACTED]"),
+            "{s}"
+        );
         assert!(!s.contains("sk-abcdefghijklmnopqrstuvwxyz0123"), "{s}");
     }
 

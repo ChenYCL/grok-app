@@ -15,7 +15,6 @@ use crate::session_fsm::{SessionFsm, SessionState};
 use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
 use crate::stream_stall::StallTier;
 
-
 /// Outcome of one stall-watchdog pass on a single live/background session.
 #[derive(Debug)]
 pub(super) enum StallTickAction {
@@ -524,8 +523,7 @@ pub(super) fn tool_journal_label(
     path: &Option<String>,
 ) -> String {
     let t = title.trim();
-    if !t.is_empty() && !t.eq_ignore_ascii_case("tool") && t != "web_fetch" && t != "web_search"
-    {
+    if !t.is_empty() && !t.eq_ignore_ascii_case("tool") && t != "web_fetch" && t != "web_search" {
         return t.to_string();
     }
     // "Fetch: https://…" style titles from tool_call_update
@@ -694,10 +692,7 @@ pub(super) fn first_media_path_in_text(text: &str) -> Option<String> {
             return Some(p.to_string());
         }
         // Windows-ish absolute (rare in macOS logs but harmless)
-        if p.len() > 3
-            && p.as_bytes().get(1) == Some(&b':')
-            && is_media_fs_path(p)
-        {
+        if p.len() > 3 && p.as_bytes().get(1) == Some(&b':') && is_media_fs_path(p) {
             return Some(p.to_string());
         }
     }
@@ -709,7 +704,10 @@ pub(super) fn first_media_path_in_text(text: &str) -> Option<String> {
             continue;
         }
         if let Some(s) = start {
-            let end = matches!(ch, ' ' | '\n' | '\r' | '\t' | '"' | '\'' | ')' | ']' | '`' | '（' | '）');
+            let end = matches!(
+                ch,
+                ' ' | '\n' | '\r' | '\t' | '"' | '\'' | ')' | ']' | '`' | '（' | '）'
+            );
             if end || i + ch.len_utf8() >= text.len() {
                 let end_i = if end { i } else { text.len() };
                 let candidate = text[s..end_i].trim_end_matches(['.', ',', ';', '。', '，']);
@@ -860,11 +858,10 @@ pub(super) struct DrainedAgents {
 /// (`deferred_prompt_complete`, open tools, …) must not block reconnect.
 pub(super) fn connect_should_preserve_live_process(state: SessionState, busy: bool) -> bool {
     match state {
-        SessionState::Streaming
-        | SessionState::AwaitingPermission
-        | SessionState::Connecting => true,
+        SessionState::Streaming | SessionState::AwaitingPermission | SessionState::Connecting => {
+            true
+        }
         SessionState::Ready => busy,
         SessionState::Idle | SessionState::Disconnected => false,
     }
 }
-

@@ -1,8 +1,8 @@
 //! Independent store under ~/.grok-app: projects, sessions index, settings, secrets.
 
-use std::sync::Mutex;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -654,7 +654,6 @@ fn read_json<T: for<'de> Deserialize<'de> + Default>(path: &PathBuf) -> T {
     }
 }
 
-
 /// Last quarantined store path (corrupt JSON recovered). Taken once by the UI.
 static LAST_STORE_QUARANTINE: Mutex<Option<String>> = Mutex::new(None);
 
@@ -681,7 +680,6 @@ fn read_json_recover<T: for<'de> Deserialize<'de> + Default>(path: &PathBuf) -> 
         Err(_) => T::default(),
     }
 }
-
 
 /// Pop the most recent store quarantine path (if any) for a one-shot UI notice.
 pub fn take_store_quarantine() -> Option<String> {
@@ -710,10 +708,9 @@ pub fn load_settings() -> AppSettings {
     // One-time: installs predating the multi-session rework persisted the old
     // default pool size (3). Without this they stay at three warm agents and
     // hit the process limit while browsing a couple of chats.
-    if let Some(next) = crate::process_limits::migrate_max_concurrent(
-        s.max_concurrent_agents,
-        s.pool_size_migrated,
-    ) {
+    if let Some(next) =
+        crate::process_limits::migrate_max_concurrent(s.max_concurrent_agents, s.pool_size_migrated)
+    {
         tracing::info!(
             "settings migration: maxConcurrentAgents {} → {}",
             s.max_concurrent_agents,
@@ -732,9 +729,7 @@ pub fn load_settings() -> AppSettings {
     if !s.startup_new_chat_default_migrated {
         s.reopen_last_session = false;
         s.startup_new_chat_default_migrated = true;
-        tracing::info!(
-            "settings migration: reopenLastSession → false (start on new chat)"
-        );
+        tracing::info!("settings migration: reopenLastSession → false (start on new chat)");
         let _ = write_json(&settings_file(), &s);
     }
     s
@@ -918,8 +913,7 @@ pub fn set_project_pinned(id: &str, pinned: bool) -> Result<Project, String> {
 }
 
 /// Named project accent tokens (sidebar color dot).
-pub const PROJECT_COLOR_TOKENS: &[&str] =
-    &["blue", "green", "orange", "purple", "pink", "gray"];
+pub const PROJECT_COLOR_TOKENS: &[&str] = &["blue", "green", "orange", "purple", "pink", "gray"];
 
 /// Normalize a project color value.
 ///
@@ -957,8 +951,7 @@ fn normalize_hex_color(raw: &str) -> Option<String> {
         return None;
     }
     let body = &s[1..];
-    let ok = matches!(body.len(), 3 | 6)
-        && body.bytes().all(|b| b.is_ascii_hexdigit());
+    let ok = matches!(body.len(), 3 | 6) && body.bytes().all(|b| b.is_ascii_hexdigit());
     if !ok {
         return None;
     }
@@ -1020,10 +1013,7 @@ pub fn trust_project(id: &str) -> Result<Project, String> {
 ///
 /// `policy = None` / empty / `"inherit"` clears the override so the app default
 /// applies. Untrusted projects cannot store a relaxed tier.
-pub fn set_project_permission_policy(
-    id: &str,
-    policy: Option<String>,
-) -> Result<Project, String> {
+pub fn set_project_permission_policy(id: &str, policy: Option<String>) -> Result<Project, String> {
     use crate::permission::PermissionPolicy;
 
     let mut list = load_projects();
@@ -1093,10 +1083,7 @@ pub fn resolve_sandbox_profile(global: &str, project_override: Option<&str>) -> 
 ///
 /// `profile = None` / empty / `"inherit"` clears the override so Settings apply.
 /// Requires a trusted project (same gate as permission tier).
-pub fn set_project_sandbox_profile(
-    id: &str,
-    profile: Option<String>,
-) -> Result<Project, String> {
+pub fn set_project_sandbox_profile(id: &str, profile: Option<String>) -> Result<Project, String> {
     let mut list = load_projects();
     let p = list
         .iter_mut()
@@ -1117,9 +1104,10 @@ pub fn set_project_sandbox_profile(
             {
                 None
             } else {
-                Some(normalize_sandbox_profile(t).ok_or_else(|| {
-                    format!("unknown sandbox profile: {t}")
-                })?)
+                Some(
+                    normalize_sandbox_profile(t)
+                        .ok_or_else(|| format!("unknown sandbox profile: {t}"))?,
+                )
             }
         }
     };
@@ -1323,8 +1311,8 @@ pub fn set_session_json_schema(
                 if t.len() > JSON_SCHEMA_MAX_CHARS {
                     return Err("json schema too large".into());
                 }
-                let v: serde_json::Value = serde_json::from_str(t)
-                    .map_err(|e| format!("invalid json schema: {e}"))?;
+                let v: serde_json::Value =
+                    serde_json::from_str(t).map_err(|e| format!("invalid json schema: {e}"))?;
                 if !v.is_object() {
                     return Err("json schema must be a JSON object".into());
                 }
@@ -1365,10 +1353,7 @@ pub fn normalize_plugin_dirs(dirs: impl IntoIterator<Item = String>) -> Vec<Stri
 }
 
 /// Set session-only `--plugin-dir` paths (empty clears). Does not touch global plugins.
-pub fn set_session_plugin_dirs(
-    id: &str,
-    plugin_dirs: Vec<String>,
-) -> Result<SessionMeta, String> {
+pub fn set_session_plugin_dirs(id: &str, plugin_dirs: Vec<String>) -> Result<SessionMeta, String> {
     let dirs = normalize_plugin_dirs(plugin_dirs);
     let mut list = load_sessions_index();
     let s = list
@@ -1470,10 +1455,7 @@ pub fn set_session_max_agent_turns(
 /// Pass `None` or empty/whitespace to clear. Soft-respawn is handled by the command.
 /// Set or clear per-session `--no-ask-user` override.
 /// `None` inherits global `AppSettings.no_ask_user`.
-pub fn set_session_no_ask_user(
-    id: &str,
-    no_ask_user: Option<bool>,
-) -> Result<SessionMeta, String> {
+pub fn set_session_no_ask_user(id: &str, no_ask_user: Option<bool>) -> Result<SessionMeta, String> {
     let mut list = load_sessions_index();
     let s = list
         .iter_mut()
@@ -1506,10 +1488,7 @@ pub fn set_session_system_prompt_override(
 /// Bind (or clear) a session's project folder. Used to attach orphan / legacy
 /// chats to a project added later. Clearing (`None`) returns the chat to
 /// "其他会话"; agent cwd still uses the general workspace directory.
-pub fn set_session_project(
-    id: &str,
-    project_id: Option<String>,
-) -> Result<SessionMeta, String> {
+pub fn set_session_project(id: &str, project_id: Option<String>) -> Result<SessionMeta, String> {
     let pid = project_id
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty() && s.as_str() != GENERAL_PROJECT_ID);
@@ -1953,9 +1932,7 @@ pub fn redact_text(input: &str) -> String {
     let mut cleaned = String::with_capacity(out.len());
     for word in out.split_whitespace() {
         if word.len() > 20
-            && (word.starts_with("sk-")
-                || word.starts_with("xai-")
-                || word.contains("Bearer"))
+            && (word.starts_with("sk-") || word.starts_with("xai-") || word.contains("Bearer"))
         {
             cleaned.push_str("[REDACTED]");
         } else {
@@ -1996,21 +1973,14 @@ fn global_prefs(settings: &AppSettings) -> (String, String, String, String) {
 /// Model / effort / mode follow `composer_prefs_scope`.
 /// Permission always cascades session → project → global (L10), and untrusted
 /// projects force Ask regardless of stored tiers.
-pub fn resolve_composer_prefs(
-    project_id: Option<&str>,
-    session_id: Option<&str>,
-) -> ComposerPrefs {
+pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>) -> ComposerPrefs {
     use crate::permission::effective_permission_policy;
 
     let settings = load_settings();
     let scope = ComposerPrefsScope::parse(&settings.composer_prefs_scope);
     let (g_model, g_effort, g_mode, g_policy) = global_prefs(&settings);
 
-    let sess = session_id.and_then(|id| {
-        load_sessions_index()
-            .into_iter()
-            .find(|s| s.id == id)
-    });
+    let sess = session_id.and_then(|id| load_sessions_index().into_iter().find(|s| s.id == id));
     let proj = sess
         .as_ref()
         .and_then(|s| s.project_id.as_deref())
@@ -2021,10 +1991,8 @@ pub fn resolve_composer_prefs(
     let permission_policy = effective_permission_policy(
         &g_policy,
         proj.as_ref().map(|p| p.trusted),
-        proj.as_ref()
-            .and_then(|p| p.permission_policy.as_deref()),
-        sess.as_ref()
-            .and_then(|s| s.permission_policy.as_deref()),
+        proj.as_ref().and_then(|p| p.permission_policy.as_deref()),
+        sess.as_ref().and_then(|s| s.permission_policy.as_deref()),
     )
     .as_str()
     .to_string();
@@ -2252,10 +2220,7 @@ mod tests {
                 Some(*tok)
             );
         }
-        assert_eq!(
-            normalize_project_color("#ABC").as_deref(),
-            Some("#abc")
-        );
+        assert_eq!(normalize_project_color("#ABC").as_deref(), Some("#abc"));
         assert_eq!(
             normalize_project_color("#a1b2c3").as_deref(),
             Some("#a1b2c3")
@@ -2268,7 +2233,9 @@ mod tests {
 
     #[test]
     fn normalize_project_color_clears_and_rejects() {
-        for raw in ["", "   ", "none", "NONE", "inherit", "default", "clear", "null"] {
+        for raw in [
+            "", "   ", "none", "NONE", "inherit", "default", "clear", "null",
+        ] {
             assert_eq!(normalize_project_color(raw), None, "raw={raw:?}");
         }
         assert_eq!(normalize_project_color("red"), None);
@@ -2398,22 +2365,13 @@ mod tests {
             resolve_sandbox_profile("workspace", Some("strict")),
             "strict"
         );
-        assert_eq!(
-            resolve_sandbox_profile("strict", Some("off")),
-            "off"
-        );
+        assert_eq!(resolve_sandbox_profile("strict", Some("off")), "off");
         assert_eq!(
             resolve_sandbox_profile("workspace", Some("inherit")),
             "workspace"
         );
-        assert_eq!(
-            resolve_sandbox_profile("workspace", None),
-            "workspace"
-        );
-        assert_eq!(
-            resolve_sandbox_profile("bogus", Some("")),
-            "off"
-        );
+        assert_eq!(resolve_sandbox_profile("workspace", None), "workspace");
+        assert_eq!(resolve_sandbox_profile("bogus", Some("")), "off");
         assert_eq!(
             resolve_sandbox_profile("  WorkSpace  ", Some("  DEVBOX  ")),
             "devbox"
@@ -2630,12 +2588,7 @@ mod tests {
         let m: SessionMeta = serde_json::from_str(raw).expect("legacy session without pluginDirs");
         assert!(m.plugin_dirs.is_empty());
         assert_eq!(
-            normalize_plugin_dirs(vec![
-                "  /a  ".into(),
-                "".into(),
-                "/a".into(),
-                "/b".into()
-            ]),
+            normalize_plugin_dirs(vec!["  /a  ".into(), "".into(), "/a".into(), "/b".into()]),
             vec!["/a".to_string(), "/b".to_string()]
         );
     }
@@ -2740,7 +2693,9 @@ mod tests {
         assert!(path.is_dir());
         let listed = load_projects();
         assert!(
-            listed.iter().all(|p| p.id != GENERAL_PROJECT_ID && !p.system),
+            listed
+                .iter()
+                .all(|p| p.id != GENERAL_PROJECT_ID && !p.system),
             "general must not appear as a project: {:?}",
             listed.iter().map(|p| &p.id).collect::<Vec<_>>()
         );

@@ -351,7 +351,10 @@ pub fn rewrite_section_base_urls(
 }
 
 fn model_header(id: &str) -> String {
-    if id.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')) {
+    if id
+        .chars()
+        .any(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+    {
         format!("[model.{}]", quote(id))
     } else {
         format!("[model.{id}]")
@@ -801,7 +804,11 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             .unwrap_or_else(|| s.id.clone());
         // UI shows the real upstream; CLI may use loopback sanitize proxy.
         let base_url = crate::relay_stream_proxy::effective_upstream_base(&s.fields);
-        let name = s.fields.get("name").cloned().unwrap_or_else(|| s.id.clone());
+        let name = s
+            .fields
+            .get("name")
+            .cloned()
+            .unwrap_or_else(|| s.id.clone());
         let has_api_key = s
             .fields
             .get("api_key")
@@ -829,8 +836,7 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             efforts,
         });
     }
-    let (active_source, active_provider_id) =
-        route_from_default(def.as_deref(), &providers);
+    let (active_source, active_provider_id) = route_from_default(def.as_deref(), &providers);
     ProvidersListResult {
         providers,
         default_model: def,
@@ -852,10 +858,7 @@ pub fn list_custom_providers() -> Result<ProvidersListResult, String> {
 pub fn active_route() -> ActiveRoute {
     match list_custom_providers() {
         Ok(list) if list.active_source == "custom" => {
-            if let Some(id) = list
-                .active_provider_id
-                .filter(|s| !s.trim().is_empty())
-            {
+            if let Some(id) = list.active_provider_id.filter(|s| !s.trim().is_empty()) {
                 return ActiveRoute::Custom { id };
             }
             ActiveRoute::Official
@@ -1056,9 +1059,7 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         .unwrap_or(id.as_str())
         .to_string();
 
-    let prev_app_models = existing
-        .and_then(|s| s.fields.get(APP_MODELS_KEY))
-        .cloned();
+    let prev_app_models = existing.and_then(|s| s.fields.get(APP_MODELS_KEY)).cloned();
     let models = if let Some(ref list) = input.models {
         let mut cleaned = normalize_provider_models(list);
         if cleaned.is_empty() {
@@ -1101,7 +1102,10 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     } else if crate::relay_stream_proxy::is_local_sanitize_proxy_url(&base_url) {
         // User re-saved a local proxy URL without retyping upstream: keep previous.
         if let Some(prev) = existing
-            .and_then(|s| s.fields.get(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY))
+            .and_then(|s| {
+                s.fields
+                    .get(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY)
+            })
             .cloned()
             .filter(|s| !s.trim().is_empty())
         {
@@ -1373,7 +1377,9 @@ mod tests {
             agent_home: String::new(),
         };
         assert!(provider_mutation_needs_agent_reload(true, "other", &active));
-        assert!(provider_mutation_needs_agent_reload(false, "relay", &active));
+        assert!(provider_mutation_needs_agent_reload(
+            false, "relay", &active
+        ));
         assert!(!provider_mutation_needs_agent_reload(
             false, "other", &active
         ));
@@ -1444,14 +1450,8 @@ mod tests {
         let json = encode_app_models(&list);
         let decoded = decode_app_models(Some(&json), "fallback", "Fallback");
         assert_eq!(decoded, list);
-        assert_eq!(
-            resolve_active_model(&list, "other"),
-            "other"
-        );
-        assert_eq!(
-            resolve_active_model(&list, "missing"),
-            "deepseek-v4-flash"
-        );
+        assert_eq!(resolve_active_model(&list, "other"), "other");
+        assert_eq!(resolve_active_model(&list, "missing"), "deepseek-v4-flash");
     }
 
     #[test]
@@ -1520,17 +1520,17 @@ mod tests {
         let sections = parse_model_sections(&text);
         assert_eq!(sections.len(), 1);
         let s = &sections[0];
-        let got_models = decode_app_models(
-            s.fields.get(APP_MODELS_KEY).map(|x| x.as_str()),
-            "x",
-            "x",
-        );
+        let got_models =
+            decode_app_models(s.fields.get(APP_MODELS_KEY).map(|x| x.as_str()), "x", "x");
         let got_efforts = decode_app_efforts(s.fields.get(APP_EFFORTS_KEY).map(|x| x.as_str()));
         assert_eq!(got_models, models);
         assert_eq!(got_efforts, efforts);
         assert_eq!(got_models[0].name, "DeepSeek V4 Flash");
         assert_eq!(
-            got_efforts.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            got_efforts
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
             vec!["low", "high", "xhigh", "max"]
         );
     }
@@ -1552,7 +1552,10 @@ app_models = \"[{\\\"id\\\":\\\"deepseek-v4-flash\\\",\\\"name\\\":\\\"Flash\\\"
 ";
         assert!(text.ends_with('\n'));
         let sections = parse_model_sections(text);
-        let deep = sections.iter().find(|s| s.id == "deepseek").expect("section");
+        let deep = sections
+            .iter()
+            .find(|s| s.id == "deepseek")
+            .expect("section");
         // end must not exceed lines() length
         let n = text.lines().count();
         assert!(deep.end <= n, "end {} > lines {}", deep.end, n);

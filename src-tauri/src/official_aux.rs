@@ -23,7 +23,6 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Serialize};
 use crate::acp_client::{AcpClient, AcpEvent, SpawnOptions, StreamKind};
 use crate::agent_home_config::set_table_string;
 use crate::cli_probe;
@@ -33,6 +32,7 @@ use crate::providers::OFFICIAL_CATALOG_MODEL;
 use crate::proxy;
 use crate::secrets;
 use crate::store;
+use serde::{Deserialize, Serialize};
 
 /// Isolated profile for official aux headless jobs.
 pub fn official_aux_home() -> PathBuf {
@@ -140,7 +140,8 @@ pub fn ensure_official_aux_home() -> Result<PathBuf, String> {
         tracing::warn!(target: "official_aux", "no CLI auth.json and no official API key");
     }
 
-    fs::write(official_aux_config_toml(), text).map_err(|e| format!("write official aux config: {e}"))?;
+    fs::write(official_aux_config_toml(), text)
+        .map_err(|e| format!("write official aux config: {e}"))?;
     Ok(home)
 }
 
@@ -409,13 +410,8 @@ No repo edits. Prefer built-in tools. Keep the final answer concise and complete
         timeout
     );
 
-    let (client, mut events) = AcpClient::spawn_with_home(
-        cli_path,
-        cwd,
-        "independent",
-        opts,
-    )
-    .map_err(|e| format!("official ACP spawn: {}", e.message))?;
+    let (client, mut events) = AcpClient::spawn_with_home(cli_path, cwd, "independent", opts)
+        .map_err(|e| format!("official ACP spawn: {}", e.message))?;
 
     let acc = Arc::new(std::sync::Mutex::new(String::new()));
     let acc_ev = Arc::clone(&acc);
@@ -424,11 +420,7 @@ No repo edits. Prefer built-in tools. Keep the final answer concise and complete
     let pump = tokio::spawn(async move {
         while let Some(ev) = events.recv().await {
             match ev {
-                AcpEvent::Stream {
-                    kind,
-                    text,
-                    ..
-                } => {
+                AcpEvent::Stream { kind, text, .. } => {
                     if text.is_empty() {
                         continue;
                     }
@@ -563,10 +555,7 @@ No repo edits. Prefer built-in tools. Keep the final answer concise and complete
     client.kill().await;
     let _ = tokio::time::timeout(Duration::from_secs(5), pump).await;
 
-    let text = acc
-        .lock()
-        .map(|g| g.clone())
-        .unwrap_or_default();
+    let text = acc.lock().map(|g| g.clone()).unwrap_or_default();
     if text.trim().is_empty() {
         return Err("official ACP empty response".into());
     }
@@ -940,10 +929,7 @@ pub fn dispatch_tool(tool: &str, args: &serde_json::Value) -> Result<String, Str
                 .or_else(|| args.get("q"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let limit = args
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as u32);
+            let limit = args.get("limit").and_then(|v| v.as_u64()).map(|n| n as u32);
             let min_faves = args
                 .get("min_faves")
                 .or_else(|| args.get("minFaves"))
@@ -957,10 +943,7 @@ pub fn dispatch_tool(tool: &str, args: &serde_json::Value) -> Result<String, Str
                 .or_else(|| args.get("q"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let limit = args
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as u32);
+            let limit = args.get("limit").and_then(|v| v.as_u64()).map(|n| n as u32);
             x_semantic_search(q, limit)
         }
         "x_user_search" => {
@@ -969,10 +952,7 @@ pub fn dispatch_tool(tool: &str, args: &serde_json::Value) -> Result<String, Str
                 .or_else(|| args.get("q"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let count = args
-                .get("count")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as u32);
+            let count = args.get("count").and_then(|v| v.as_u64()).map(|n| n as u32);
             x_user_search(q, count)
         }
         "x_thread_fetch" => {
@@ -1504,8 +1484,7 @@ pub fn detect_x_search_intent_with_context(
         .map(|(_, rest)| rest)
         .unwrap_or(user_part);
     // Drop image `@/path` tokens before intent scoring — they are not X handles.
-    let (user_clean, image_paths) =
-        crate::models_aux::strip_image_at_paths(user_part);
+    let (user_clean, image_paths) = crate::models_aux::strip_image_at_paths(user_part);
     let user_clean = user_clean.trim();
     // Image-only (or near-empty after strip) → never host X pre-search.
     if user_clean.is_empty() && !image_paths.is_empty() {
@@ -1592,9 +1571,21 @@ fn query_needs_coref(q: &str) -> bool {
     // Pure pronouns / deictics
     matches!(
         t.as_str(),
-        "它" | "他" | "她" | "这个" | "那个" | "此" | "该"
-            | "这" | "那" | "this" | "that" | "it" | "they" | "them"
-            | "this one" | "that one"
+        "它" | "他"
+            | "她"
+            | "这个"
+            | "那个"
+            | "此"
+            | "该"
+            | "这"
+            | "那"
+            | "this"
+            | "that"
+            | "it"
+            | "they"
+            | "them"
+            | "this one"
+            | "that one"
     ) || t.chars().all(|c| {
         matches!(
             c,
@@ -1678,7 +1669,11 @@ fn strip_x_search_filler(text: &str) -> String {
             s = format!("{}{}", &s[..p], &s[p + f.len()..]);
         }
     }
-    s.split_whitespace().collect::<Vec<_>>().join(" ").trim().to_string()
+    s.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
 }
 
 /// Pull a plausible entity name from prior user/assistant text for coref.
@@ -1707,7 +1702,31 @@ pub fn extract_topic_entity_from_context(prior: &str) -> Option<String> {
     let mut candidates: Vec<String> = Vec::new();
     for tok in blob.split(|c: char| {
         c.is_whitespace()
-            || matches!(c, ',' | '.' | '。' | '，' | '、' | ':' | '：' | '/' | '\\' | '|' | '"' | '\'' | '`' | '(' | ')' | '（' | '）' | '《' | '》' | '【' | '】' | '#' | '*' )
+            || matches!(
+                c,
+                ',' | '.'
+                    | '。'
+                    | '，'
+                    | '、'
+                    | ':'
+                    | '：'
+                    | '/'
+                    | '\\'
+                    | '|'
+                    | '"'
+                    | '\''
+                    | '`'
+                    | '('
+                    | ')'
+                    | '（'
+                    | '）'
+                    | '《'
+                    | '》'
+                    | '【'
+                    | '】'
+                    | '#'
+                    | '*'
+            )
     }) {
         let t = tok.trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '-');
         if t.len() < 3 || t.len() > 40 {
@@ -1723,9 +1742,28 @@ pub fn extract_topic_entity_from_context(prior: &str) -> Option<String> {
         let lower = t.to_ascii_lowercase();
         if matches!(
             lower.as_str(),
-            "http" | "https" | "www" | "com" | "the" | "and" | "for" | "with"
-                | "from" | "this" | "that" | "search" | "twitter" | "user" | "info"
-                | "about" | "model" | "agent" | "tool" | "true" | "false" | "null"
+            "http"
+                | "https"
+                | "www"
+                | "com"
+                | "the"
+                | "and"
+                | "for"
+                | "with"
+                | "from"
+                | "this"
+                | "that"
+                | "search"
+                | "twitter"
+                | "user"
+                | "info"
+                | "about"
+                | "model"
+                | "agent"
+                | "tool"
+                | "true"
+                | "false"
+                | "null"
         ) {
             continue;
         }
@@ -1733,9 +1771,10 @@ pub fn extract_topic_entity_from_context(prior: &str) -> Option<String> {
         let has_upper = t.chars().any(|c| c.is_ascii_uppercase());
         let has_digit = t.chars().any(|c| c.is_ascii_digit());
         if (has_upper || has_digit || t.len() >= 5)
-            && !candidates.iter().any(|c| c.eq_ignore_ascii_case(t)) {
-                candidates.push(t.to_string());
-            }
+            && !candidates.iter().any(|c| c.eq_ignore_ascii_case(t))
+        {
+            candidates.push(t.to_string());
+        }
     }
     // Prefer the last (most recent) strong candidate
     if let Some(c) = candidates.last() {
@@ -1761,10 +1800,14 @@ pub fn extract_topic_entity_from_context(prior: &str) -> Option<String> {
                     })
                     .collect();
                 let entity = entity.trim();
-                if entity.chars().count() >= 2 && entity.chars().count() <= 20
-                    && !query_needs_coref(entity) && entity != "信息" && entity != "资讯" {
-                        return Some(entity.to_string());
-                    }
+                if entity.chars().count() >= 2
+                    && entity.chars().count() <= 20
+                    && !query_needs_coref(entity)
+                    && entity != "信息"
+                    && entity != "资讯"
+                {
+                    return Some(entity.to_string());
+                }
             }
         }
     }
@@ -1871,7 +1914,12 @@ pub fn prior_context_for_session(app_session_id: &str) -> String {
 /// True when text has `@handle` (2–20 alnum/_) that is **not** a filesystem path.
 fn text_has_x_handle_token(text: &str) -> bool {
     for token in text.split_whitespace() {
-        let t = token.trim_matches(|c: char| matches!(c, ',' | '.' | '。' | '，' | '"' | '\'' | '!' | '?' | '？' | '！'));
+        let t = token.trim_matches(|c: char| {
+            matches!(
+                c,
+                ',' | '.' | '。' | '，' | '"' | '\'' | '!' | '?' | '？' | '！'
+            )
+        });
         if let Some(h) = t.strip_prefix('@') {
             if h.starts_with('/') || h.starts_with('\\') {
                 continue; // @/Users/... image path
@@ -1883,8 +1931,7 @@ fn text_has_x_handle_token(text: &str) -> bool {
             }
             if h.len() >= 2
                 && h.len() <= 20
-                && h.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
             {
                 return true;
             }
@@ -1915,8 +1962,7 @@ fn extract_x_handle(text: &str) -> Option<String> {
             }
             if h.len() >= 2
                 && h.len() <= 20
-                && h.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
             {
                 return Some(h.to_string());
             }
@@ -1934,9 +1980,7 @@ fn extract_x_handle(text: &str) -> Option<String> {
                 .trim_matches(|c: char| matches!(c, ',' | '.' | '。' | '，' | '@'));
             if tok.len() >= 2
                 && tok.len() <= 20
-                && tok
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && tok.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
             {
                 return Some(tok.to_string());
             }
@@ -1951,7 +1995,15 @@ fn extract_x_handle(text: &str) -> Option<String> {
                 && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
                 && !matches!(
                     t.to_ascii_lowercase().as_str(),
-                    "search" | "twitter" | "https" | "http" | "com" | "this" | "that" | "账号" | "信息"
+                    "search"
+                        | "twitter"
+                        | "https"
+                        | "http"
+                        | "com"
+                        | "this"
+                        | "that"
+                        | "账号"
+                        | "信息"
                 )
             {
                 // Prefer tokens that look like handles (has digit or mixed case already stripped)
@@ -1967,10 +2019,16 @@ fn extract_x_handle(text: &str) -> Option<String> {
 fn extract_x_status_ref(text: &str) -> Option<String> {
     for tok in text.split_whitespace() {
         if tok.contains("x.com/") && tok.contains("status") {
-            return Some(tok.trim_matches(|c: char| matches!(c, ',' | '.' | '。' | ')')).to_string());
+            return Some(
+                tok.trim_matches(|c: char| matches!(c, ',' | '.' | '。' | ')'))
+                    .to_string(),
+            );
         }
         if tok.contains("twitter.com/") && tok.contains("status") {
-            return Some(tok.trim_matches(|c: char| matches!(c, ',' | '.' | '。' | ')')).to_string());
+            return Some(
+                tok.trim_matches(|c: char| matches!(c, ',' | '.' | '。' | ')'))
+                    .to_string(),
+            );
         }
     }
     None
@@ -2068,11 +2126,7 @@ fn x_block_err(e: String) -> (bool, String, String) {
 /// Host pre-run X search via official aux. Returns inject block + UI strings.
 pub fn prepare_x_search_block(intent: &XSearchIntent) -> (bool, String, String) {
     if !should_inject_mcp_for_main() && !official_aux_available() {
-        return (
-            false,
-            String::new(),
-            "official aux unavailable".into(),
-        );
+        return (false, String::new(), "official aux unavailable".into());
     }
     if !official_aux_available() {
         return (false, String::new(), "no official credentials".into());
@@ -2094,11 +2148,7 @@ pub async fn prepare_x_search_block_async(
     progress: Option<OfficialProgressCb>,
 ) -> (bool, String, String) {
     if !should_inject_mcp_for_main() && !official_aux_available() {
-        return (
-            false,
-            String::new(),
-            "official aux unavailable".into(),
-        );
+        return (false, String::new(), "official aux unavailable".into());
     }
     if !official_aux_available() {
         return (false, String::new(), "no official credentials".into());
@@ -2154,10 +2204,7 @@ mod tests {
     #[test]
     fn detect_x_with_context_uses_entity_not_full_sentence() {
         let prior = "user: 搜索DeepSeek相关的信息\nassistant: 概况…";
-        let intent = detect_x_search_intent_with_context(
-            "搜索它在 x 上的信息",
-            Some(prior),
-        );
+        let intent = detect_x_search_intent_with_context("搜索它在 x 上的信息", Some(prior));
         match intent {
             Some(XSearchIntent::Keyword { query }) => {
                 assert!(
@@ -2184,18 +2231,20 @@ mod tests {
 
     #[test]
     fn detect_x_ignores_image_only_at_paths() {
-        let intent = detect_x_search_intent(
-            "@/Users/me/Library/Application Support/app/shot.png",
+        let intent = detect_x_search_intent("@/Users/me/Library/Application Support/app/shot.png");
+        assert!(
+            intent.is_none(),
+            "image-only must not trigger X: {intent:?}"
         );
-        assert!(intent.is_none(), "image-only must not trigger X: {intent:?}");
     }
 
     #[test]
     fn detect_x_ignores_image_with_short_caption() {
-        let intent = detect_x_search_intent(
-            "这是什么\n\n@/Users/me/Desktop/photo.jpg",
+        let intent = detect_x_search_intent("这是什么\n\n@/Users/me/Desktop/photo.jpg");
+        assert!(
+            intent.is_none(),
+            "caption+image must not trigger X: {intent:?}"
         );
-        assert!(intent.is_none(), "caption+image must not trigger X: {intent:?}");
     }
 
     #[test]
@@ -2218,9 +2267,7 @@ A UI screenshot.
 
     #[test]
     fn detect_x_still_works_with_handle_and_image() {
-        let intent = detect_x_search_intent(
-            "在 x 上搜索 @elonmusk\n\n@/tmp/a.png",
-        );
+        let intent = detect_x_search_intent("在 x 上搜索 @elonmusk\n\n@/tmp/a.png");
         match intent {
             Some(XSearchIntent::User { query }) => assert_eq!(query, "elonmusk"),
             other => panic!("expected User, got {other:?}"),
@@ -2267,7 +2314,9 @@ A UI screenshot.
     fn native_media_block_hook_json_is_valid_and_targets_imagine_tools() {
         let raw = native_media_block_hook_json();
         let v: serde_json::Value = serde_json::from_str(&raw).expect("hook json");
-        let matcher = v["hooks"]["PreToolUse"][0]["matcher"].as_str().unwrap_or("");
+        let matcher = v["hooks"]["PreToolUse"][0]["matcher"]
+            .as_str()
+            .unwrap_or("");
         assert!(matcher.contains("image_gen"));
         assert!(matcher.contains("image_to_video"));
         assert!(matcher.contains("read_file"));
@@ -2293,4 +2342,3 @@ A UI screenshot.
         assert!(out.contains("name = \"Grok\""));
     }
 }
-

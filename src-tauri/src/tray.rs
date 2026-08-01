@@ -1,6 +1,6 @@
 //! System tray / menu-bar icon + ChatGPT / Codex-style menu.
 //!
-//! **Tray / menu-bar icon** → `icons/tray-icon.png` (from `docs/svg/logo.svg`).  
+//! **Tray / menu-bar icon** → `icons/tray-icon.png` (from `docs/svg/logo.svg`).
 //! **App dock / .exe icons** → generated from `icons/icon (1).png` (do not mix).
 
 #![allow(dead_code)] // residual-clippy: busy_tooltip helper

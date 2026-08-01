@@ -31,11 +31,7 @@ impl FixtureState {
     }
 
     /// Queue multiple sequential responses for the same path match.
-    pub fn set_route_sequence(
-        &self,
-        path_contains: &str,
-        responses: Vec<(u16, String)>,
-    ) {
+    pub fn set_route_sequence(&self, path_contains: &str, responses: Vec<(u16, String)>) {
         let q = responses
             .into_iter()
             .map(|(status, body)| RouteResp { status, body })

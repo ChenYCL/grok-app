@@ -119,10 +119,7 @@ pub fn normalize_agents_json(raw: &str) -> Result<String, String> {
     let value: serde_json::Value = serde_json::from_str(trimmed)
         .map_err(|_| "Invalid JSON — fix syntax before saving.".to_string())?;
     if !value.is_object() {
-        return Err(
-            "Agents JSON must be a JSON object map (e.g. {\"reviewer\":{…}})."
-                .into(),
-        );
+        return Err("Agents JSON must be a JSON object map (e.g. {\"reviewer\":{…}}).".into());
     }
     let compact = serde_json::to_string(&value)
         .map_err(|_| "Invalid JSON — fix syntax before saving.".to_string())?;
@@ -361,9 +358,7 @@ pub fn sanitize_agent_file_stem_name(raw: &str) -> Result<String, String> {
         return Err("invalid agent name".into());
     }
     if name.len() > AGENT_STEM_NAME_MAX {
-        return Err(format!(
-            "agent name too long (max {AGENT_STEM_NAME_MAX})"
-        ));
+        return Err(format!("agent name too long (max {AGENT_STEM_NAME_MAX})"));
     }
     if name.contains('/')
         || name.contains('\\')
@@ -376,16 +371,10 @@ pub fn sanitize_agent_file_stem_name(raw: &str) -> Result<String, String> {
     let mut chars = name.chars();
     let first = chars.next().unwrap();
     if !first.is_ascii_alphanumeric() {
-        return Err(
-            "agent name may only contain letters, digits, '.', '_' and '-'"
-                .into(),
-        );
+        return Err("agent name may only contain letters, digits, '.', '_' and '-'".into());
     }
     if !chars.all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-') {
-        return Err(
-            "agent name may only contain letters, digits, '.', '_' and '-'"
-                .into(),
-        );
+        return Err("agent name may only contain letters, digits, '.', '_' and '-'".into());
     }
     if name.eq_ignore_ascii_case("readme") {
         return Err("reserved agent name".into());
@@ -394,7 +383,10 @@ pub fn sanitize_agent_file_stem_name(raw: &str) -> Result<String, String> {
 }
 
 /// Pure: default SKILL-like agent markdown body (no secrets).
-pub fn default_agent_markdown_template(name: &str, description: Option<&str>) -> Result<String, String> {
+pub fn default_agent_markdown_template(
+    name: &str,
+    description: Option<&str>,
+) -> Result<String, String> {
     let stem = sanitize_agent_file_stem_name(name)?;
     let desc = description
         .map(str::trim)
@@ -676,10 +668,7 @@ mod tests {
             "plan".into(),
             PathBuf::from("/u/.grok/bundled/agents/plan.md"),
         )];
-        let custom = vec![(
-            "custom".into(),
-            PathBuf::from("/u/.grok/agents/custom.md"),
-        )];
+        let custom = vec![("custom".into(), PathBuf::from("/u/.grok/agents/custom.md"))];
         let user_all = [user, custom].concat();
         let agents = merge_agent_catalog(BUILTIN_AGENT_NAMES, &user_all, &project, &bundled);
         let by: std::collections::HashMap<_, _> =
@@ -736,10 +725,8 @@ mod tests {
 
     #[test]
     fn scaffold_creates_and_rejects_overwrite() {
-        let dir = std::env::temp_dir().join(format!(
-            "grok-app-agents-scaffold-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("grok-app-agents-scaffold-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let project = dir.join("proj");

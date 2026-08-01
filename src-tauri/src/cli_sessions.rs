@@ -116,12 +116,8 @@ pub fn list_cli_sessions(session_data_mode: &str) -> Result<Vec<CliSessionSummar
         if !cwd_path.is_dir() {
             continue;
         }
-        let cwd_decoded = percent_decode_component(
-            cwd_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(""),
-        );
+        let cwd_decoded =
+            percent_decode_component(cwd_path.file_name().and_then(|s| s.to_str()).unwrap_or(""));
         let Ok(sid_dirs) = fs::read_dir(&cwd_path) else {
             continue;
         };
@@ -142,7 +138,8 @@ pub fn list_cli_sessions(session_data_mode: &str) -> Result<Vec<CliSessionSummar
             if !summary_path.is_file() && !dir.join("chat_history.jsonl").is_file() {
                 continue;
             }
-            let (title, cwd, updated, n) = read_summary_bits(&summary_path, &cwd_decoded, &agent_id);
+            let (title, cwd, updated, n) =
+                read_summary_bits(&summary_path, &cwd_decoded, &agent_id);
             let app_session_id = linked.get(&agent_id).cloned();
             out.push(CliSessionSummary {
                 already_linked: app_session_id.is_some(),
@@ -253,20 +250,13 @@ pub fn find_latest_cli_session_for_cwd(
 
     // Fast path: exact encoded cwd directory (CLI layout).
     let encoded = crate::paths::percent_encode_path_component(path);
-    let encoded_norm =
-        crate::paths::percent_encode_path_component(&normalize_cwd_path(path));
+    let encoded_norm = crate::paths::percent_encode_path_component(&normalize_cwd_path(path));
     for enc in [encoded.as_str(), encoded_norm.as_str()] {
         let cwd_dir = sessions.join(enc);
         if !cwd_dir.is_dir() {
             continue;
         }
-        collect_sessions_under_cwd_dir(
-            &cwd_dir,
-            path,
-            &source_home,
-            &linked,
-            &mut candidates,
-        );
+        collect_sessions_under_cwd_dir(&cwd_dir, path, &source_home, &linked, &mut candidates);
         if !candidates.is_empty() {
             break;
         }
@@ -281,10 +271,7 @@ pub fn find_latest_cli_session_for_cwd(
                 continue;
             }
             let cwd_decoded = percent_decode_component(
-                cwd_path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or(""),
+                cwd_path.file_name().and_then(|s| s.to_str()).unwrap_or(""),
             );
             let folder_matches = cwd_paths_match(&cwd_decoded, path);
             let mut under = Vec::new();
@@ -343,8 +330,7 @@ fn collect_sessions_under_cwd_dir(
         if !summary_path.is_file() && !dir.join("chat_history.jsonl").is_file() {
             continue;
         }
-        let (title, cwd, updated, n) =
-            read_summary_bits(&summary_path, cwd_fallback, &agent_id);
+        let (title, cwd, updated, n) = read_summary_bits(&summary_path, cwd_fallback, &agent_id);
         let app_session_id = linked.get(&agent_id).cloned();
         out.push(CliSessionSummary {
             already_linked: app_session_id.is_some(),
@@ -411,7 +397,12 @@ pub fn search_cli_sessions(
     if let Some(path) = cli_path.filter(|p| p.is_file()) {
         match run_sessions_search_cli(path, &home, q, lim) {
             Ok(hits) if !hits.is_empty() => {
-                return Ok(enrich_search_hits(hits, session_data_mode, &source_home, "cli"));
+                return Ok(enrich_search_hits(
+                    hits,
+                    session_data_mode,
+                    &source_home,
+                    "cli",
+                ));
             }
             Ok(_empty) => {
                 // CLI succeeded with zero hits — still try local first-prompt
@@ -497,9 +488,7 @@ pub fn parse_sessions_search_text(raw: &str) -> Vec<RawSearchHit> {
 /// Pure JSON parser for future `grok sessions search --json`.
 pub fn parse_sessions_search_json(raw: &str) -> Option<Vec<RawSearchHit>> {
     let trimmed = raw.trim();
-    if trimmed.is_empty()
-        || !(trimmed.starts_with('{') || trimmed.starts_with('['))
-    {
+    if trimmed.is_empty() || !(trimmed.starts_with('{') || trimmed.starts_with('[')) {
         return None;
     }
     let value: Value = serde_json::from_str(trimmed).ok()?;
@@ -512,13 +501,16 @@ pub fn parse_sessions_search_json(raw: &str) -> Option<Vec<RawSearchHit>> {
                 }
             }
             // Single object
-            if json_pick_str(&Value::Object(map.clone()), &[
-                "agentSessionId",
-                "agent_session_id",
-                "sessionId",
-                "session_id",
-                "id",
-            ])
+            if json_pick_str(
+                &Value::Object(map.clone()),
+                &[
+                    "agentSessionId",
+                    "agent_session_id",
+                    "sessionId",
+                    "session_id",
+                    "id",
+                ],
+            )
             .is_some()
             {
                 vec![Value::Object(map)]
@@ -534,41 +526,53 @@ pub fn parse_sessions_search_json(raw: &str) -> Option<Vec<RawSearchHit>> {
 fn json_rows_to_hits(rows: Vec<Value>) -> Vec<RawSearchHit> {
     let mut out = Vec::new();
     for row in rows {
-        let id = match json_pick_str(&row, &[
-            "agentSessionId",
-            "agent_session_id",
-            "sessionId",
-            "session_id",
-            "id",
-        ]) {
+        let id = match json_pick_str(
+            &row,
+            &[
+                "agentSessionId",
+                "agent_session_id",
+                "sessionId",
+                "session_id",
+                "id",
+            ],
+        ) {
             Some(id) => id,
             None => continue,
         };
-        let title = json_pick_str(&row, &[
-            "title",
-            "summary",
-            "generatedTitle",
-            "generated_title",
-            "sessionSummary",
-            "session_summary",
-        ])
+        let title = json_pick_str(
+            &row,
+            &[
+                "title",
+                "summary",
+                "generatedTitle",
+                "generated_title",
+                "sessionSummary",
+                "session_summary",
+            ],
+        )
         .unwrap_or_else(|| format!("CLI {}", id.chars().take(8).collect::<String>()));
-        let first_prompt = json_pick_str(&row, &[
-            "firstPrompt",
-            "first_prompt",
-            "prompt",
-            "firstUserPrompt",
-            "first_user_prompt",
-        ]);
+        let first_prompt = json_pick_str(
+            &row,
+            &[
+                "firstPrompt",
+                "first_prompt",
+                "prompt",
+                "firstUserPrompt",
+                "first_user_prompt",
+            ],
+        );
         let status = json_pick_str(&row, &["status", "location", "source"]);
-        let updated_label = json_pick_str(&row, &[
-            "updatedLabel",
-            "updatedAt",
-            "updated_at",
-            "updated",
-            "lastActiveAt",
-            "last_active_at",
-        ]);
+        let updated_label = json_pick_str(
+            &row,
+            &[
+                "updatedLabel",
+                "updatedAt",
+                "updated_at",
+                "updated",
+                "lastActiveAt",
+                "last_active_at",
+            ],
+        );
         out.push(RawSearchHit {
             agent_session_id: id,
             title,
@@ -616,15 +620,12 @@ impl RawSearchHitBuilder {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        let title = body
-            .first()
-            .cloned()
-            .unwrap_or_else(|| {
-                format!(
-                    "CLI {}",
-                    self.agent_session_id.chars().take(8).collect::<String>()
-                )
-            });
+        let title = body.first().cloned().unwrap_or_else(|| {
+            format!(
+                "CLI {}",
+                self.agent_session_id.chars().take(8).collect::<String>()
+            )
+        });
         let first_prompt = if body.len() > 1 {
             Some(body[1..].join("\n"))
         } else {
@@ -734,8 +735,7 @@ fn run_sessions_search_cli(
         }
     }
 
-    let (stdout, stderr, ok) =
-        run_grok_sessions_search(cli_path, grok_home, query, limit, false)?;
+    let (stdout, stderr, ok) = run_grok_sessions_search(cli_path, grok_home, query, limit, false)?;
     if !ok && stdout.trim().is_empty() {
         return Err(format!(
             "grok sessions search failed: {}",
@@ -1066,10 +1066,7 @@ pub fn parse_chat_history_jsonl(path: &Path) -> Result<Vec<(String, String)>, St
             "assistant" => "assistant",
             _ => continue,
         };
-        let content = v
-            .get("content")
-            .map(content_to_text)
-            .unwrap_or_default();
+        let content = v.get("content").map(content_to_text).unwrap_or_default();
         let content = content.trim().to_string();
         if content.is_empty() {
             continue;
@@ -1148,10 +1145,7 @@ pub fn parse_at_path_attachments(content: &str) -> (String, Vec<MessageAttachmen
 
 fn looks_like_windows_abs(path: &str) -> bool {
     let b = path.as_bytes();
-    b.len() >= 3
-        && b[0].is_ascii_alphabetic()
-        && b[1] == b':'
-        && (b[2] == b'\\' || b[2] == b'/')
+    b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/')
 }
 
 fn user_body_key(content: &str) -> String {
@@ -1271,12 +1265,8 @@ pub fn reconcile_journal_from_chat_history(
     cwd_hint: Option<&str>,
     session_data_mode: &str,
 ) -> Result<u32, String> {
-    let dir = crate::paths::find_agent_session_dir(
-        agent_session_id,
-        cwd_hint,
-        session_data_mode,
-    )
-    .ok_or_else(|| format!("CLI session dir not found for {agent_session_id}"))?;
+    let dir = crate::paths::find_agent_session_dir(agent_session_id, cwd_hint, session_data_mode)
+        .ok_or_else(|| format!("CLI session dir not found for {agent_session_id}"))?;
     let history = dir.join("chat_history.jsonl");
     if !history.is_file() {
         return Ok(0);
@@ -1343,22 +1333,14 @@ pub fn try_reconcile_linked_session(app_session_id: &str) -> u32 {
         return 0;
     };
     let mode = store::load_settings().session_data_mode;
-    let cwd_hint = meta
-        .project_id
-        .as_deref()
-        .and_then(|pid| {
-            store::load_projects()
-                .into_iter()
-                .find(|p| p.id == pid)
-                .map(|p| p.path)
-        });
-    reconcile_journal_from_chat_history(
-        app_session_id,
-        agent_id,
-        cwd_hint.as_deref(),
-        &mode,
-    )
-    .unwrap_or(0)
+    let cwd_hint = meta.project_id.as_deref().and_then(|pid| {
+        store::load_projects()
+            .into_iter()
+            .find(|p| p.id == pid)
+            .map(|p| p.path)
+    });
+    reconcile_journal_from_chat_history(app_session_id, agent_id, cwd_hint.as_deref(), &mode)
+        .unwrap_or(0)
 }
 
 /// Import one CLI session into the App journal (independent App session row).
@@ -1457,12 +1439,7 @@ pub fn import_all_cli_sessions(
     let list = list_cli_sessions(session_data_mode)?;
     let mut imported = Vec::new();
     for s in list.into_iter().filter(|s| !s.already_linked).take(limit) {
-        match import_cli_session(
-            &s.agent_session_id,
-            Some(&s.dir),
-            None,
-            session_data_mode,
-        ) {
+        match import_cli_session(&s.agent_session_id, Some(&s.dir), None, session_data_mode) {
             Ok(m) => imported.push(m),
             Err(e) => tracing::warn!("cli import skip {}: {e}", s.agent_session_id),
         }
@@ -1500,10 +1477,9 @@ fn is_strict_cli_session_dir(path: &Path, sessions_root: &Path, agent_id: &str) 
         match c {
             std::path::Component::Normal(os) => {
                 // First segment is percent-encoded cwd; second must be agent id.
-                if depth == 1
-                    && os.to_str() != Some(name) {
-                        return false;
-                    }
+                if depth == 1 && os.to_str() != Some(name) {
+                    return false;
+                }
                 depth += 1;
                 if depth > 2 {
                     return false;
@@ -1527,9 +1503,9 @@ pub fn resolve_deletable_cli_session_dir(
 ) -> Result<PathBuf, String> {
     let agent_id = validate_agent_session_id(agent_session_id)?;
 
-    let sessions_canon = sessions_root.canonicalize().map_err(|e| {
-        format!("sessions root not available: {e}")
-    })?;
+    let sessions_canon = sessions_root
+        .canonicalize()
+        .map_err(|e| format!("sessions root not available: {e}"))?;
 
     let candidate = if let Some(d) = dir.map(str::trim).filter(|s| !s.is_empty()) {
         if d.contains('\0') {
@@ -1606,10 +1582,7 @@ mod tests {
     fn percent_decode_roundtrip_path() {
         let enc = percent_encode_path_component("/Users/me/Code/oss/pq");
         assert!(enc.contains("%2F"));
-        assert_eq!(
-            percent_decode_component(&enc),
-            "/Users/me/Code/oss/pq"
-        );
+        assert_eq!(percent_decode_component(&enc), "/Users/me/Code/oss/pq");
     }
 
     #[test]
@@ -1618,21 +1591,13 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("chat_history.jsonl");
         let mut f = fs::File::create(&path).unwrap();
-        writeln!(
-            f,
-            r#"{{"type":"system","content":"sys"}}"#
-        )
-        .unwrap();
+        writeln!(f, r#"{{"type":"system","content":"sys"}}"#).unwrap();
         writeln!(
             f,
             r#"{{"type":"user","content":[{{"type":"text","text":"<user_query>\nhello world\n</user_query>"}}]}}"#
         )
         .unwrap();
-        writeln!(
-            f,
-            r#"{{"type":"assistant","content":"hi there"}}"#
-        )
-        .unwrap();
+        writeln!(f, r#"{{"type":"assistant","content":"hi there"}}"#).unwrap();
         let pairs = parse_chat_history_jsonl(&path).unwrap();
         assert_eq!(pairs.len(), 2);
         assert_eq!(pairs[0].0, "user");
@@ -1677,8 +1642,7 @@ mod tests {
         }];
         let pairs = vec![(
             "user".into(),
-            "以参考图形象为准，生成一张精致像素风格的图片\n\n@/Users/me/Downloads/ref.png"
-                .into(),
+            "以参考图形象为准，生成一张精致像素风格的图片\n\n@/Users/me/Downloads/ref.png".into(),
         )];
         let n = backfill_user_attachments_from_agent_pairs(&mut journal, &pairs);
         assert_eq!(n, 1);
@@ -1783,10 +1747,12 @@ mod tests {
         // Outside sessions root
         let outside = home.join("other").join(agent_id);
         fs::create_dir_all(&outside).unwrap();
-        assert!(
-            resolve_deletable_cli_session_dir(agent_id, Some(outside.to_str().unwrap()), &sessions)
-                .is_err()
-        );
+        assert!(resolve_deletable_cli_session_dir(
+            agent_id,
+            Some(outside.to_str().unwrap()),
+            &sessions
+        )
+        .is_err());
 
         // Id does not match directory name
         let wrong_name = sessions
@@ -1801,10 +1767,12 @@ mod tests {
         .is_err());
 
         // sessions root itself
-        assert!(
-            resolve_deletable_cli_session_dir(agent_id, Some(sessions.to_str().unwrap()), &sessions)
-                .is_err()
-        );
+        assert!(resolve_deletable_cli_session_dir(
+            agent_id,
+            Some(sessions.to_str().unwrap()),
+            &sessions
+        )
+        .is_err());
 
         // cwd folder (only one level under sessions)
         let cwd_only = sessions.join(percent_encode_path_component("/Users/me/proj"));
@@ -1877,33 +1845,20 @@ mod tests {
                 updated: "2025-06-01T12:00:00Z",
             },
         ];
-        let best = pick_latest_session_for_cwd(
-            &rows,
-            "/Users/me/proj",
-            |r| r.cwd,
-            |r| Some(r.updated),
-        )
-        .unwrap();
+        let best =
+            pick_latest_session_for_cwd(&rows, "/Users/me/proj", |r| r.cwd, |r| Some(r.updated))
+                .unwrap();
         assert_eq!(best.id, "new");
-        assert!(pick_latest_session_for_cwd(
-            &rows,
-            "/missing",
-            |r| r.cwd,
-            |r| Some(r.updated),
-        )
-        .is_none());
-        assert!(pick_latest_session_for_cwd(
-            &rows,
-            "",
-            |r| r.cwd,
-            |r| Some(r.updated),
-        )
-        .is_none());
+        assert!(
+            pick_latest_session_for_cwd(&rows, "/missing", |r| r.cwd, |r| Some(r.updated),)
+                .is_none()
+        );
+        assert!(pick_latest_session_for_cwd(&rows, "", |r| r.cwd, |r| Some(r.updated),).is_none());
     }
 
     #[test]
     fn find_latest_prefers_newest_under_encoded_cwd() {
-        use crate::paths::{APP_HOME_ENV_LOCK, percent_encode_path_component};
+        use crate::paths::{percent_encode_path_component, APP_HOME_ENV_LOCK};
 
         let _guard = APP_HOME_ENV_LOCK.lock().unwrap();
         let app_home = std::env::temp_dir().join(format!("cli-cont-{}", Uuid::new_v4()));
@@ -1955,9 +1910,11 @@ mod tests {
         assert!(find_latest_cli_session_for_cwd("", "independent")
             .unwrap()
             .is_none());
-        assert!(find_latest_cli_session_for_cwd("/no/such/path", "independent")
-            .unwrap()
-            .is_none());
+        assert!(
+            find_latest_cli_session_for_cwd("/no/such/path", "independent")
+                .unwrap()
+                .is_none()
+        );
 
         std::env::remove_var("GROK_APP_HOME");
         let _ = fs::remove_dir_all(&app_home);
@@ -1965,7 +1922,7 @@ mod tests {
 
     #[test]
     fn find_latest_matches_trailing_slash_variant() {
-        use crate::paths::{APP_HOME_ENV_LOCK, percent_encode_path_component};
+        use crate::paths::{percent_encode_path_component, APP_HOME_ENV_LOCK};
 
         let _guard = APP_HOME_ENV_LOCK.lock().unwrap();
         let app_home = std::env::temp_dir().join(format!("cli-cont2-{}", Uuid::new_v4()));

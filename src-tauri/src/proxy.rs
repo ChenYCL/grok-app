@@ -60,8 +60,7 @@ pub fn redact_proxy_url(url: &str) -> String {
 pub fn is_valid_proxy_url(url: &str) -> bool {
     match url::Url::parse(url.trim()) {
         Ok(u) => {
-            matches!(u.scheme(), "http" | "https" | "socks5" | "socks5h")
-                && u.host_str().is_some()
+            matches!(u.scheme(), "http" | "https" | "socks5" | "socks5h") && u.host_str().is_some()
         }
         Err(_) => false,
     }
@@ -69,9 +68,11 @@ pub fn is_valid_proxy_url(url: &str) -> bool {
 
 /// True when any proxy env var is already set on this process.
 fn env_proxy_present() -> bool {
-    PROXY_ENV_KEYS
-        .iter()
-        .any(|k| std::env::var(k).map(|v| !v.trim().is_empty()).unwrap_or(false))
+    PROXY_ENV_KEYS.iter().any(|k| {
+        std::env::var(k)
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+    })
 }
 
 /// Windows: read the WinINET proxy (`HKCU\...\Internet Settings`).
@@ -322,7 +323,10 @@ mod tests {
 
     #[test]
     fn manual_mode_with_bad_url_inherits() {
-        assert_eq!(decision_from("manual", Some("not a url"), None), ProxyDecision::Inherit);
+        assert_eq!(
+            decision_from("manual", Some("not a url"), None),
+            ProxyDecision::Inherit
+        );
         assert_eq!(decision_from("manual", None, None), ProxyDecision::Inherit);
         // ftp / file schemes are rejected.
         assert_eq!(
@@ -333,7 +337,10 @@ mod tests {
 
     #[test]
     fn none_mode_forces_direct() {
-        assert_eq!(decision_from("none", Some("http://127.0.0.1:1"), None), ProxyDecision::Direct);
+        assert_eq!(
+            decision_from("none", Some("http://127.0.0.1:1"), None),
+            ProxyDecision::Direct
+        );
     }
 
     #[test]
@@ -344,9 +351,12 @@ mod tests {
             Some("localhost,127.0.0.1"),
         );
         let pairs = child_env_pairs(&d);
-        assert!(pairs.iter().any(|(k, v)| k == "HTTPS_PROXY" && v == "http://127.0.0.1:7890"));
-        assert!(pairs.iter().any(|(k, v)| k == "NO_PROXY"
-            && v == "localhost,127.0.0.1,::1,localhost,127.0.0.1"));
+        assert!(pairs
+            .iter()
+            .any(|(k, v)| k == "HTTPS_PROXY" && v == "http://127.0.0.1:7890"));
+        assert!(pairs
+            .iter()
+            .any(|(k, v)| k == "NO_PROXY" && v == "localhost,127.0.0.1,::1,localhost,127.0.0.1"));
     }
 
     #[test]

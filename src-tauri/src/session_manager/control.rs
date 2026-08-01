@@ -6,18 +6,13 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter};
 
-use crate::acp_client::{
-    AcpClient, AskUserOutcome, PermissionOutcome,
-};
+use crate::acp_client::{AcpClient, AskUserOutcome, PermissionOutcome};
 use crate::permission::PermissionPolicy;
-use crate::process_limits::{
-    normalize_idle_minutes, normalize_max_concurrent,
-};
+use crate::process_limits::{normalize_idle_minutes, normalize_max_concurrent};
 use crate::session_fsm::SessionState;
 use crate::store::{self};
 
 use super::*;
-
 
 impl SessionManager {
     pub fn set_permission_policy(&self, policy: PermissionPolicy) {
@@ -309,11 +304,7 @@ impl SessionManager {
     }
 
     /// Apply product mode via session/set_mode; soft-respawn if agent rejects.
-    pub async fn apply_product_mode(
-        &self,
-        app: &AppHandle,
-        mode: String,
-    ) -> Result<(), String> {
+    pub async fn apply_product_mode(&self, app: &AppHandle, mode: String) -> Result<(), String> {
         let mode = mode.trim().to_ascii_lowercase();
         if !matches!(mode.as_str(), "agent" | "plan" | "ask") {
             return Err(format!("invalid mode: {mode}"));
@@ -368,7 +359,9 @@ impl SessionManager {
         let ok = matches!(
             effort.as_str(),
             "low" | "medium" | "high" | "xhigh" | "max" | "none"
-        ) || (effort.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        ) || (effort
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
             && (2..=32).contains(&effort.len()));
         if !ok {
             return Err(format!("invalid effort: {effort}"));
@@ -459,7 +452,10 @@ impl SessionManager {
     }
 
     /// Session a gate answer applies to: explicit id, else the live focus slot.
-    pub(super) fn resolve_target_session(&self, session_id: Option<String>) -> Result<String, String> {
+    pub(super) fn resolve_target_session(
+        &self,
+        session_id: Option<String>,
+    ) -> Result<String, String> {
         match session_id {
             Some(sid) if !sid.is_empty() => Ok(sid),
             _ => self
@@ -561,9 +557,12 @@ impl SessionManager {
             );
         }
         // If something is still live with a healthy acp, force another demote.
-        if self.inner.lock().as_ref().is_some_and(|s| {
-            s.acp.as_ref().is_some_and(|c| c.is_alive())
-        }) {
+        if self
+            .inner
+            .lock()
+            .as_ref()
+            .is_some_and(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
+        {
             let _ = self.try_park_live();
         }
         // Drop empty shells only; never Drop a LiveSession that still owns acp.
@@ -649,4 +648,3 @@ mod recycle_tests {
         assert_eq!(again.parked_count, 0);
     }
 }
-

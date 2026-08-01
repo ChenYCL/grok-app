@@ -103,9 +103,7 @@ pub fn should_emit_soft_stall(
 /// Human-readable stall message (English; UI maps via i18n).
 pub fn stream_stall_message(stall_seconds: u32) -> String {
     let secs = normalize_stream_stall_seconds(stall_seconds);
-    format!(
-        "No stream or tool progress for about {secs}s. End this turn or keep waiting."
-    )
+    format!("No stream or tool progress for about {secs}s. End this turn or keep waiting.")
 }
 
 /// Stall copy tier for the UI (mirrors frontend `sessionPhase` tiers).
@@ -232,8 +230,16 @@ mod tests {
     fn tool_progress_resets_deadline() {
         let t0 = Instant::now();
         let tool = t0 + Duration::from_secs(100);
-        assert!(!is_stream_stalled(tool, 180, tool + Duration::from_secs(50)));
-        assert!(is_stream_stalled(tool, 180, tool + Duration::from_secs(180)));
+        assert!(!is_stream_stalled(
+            tool,
+            180,
+            tool + Duration::from_secs(50)
+        ));
+        assert!(is_stream_stalled(
+            tool,
+            180,
+            tool + Duration::from_secs(180)
+        ));
     }
 
     #[test]

@@ -44,7 +44,10 @@ pub async fn run(
                         .filter(|s| !s.is_empty());
                     if let Some(hs) = hs {
                         let base = hs.trim_end_matches('/');
-                        let _ = c.get(format!("{base}/_matrix/client/versions")).send().await;
+                        let _ = c
+                            .get(format!("{base}/_matrix/client/versions"))
+                            .send()
+                            .await;
                     }
                 }
                 "line" => {

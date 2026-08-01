@@ -95,10 +95,7 @@ mod host_permission_e2e {
                 }
             }
         });
-        assert_eq!(
-            extract_path_target(&raw),
-            "/Users/me/proj/SPIKE_PERM.txt"
-        );
+        assert_eq!(extract_path_target(&raw), "/Users/me/proj/SPIKE_PERM.txt");
     }
 
     #[test]

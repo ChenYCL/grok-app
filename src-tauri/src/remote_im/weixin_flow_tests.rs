@@ -108,7 +108,8 @@ mod tests {
             vec![
                 (
                     200,
-                    r#"{"qrcode":"KEY_OLD","qrcode_img_content":"https://cdn.test/old.png"}"#.into(),
+                    r#"{"qrcode":"KEY_OLD","qrcode_img_content":"https://cdn.test/old.png"}"#
+                        .into(),
                 ),
                 (
                     200,
@@ -117,11 +118,7 @@ mod tests {
                 ),
             ],
         );
-        state.set_route(
-            "get_qrcode_status",
-            200,
-            r#"{"status":"expired"}"#,
-        );
+        state.set_route("get_qrcode_status", 200, r#"{"status":"expired"}"#);
 
         let mut opts = HashMap::new();
         opts.insert("base_url".into(), base);
@@ -135,7 +132,10 @@ mod tests {
             .await
             .expect("scan_poll on expired");
         // Must not leave GUI in terminal expired without refresh payload
-        assert_eq!(poll.status, "wait", "expired must become wait after refresh: {poll:?}");
+        assert_eq!(
+            poll.status, "wait",
+            "expired must become wait after refresh: {poll:?}"
+        );
         assert_eq!(poll.error.as_deref(), Some("qr_refreshed"));
         assert_eq!(
             poll.verification_uri.as_deref(),
@@ -145,7 +145,11 @@ mod tests {
 
         let paths = state.request_paths();
         assert!(
-            paths.iter().filter(|p| p.contains("get_bot_qrcode")).count() >= 2,
+            paths
+                .iter()
+                .filter(|p| p.contains("get_bot_qrcode"))
+                .count()
+                >= 2,
             "refresh must re-call get_bot_qrcode: {paths:?}"
         );
         assert!(paths.iter().any(|p| p.contains("get_qrcode_status")));

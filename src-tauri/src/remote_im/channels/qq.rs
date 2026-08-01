@@ -145,10 +145,9 @@ pub async fn send_text(
         .or_else(|| secrets.get("api_base"))
         .cloned()
         .or_else(|| {
-            secrets.get("ws_url").map(|w| {
-                w.replace("ws://", "http://")
-                    .replace("wss://", "https://")
-            })
+            secrets
+                .get("ws_url")
+                .map(|w| w.replace("ws://", "http://").replace("wss://", "https://"))
         })
         .ok_or_else(|| "qq: missing http_url for send".to_string())?;
     let base = http_url.trim_end_matches('/');

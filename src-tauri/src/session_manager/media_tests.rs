@@ -40,4 +40,3 @@ fn extracts_path_from_content_text_markdown() {
         Some("/Users/me/out/pixel.png")
     );
 }
-

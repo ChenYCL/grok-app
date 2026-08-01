@@ -20,7 +20,6 @@ use crate::store::{self, ChatMessageStored};
 
 use super::*;
 
-
 impl SessionManager {
     pub(super) fn active_process_count(&self) -> u32 {
         let live = self
@@ -123,9 +122,7 @@ impl SessionManager {
         }
         if matches!(
             s.fsm.state(),
-            SessionState::Streaming
-                | SessionState::AwaitingPermission
-                | SessionState::Connecting
+            SessionState::Streaming | SessionState::AwaitingPermission | SessionState::Connecting
         ) {
             return true;
         }
@@ -450,15 +447,14 @@ impl SessionManager {
     /// Under `connect_lock` so a concurrent warm connect cannot swap the live
     /// slot between the caller's connect and its send (that delivered prompts
     /// into a foreign chat and left empty-journal zombie sessions behind).
-    pub(super) fn focus_session(&self, app: &AppHandle, target_sid: &str) -> Result<bool, AgentError> {
-        if self
-            .inner
-            .lock()
-            .as_ref()
-            .is_some_and(|s| {
-                s.app_session_id == target_sid && s.acp.as_ref().is_some_and(|c| c.is_alive())
-            })
-        {
+    pub(super) fn focus_session(
+        &self,
+        app: &AppHandle,
+        target_sid: &str,
+    ) -> Result<bool, AgentError> {
+        if self.inner.lock().as_ref().is_some_and(|s| {
+            s.app_session_id == target_sid && s.acp.as_ref().is_some_and(|c| c.is_alive())
+        }) {
             return Ok(true);
         }
         let in_background = self.background.lock().contains_key(target_sid);
@@ -515,14 +511,9 @@ impl SessionManager {
         target_sid: &str,
     ) -> Result<bool, AgentError> {
         // Live focus already on target with a living ACP.
-        if self
-            .inner
-            .lock()
-            .as_ref()
-            .is_some_and(|s| {
-                s.app_session_id == target_sid && s.acp.as_ref().is_some_and(|c| c.is_alive())
-            })
-        {
+        if self.inner.lock().as_ref().is_some_and(|s| {
+            s.app_session_id == target_sid && s.acp.as_ref().is_some_and(|c| c.is_alive())
+        }) {
             return Ok(true);
         }
 
@@ -533,9 +524,7 @@ impl SessionManager {
             .get(target_sid)
             .is_some_and(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
         {
-            tracing::info!(
-                "acp promptable: background in-place sid={target_sid} (no live demote)"
-            );
+            tracing::info!("acp promptable: background in-place sid={target_sid} (no live demote)");
             return Ok(true);
         }
 
@@ -610,7 +599,11 @@ impl SessionManager {
     }
 
     /// Before spawn: reclaim idle parked until there is room (never kill busy).
-    pub(super) async fn reclaim_parked_until_can_spawn(&self, app: &AppHandle, max_concurrent: u32) {
+    pub(super) async fn reclaim_parked_until_can_spawn(
+        &self,
+        app: &AppHandle,
+        max_concurrent: u32,
+    ) {
         self.sweep_dead_parked();
         self.sweep_dead_background();
         // Finished background turns are idle warm agents — make them reclaimable
@@ -649,9 +642,7 @@ impl SessionManager {
                 .filter(|(_, p)| is_idle_expired(p.last_activity, idle_mins, now))
                 .map(|(k, _)| k.clone())
                 .collect();
-            keys.into_iter()
-                .filter_map(|k| parked.remove(&k))
-                .collect()
+            keys.into_iter().filter_map(|k| parked.remove(&k)).collect()
         };
         for p in expired_parked {
             tracing::info!(
@@ -668,8 +659,8 @@ impl SessionManager {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 let idle = is_idle_expired(s.last_activity, idle_mins, now);
-                let ready_idle = matches!(s.fsm.state(), SessionState::Ready)
-                    && !Self::live_session_is_busy(s);
+                let ready_idle =
+                    matches!(s.fsm.state(), SessionState::Ready) && !Self::live_session_is_busy(s);
                 if idle && ready_idle {
                     if let Some(acp) = s.acp.take() {
                         s.fsm.soft_disconnect();

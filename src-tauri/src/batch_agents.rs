@@ -194,13 +194,9 @@ pub fn run_batch_headless(
     let duration_ms = started.elapsed().as_millis() as u64;
 
     match joined {
-        ThreadWait::TimedOut => soft_fail(
-            "timeout",
-            Some(cli_path),
-            cli_version,
-            None,
-            duration_ms,
-        ),
+        ThreadWait::TimedOut => {
+            soft_fail("timeout", Some(cli_path), cli_version, None, duration_ms)
+        }
         ThreadWait::JoinErr => soft_fail(
             "spawn_failed",
             Some(cli_path),

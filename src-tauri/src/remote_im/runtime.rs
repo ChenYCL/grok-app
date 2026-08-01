@@ -95,12 +95,7 @@ pub async fn start_runtime(
                 }
             }
         }
-        outbound.register(
-            &inst.id,
-            &inst.channel,
-            secrets,
-            inst.options.clone(),
-        );
+        outbound.register(&inst.id, &inst.channel, secrets, inst.options.clone());
         engine.upsert_instance(inst.clone());
     }
 

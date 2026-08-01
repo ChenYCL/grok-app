@@ -113,7 +113,11 @@ pub fn normalize_rules(rules: &PermissionRules) -> PermissionRules {
 }
 
 /// Pure helper: add a rule to one action bucket (deduped).
-pub fn add_rule(rules: &PermissionRules, action: &str, rule: &str) -> Result<PermissionRules, String> {
+pub fn add_rule(
+    rules: &PermissionRules,
+    action: &str,
+    rule: &str,
+) -> Result<PermissionRules, String> {
     let action = normalize_action(action).ok_or_else(|| format!("unknown action: {action}"))?;
     let rule = normalize_rule(rule).ok_or_else(|| "rule text is empty".to_string())?;
     let mut next = normalize_rules(rules);

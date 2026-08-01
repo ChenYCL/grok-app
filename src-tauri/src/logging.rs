@@ -27,8 +27,8 @@ pub fn init() {
 
     install_panic_hook(log_dir.clone());
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_ENV_FILTER));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_ENV_FILTER));
 
     let file_appender = tracing_appender::rolling::daily(&log_dir, "app.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
@@ -94,9 +94,7 @@ fn install_panic_hook(log_dir: PathBuf) {
         let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f %z");
         // force_capture works even when RUST_BACKTRACE is unset (Finder launches).
         let bt = std::backtrace::Backtrace::force_capture();
-        let line = format!(
-            "{ts} PANIC thread={name} at {location}: {payload}\n{bt}\n"
-        );
+        let line = format!("{ts} PANIC thread={name} at {location}: {payload}\n{bt}\n");
 
         // Best-effort sync writes — never panic inside the hook.
         let _ = std::fs::create_dir_all(&log_dir);

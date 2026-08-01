@@ -6,8 +6,7 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use crate::acp_client::{
-    should_abort_provider_retry, AcpEvent, PermissionOutcome,
-    StreamKind, HOST_PROVIDER_MAX_RETRIES,
+    should_abort_provider_retry, AcpEvent, PermissionOutcome, StreamKind, HOST_PROVIDER_MAX_RETRIES,
 };
 use crate::error::{AgentError, AgentErrorCode};
 use crate::journal_throttle::is_paragraph_break;
@@ -20,9 +19,13 @@ use crate::store::{self, ChatMessageStored};
 
 use super::*;
 
-
 impl SessionManager {
-    pub(super) async fn handle_acp_event(self: &Arc<Self>, app: &AppHandle, process_id: &str, ev: AcpEvent) {
+    pub(super) async fn handle_acp_event(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        process_id: &str,
+        ev: AcpEvent,
+    ) {
         // Route events to the focused live session **or** a background busy session
         // (multi-session parallel streaming). Idle parked agents should not emit.
         let is_live = self
@@ -144,18 +147,10 @@ impl SessionManager {
                         let para = is_paragraph_break(&text);
                         Self::maybe_flush_stream_journal(s, done, para);
                         let mid = s.streaming_message_id.clone().unwrap_or_default();
-                        let need = Self::queue_stream_emit(
-                            s,
-                            app,
-                            kind,
-                            mid,
-                            text,
-                            thought_phase,
-                            done,
-                        );
+                        let need =
+                            Self::queue_stream_emit(s, app, kind, mid, text, thought_phase, done);
                         if need {
-                            s.stream_emit_flush_gen =
-                                s.stream_emit_flush_gen.wrapping_add(1);
+                            s.stream_emit_flush_gen = s.stream_emit_flush_gen.wrapping_add(1);
                             Some((s.app_session_id.clone(), s.stream_emit_flush_gen))
                         } else {
                             None
@@ -234,10 +229,7 @@ impl SessionManager {
                         "acp permission auto-resolved during load replay tool={tool_name}"
                     );
                     let _ = acp
-                        .respond_permission(
-                            rpc_id,
-                            PermissionOutcome::Selected { option_id },
-                        )
+                        .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                         .await;
                     return;
                 }
@@ -258,10 +250,7 @@ impl SessionManager {
                         let _ = s.fsm.await_permission();
                         // Use live session policy (updated by chip / settings_set / set_policy).
                         // Do NOT re-read only global settings — project/session scope would break.
-                        let root = s
-                            .project_path
-                            .as_ref()
-                            .map(std::path::PathBuf::from);
+                        let root = s.project_path.as_ref().map(std::path::PathBuf::from);
                         let auto = may_auto_allow(
                             s.policy,
                             &s.allow_cache,
@@ -295,10 +284,7 @@ impl SessionManager {
                             .or_else(|| pick_option_id(&options, "allow"))
                             .unwrap_or_else(|| "allow_once".into());
                         let _ = acp
-                            .respond_permission(
-                                rpc_id,
-                                PermissionOutcome::Selected { option_id },
-                            )
+                            .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                             .await;
                         crate::audit_ledger::record_permission(
                             Some(&session_id),
@@ -329,10 +315,7 @@ impl SessionManager {
                             .or_else(|| pick_option_id(&options, "deny"))
                             .unwrap_or_else(|| "reject".into());
                         let _ = acp
-                            .respond_permission(
-                                rpc_id,
-                                PermissionOutcome::Selected { option_id },
-                            )
+                            .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                             .await;
                         crate::audit_ledger::record_permission(
                             Some(&session_id),
@@ -406,10 +389,7 @@ impl SessionManager {
                 };
 
                 let (detail, path_hint) = extract_tool_ui_fields(&raw);
-                let path_out = media_path
-                    .clone()
-                    .or(path_hint)
-                    .filter(|p| !p.is_empty());
+                let path_out = media_path.clone().or(path_hint).filter(|p| !p.is_empty());
                 let (before_snip, after_snip) = extract_tool_content_snippets(&raw);
 
                 if let Some(path) = media_path.as_ref() {
@@ -461,8 +441,8 @@ impl SessionManager {
                     if let Some(s) = guard.as_mut() {
                         // Tool events count as progress so long tools never false-stall (I06).
                         Self::touch_stream_progress_locked(s);
-                        let already_terminal = !tool_call_id.is_empty()
-                            && s.terminal_tool_ids.contains(&tool_call_id);
+                        let already_terminal =
+                            !tool_call_id.is_empty() && s.terminal_tool_ids.contains(&tool_call_id);
                         let open_changed = if !tool_call_id.is_empty() {
                             Self::note_tool_status_on_session(s, &tool_call_id, &status)
                         } else {
@@ -470,7 +450,8 @@ impl SessionManager {
                         };
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         // Tools settled → apply deferred prompt_complete if any (#52).
-                        let empty = Self::try_finish_deferred_prompt_complete(s, Some(app)).flatten();
+                        let empty =
+                            Self::try_finish_deferred_prompt_complete(s, Some(app)).flatten();
                         (
                             s.app_session_id.clone(),
                             s.project_path.clone(),
@@ -494,22 +475,21 @@ impl SessionManager {
                 } else {
                     kind_j
                 };
+                let live_title = tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
                 let live_title =
-                    tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
-                let live_title = if !live_title.is_empty() && !live_title.eq_ignore_ascii_case("tool")
-                {
-                    live_title
-                } else if !title_enriched.is_empty() {
-                    title_enriched.clone()
-                } else if let Some(ref d) = detail {
-                    d.clone()
-                } else if let Some(ref p) = path_out {
-                    p.clone()
-                } else if !kind_j.is_empty() && !kind_j.eq_ignore_ascii_case("tool") {
-                    kind_j.replace('_', " ")
-                } else {
-                    "tool".into()
-                };
+                    if !live_title.is_empty() && !live_title.eq_ignore_ascii_case("tool") {
+                        live_title
+                    } else if !title_enriched.is_empty() {
+                        title_enriched.clone()
+                    } else if let Some(ref d) = detail {
+                        d.clone()
+                    } else if let Some(ref p) = path_out {
+                        p.clone()
+                    } else if !kind_j.is_empty() && !kind_j.eq_ignore_ascii_case("tool") {
+                        kind_j.replace('_', " ")
+                    } else {
+                        "tool".into()
+                    };
                 // Cross-session tool audit (soft-fail; redacted summary).
                 if !app_sid.is_empty() {
                     let audit_name = if !kind.is_empty() {
@@ -640,9 +620,7 @@ impl SessionManager {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         if Self::is_session_load_replay(s.prompt_in_flight) {
-                            tracing::debug!(
-                                "acp plan dropped: no prompt in flight (replay)"
-                            );
+                            tracing::debug!("acp plan dropped: no prompt in flight (replay)");
                             return;
                         }
                         if let Some(id) = rpc_id {
@@ -675,9 +653,7 @@ impl SessionManager {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         if Self::is_session_load_replay(s.prompt_in_flight) {
-                            tracing::debug!(
-                                "acp ask_user dropped: no prompt in flight (replay)"
-                            );
+                            tracing::debug!("acp ask_user dropped: no prompt in flight (replay)");
                             return;
                         }
                         s.pending_ask_user_rpc_id = Some(rpc_id);
@@ -774,9 +750,7 @@ impl SessionManager {
                     }
                 }
                 // Also drop any parked entry with this process id (defensive).
-                self.parked
-                    .lock()
-                    .retain(|_, p| p.process_id != process_id);
+                self.parked.lock().retain(|_, p| p.process_id != process_id);
                 Self::emit_state(app, &self.snapshot());
             }
             AcpEvent::State {
@@ -1042,5 +1016,4 @@ impl SessionManager {
             }
         }
     }
-
 }

@@ -125,12 +125,11 @@ fn sort_workflows(mut items: Vec<WorkflowDef>) -> Vec<WorkflowDef> {
     items.sort_by(|a, b| {
         let sa = scope_rank(&a.scope);
         let sb = scope_rank(&b.scope);
-        sa.cmp(&sb)
-            .then_with(|| {
-                a.name
-                    .to_ascii_lowercase()
-                    .cmp(&b.name.to_ascii_lowercase())
-            })
+        sa.cmp(&sb).then_with(|| {
+            a.name
+                .to_ascii_lowercase()
+                .cmp(&b.name.to_ascii_lowercase())
+        })
     });
     items
 }
@@ -171,10 +170,7 @@ pub fn discover_workflows(
     items.extend(scan_workflow_dir(&user_dir, "user"));
     if agent_home_dir != user_dir {
         for w in scan_workflow_dir(&agent_home_dir, "agent_home") {
-            if !items
-                .iter()
-                .any(|e| e.name.eq_ignore_ascii_case(&w.name))
-            {
+            if !items.iter().any(|e| e.name.eq_ignore_ascii_case(&w.name)) {
                 items.push(w);
             }
         }
@@ -325,9 +321,12 @@ pub fn sanitize_workflow_name(raw: &str) -> Result<String, String> {
                 out.push('_');
             }
         } else if (ch == '-' || ch.is_whitespace() || ch == '.')
-            && !out.is_empty() && !out.ends_with('-') && !out.ends_with('_') {
-                out.push('-');
-            }
+            && !out.is_empty()
+            && !out.ends_with('-')
+            && !out.ends_with('_')
+        {
+            out.push('-');
+        }
         // else drop
     }
     while out.ends_with('-') || out.ends_with('_') {
@@ -444,8 +443,7 @@ pub fn create_workflow_template(
 
     fs::create_dir_all(&dir).map_err(|e| format!("could not create workflows dir: {e}"))?;
     let body = default_workflow_template(&stem)?;
-    fs::write(&path, body.as_bytes())
-        .map_err(|e| format!("could not write workflow file: {e}"))?;
+    fs::write(&path, body.as_bytes()).map_err(|e| format!("could not write workflow file: {e}"))?;
 
     Ok(WorkflowCreateResult {
         name: stem,
@@ -842,10 +840,7 @@ mod tests {
 
     #[test]
     fn create_workflow_template_project_idempotent() {
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-wf-create-{}",
-            std::process::id()
-        ));
+        let tmp = std::env::temp_dir().join(format!("grok-wf-create-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
         let r1 = create_workflow_template("demo-wf", "project", Some(tmp.to_str().unwrap()), false)
@@ -853,20 +848,11 @@ mod tests {
         assert!(r1.created);
         assert!(!r1.overwritten);
         assert!(Path::new(&r1.path).is_file());
-        let err = create_workflow_template(
-            "demo-wf",
-            "project",
-            Some(tmp.to_str().unwrap()),
-            false,
-        );
+        let err =
+            create_workflow_template("demo-wf", "project", Some(tmp.to_str().unwrap()), false);
         assert!(err.is_err());
-        let r2 = create_workflow_template(
-            "demo-wf",
-            "project",
-            Some(tmp.to_str().unwrap()),
-            true,
-        )
-        .unwrap();
+        let r2 = create_workflow_template("demo-wf", "project", Some(tmp.to_str().unwrap()), true)
+            .unwrap();
         assert!(r2.overwritten);
         let _ = fs::remove_dir_all(&tmp);
     }

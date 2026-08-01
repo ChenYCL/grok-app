@@ -1,2 +1,9 @@
-allowBuilds:
-  '@swc/core': true
+# Single-package app workspace (required by pnpm when this file exists).
+packages:
+  - "."
+
+# Allowlist for packages that may run install scripts (pnpm 10+).
+onlyBuiltDependencies:
+  - esbuild
+  - canvas
+  - "@swc/core"

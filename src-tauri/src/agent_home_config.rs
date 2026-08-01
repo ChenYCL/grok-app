@@ -48,10 +48,9 @@ fn bool_lit(v: bool) -> &'static str {
 
 fn finish_join(original: &str, lines: &[String]) -> String {
     let mut joined = lines.join("\n");
-    if (original.ends_with('\n') || original.is_empty())
-        && !joined.ends_with('\n') {
-            joined.push('\n');
-        }
+    if (original.ends_with('\n') || original.is_empty()) && !joined.ends_with('\n') {
+        joined.push('\n');
+    }
     joined
 }
 
@@ -256,7 +255,9 @@ pub fn get_table_bool(text: &str, table: &str, key: &str) -> Option<bool> {
 
 /// Read top-level string / scalar when present.
 pub fn get_top_level_string(text: &str, key: &str) -> Option<String> {
-    value_for_key_in_scope(text, None, key).map(parse_toml_scalar).filter(|s| !s.is_empty())
+    value_for_key_in_scope(text, None, key)
+        .map(parse_toml_scalar)
+        .filter(|s| !s.is_empty())
 }
 
 /// Read `[table].key` string / scalar when present.

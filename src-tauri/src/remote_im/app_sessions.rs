@@ -51,7 +51,12 @@ pub fn sync_compact_to_app(
         (None, Some(after)) => parts.push(format!("tokens_after:{after}")),
         (None, None) => {}
     }
-    if let Some(note) = compact.note.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+    if let Some(note) = compact
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+    {
         parts.push(format!("note:{note}"));
     }
     let mut content = format!("context_compact|{}", parts.join("|"));
@@ -238,7 +243,10 @@ fn find_app_session_id(local_id: &str, agent_id: Option<&str>) -> Option<String>
         return Some(local_id.to_string());
     }
     if let Some(aid) = agent_id {
-        if let Some(s) = list.iter().find(|s| s.agent_session_id.as_deref() == Some(aid)) {
+        if let Some(s) = list
+            .iter()
+            .find(|s| s.agent_session_id.as_deref() == Some(aid))
+        {
             return Some(s.id.clone());
         }
     }

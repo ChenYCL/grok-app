@@ -8,15 +8,25 @@ pub enum BuiltinCommand {
     Whoami,
     Status,
     /// Compact the currently bound agent session; optional text guides the summary.
-    Compact { note: Option<String> },
+    Compact {
+        note: Option<String>,
+    },
     /// Show current/last-reported context usage for the bound session.
     Context,
     Stop,
     /// List saved Grok accounts + quota; optional query picks/switches by number or label.
-    Account { query: Option<String> },
-    Project { query: Option<String> },
-    Resume { query: Option<String> },
-    Unknown { raw: String },
+    Account {
+        query: Option<String>,
+    },
+    Project {
+        query: Option<String>,
+    },
+    Resume {
+        query: Option<String>,
+    },
+    Unknown {
+        raw: String,
+    },
 }
 
 /// One entry for Telegram-style native bot command menus.
@@ -154,9 +164,7 @@ pub fn parse_slash(text: &str) -> Option<BuiltinCommand> {
         "compact" => BuiltinCommand::Compact { note: query },
         "stop" | "cancel" => BuiltinCommand::Stop,
         // Multi-account: list quota + switch (Telegram native menu + aliases).
-        "account" | "accounts" | "quota" | "usage" | "switch" => {
-            BuiltinCommand::Account { query }
-        }
+        "account" | "accounts" | "quota" | "usage" | "switch" => BuiltinCommand::Account { query },
         "p" | "project" => BuiltinCommand::Project { query },
         "r" | "resume" => BuiltinCommand::Resume { query },
         other => BuiltinCommand::Unknown {
@@ -248,29 +256,20 @@ mod tests {
 
     #[test]
     fn strips_telegram_bot_suffix() {
-        assert_eq!(
-            parse_slash("/help@MyGrokBot"),
-            Some(BuiltinCommand::Help)
-        );
+        assert_eq!(parse_slash("/help@MyGrokBot"), Some(BuiltinCommand::Help));
         assert_eq!(
             parse_slash("/p@MyGrokBot 2"),
             Some(BuiltinCommand::Project {
                 query: Some("2".into())
             })
         );
-        assert_eq!(
-            parse_slash("/START@bot"),
-            Some(BuiltinCommand::Help)
-        );
+        assert_eq!(parse_slash("/START@bot"), Some(BuiltinCommand::Help));
     }
 
     #[test]
     fn start_is_help() {
         assert_eq!(parse_slash("/start"), Some(BuiltinCommand::Help));
-        assert_eq!(
-            parse_slash("/start payload"),
-            Some(BuiltinCommand::Help)
-        );
+        assert_eq!(parse_slash("/start payload"), Some(BuiltinCommand::Help));
     }
 
     #[test]

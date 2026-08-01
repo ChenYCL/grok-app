@@ -117,11 +117,7 @@ async fn test_feishu(
             message: format!(
                 "missing_app_id_or_secret (app_id={}, app_secret={})",
                 if app_id.is_empty() { "empty" } else { "ok" },
-                if app_secret.is_empty() {
-                    "empty"
-                } else {
-                    "ok"
-                }
+                if app_secret.is_empty() { "empty" } else { "ok" }
             ),
             mock: false,
         });
@@ -209,9 +205,7 @@ fn test_weixin(creds: &HashMap<String, String>) -> Result<TestConnectionDto, Str
 
     // Soft option checks (shape only — never claims getUpdates is live).
     let base = cred_get(creds, &["base_url"]);
-    if !base.is_empty()
-        && !(base.starts_with("https://") || base.starts_with("http://"))
-    {
+    if !base.is_empty() && !(base.starts_with("https://") || base.starts_with("http://")) {
         return Ok(TestConnectionDto {
             ok: false,
             message: "invalid_weixin_base_url".into(),
@@ -306,9 +300,7 @@ fn test_wecom(creds: &HashMap<String, String>) -> Result<TestConnectionDto, Stri
     })
 }
 
-async fn test_telegram(
-    secrets: &HashMap<String, String>,
-) -> Result<TestConnectionDto, String> {
+async fn test_telegram(secrets: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
     let token = cred_get(secrets, &["token", "bot_token"]);
     if token.is_empty() {
         return Ok(TestConnectionDto {
@@ -359,9 +351,7 @@ async fn test_telegram(
     }
 }
 
-async fn test_discord(
-    secrets: &HashMap<String, String>,
-) -> Result<TestConnectionDto, String> {
+async fn test_discord(secrets: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
     let token = cred_get(secrets, &["token"]);
     if token.is_empty() {
         return Ok(TestConnectionDto {
@@ -397,9 +387,7 @@ async fn test_discord(
     }
 }
 
-async fn test_slack(
-    secrets: &HashMap<String, String>,
-) -> Result<TestConnectionDto, String> {
+async fn test_slack(secrets: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
     let token = cred_get(secrets, &["bot_token", "token"]);
     if token.is_empty() {
         return Ok(TestConnectionDto {
@@ -457,11 +445,7 @@ fn test_line(creds: &HashMap<String, String>) -> Result<TestConnectionDto, Strin
     // Soft option shape checks (never prove public HTTPS).
     let port = cred_get(creds, &["port"]);
     if !port.is_empty() {
-        let ok_port = port
-            .parse::<u16>()
-            .ok()
-            .filter(|p| *p >= 1)
-            .is_some();
+        let ok_port = port.parse::<u16>().ok().filter(|p| *p >= 1).is_some();
         if !ok_port {
             return Ok(TestConnectionDto {
                 ok: false,
@@ -757,7 +741,6 @@ async fn test_qqbot(creds: &HashMap<String, String>) -> Result<TestConnectionDto
     }
 }
 
-
 fn is_discord_bot_token_format(raw: &str) -> bool {
     let t = raw.trim();
     if t.is_empty() {
@@ -878,11 +861,12 @@ fn is_matrix_user_id_format(raw: &str) -> bool {
     if local.is_empty() || domain.is_empty() {
         return false;
     }
-    local.chars().all(|c| {
-        c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '=' | '/' | '-')
-    }) && domain
+    local
         .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '=' | '/' | '-'))
+        && domain
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
         && !bytes.is_empty()
 }
 
@@ -953,8 +937,7 @@ fn is_qqbot_app_id_format(raw: &str) -> bool {
     }
     t.chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        && t
-            .chars()
+        && t.chars()
             .next()
             .map(|c| c.is_ascii_alphanumeric())
             .unwrap_or(false)
@@ -963,7 +946,7 @@ fn is_qqbot_app_id_format(raw: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-fn sample_bot() -> String {
+    fn sample_bot() -> String {
         format!("{}-{}-{}", "xoxb", "TEST", "not-a-real-token-xx")
     }
 
@@ -1085,7 +1068,7 @@ fn sample_bot() -> String {
         assert_eq!(r3.message, "weixin_ilink_credentials_present_proxy");
     }
 
-#[test]
+    #[test]
     fn discord_token_format_accepts_three_segments() {
         // Synthetic shape only — not a real Discord credential.
         let ok = "TESTTOKEN_NOT_A_SECRET_xx.TEST.TESTTOKEN_NOT_A_SECRET_TAIL_xx";
@@ -1099,7 +1082,7 @@ fn sample_bot() -> String {
         ));
     }
 
-#[test]
+    #[test]
     fn line_requires_secret_and_access_token() {
         let mut c = HashMap::new();
         let r = test_line(&c).unwrap();
@@ -1118,7 +1101,7 @@ fn sample_bot() -> String {
         assert_eq!(r3.message, "line_webhook_credentials_present");
     }
 
-#[test]
+    #[test]
     fn line_accepts_access_token_alias() {
         let mut c = HashMap::new();
         c.insert("channel_secret".into(), "sec".into());
@@ -1128,7 +1111,7 @@ fn sample_bot() -> String {
         assert_eq!(r.message, "line_webhook_credentials_present");
     }
 
-#[test]
+    #[test]
     fn line_soft_fails_invalid_port_and_path() {
         let mut c = HashMap::new();
         c.insert("channel_secret".into(), "sec".into());
@@ -1150,7 +1133,7 @@ fn sample_bot() -> String {
         assert_eq!(r3.message, "line_webhook_credentials_present_custom_port");
     }
 
-#[test]
+    #[test]
     fn slack_requires_dual_tokens() {
         let mut c = HashMap::new();
         let r = slack_credential_posture(&c);
@@ -1170,7 +1153,7 @@ fn sample_bot() -> String {
         assert_eq!(r3.message, "missing_slack_bot_token");
     }
 
-#[test]
+    #[test]
     fn slack_accepts_token_aliases_and_valid_shape() {
         let mut c = HashMap::new();
         c.insert("token".into(), sample_bot());
@@ -1180,7 +1163,7 @@ fn sample_bot() -> String {
         assert_eq!(r.message, "slack_socket_mode_credentials_present");
     }
 
-#[test]
+    #[test]
     fn slack_soft_fails_invalid_token_formats() {
         let mut c = HashMap::new();
         c.insert("bot_token".into(), "not-a-bot".into());
@@ -1199,7 +1182,7 @@ fn sample_bot() -> String {
         assert_eq!(r2.message, "invalid_slack_app_token_format");
     }
 
-#[test]
+    #[test]
     fn qq_ws_url_accepts_ws_and_wss() {
         assert!(is_qq_ws_url("ws://127.0.0.1:3001"));
         assert!(is_qq_ws_url("wss://onebot.example.com/ws"));
@@ -1210,7 +1193,7 @@ fn sample_bot() -> String {
         assert!(!is_qq_ws_url("ws://"));
     }
 
-#[test]
+    #[test]
     fn qq_soft_fails_missing_and_invalid_url() {
         let empty = HashMap::new();
         let r = test_qq(&empty).unwrap();
@@ -1226,7 +1209,7 @@ fn sample_bot() -> String {
         assert!(!r2.mock);
     }
 
-#[test]
+    #[test]
     fn qq_accepts_url_alias_token_optional() {
         let mut c = HashMap::new();
         c.insert("url".into(), "wss://bridge.local/onebot".into());
@@ -1241,7 +1224,7 @@ fn sample_bot() -> String {
         assert_eq!(r2.message, "qq_forward_ws_credentials_present");
     }
 
-#[test]
+    #[test]
     fn matrix_homeserver_and_token_format() {
         assert!(is_matrix_homeserver_url("https://matrix.example.com"));
         assert!(is_matrix_homeserver_url("http://127.0.0.1:8008"));
@@ -1257,7 +1240,7 @@ fn sample_bot() -> String {
         assert!(!is_matrix_user_id_format("bot:matrix.org"));
     }
 
-#[test]
+    #[test]
     fn matrix_soft_fails_missing_and_bad_shape() {
         let empty = HashMap::new();
         let r = test_matrix(&empty).unwrap();
@@ -1303,7 +1286,7 @@ fn sample_bot() -> String {
         assert!(!r5.message.contains("connected"));
     }
 
-#[test]
+    #[test]
     fn weibo_app_id_format_accepts_numeric_and_alnum() {
         assert!(is_weibo_app_id_format("1234567890"));
         assert!(is_weibo_app_id_format("wb_app_key_01"));
@@ -1312,7 +1295,7 @@ fn sample_bot() -> String {
         assert!(!is_weibo_app_id_format("has space"));
     }
 
-#[test]
+    #[test]
     fn weibo_soft_fails_missing_and_bad_shape() {
         let empty = HashMap::new();
         let r = test_weibo(&empty);
@@ -1334,7 +1317,7 @@ fn sample_bot() -> String {
         assert_eq!(r3.message, "invalid_weibo_app_id_format");
     }
 
-#[test]
+    #[test]
     fn weibo_accepts_credentials_and_valid_endpoints() {
         let mut c = HashMap::new();
         c.insert("app_id".into(), "1234567890".into());
@@ -1350,7 +1333,7 @@ fn sample_bot() -> String {
         assert!(!r.mock);
     }
 
-#[test]
+    #[test]
     fn weibo_soft_fails_invalid_endpoints() {
         let mut c = HashMap::new();
         c.insert("app_id".into(), "1234567890".into());
@@ -1370,7 +1353,7 @@ fn sample_bot() -> String {
         assert_eq!(r2.message, "invalid_weibo_ws_endpoint");
     }
 
-#[test]
+    #[test]
     fn qqbot_app_id_accepts_numeric_and_alphanumeric() {
         assert!(is_qqbot_app_id_format("102012345"));
         assert!(is_qqbot_app_id_format("cli_abc123"));

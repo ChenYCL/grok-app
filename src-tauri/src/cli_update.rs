@@ -190,7 +190,8 @@ fn extract_json_object(s: &str) -> Option<&str> {
     }
     // Walk lines; prefer the last line that looks like a JSON object.
     s.lines()
-        .map(str::trim).rfind(|l| l.starts_with('{') && l.ends_with('}'))
+        .map(str::trim)
+        .rfind(|l| l.starts_with('{') && l.ends_with('}'))
         .or_else(|| {
             let start = s.find('{')?;
             let end = s.rfind('}')?;
@@ -210,11 +211,9 @@ fn parse_update_check_value(v: &Value) -> Result<CliUpdateCheck, String> {
     let update_available = bool_field(v, &["updateAvailable", "update_available"])
         .unwrap_or_else(|| versions_differ(&current, &latest));
     // Keep only recognized channel labels from CLI JSON — never invent.
-    let channel = string_field(v, &["channel"]).and_then(|c| {
-        match parse_cli_channel(Some(&c)) {
-            CliReleaseChannel::Unknown => None,
-            known => Some(known.as_str().to_string()),
-        }
+    let channel = string_field(v, &["channel"]).and_then(|c| match parse_cli_channel(Some(&c)) {
+        CliReleaseChannel::Unknown => None,
+        known => Some(known.as_str().to_string()),
     });
     let installer = string_field(v, &["installer"]);
     let auto_update = bool_field(v, &["autoUpdate", "auto_update"]);
@@ -258,23 +257,21 @@ fn versions_differ(a: &str, b: &str) -> bool {
 }
 
 fn normalize_ver(s: &str) -> String {
-    s.trim()
-        .trim_start_matches(['v', 'V'])
-        .to_ascii_lowercase()
+    s.trim().trim_start_matches(['v', 'V']).to_ascii_lowercase()
 }
 
 /// Resolve CLI binary and run `update --check --json`.
 pub fn check_cli_update(manual_path: Option<&str>) -> Result<CliUpdateCheck, String> {
     let probe = cli_probe::probe_cli(manual_path);
-    let path = probe
-        .path
-        .filter(|_| probe.found)
-        .ok_or_else(|| {
-            "Grok Build CLI not found — install or set the path under Runtime".to_string()
-        })?;
+    let path = probe.path.filter(|_| probe.found).ok_or_else(|| {
+        "Grok Build CLI not found — install or set the path under Runtime".to_string()
+    })?;
 
-    let output =
-        run_cli_with_timeout(Path::new(&path), &["update", "--check", "--json"], CHECK_TIMEOUT)?;
+    let output = run_cli_with_timeout(
+        Path::new(&path),
+        &["update", "--check", "--json"],
+        CHECK_TIMEOUT,
+    )?;
     let mut dto = parse_update_check_json(&output)?;
     dto.cli_path = Some(path);
     // Prefer probe version when JSON omits a usable current version.
@@ -372,9 +369,7 @@ pub async fn install_cli_update(
             }
         }
     } else if specialized {
-        return Err(
-            "Grok Build CLI not found — install or set the path under Runtime".into(),
-        );
+        return Err("Grok Build CLI not found — install or set the path under Runtime".into());
     }
 
     info!("cli_update_install: using cli_install trust-chain");
@@ -394,8 +389,8 @@ fn extract_version_hint(stdout: &str) -> Option<String> {
             continue;
         }
         for token in l.split_whitespace() {
-            let t = token
-                .trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '-');
+            let t =
+                token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '-');
             if t.chars().filter(|c| *c == '.').count() >= 1
                 && t.chars().next().is_some_and(|c| c.is_ascii_digit())
             {
@@ -532,11 +527,17 @@ mod tests {
     fn parse_cli_channel_known_and_unknown() {
         assert_eq!(parse_cli_channel(Some("stable")), CliReleaseChannel::Stable);
         assert_eq!(parse_cli_channel(Some("ALPHA")), CliReleaseChannel::Alpha);
-        assert_eq!(parse_cli_channel(Some("  alpha  ")), CliReleaseChannel::Alpha);
+        assert_eq!(
+            parse_cli_channel(Some("  alpha  ")),
+            CliReleaseChannel::Alpha
+        );
         assert_eq!(parse_cli_channel(None), CliReleaseChannel::Unknown);
         assert_eq!(parse_cli_channel(Some("")), CliReleaseChannel::Unknown);
         assert_eq!(parse_cli_channel(Some("beta")), CliReleaseChannel::Unknown);
-        assert_eq!(parse_cli_channel(Some("nightly")), CliReleaseChannel::Unknown);
+        assert_eq!(
+            parse_cli_channel(Some("nightly")),
+            CliReleaseChannel::Unknown
+        );
     }
 
     #[test]

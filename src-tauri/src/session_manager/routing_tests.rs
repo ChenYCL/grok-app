@@ -68,7 +68,9 @@ fn turn_output_events_are_never_droppable() {
     ));
     // Pure telemetry may be dropped when no session owns the process.
     assert!(!SessionManager::event_carries_turn_output(
-        &AcpEvent::Stderr { line: "noise".into() }
+        &AcpEvent::Stderr {
+            line: "noise".into()
+        }
     ));
     assert_eq!(
         SessionManager::event_kind_name(&AcpEvent::PromptComplete {
@@ -201,10 +203,8 @@ fn empty_run_skips_when_saw_model_output_even_if_buf_cleared() {
 #[test]
 fn journal_assistant_after_last_user_detects_answered_turn() {
     let _lock = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
-    let tmp = std::env::temp_dir().join(format!(
-        "grok-app-replay-gate-test-{}",
-        std::process::id()
-    ));
+    let tmp =
+        std::env::temp_dir().join(format!("grok-app-replay-gate-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     let _ = std::fs::create_dir_all(&tmp);
     std::env::set_var("GROK_APP_HOME", &tmp);
@@ -341,19 +341,28 @@ fn interjection_starts_host_owned_stream_segment() {
         StreamKind::Assistant,
         Some("agent-message-1".into()),
     );
-    assert_eq!(session.streaming_message_id.as_deref(), Some(post_id.as_str()));
+    assert_eq!(
+        session.streaming_message_id.as_deref(),
+        Some(post_id.as_str())
+    );
 
     assert!(SessionManager::is_interjection_turn_active(
-        &session, "session-1", "turn-1",
+        &session,
+        "session-1",
+        "turn-1",
     ));
     assert!(!SessionManager::is_interjection_turn_active(
-        &session, "session-2", "turn-1",
+        &session,
+        "session-2",
+        "turn-1",
     ));
     session.prompt_in_flight = false;
     session.fsm.end_stream().unwrap();
     session.active_turn_id = None;
     assert!(!SessionManager::is_interjection_turn_active(
-        &session, "session-1", "turn-1",
+        &session,
+        "session-1",
+        "turn-1",
     ));
     let _ = mgr; // keep manager constructed for parity with other tests
 }
@@ -436,11 +445,8 @@ fn pick_interjection_target_rejects_non_streaming_session() {
     // `tauri::test::mock_app()` needs the `test` feature and crashes the
     // Windows test binary (STATUS_ENTRYPOINT_NOT_FOUND, tauri #14580).
     let guard = mgr.inner.lock();
-    match SessionManager::pick_interjection_target(
-        guard.as_ref().expect("live session set"),
-    ) {
+    match SessionManager::pick_interjection_target(guard.as_ref().expect("live session set")) {
         Ok(_) => panic!("ready session must reject interjection"),
         Err(err) => assert_eq!(err, "interjection requires a streaming turn"),
     }
 }
-

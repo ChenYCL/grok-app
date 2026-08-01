@@ -16,9 +16,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::paths::{
-    agent_config_toml, ensure_app_dirs, extensions_file, resolve_agent_grok_home,
-};
+use crate::paths::{agent_config_toml, ensure_app_dirs, extensions_file, resolve_agent_grok_home};
 use crate::store;
 
 const MCP_LIST_TIMEOUT_SECS: u64 = 8;
@@ -242,7 +240,9 @@ pub fn list_mcp_server_defs(project_cwd: Option<&str>) -> Vec<McpServerDef> {
     let settings = store::load_settings();
     let config_path = resolve_agent_grok_home(&settings.session_data_mode).join("config.toml");
     // Also watch user ~/.grok/config.toml — list often sources from there.
-    let user_config = crate::process_util::user_home().join(".grok").join("config.toml");
+    let user_config = crate::process_util::user_home()
+        .join(".grok")
+        .join("config.toml");
     let mtime = file_mtime_ms(&config_path).max(file_mtime_ms(&user_config));
 
     {
@@ -323,7 +323,11 @@ pub fn parse_mcp_servers_from_toml(text: &str) -> Vec<McpServerDef> {
             // args never closed — drop the malformed buffer and let the header
             // logic below process this line, instead of silently eating it
             // (which used to lose whole servers).
-            if trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.contains('"') && !trimmed.contains('\'') {
+            if trimmed.starts_with('[')
+                && trimmed.ends_with(']')
+                && !trimmed.contains('"')
+                && !trimmed.contains('\'')
+            {
                 args_buf = None;
             } else {
                 let buf = args_buf.as_mut().expect("checked is_some");
@@ -469,7 +473,12 @@ fn parse_toml_string(raw: &str) -> Option<String> {
 }
 
 fn parse_toml_bool(raw: &str) -> Option<bool> {
-    match raw.trim().trim_end_matches(',').to_ascii_lowercase().as_str() {
+    match raw
+        .trim()
+        .trim_end_matches(',')
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "true" => Some(true),
         "false" => Some(false),
         _ => None,
@@ -838,14 +847,10 @@ pub fn validate_mcp_server_name(name: &str) -> Result<&str, String> {
         return Err("MCP server name required".into());
     };
     if !first.is_ascii_alphanumeric() {
-        return Err(
-            "MCP server name must start with a letter or digit".into(),
-        );
+        return Err("MCP server name must start with a letter or digit".into());
     }
     if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-        return Err(
-            "MCP server name may only contain letters, digits, _ and -".into(),
-        );
+        return Err("MCP server name may only contain letters, digits, _ and -".into());
     }
     Ok(n)
 }
@@ -1020,11 +1025,7 @@ pub fn add_mcp_stdio(
     // Default the new server to enabled in App prefs + agent config flag.
     let _ = set_mcp_enabled(&name, true);
 
-    tracing::info!(
-        "extensions: mcp add {} → {}",
-        name,
-        path.display()
-    );
+    tracing::info!("extensions: mcp add {} → {}", name, path.display());
 
     Ok(McpServerDef {
         name,
@@ -1070,26 +1071,15 @@ pub fn remove_mcp_server(name: &str) -> Result<(), String> {
     let mut touched = false;
     if strip_mcp_server_file(&agent_path, &name)? {
         touched = true;
-        tracing::info!(
-            "extensions: mcp remove {} → {}",
-            name,
-            agent_path.display()
-        );
+        tracing::info!("extensions: mcp remove {} → {}", name, agent_path.display());
     }
     // Independent mode may still list user-scoped servers from ~/.grok.
     if user_path != agent_path && strip_mcp_server_file(&user_path, &name)? {
         touched = true;
-        tracing::info!(
-            "extensions: mcp remove {} → {}",
-            name,
-            user_path.display()
-        );
+        tracing::info!("extensions: mcp remove {} → {}", name, user_path.display());
     }
     if !touched {
-        tracing::info!(
-            "extensions: mcp remove {} — no config section found",
-            name
-        );
+        tracing::info!("extensions: mcp remove {} — no config section found", name);
     }
 
     // Drop App enable pref so stale toggles don't linger.
@@ -1205,10 +1195,7 @@ pub fn parse_mcp_doctor_json(raw: &str) -> McpDoctorReport {
             if name.is_empty() {
                 continue;
             }
-            let healthy = s
-                .get("healthy")
-                .and_then(|x| x.as_bool())
-                .unwrap_or(false);
+            let healthy = s.get("healthy").and_then(|x| x.as_bool()).unwrap_or(false);
             let mut checks = Vec::new();
             if let Some(carr) = s.get("checks").and_then(|x| x.as_array()) {
                 for c in carr {
@@ -1217,10 +1204,7 @@ pub fn parse_mcp_doctor_json(raw: &str) -> McpDoctorReport {
                         .and_then(|x| x.as_str())
                         .unwrap_or("check")
                         .to_string();
-                    let passed = c
-                        .get("passed")
-                        .and_then(|x| x.as_bool())
-                        .unwrap_or(false);
+                    let passed = c.get("passed").and_then(|x| x.as_bool()).unwrap_or(false);
                     let detail = c
                         .get("detail")
                         .and_then(|x| x.as_str())
@@ -1414,10 +1398,7 @@ pub fn sync_mcp_enabled_to_agent_config(
     }
     if next != existing {
         fs::write(&path, next).map_err(|e| e.to_string())?;
-        tracing::info!(
-            "extensions: synced mcp enabled flags → {}",
-            path.display()
-        );
+        tracing::info!("extensions: synced mcp enabled flags → {}", path.display());
     }
     invalidate_mcp_cache();
     Ok(())
@@ -1721,14 +1702,15 @@ enabled = true
             )
         );
         assert_eq!(
-            chrome.env.as_ref().and_then(|e| e.get("PATH")).map(|s| s.as_str()),
+            chrome
+                .env
+                .as_ref()
+                .and_then(|e| e.get("PATH"))
+                .map(|s| s.as_str()),
             Some("/usr/local/bin:/usr/bin")
         );
         let http = defs.iter().find(|d| d.name == "cloudflare-api").unwrap();
-        assert_eq!(
-            http.url.as_deref(),
-            Some("https://mcp.cloudflare.com/mcp")
-        );
+        assert_eq!(http.url.as_deref(), Some("https://mcp.cloudflare.com/mcp"));
 
         // ACP mapping must not yield empty array when prefs default-on.
         let prefs = ExtensionsPrefs::default();
@@ -1736,7 +1718,9 @@ enabled = true
         let a = arr.as_array().unwrap();
         assert_eq!(a.len(), 2);
         assert!(a.iter().any(|v| v["name"] == "chrome-devtools"));
-        assert!(a.iter().any(|v| v["name"] == "cloudflare-api" && v["type"] == "http"));
+        assert!(a
+            .iter()
+            .any(|v| v["name"] == "cloudflare-api" && v["type"] == "http"));
     }
 
     #[test]
@@ -1783,7 +1767,10 @@ args = ["-m", "gamma"]
 
     #[test]
     fn validate_mcp_server_name_rules() {
-        assert_eq!(validate_mcp_server_name("chrome-devtools").unwrap(), "chrome-devtools");
+        assert_eq!(
+            validate_mcp_server_name("chrome-devtools").unwrap(),
+            "chrome-devtools"
+        );
         assert_eq!(validate_mcp_server_name("  a1_b  ").unwrap(), "a1_b");
         assert!(validate_mcp_server_name("").is_err());
         assert!(validate_mcp_server_name("-bad").is_err());
@@ -1819,13 +1806,8 @@ enabled = true
         assert!(next.contains("[mcp_servers.old]"));
 
         // Upsert replaces existing block including env.
-        let replaced = upsert_mcp_stdio_in_toml(
-            &next,
-            "playwright",
-            "node",
-            &["server.js".into()],
-            None,
-        );
+        let replaced =
+            upsert_mcp_stdio_in_toml(&next, "playwright", "node", &["server.js".into()], None);
         assert_eq!(replaced.matches("[mcp_servers.playwright]").count(), 1);
         assert!(replaced.contains("command = \"node\""));
         assert!(!replaced.contains("[mcp_servers.playwright.env]"));

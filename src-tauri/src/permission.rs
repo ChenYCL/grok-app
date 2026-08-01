@@ -26,7 +26,6 @@ pub enum PermissionPolicy {
     AlwaysApprove,
 }
 
-
 impl PermissionPolicy {
     pub fn parse(s: &str) -> Self {
         let t = s.trim();
@@ -417,10 +416,7 @@ pub fn may_auto_allow_download(
     project_root: Option<&Path>,
     command: &str,
 ) -> bool {
-    if matches!(
-        policy,
-        PermissionPolicy::Deny | PermissionPolicy::DontAsk
-    ) {
+    if matches!(policy, PermissionPolicy::Deny | PermissionPolicy::DontAsk) {
         return false;
     }
     if !is_download_command(command) {
@@ -470,10 +466,7 @@ pub fn may_auto_allow(
         return matches!(policy, PermissionPolicy::AlwaysApprove);
     }
 
-    if matches!(
-        policy,
-        PermissionPolicy::Deny | PermissionPolicy::DontAsk
-    ) {
+    if matches!(policy, PermissionPolicy::Deny | PermissionPolicy::DontAsk) {
         return false;
     }
 

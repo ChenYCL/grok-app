@@ -181,7 +181,10 @@ fn format_f64(v: f64) -> String {
         if s.contains('.') || s.contains('e') || s.contains('E') {
             s
         } else {
-            format!("{v:.6}").trim_end_matches('0').trim_end_matches('.').to_string()
+            format!("{v:.6}")
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string()
         }
     }
 }
@@ -371,13 +374,7 @@ pub fn apply_memory_embed_patch(text: &str, patch: &MemoryEmbedConfigPatch) -> S
         next = set_table_key(&next, "memory.search", "max_results", &n.to_string(), false);
     }
     if let Some(n) = patch.search_min_score {
-        next = set_table_key(
-            &next,
-            "memory.search",
-            "min_score",
-            &format_f64(n),
-            false,
-        );
+        next = set_table_key(&next, "memory.search", "min_score", &format_f64(n), false);
     }
     if let Some(n) = patch.search_vector_weight {
         next = set_table_key(
@@ -389,13 +386,7 @@ pub fn apply_memory_embed_patch(text: &str, patch: &MemoryEmbedConfigPatch) -> S
         );
     }
     if let Some(n) = patch.search_text_weight {
-        next = set_table_key(
-            &next,
-            "memory.search",
-            "text_weight",
-            &format_f64(n),
-            false,
-        );
+        next = set_table_key(&next, "memory.search", "text_weight", &format_f64(n), false);
     }
     if let Some(b) = patch.mmr_enabled {
         next = set_table_key(
@@ -407,13 +398,7 @@ pub fn apply_memory_embed_patch(text: &str, patch: &MemoryEmbedConfigPatch) -> S
         );
     }
     if let Some(n) = patch.mmr_lambda {
-        next = set_table_key(
-            &next,
-            "memory.search.mmr",
-            "lambda",
-            &format_f64(n),
-            false,
-        );
+        next = set_table_key(&next, "memory.search.mmr", "lambda", &format_f64(n), false);
     }
     if let Some(b) = patch.temporal_decay_enabled {
         next = set_table_key(
@@ -443,22 +428,10 @@ pub fn apply_memory_embed_patch(text: &str, patch: &MemoryEmbedConfigPatch) -> S
         );
     }
     if let Some(n) = patch.dream_min_hours {
-        next = set_table_key(
-            &next,
-            "memory.dream",
-            "min_hours",
-            &format_f64(n),
-            false,
-        );
+        next = set_table_key(&next, "memory.dream", "min_hours", &format_f64(n), false);
     }
     if let Some(n) = patch.dream_min_sessions {
-        next = set_table_key(
-            &next,
-            "memory.dream",
-            "min_sessions",
-            &n.to_string(),
-            false,
-        );
+        next = set_table_key(&next, "memory.dream", "min_sessions", &n.to_string(), false);
     }
     if let Some(n) = patch.dream_check_interval_secs {
         next = set_table_key(
@@ -508,8 +481,7 @@ pub fn extract_memory_embed_sections(text: &str) -> String {
         let trimmed = line.trim();
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
             let name = trimmed.trim_start_matches('[').trim_end_matches(']');
-            keep = name == "memory"
-                || name.starts_with("memory.");
+            keep = name == "memory" || name.starts_with("memory.");
             if keep {
                 if any {
                     out.push('\n');
@@ -821,9 +793,15 @@ dimensions = 512
         assert!(next.contains("dimensions = 1024"), "{next}");
         assert!(next.contains("[memory.search.mmr]"), "{next}");
         assert!(next.contains("enabled = true"), "{next}");
-        assert!(next.contains("lambda = 0.7") || next.contains("lambda = 0.700"), "{next}");
+        assert!(
+            next.contains("lambda = 0.7") || next.contains("lambda = 0.700"),
+            "{next}"
+        );
         assert!(next.contains("[memory.search]"), "{next}");
-        assert!(next.contains("min_score = 0.4") || next.contains("min_score = 0.40"), "{next}");
+        assert!(
+            next.contains("min_score = 0.4") || next.contains("min_score = 0.40"),
+            "{next}"
+        );
         assert!(next.contains("[memory.dream]"), "{next}");
         assert!(next.contains("enabled = false"), "{next}");
     }

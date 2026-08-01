@@ -49,8 +49,8 @@ fn write_instances(list: &[ChannelInstanceDto]) -> Result<(), String> {
     let file = ChannelsFile {
         instances: list.to_vec(),
     };
-    let raw = serde_json::to_string_pretty(&file)
-        .map_err(|e| format!("serialize channels: {e}"))?;
+    let raw =
+        serde_json::to_string_pretty(&file).map_err(|e| format!("serialize channels: {e}"))?;
     fs::write(&path, raw).map_err(|e| format!("write channels: {e}"))?;
     #[cfg(unix)]
     {
@@ -73,8 +73,7 @@ fn load_secrets_map() -> HashMap<String, HashMap<String, String>> {
 
 fn write_secrets_map(map: &HashMap<String, HashMap<String, String>>) -> Result<(), String> {
     let path = secrets_path();
-    let raw = serde_json::to_string_pretty(map)
-        .map_err(|e| format!("serialize secrets: {e}"))?;
+    let raw = serde_json::to_string_pretty(map).map_err(|e| format!("serialize secrets: {e}"))?;
     fs::write(&path, raw).map_err(|e| format!("write secrets: {e}"))?;
     #[cfg(unix)]
     {

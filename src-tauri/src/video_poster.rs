@@ -76,16 +76,7 @@ fn looks_like_video(path: &Path) -> bool {
         .to_ascii_lowercase();
     matches!(
         ext.as_str(),
-        "mp4"
-            | "webm"
-            | "mov"
-            | "mkv"
-            | "m4v"
-            | "avi"
-            | "mpeg"
-            | "mpg"
-            | "ogv"
-            | "3gp"
+        "mp4" | "webm" | "mov" | "mkv" | "m4v" | "avi" | "mpeg" | "mpg" | "ogv" | "3gp"
     )
 }
 
@@ -338,10 +329,8 @@ mod tests {
     #[test]
     fn save_client_roundtrip_under_app_home() {
         let _lock = paths::APP_HOME_ENV_LOCK.lock().unwrap();
-        let home = std::env::temp_dir().join(format!(
-            "grok-app-poster-home-{}",
-            std::process::id()
-        ));
+        let home =
+            std::env::temp_dir().join(format!("grok-app-poster-home-{}", std::process::id()));
         let _ = fs::remove_dir_all(&home);
         fs::create_dir_all(&home).unwrap();
         std::env::set_var("GROK_APP_HOME", &home);

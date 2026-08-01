@@ -555,8 +555,7 @@ pub fn extract_trycloudflare_url(line: &str) -> Option<String> {
         let end = rest
             .find(|c: char| c.is_whitespace() || c == '|' || c == '"' || c == '\'')
             .unwrap_or(rest.len());
-        let candidate = rest[..end]
-            .trim_end_matches([')', ']', '.', ',', ';']);
+        let candidate = rest[..end].trim_end_matches([')', ']', '.', ',', ';']);
         if candidate.contains("trycloudflare.com") || candidate.contains("cfargotunnel.com") {
             return Some(candidate.to_string());
         }
@@ -571,7 +570,10 @@ fn kill_process_group(pid: Option<u32>, pgid: Option<i32>) {
             // Negative pid → kill process group. libc_kill already wraps the FFI unsafe.
             let rc = libc_kill(-g, 15); // SIGTERM
             if rc != 0 {
-                tracing::debug!(pgid = g, "mirror tunnel SIGTERM group failed; trying SIGKILL");
+                tracing::debug!(
+                    pgid = g,
+                    "mirror tunnel SIGTERM group failed; trying SIGKILL"
+                );
             }
             std::thread::sleep(Duration::from_millis(200));
             let _ = libc_kill(-g, 9);

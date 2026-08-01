@@ -15,7 +15,6 @@ use crate::store::{self, ChatMessageStored, MessageAttachmentStored};
 
 use super::*;
 
-
 impl SessionManager {
     pub async fn send_message(
         self: &Arc<Self>,
@@ -65,12 +64,9 @@ impl SessionManager {
         // Open the turn on the target wherever it sits (live **or** background).
         // Multi-window: a secondary send must not require stealing the live focus
         // from a main-window mid-turn when the target already has a warm agent.
-        let target_sid = session_id.clone().or_else(|| {
-            self.inner
-                .lock()
-                .as_ref()
-                .map(|s| s.app_session_id.clone())
-        });
+        let target_sid = session_id
+            .clone()
+            .or_else(|| self.inner.lock().as_ref().map(|s| s.app_session_id.clone()));
         let Some(app_sid) = target_sid else {
             return Err("no active session".into());
         };
@@ -492,9 +488,7 @@ impl SessionManager {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 if s.app_session_id == app_sid {
-                    Self::commit_interjection_boundary(
-                        s, &app, &message, &app_sid, &turn_id,
-                    )?;
+                    Self::commit_interjection_boundary(s, &app, &message, &app_sid, &turn_id)?;
                     return Ok(self.snapshot());
                 }
             }
@@ -502,9 +496,7 @@ impl SessionManager {
         {
             let mut background = self.background.lock();
             if let Some(s) = background.get_mut(&app_sid) {
-                Self::commit_interjection_boundary(
-                    s, &app, &message, &app_sid, &turn_id,
-                )?;
+                Self::commit_interjection_boundary(s, &app, &message, &app_sid, &turn_id)?;
                 return Ok(self.snapshot());
             }
         }
