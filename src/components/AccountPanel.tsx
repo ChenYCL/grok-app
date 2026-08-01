@@ -26,6 +26,14 @@ import {
   type HeatGranularity,
   type HeatRange,
 } from "@/components/Heatmap";
+import {
+  heatmapErrorView,
+  heatmapHasSamples,
+  heatmapSummaryChips,
+  listHeatmapGranularityChips,
+  resolveHeatmapErrorChip,
+  summarizeHeatmapRange,
+} from "@/lib/heatmapUsagePro";
 import { GlassModal } from "@/components/GlassModal";
 import { Tip } from "@/components/ui/tooltip";
 import { IconPlus, IconTrash, IconUser } from "@/components/icons";
@@ -70,6 +78,12 @@ export interface AccountPanelLabels {
   fetchedAt: string;
   products: string;
   heatmapNoData: string;
+  /** Body under no-data empty (local sessions only — not SuperGrok quota). */
+  heatmapNoDataHint: string;
+  heatmapLoading: string;
+  heatmapLoadingHint: string;
+  heatmapRangeEmpty: string;
+  heatmapRangeEmptyHint: string;
   heatmapAria: string;
   heatmapRequests: string;
   heatmapTokens: string;
@@ -83,6 +97,10 @@ export interface AccountPanelLabels {
   heatmapWeek: string;
   /** Total tokens across heatmap (or selected range). Includes `{count}`. */
   heatmapTotalTokens: string;
+  /** Active days chip. Includes `{count}`. */
+  heatmapActiveDays: string;
+  /** Sessions count chip. Includes `{count}`. */
+  heatmapSessionsCount: string;
   weeklyTitle: string;
   loginHelpTitle: string;
   loginHelpBody: string;
@@ -113,6 +131,11 @@ export interface AccountPanelProps {
   labels: AccountPanelLabels;
   compact?: boolean;
   loginHint?: string | null;
+  /**
+   * Soft-fail error from account_status / host (heatmap only surfaces this —
+   * never invents activity cells or SuperGrok quota from it).
+   */
+  heatmapError?: unknown;
   savedAccounts?: SavedAccount[];
   activeAccountId?: string | null;
   onLoginOauth: () => void;
@@ -149,6 +172,7 @@ export function AccountPanel({
   labels,
   compact = false,
   loginHint = null,
+  heatmapError = null,
   savedAccounts = [],
   activeAccountId = null,
   onLoginOauth,
@@ -186,20 +210,48 @@ export function AccountPanel({
   /** Same absolute clock as sidebar UserMenu (`MM-DD HH:mm`). */
   const resetTime = formatQuotaResetTime(billing?.resetsAt);
 
+  const heatDays = status?.heatmap ?? [];
+  const heatHasSamples = useMemo(
+    () => heatmapHasSamples(heatDays),
+    [heatDays],
+  );
+
+  /** Honest counts for full heatmap or selected day/week range. */
+  const heatSummary = useMemo(
+    () => summarizeHeatmapRange(heatDays, selectedHeatRange),
+    [heatDays, selectedHeatRange],
+  );
+  const heatChips = useMemo(
+    () => heatmapSummaryChips(heatSummary),
+    [heatSummary],
+  );
+  const heatErrChip = useMemo(
+    () => resolveHeatmapErrorChip(heatmapError),
+    [heatmapError],
+  );
+  const heatErrView = useMemo(
+    () => (heatmapError != null && heatmapError !== ""
+      ? heatmapErrorView(heatmapError)
+      : null),
+    [heatmapError],
+  );
+  const heatmapErrTitle = heatErrView
+    ? t(heatErrView.titleKey)
+    : t("account.heatmap.err.other");
+  const heatmapErrHint = heatErrView
+    ? t(heatErrView.hintKey)
+    : t("account.heatmap.err.otherHint");
+  const granularityChips = useMemo(
+    () => listHeatmapGranularityChips(heatGranularity),
+    [heatGranularity],
+  );
+
   const rangeSessionCount = selectedHeatRange
-    ? sumHeatInRange(status?.heatmap ?? [], selectedHeatRange).requests
+    ? sumHeatInRange(heatDays, selectedHeatRange).requests
     : null;
 
-  /** Full heatmap total, or tokens in the selected day/week range. */
-  const heatTokenTotal = useMemo(() => {
-    const days = status?.heatmap ?? [];
-    if (selectedHeatRange) {
-      return sumHeatInRange(days, selectedHeatRange).tokens;
-    }
-    let tokens = 0;
-    for (const d of days) tokens += d.tokens;
-    return tokens;
-  }, [status?.heatmap, selectedHeatRange]);
+  /** Tokens in selected range or full heatmap — only when real activity exists. */
+  const heatTokenTotal = heatChips?.totalTokens ?? 0;
 
   const filteredCallLogs = useMemo(() => {
     const logs = status?.callLogs ?? [];
@@ -616,68 +668,120 @@ export function AccountPanel({
             <div className="account-section__title account-section__title--row">
               <span>{labels.heatmap}</span>
               <div className="account-heatmap-title-meta">
-                <span
-                  className="account-heatmap-total"
-                  title={
-                    Number.isFinite(heatTokenTotal)
-                      ? String(Math.round(heatTokenTotal))
-                      : undefined
-                  }
-                >
-                  {labels.heatmapTotalTokens.replace(
-                    "{count}",
-                    // Always Chinese units (千 / 万·萬 / 亿·億), not English k/M.
-                    formatChineseCount(
-                      heatTokenTotal,
-                      locale === "zh-TW" ? "zh-TW" : "zh",
-                    ),
-                  )}
-                </span>
+                {heatErrChip ? (
+                  <span
+                    className="account-heatmap-err-chip"
+                    title={heatmapErrHint}
+                    data-kind={heatErrChip.kind}
+                  >
+                    {heatmapErrTitle}
+                  </span>
+                ) : null}
+                {heatChips ? (
+                  <div className="account-heatmap-summary" aria-live="polite">
+                    <span
+                      className="account-heatmap-total account-heatmap-chip"
+                      title={String(heatChips.activeDays)}
+                    >
+                      {labels.heatmapActiveDays.replace(
+                        "{count}",
+                        formatChineseCount(
+                          heatChips.activeDays,
+                          locale === "zh-TW" ? "zh-TW" : "zh",
+                        ),
+                      )}
+                    </span>
+                    <span
+                      className="account-heatmap-total account-heatmap-chip"
+                      title={
+                        Number.isFinite(heatTokenTotal)
+                          ? String(Math.round(heatTokenTotal))
+                          : undefined
+                      }
+                    >
+                      {labels.heatmapTotalTokens.replace(
+                        "{count}",
+                        // Always Chinese units (千 / 万·萬 / 亿·億), not English k/M.
+                        formatChineseCount(
+                          heatTokenTotal,
+                          locale === "zh-TW" ? "zh-TW" : "zh",
+                        ),
+                      )}
+                    </span>
+                    <span
+                      className="account-heatmap-total account-heatmap-chip"
+                      title={String(heatChips.totalRequests)}
+                    >
+                      {labels.heatmapSessionsCount.replace(
+                        "{count}",
+                        formatChineseCount(
+                          heatChips.totalRequests,
+                          locale === "zh-TW" ? "zh-TW" : "zh",
+                        ),
+                      )}
+                    </span>
+                  </div>
+                ) : heatHasSamples || loading ? null : (
+                  <span
+                    className="account-heatmap-total account-heatmap-chip account-heatmap-chip--muted"
+                    title={labels.heatmapNoDataHint}
+                  >
+                    {labels.heatmapNoData}
+                  </span>
+                )}
                 <div
                   className="account-heat-toggle"
                   role="group"
                   aria-label={labels.heatmap}
                 >
-                  <button
-                    type="button"
-                    className={
-                      "account-heat-toggle__btn" +
-                      (heatGranularity === "day" ? " is-active" : "")
-                    }
-                    aria-pressed={heatGranularity === "day"}
-                    onClick={() => setGranularity("day")}
-                  >
-                    {labels.heatmapDay}
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      "account-heat-toggle__btn" +
-                      (heatGranularity === "week" ? " is-active" : "")
-                    }
-                    aria-pressed={heatGranularity === "week"}
-                    onClick={() => setGranularity("week")}
-                  >
-                    {labels.heatmapWeek}
-                  </button>
+                  {granularityChips.map((chip) => (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      className={
+                        "account-heat-toggle__btn" +
+                        (chip.active ? " is-active" : "")
+                      }
+                      aria-pressed={chip.active}
+                      onClick={() => setGranularity(chip.id)}
+                    >
+                      {chip.id === "day"
+                        ? labels.heatmapDay
+                        : labels.heatmapWeek}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
+            <p className="account-section__hint account-heatmap-hint">
+              {labels.heatmapHint}
+            </p>
             <div className="account-section__body account-section__body--heat">
               <Heatmap
-                days={status?.heatmap ?? []}
+                days={heatDays}
                 metric="tokens"
                 granularity={heatGranularity}
                 locale={locale}
                 selectedRange={selectedHeatRange}
                 onSelectRange={onHeatSelect}
+                loading={loading}
+                error={heatmapError}
+                onClearRange={() => setSelectedHeatRange(null)}
                 labels={{
                   less: labels.less,
                   more: labels.more,
                   noData: labels.heatmapNoData,
+                  noDataHint: labels.heatmapNoDataHint,
+                  loading: labels.heatmapLoading,
+                  loadingHint: labels.heatmapLoadingHint,
+                  rangeEmpty: labels.heatmapRangeEmpty,
+                  rangeEmptyHint: labels.heatmapRangeEmptyHint,
+                  clearRange: labels.callLogsClearDay,
                   aria: labels.heatmapAria,
                   requests: labels.heatmapRequests,
                   tokens: labels.heatmapTokens,
+                  errorTitle: heatmapErrTitle,
+                  errorHint: heatmapErrHint,
                 }}
               />
             </div>

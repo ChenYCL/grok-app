@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Account heatmap empty honesty** (HEATMAP-USAGE-PRO): soft-fail when local session signals are missing (never invent activity cells or SuperGrok quota); day/week range chips + active-days / tokens / sessions summary chips; classified Host errors (`host_only` · `network` · `empty` · `other`). Pure `heatmapUsagePro` / `heatmapRange` helpers + tests; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
