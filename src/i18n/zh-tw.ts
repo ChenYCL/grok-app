@@ -5294,6 +5294,51 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.preferredAgent.default": "Default (CLI)",
   "settings.preferredAgent.source.bundled": "Bundled",
   "settings.preferredAgent.source.builtin": "Built-in",
+  // Settings → General → Agent → Agents & Personas console
+  "settings.agentsPersonas.title": "Agents 與 Personas",
+  "settings.agentsPersonas.desc":
+    "瀏覽內建、使用者與專案級 agent 定義，以及磁碟上發現的 personas（與 CLI `/config-agents` 根目錄一致）。不會憑空編造 persona — 僅列出真實檔案。首選 agent 作用於新工作階段。",
+  "settings.agentsPersonas.tab.agents": "Agents",
+  "settings.agentsPersonas.tab.personas": "Personas",
+  "settings.agentsPersonas.searchPlaceholder": "依名稱、來源或路徑篩選…",
+  "settings.agentsPersonas.refresh": "重新整理",
+  "settings.agentsPersonas.loading": "載入中…",
+  "settings.agentsPersonas.clearFilter": "清除篩選",
+  "settings.agentsPersonas.open": "開啟",
+  "settings.agentsPersonas.reveal": "在 Finder 中顯示",
+  "settings.agentsPersonas.openUserAgents": "開啟使用者 agents 目錄",
+  "settings.agentsPersonas.openProjectAgents": "開啟專案 agents 目錄",
+  "settings.agentsPersonas.openUserPersonas": "開啟使用者 personas 目錄",
+  "settings.agentsPersonas.openProjectPersonas": "開啟專案 personas 目錄",
+  "settings.agentsPersonas.browsePersonas": "瀏覽 personas 目錄",
+  "settings.agentsPersonas.needProjectHint":
+    "請先在工作台選擇專案，以管理專案級定義。",
+  "settings.agentsPersonas.agentsEmpty": "未發現 agent 定義",
+  "settings.agentsPersonas.agentsEmptyHint":
+    "目錄載入後一律列出內建 agent。可在 ~/.grok/agents 或專案 `.grok/agents` 新增 `*.md`，或在「擴充 → Agents」建立。",
+  "settings.agentsPersonas.personasEmpty": "未發現 personas",
+  "settings.agentsPersonas.personasEmptyHint":
+    "Personas 為 ~/.grok/personas 或專案 `.grok/personas` 下的 `*.toml` / `*.md`。應用不會編造 persona 名稱 — 請用 CLI 或開啟目錄新增檔案。",
+  "settings.agentsPersonas.filterEmpty": "沒有符合篩選條件的項目",
+  "settings.agentsPersonas.filterEmptyHint": "清除篩選以查看完整列表。",
+  "settings.agentsPersonas.hostOnly": "請在桌面應用中列出 agents 與 personas",
+  "settings.agentsPersonas.hostOnlyHint":
+    "檔案系統發現需要 Tauri 主機。內建名稱仍可能來自目錄，以便首選 agent 誠實展示。",
+  "settings.agentsPersonas.noProject": "未開啟專案",
+  "settings.agentsPersonas.noProjectHint":
+    "開啟工作台專案以列出專案級 agents 與 personas。",
+  "settings.agentsPersonas.error": "無法載入 agents 與 personas",
+  "settings.agentsPersonas.builtinNoPath": "內建 · 無定義檔路徑",
+  "settings.agentsPersonas.setPreferred": "設為首選",
+  "settings.agentsPersonas.preferredBadge": "首選",
+  "settings.agentsPersonas.preferredDefault":
+    "首選 agent：預設（CLI）— 新工作階段不傳 `--agent`。",
+  "settings.agentsPersonas.preferredCurrent":
+    "首選 agent：{name} · {source}",
+  "settings.agentsPersonas.preferredMissing":
+    "首選 agent “{name}” 不在目錄中",
+  "settings.agentsPersonas.preferredMissingHint":
+    "可能已重新命名或刪除。請另選 agent 或預設（CLI）。在變更前，啟動仍會使用已儲存的名稱。",
   // Remote control (settings section id: remote_im)
   "settings.nav.remoteIm": "遠端控制",
   "settings.remoteIm.sidebarAria": "IM 通訊渠道",

@@ -27094,3 +27094,99 @@ html[data-theme="light"] .rim-sidebar {
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.2));
 }
+
+/* Settings → Agent → Agents & Personas console */
+.settings-agents-personas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.settings-agents-personas__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.settings-agents-personas__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.settings-agents-personas__tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-agents-personas__tab.is-active {
+  border-color: color-mix(in srgb, var(--accent, #6b8cff) 30%, transparent);
+  background: color-mix(in srgb, var(--accent, #6b8cff) 14%, transparent);
+  color: var(--text-primary);
+  font-weight: 560;
+}
+
+.settings-agents-personas__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.settings-agents-personas__search {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+
+.settings-agents-personas__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-agents-personas__list {
+  margin: 0;
+  width: 100%;
+}
+
+.settings-agents-personas__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.settings-agents-personas__group-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.settings-agents-personas__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+}
+
+.settings-agents-personas__empty-title {
+  font-weight: 560;
+  color: var(--text-primary);
+}

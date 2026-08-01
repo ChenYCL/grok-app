@@ -256,6 +256,7 @@ import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { GlassModal } from "@/components/GlassModal";
 import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
+import { AgentsPersonasConsolePanel } from "@/components/AgentsPersonasConsolePanel";
 import { MemoryEmbedPanel } from "@/components/MemoryEmbedPanel";
 import { CodebaseIndexingPanel } from "@/components/CodebaseIndexingPanel";
 import { CodebaseSearchPanel } from "@/components/CodebaseSearchPanel";
@@ -3084,6 +3085,20 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              <div
+                className={
+                  "settings-row settings-row--stack" +
+                  rowHighlight("settings-anchor-agentsPersonas")
+                }
+              >
+                <AgentsPersonasConsolePanel
+                  locale={resolveLocale(locale)}
+                  projectPath={workspaceCwd}
+                  preferredAgent={preferredAgent}
+                  onPreferredAgent={onPreferredAgent}
+                  agentCatalog={agentCatalog}
+                />
+              </div>
               {onAgentProfilePath ? (
                 <div
                   className={

@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Agents & Personas console** (Settings → General → Agent): list built-in + user + project agent definitions and discovered personas (CLI `/config-agents` roots via host `agents_list`); filter, source badges, open/reveal when path known, folder browse, preferred-agent honesty when missing from catalog — never invents personas. Pure `agentsPersonasConsole` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
