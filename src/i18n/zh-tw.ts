@@ -4004,6 +4004,43 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.goal.phase.unknown": "目標",
   "reliability.supportZipHint":
     "去敏後的 Doctor 報告、近期日誌與停滯時間軸快照（不含金鑰）。",
+  "reliability.supportZip.confirmTitle": "匯出支援包？",
+  "reliability.supportZip.confirmMessage":
+    "請先核對下方去敏清單。支援包絕不會包含金鑰、登入憑證或 API Key。",
+  "reliability.supportZip.confirmAction": "匯出支援包",
+  "reliability.supportZip.checklistTitle": "將包含的部分（已去敏）",
+  "reliability.supportZip.secretsNever":
+    "絕不會包含金鑰（無 secrets.json、帳戶登入或原始 API Key）。",
+  "reliability.supportZip.redacted": "已去敏",
+  "reliability.supportZip.whenAvailable": "主機上存在時才寫入",
+  "reliability.supportZip.sectionOmitted": "本次不包含",
+  "reliability.supportZip.auditNotIncluded":
+    "工具稽核帳本不在此壓縮檔內 — 請改用「稽核」匯出。",
+  "reliability.supportZip.manifestPreview": "文字清單預覽",
+  "reliability.supportZip.section.doctor": "Doctor 報告（doctor.json）",
+  "reliability.supportZip.section.doctorHint":
+    "健康檢查；介面未傳入時由主機重新產生（僅路徑，無金鑰）。",
+  "reliability.supportZip.section.settings": "應用程式設定（settings.json）",
+  "reliability.supportZip.section.settingsHint":
+    "僅當本機存在設定檔時寫入；金鑰已去敏。",
+  "reliability.supportZip.section.meta": "應用程式 / 系統中繼資料（meta.json）",
+  "reliability.supportZip.section.metaHint":
+    "版本、系統架構、工作階段與專案數量 — 不含含金鑰路徑。",
+  "reliability.supportZip.section.stall": "停滯時間軸（stall-timeline.json）",
+  "reliability.supportZip.section.stallHint":
+    "僅在有可靠性中心停滯訊號時寫入結構化快照。",
+  "reliability.supportZip.section.logs": "近期日誌（logs/）",
+  "reliability.supportZip.section.logsHint":
+    "主機上存在時才寫入近期日誌；限大小並去敏 — 絕不虛構日誌。",
+  "reliability.supportZip.section.readme": "README.txt",
+  "reliability.supportZip.section.readmeHint": "給接收方的壓縮檔內容說明。",
+  "reliability.supportZip.emptyHostOnly": "支援包需要桌面應用程式",
+  "reliability.supportZip.emptyHostOnlyHint":
+    "匯出僅在 Tauri 主機上執行 — 請在桌面版 Grok App 中產生去敏支援包。",
+  "reliability.supportZip.failHostOnly": "支援包需要桌面應用程式（瀏覽器中不可用）",
+  "reliability.supportZip.failCancel": "已取消匯出支援包",
+  "reliability.supportZip.failIo": "無法寫入支援包（磁碟或權限）",
+  "reliability.supportZip.failEmpty": "目前沒有可誠實寫入支援包的內容",
 
   "reliability.audit.title": "工具稽核帳本",
   "reliability.audit.count": "{count}",
