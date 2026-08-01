@@ -5646,6 +5646,39 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   align-items: center;
 }
 
+.settings-netprobe__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-input));
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.settings-netprobe__empty.is-soft {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--border-subtle) 80%, transparent);
+}
+
+.settings-netprobe__empty-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-netprobe__empty-hint {
+  color: var(--text-secondary);
+}
+
+.settings-netprobe__empty-actions {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .settings-netprobe__chip.is-warn .settings-acp-chip__dot,
 .settings-acp-chip.is-warn .settings-acp-chip__dot {
   background: var(--warning, #c9902c);
