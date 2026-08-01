@@ -1794,6 +1794,87 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.codebaseIndexing.save": "儲存程式碼庫索引",
   "settings.codebaseIndexing.saving": "儲存中…",
   "settings.codebaseIndexing.needTauri": "程式碼庫索引設定需要桌面應用程式。",
+  "settings.lspTools": "LSP 工具",
+  "settings.lspToolsDesc":
+    "如實展示目前 GROK_HOME config.toml 中的 Grok Build `[features].lsp_tools`。開啟後向 CLI agent 暴露 lsp 工具——應用本身不執行語言伺服器，也不顯示即時診斷。獨立 agent-home 可寫入 bool 並 soft-respawn；共用模式唯讀。已知舊版 CLI 時 soft-fail。",
+  "settings.lspTools.path": "設定：{path}",
+  "settings.lspTools.loading": "正在載入 LSP 工具設定…",
+  "settings.lspTools.error": "無法載入或更新 LSP 工具設定",
+  "settings.lspTools.saved": "LSP 工具設定已儲存（agent 已 soft-respawn）",
+  "settings.lspTools.sharedWarning":
+    "共用模式顯示 ~/.grok/config.toml（唯讀探測）。切換到獨立工作階段資料模式後，才能將 `[features].lsp_tools` 寫入 App agent-home。",
+  "settings.lspTools.mode.independent": "獨立（agent-home）",
+  "settings.lspTools.mode.shared": "共用（~/.grok）",
+  "settings.lspTools.missing": "檔案尚不存在",
+  "settings.lspTools.writable": "可編輯",
+  "settings.lspTools.readOnly": "唯讀",
+  "settings.lspTools.presence.unset": "未設定",
+  "settings.lspTools.presence.on": "開",
+  "settings.lspTools.presence.off": "關",
+  "settings.lspTools.status.off": "關 — agent 無 lsp 工具",
+  "settings.lspTools.status.on": "開 — 僅 CLI agent 工具",
+  "settings.lspTools.status.unset": "未設定 — CLI 預設關閉",
+  "settings.lspTools.status.sharedReadonly": "共用唯讀",
+  "settings.lspTools.status.cliOld": "CLI 低於 {min}（soft-fail）",
+  "settings.lspTools.status.hostOnly": "需要桌面主機",
+  "settings.lspTools.chip.off": "關",
+  "settings.lspTools.chip.on": "開",
+  "settings.lspTools.chip.unset": "未設定",
+  "settings.lspTools.chip.sharedReadonly": "共用唯讀",
+  "settings.lspTools.chip.cliOld": "CLI < {min}",
+  "settings.lspTools.chip.hostOnly": "僅主機",
+  "settings.lspTools.chip.cliDefaultOff": "CLI 預設關",
+  "settings.lspTools.chip.noAppLsp": "應用：無 LSP 用戶端",
+  "settings.lspTools.chip.noDiagnostics": "無即時診斷",
+  "settings.lspTools.cliUnknown": "CLI 版本未知（soft-fail）",
+  "settings.lspTools.enable": "啟用 LSP 工具",
+  "settings.lspTools.enableDesc":
+    "開啟後，若 agent 設定中已設定語言伺服器，CLI agent 可使用 lsp 工具。關閉或未設定（CLI 預設）時 agent 無 lsp 工具。應用不會在此顯示診斷列表。",
+  "settings.lspTools.unsetDefaultHint":
+    "鍵未設定 — CLI 預設關閉。切換一次即可將明確 bool 寫入 config.toml。",
+  "settings.lspTools.empty.off": "關閉時，agent 無 lsp 工具。",
+  "settings.lspTools.empty.offHint":
+    "在獨立 agent-home 中啟用該旗標，soft-respawn 後即可向 CLI agent 暴露 lsp 工具。",
+  "settings.lspTools.empty.on": "已開啟：若已設定伺服器，CLI agent 可使用 lsp 工具。",
+  "settings.lspTools.empty.onHint":
+    "應用尚未顯示即時診斷——工具僅在 CLI agent 中執行。",
+  "settings.lspTools.empty.unset": "鍵未設定 — CLI 預設關閉（agent 無 lsp 工具）。",
+  "settings.lspTools.empty.unsetHint":
+    "切換一次即可寫入明確的 `[features].lsp_tools` bool。",
+  "settings.lspTools.empty.sharedReadonly": "共用模式對此旗標唯讀。",
+  "settings.lspTools.empty.sharedReadonlyHint":
+    "切換到獨立工作階段資料模式後才能編輯 agent-home config.toml。",
+  "settings.lspTools.empty.cliOld":
+    "CLI 可能低於 {min}；可能忽略 lsp_tools（soft-fail）。",
+  "settings.lspTools.empty.cliOldHint":
+    "升級 Grok Build CLI 以獲得文件化能力。仍可寫入設定。",
+  "settings.lspTools.empty.hostOnly": "LSP 工具設定需要桌面應用程式。",
+  "settings.lspTools.empty.hostOnlyHint":
+    "開啟 Tauri 桌面主機以讀取或寫入 agent-home 設定。",
+  "settings.lspTools.empty.noDiagnostics":
+    "應用內無即時診斷 — 僅在啟用時提供 CLI agent 工具。",
+  "settings.lspTools.empty.noDiagnosticsHint":
+    "開啟後，若已設定伺服器，CLI agent 可使用 lsp 工具。此工作台不會虛構診斷列表。",
+  "settings.lspTools.banner.sharedReadonly":
+    "共用模式唯讀 — 切換到獨立模式後才能寫入 lsp_tools。",
+  "settings.lspTools.banner.cliOld":
+    "CLI 低於 {min} — 可能忽略該鍵（soft-fail）。",
+  "settings.lspTools.banner.hostOnly": "需要桌面主機。",
+  "settings.lspTools.banner.softRespawn":
+    "儲存會寫入 config.toml 並 soft-respawn agent，以便生效該旗標。",
+  "settings.lspTools.banner.noAppLsp": "Grok App 本身不執行語言伺服器。",
+  "settings.lspTools.banner.agentToolsOnly":
+    "僅在啟用且已設定伺服器時提供 CLI agent 工具。",
+  "settings.lspTools.banner.noDiagnostics": "應用尚未顯示即時診斷。",
+  "settings.lspTools.refresh": "重新整理",
+  "settings.lspTools.reset": "重設",
+  "settings.lspTools.save": "儲存 LSP 工具",
+  "settings.lspTools.saving": "儲存中…",
+  "settings.lspTools.needTauri": "LSP 工具設定需要桌面應用程式。",
+  "settings.lspTools.openConfigSection": "開啟 agent 設定分區",
+  "settings.lspTools.copySummary": "複製狀態摘要",
+  "settings.lspTools.copied": "已複製",
+  "settings.lspTools.copyFailed": "無法複製摘要到剪貼簿",
   "settings.codebaseSearch": "專案程式碼庫搜尋",
   "settings.codebaseSearchDesc":
     "依路徑/檔名與/或檔案內容搜尋目前專案。Host 優先使用 ripgrep，否則有上限地走訪。範圍限於已信任專案——僅關鍵字，不會虛構 embedding 或 CLI 程式碼圖結果。",

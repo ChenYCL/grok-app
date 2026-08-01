@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **LSP tools status workbench honesty** (Settings → Agent): dedicated card for `[features].lsp_tools` with status chips (`off` / `on` / `unset` / shared read-only / CLI old / host-only), soft-respawn note, and empty-state copy. Toggle reuses independent-only agent config write path. Honesty: App does not run language servers or invent live diagnostics — CLI agent tools only when enabled. Pure `lspToolsWorkbench` helpers + tests; en/zh/zh-TW; `settingsCatalog` keywords.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
