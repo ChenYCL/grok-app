@@ -2744,6 +2744,7 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "day-use",
       "dayuse",
       "checklist",
+      "landlock",
     ],
   },
   {

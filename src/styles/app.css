@@ -13266,6 +13266,165 @@ html[data-composer-min-rows="8"] .composer__input {
   color: var(--text-tertiary);
 }
 
+.doctor-linux-dayuse {
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border, #444) 75%, transparent);
+  background: color-mix(in srgb, var(--surface-1, rgba(0, 0, 0, 0.12)) 80%, transparent);
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.doctor-linux-dayuse__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.doctor-linux-dayuse__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.doctor-linux-dayuse__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.doctor-linux-dayuse__badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #5b8def) 18%, transparent);
+  color: var(--text-primary);
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.doctor-linux-dayuse__lead,
+.doctor-linux-dayuse__summary {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.doctor-linux-dayuse__summary {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--text-primary);
+  opacity: 0.9;
+}
+
+.doctor-linux-dayuse__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.doctor-linux-dayuse__row {
+  border-radius: 8px;
+  padding: 6px 4px;
+  border: 1px solid color-mix(in srgb, var(--border, #444) 40%, transparent);
+  background: color-mix(in srgb, var(--surface-0, rgba(0, 0, 0, 0.08)) 60%, transparent);
+}
+
+.doctor-linux-dayuse__row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.doctor-linux-dayuse__chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.doctor-linux-dayuse__chip--ok {
+  background: color-mix(in srgb, var(--ok, #3d9a5f) 22%, transparent);
+  color: var(--ok, #3d9a5f);
+}
+
+.doctor-linux-dayuse__chip--fail {
+  background: color-mix(in srgb, var(--danger, #e35d5d) 22%, transparent);
+  color: var(--danger, #e35d5d);
+}
+
+.doctor-linux-dayuse__chip--manual {
+  background: color-mix(in srgb, var(--warn, #d4a017) 22%, transparent);
+  color: var(--warn, #d4a017);
+}
+
+.doctor-linux-dayuse__chip--warn {
+  background: color-mix(in srgb, var(--warn, #d4a017) 28%, transparent);
+  color: var(--warn, #d4a017);
+}
+
+.doctor-linux-dayuse__chip--na {
+  background: color-mix(in srgb, var(--text-secondary) 18%, transparent);
+  color: var(--text-secondary);
+  opacity: 0.9;
+}
+
+.doctor-linux-dayuse__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.doctor-linux-dayuse__link {
+  flex-shrink: 0;
+}
+
+.doctor-linux-dayuse__detail {
+  margin: 4px 0 0 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.doctor-linux-dayuse__docs {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.doctor-linux-dayuse__docs-label {
+  opacity: 0.85;
+}
+
+.doctor-linux-dayuse__docs-path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  opacity: 0.9;
+  word-break: break-all;
+}
+
 .doctor-advanced {
   margin-top: 16px;
   padding-top: 12px;

@@ -73,6 +73,16 @@ import {
   windowsDayuseStatusTone,
   type WindowsDayuseLinkTarget,
 } from "@/lib/windowsDayuseChecklist";
+  LINUX_DAYUSE_DOCS_PATH,
+  buildLinuxDayuseChecklist,
+  deriveProjectSpacesProbe,
+  formatLinuxDayuseSummaryText,
+  resolveLinuxDayuseEmptyState,
+  linuxDayusePlatformBadgeKey,
+  linuxDayuseStatusKey,
+  linuxDayuseStatusTone,
+  type LinuxDayuseLinkTarget,
+} from "@/lib/linuxDayuseChecklist";
 import { redact } from "@/lib/redact";
 
 /** Client download for redacted findings JSON (no host round-trip). */
@@ -233,11 +243,17 @@ export function DoctorModal({
     hasTrustedProject: boolean | null;
     pathHasSpaces: boolean | null;
     mirrorWriteEnabled: boolean | null;
+  /** Extra probes for Linux day-use card (projects / sandbox / updater). */
+  const [dayuseProbe, setDayuseProbe] = useState<{
+    hasTrustedProject: boolean | null;
+    pathHasSpaces: boolean | null;
+    sandboxProfile: string | null;
     updateSupported: boolean | null;
   }>({
     hasTrustedProject: null,
     pathHasSpaces: null,
     mirrorWriteEnabled: null,
+    sandboxProfile: null,
     updateSupported: null,
   });
   /** Which fix id is currently running (for per-row spinner). */
@@ -277,6 +293,7 @@ export function DoctorModal({
   }, [open, run]);
 
   /** Soft-probe projects / mirror / updater for Windows day-use checklist. */
+  /** Soft-probe projects / sandbox / updater for Linux day-use checklist. */
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -284,6 +301,7 @@ export function DoctorModal({
       let hasTrustedProject: boolean | null = null;
       let pathHasSpaces: boolean | null = null;
       let mirrorWriteEnabled: boolean | null = null;
+      let sandboxProfile: string | null = null;
       let updateSupported: boolean | null = null;
       try {
         const projects = await api.projectsList();
@@ -299,6 +317,12 @@ export function DoctorModal({
         mirrorWriteEnabled = st.readOnly === false;
       } catch {
         /* leave null → manual */
+        const settings = await api.settingsGet();
+        const raw = settings?.sandboxProfile;
+        sandboxProfile =
+          typeof raw === "string" && raw.trim() ? raw.trim() : "off";
+      } catch {
+        /* leave null → manual (do not invent off) */
       }
       try {
         const up = await api.updaterStatus();
@@ -315,11 +339,13 @@ export function DoctorModal({
           /* leave null → manual */
         }
       }
+      // tray_autostart / wayland_x11: no invent probes — leave unprobed.
       if (!cancelled) {
         setDayuseProbe({
           hasTrustedProject,
           pathHasSpaces,
           mirrorWriteEnabled,
+          sandboxProfile,
           updateSupported,
         });
       }
@@ -353,6 +379,7 @@ export function DoctorModal({
       hasTrustedProject: null,
       pathHasSpaces: null,
       mirrorWriteEnabled: null,
+      sandboxProfile: null,
       updateSupported: null,
     });
   }, [open]);
@@ -835,6 +862,14 @@ export function DoctorModal({
   );
 
   const windowsDayuseChecklist = useMemo(() => {
+  const platform = useMemo(() => detectAppPlatform(), []);
+
+  const linuxDayuseEmpty = useMemo(
+    () => resolveLinuxDayuseEmptyState({ platform }),
+    [platform],
+  );
+
+  const linuxDayuseChecklist = useMemo(() => {
     // Prefer Doctor report CLI probe; fall back to unresolved → manual.
     let cliFound: boolean | null = null;
     if (cliResolved) {
@@ -846,6 +881,7 @@ export function DoctorModal({
       }
     }
     return buildWindowsDayuseChecklist({
+    return buildLinuxDayuseChecklist({
       platform,
       cliFound,
       hasTrustedProject: dayuseProbe.hasTrustedProject,
@@ -853,6 +889,9 @@ export function DoctorModal({
       mirrorWriteEnabled: dayuseProbe.mirrorWriteEnabled,
       updateSupported: dayuseProbe.updateSupported,
       // Never invent SmartScreen — leave smartScreenProbed unset.
+      sandboxProfile: dayuseProbe.sandboxProfile,
+      updateSupported: dayuseProbe.updateSupported,
+      // Never invent Landlock / tray / Wayland·X11 probes.
     });
   }, [platform, cliResolved, report, dayuseProbe]);
 
@@ -870,6 +909,7 @@ export function DoctorModal({
   );
 
   const onCopyWindowsDayuse = useCallback(async () => {
+  const onCopyLinuxDayuse = useCallback(async () => {
     setBusy("dayuse-copy");
     setStatusMsg(null);
     setError(null);
@@ -890,6 +930,22 @@ export function DoctorModal({
 
   const openDayuseLink = useCallback(
     (link: WindowsDayuseLinkTarget) => {
+      const text = formatLinuxDayuseSummaryText(linuxDayuseChecklist, {
+        title: t("doctor.linuxDayuse.title"),
+        generatedAt: new Date().toISOString(),
+      });
+      await navigator.clipboard.writeText(text);
+      setStatusMsg(t("doctor.linuxDayuse.copied"));
+      window.setTimeout(() => setStatusMsg(null), 1600);
+    } catch {
+      setError(t("doctor.linuxDayuse.copyFail"));
+    } finally {
+      setBusy(null);
+    }
+  }, [t, linuxDayuseChecklist]);
+
+  const openDayuseLink = useCallback(
+    (link: LinuxDayuseLinkTarget) => {
       if (!link) return;
       let section: SettingsSectionId = "about";
       let tab: SettingsTabId | null = null;
@@ -899,6 +955,9 @@ export function DoctorModal({
       } else if (link === "mirror") {
         section = "remote_im";
         tab = "mirror";
+      } else if (link === "sandbox") {
+        section = "general";
+        tab = "permissions";
       } else if (link === "setup" || link === "runtime") {
         section = "runtime";
         tab = "cli";
@@ -1509,6 +1568,27 @@ export function DoctorModal({
                     {t(
                       windowsDayusePlatformBadgeKey(
                         windowsDayuseChecklist.platform,
+          {linuxDayuseEmpty.show ? (
+            <section
+              className="doctor-linux-dayuse"
+              aria-labelledby="doctor-linux-dayuse-title"
+              data-testid="doctor-linux-dayuse"
+            >
+              <header className="doctor-linux-dayuse__head">
+                <div className="doctor-linux-dayuse__title-row">
+                  <h3
+                    id="doctor-linux-dayuse-title"
+                    className="doctor-linux-dayuse__title"
+                  >
+                    {t("doctor.linuxDayuse.title")}
+                  </h3>
+                  <span
+                    className="doctor-linux-dayuse__badge"
+                    data-platform={linuxDayuseChecklist.platform}
+                  >
+                    {t(
+                      linuxDayusePlatformBadgeKey(
+                        linuxDayuseChecklist.platform,
                       ) as MessageKey,
                     )}
                   </span>
@@ -1563,12 +1643,60 @@ export function DoctorModal({
                           {t(windowsDayuseStatusKey(item.status) as MessageKey)}
                         </span>
                         <span className="doctor-windows-dayuse__label">
+                  onClick={() => void onCopyLinuxDayuse()}
+                  data-testid="doctor-linux-dayuse-copy"
+                >
+                  {busy === "dayuse-copy"
+                    ? "…"
+                    : t("doctor.linuxDayuse.copy")}
+                </button>
+              </header>
+              <p className="doctor-linux-dayuse__lead">
+                {linuxDayuseEmpty.isTargetPlatform
+                  ? t("doctor.linuxDayuse.lead")
+                  : t("doctor.linuxDayuse.notTarget")}
+              </p>
+              {linuxDayuseEmpty.isTargetPlatform ? (
+                <p
+                  className="doctor-linux-dayuse__summary"
+                  aria-live="polite"
+                >
+                  {t("doctor.linuxDayuse.summary", {
+                    pass: linuxDayuseChecklist.counts.pass,
+                    fail: linuxDayuseChecklist.counts.fail,
+                    warn: linuxDayuseChecklist.counts.warn,
+                    manual: linuxDayuseChecklist.counts.manual,
+                    na: linuxDayuseChecklist.counts.na,
+                  })}
+                </p>
+              ) : null}
+              <ul className="doctor-linux-dayuse__list">
+                {linuxDayuseChecklist.items.map((item) => {
+                  const tone = linuxDayuseStatusTone(item.status);
+                  return (
+                    <li
+                      key={item.id}
+                      className="doctor-linux-dayuse__row"
+                      data-status={item.status}
+                      data-testid={`doctor-linux-dayuse-item-${item.id}`}
+                    >
+                      <div className="doctor-linux-dayuse__row-main">
+                        <span
+                          className={
+                            "doctor-linux-dayuse__chip doctor-linux-dayuse__chip--" +
+                            tone
+                          }
+                        >
+                          {t(linuxDayuseStatusKey(item.status) as MessageKey)}
+                        </span>
+                        <span className="doctor-linux-dayuse__label">
                           {t(item.labelKey as MessageKey)}
                         </span>
                         {item.link ? (
                           <button
                             type="button"
                             className="btn btn--ghost btn--sm doctor-windows-dayuse__link"
+                            className="btn btn--ghost btn--sm doctor-linux-dayuse__link"
                             disabled={!!busy || loading}
                             onClick={() => openDayuseLink(item.link)}
                           >
@@ -1583,6 +1711,16 @@ export function DoctorModal({
                         ) : null}
                       </div>
                       <p className="doctor-windows-dayuse__detail">
+                              ? t("doctor.linuxDayuse.link.about")
+                              : item.link === "sandbox"
+                                ? t("doctor.linuxDayuse.link.sandbox")
+                                : item.link === "runtime"
+                                  ? t("doctor.linuxDayuse.link.runtime")
+                                  : t("doctor.linuxDayuse.link.setup")}
+                          </button>
+                        ) : null}
+                      </div>
+                      <p className="doctor-linux-dayuse__detail">
                         {t(item.detailKey as MessageKey)}
                       </p>
                     </li>
@@ -1595,6 +1733,12 @@ export function DoctorModal({
                 </span>
                 <code className="doctor-windows-dayuse__docs-path">
                   {WINDOWS_DAYUSE_DOCS_PATH}
+              <p className="doctor-linux-dayuse__docs">
+                <span className="doctor-linux-dayuse__docs-label">
+                  {t("doctor.linuxDayuse.docs")}
+                </span>
+                <code className="doctor-linux-dayuse__docs-path">
+                  {LINUX_DAYUSE_DOCS_PATH}
                 </code>
               </p>
             </section>

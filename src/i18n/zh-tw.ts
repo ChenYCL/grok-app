@@ -4108,6 +4108,76 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.runtime.platformTip": "平台",
   "settings.runtime.platformTipDesc":
     "用於介面文案的作業系統探測（檔案管理員、日常驗收清單）。Windows 建置可在 Doctor 中查看 day-use 驗收卡片。",
+  "doctor.linuxDayuse.title": "Linux 日常驗收",
+  "doctor.linuxDayuse.lead":
+    "面向 Linux 日常使用的驗收清單。App 可自動探測部分項，其餘保持手動。未探測時不會臆造 Landlock、系統匣自啟或 Wayland/X11 狀態。",
+  "doctor.linuxDayuse.notTarget":
+    "macOS / Windows 不是本清單目標平台 — 項顯示為 N/A。請在 Linux 建置上驗證 CLI、含空白路徑、沙箱 Landlock、系統匣與顯示伺服器日常使用。",
+  "doctor.linuxDayuse.summary":
+    "{pass} 通過 · {fail} 失敗 · {warn} 警告 · {manual} 手動 · {na} 不適用",
+  "doctor.linuxDayuse.copy": "複製清單",
+  "doctor.linuxDayuse.copied": "已複製清單",
+  "doctor.linuxDayuse.copyFail": "無法複製清單",
+  "doctor.linuxDayuse.docs": "驗收文件",
+  "doctor.linuxDayuse.platform.win": "Windows",
+  "doctor.linuxDayuse.platform.mac": "macOS",
+  "doctor.linuxDayuse.platform.linux": "Linux",
+  "doctor.linuxDayuse.platform.other": "其他",
+  "doctor.linuxDayuse.status.pass": "通過",
+  "doctor.linuxDayuse.status.fail": "失敗",
+  "doctor.linuxDayuse.status.manual": "手動",
+  "doctor.linuxDayuse.status.warn": "警告",
+  "doctor.linuxDayuse.status.na": "不適用",
+  "doctor.linuxDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
+  "doctor.linuxDayuse.item.pathSpaces": "含空白的專案路徑",
+  "doctor.linuxDayuse.item.sandboxLandlock": "沙箱 → Landlock 強制",
+  "doctor.linuxDayuse.item.trayAutostart": "系統匣 / 自啟動",
+  "doctor.linuxDayuse.item.waylandX11": "Wayland / X11 工作階段",
+  "doctor.linuxDayuse.item.appUpdateCheck": "檢查更新（關於）",
+  "doctor.linuxDayuse.detail.na": "目前平台不適用。",
+  "doctor.linuxDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
+  "doctor.linuxDayuse.detail.cliFound.fail":
+    "未找到 CLI — 開啟 Setup 或 設定 → 執行階段 安裝 / 設定路徑。",
+  "doctor.linuxDayuse.detail.cliFound.manual":
+    "CLI 探測尚未就緒 — 重新執行 Doctor 或開啟 Setup。",
+  "doctor.linuxDayuse.detail.pathSpaces.pass": "受信任專案路徑包含空白。",
+  "doctor.linuxDayuse.detail.pathSpaces.fail":
+    "尚無受信任專案 — 請新增並信任一個資料夾（路徑可含空白）。",
+  "doctor.linuxDayuse.detail.pathSpaces.manual":
+    "已有受信任專案；若尚未驗證，請用含空白路徑再測一次。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.na":
+    "沙箱設定檔為關閉 — Landlock 強制不適用。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.warn":
+    "沙箱設定檔非關閉。在 Linux 上核心強制為 Landlock（Seatbelt 僅限 macOS）。未探測時 App 不會重新驗證 Landlock。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.pass":
+    "Landlock 探測報告：所選沙箱設定檔的強制已生效。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.fail":
+    "Landlock 探測報告：沙箱非關閉但強制未生效。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.manual":
+    "沙箱設定未知 — 開啟 設定 → 一般 → 權限 設定設定檔。關閉 = 不適用；非關閉 = Linux 上為 Landlock。",
+  "doctor.linuxDayuse.detail.trayAutostart.pass": "系統匣 / 自啟動探測為已啟用。",
+  "doctor.linuxDayuse.detail.trayAutostart.fail": "系統匣 / 自啟動探測為未啟用。",
+  "doctor.linuxDayuse.detail.trayAutostart.manual":
+    "手動：若依賴系統匣圖示與桌面自啟動，請自行確認。未探測時 App 不會臆造狀態。",
+  "doctor.linuxDayuse.detail.waylandX11.pass":
+    "顯示伺服器探測報告為 Wayland 或 X11。",
+  "doctor.linuxDayuse.detail.waylandX11.fail":
+    "顯示伺服器探測報告既非 Wayland 也非 X11。",
+  "doctor.linuxDayuse.detail.waylandX11.manual":
+    "未探測時狀態未知 — 請手動確認 Wayland 或 X11，以便排查合成器相關問題。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.pass":
+    "可用的更新檢查路徑（應用程式內或 GitHub 手動）。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.fail":
+    "此建置不支援更新檢查 — 請試 設定 → 關於。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.manual":
+    "開啟 設定 → 關於 → 檢查更新（有新版本則下載安裝套件）。",
+  "doctor.linuxDayuse.link.about": "關於 / 更新",
+  "doctor.linuxDayuse.link.setup": "Setup / CLI",
+  "doctor.linuxDayuse.link.runtime": "執行階段",
+  "doctor.linuxDayuse.link.sandbox": "沙箱",
+  "settings.runtime.platformTip": "平台",
+  "settings.runtime.platformTipDesc":
+    "用於介面文案的作業系統探測（檔案管理員、日常驗收清單）。Linux 建置可在 Doctor 中查看 day-use 驗收卡片。",
 
   "reliability.title": "可靠性",
   "reliability.close": "關閉可靠性中心",
