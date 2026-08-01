@@ -3475,6 +3475,81 @@ const en = {
   "doctor.finding.destructive": "destructive",
   "doctor.finding.noDetail": "No additional detail.",
 
+  // Linux day-use checklist (Doctor honesty card)
+  "doctor.linuxDayuse.title": "Linux day-use",
+  "doctor.linuxDayuse.lead":
+    "Acceptance checklist for day-to-day Linux use. App auto-probes some items; others stay manual. Landlock, tray autostart, and Wayland/X11 are never invented without a probe.",
+  "doctor.linuxDayuse.notTarget":
+    "macOS / Windows is not the target of this list — items show N/A. Use a Linux build to exercise CLI, path spaces, sandbox Landlock, tray, and display-server day-use.",
+  "doctor.linuxDayuse.summary":
+    "{pass} pass · {fail} fail · {warn} warn · {manual} manual · {na} n/a",
+  "doctor.linuxDayuse.copy": "Copy checklist",
+  "doctor.linuxDayuse.copied": "Checklist copied",
+  "doctor.linuxDayuse.copyFail": "Could not copy checklist",
+  "doctor.linuxDayuse.docs": "Acceptance doc",
+  "doctor.linuxDayuse.platform.win": "Windows",
+  "doctor.linuxDayuse.platform.mac": "macOS",
+  "doctor.linuxDayuse.platform.linux": "Linux",
+  "doctor.linuxDayuse.platform.other": "Other",
+  "doctor.linuxDayuse.status.pass": "Pass",
+  "doctor.linuxDayuse.status.fail": "Fail",
+  "doctor.linuxDayuse.status.manual": "Manual",
+  "doctor.linuxDayuse.status.warn": "Warn",
+  "doctor.linuxDayuse.status.na": "N/A",
+  "doctor.linuxDayuse.item.cliFound": "CLI found (Doctor / Setup)",
+  "doctor.linuxDayuse.item.pathSpaces": "Project path with spaces",
+  "doctor.linuxDayuse.item.sandboxLandlock": "Sandbox → Landlock enforcement",
+  "doctor.linuxDayuse.item.trayAutostart": "Tray / autostart",
+  "doctor.linuxDayuse.item.waylandX11": "Wayland / X11 session",
+  "doctor.linuxDayuse.item.appUpdateCheck": "Check for updates (About)",
+  "doctor.linuxDayuse.detail.na": "Not applicable on this platform.",
+  "doctor.linuxDayuse.detail.cliFound.pass": "Grok Build CLI resolved.",
+  "doctor.linuxDayuse.detail.cliFound.fail":
+    "CLI not found — open Setup or Settings → Runtime to install / set path.",
+  "doctor.linuxDayuse.detail.cliFound.manual":
+    "CLI probe not available yet — re-run Doctor or open Setup.",
+  "doctor.linuxDayuse.detail.pathSpaces.pass":
+    "Trusted project path includes spaces.",
+  "doctor.linuxDayuse.detail.pathSpaces.fail":
+    "No trusted project yet — add and trust a folder (spaces OK).",
+  "doctor.linuxDayuse.detail.pathSpaces.manual":
+    "Trusted project present; re-check with a path that contains spaces if you have not already.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.na":
+    "Sandbox profile is off — Landlock enforcement is N/A.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.warn":
+    "Sandbox profile is not off. On Linux, kernel enforcement is Landlock (Seatbelt is macOS-only). App does not re-verify Landlock without a probe.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.pass":
+    "Landlock probe reports enforcement active for the selected sandbox profile.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.fail":
+    "Landlock probe reports enforcement not active despite a non-off sandbox profile.",
+  "doctor.linuxDayuse.detail.sandboxLandlock.manual":
+    "Sandbox profile unknown — open Settings → General → Permissions to set a profile. Off = N/A; not off = Landlock on Linux.",
+  "doctor.linuxDayuse.detail.trayAutostart.pass":
+    "Tray / autostart probe reports enabled.",
+  "doctor.linuxDayuse.detail.trayAutostart.fail":
+    "Tray / autostart probe reports disabled.",
+  "doctor.linuxDayuse.detail.trayAutostart.manual":
+    "Manual: confirm tray icon and desktop autostart if you rely on them. App does not invent this without a probe.",
+  "doctor.linuxDayuse.detail.waylandX11.pass":
+    "Display-server probe reports Wayland or X11.",
+  "doctor.linuxDayuse.detail.waylandX11.fail":
+    "Display-server probe reports neither Wayland nor X11.",
+  "doctor.linuxDayuse.detail.waylandX11.manual":
+    "Unknown without a display-server probe — confirm Wayland or X11 manually for compositor-specific issues.",
+  "doctor.linuxDayuse.detail.appUpdateCheck.pass":
+    "Update check path available (in-app or GitHub manual).",
+  "doctor.linuxDayuse.detail.appUpdateCheck.fail":
+    "Update check not supported in this build — try Settings → About.",
+  "doctor.linuxDayuse.detail.appUpdateCheck.manual":
+    "Open Settings → About → Check for updates (download package if newer).",
+  "doctor.linuxDayuse.link.about": "About / updates",
+  "doctor.linuxDayuse.link.setup": "Setup / CLI",
+  "doctor.linuxDayuse.link.runtime": "Runtime",
+  "doctor.linuxDayuse.link.sandbox": "Sandbox",
+  "settings.runtime.platformTip": "Platform",
+  "settings.runtime.platformTipDesc":
+    "Detected OS for UI labels (file manager, day-use checklist). Linux builds get the day-use acceptance card in Doctor.",
+
   // Reliability / Observability center (long-task signals)
   "reliability.title": "Reliability",
   "reliability.close": "Close reliability center",
@@ -9474,6 +9549,77 @@ const zh: Record<MessageKey, string> = {
   "doctor.finding.fixId": "修复 id",
   "doctor.finding.destructive": "破坏性",
   "doctor.finding.noDetail": "无更多详情。",
+
+  "doctor.linuxDayuse.title": "Linux 日常验收",
+  "doctor.linuxDayuse.lead":
+    "面向 Linux 日常使用的验收清单。App 可自动探测部分项，其余保持手动。未探测时不会臆造 Landlock、托盘自启或 Wayland/X11 状态。",
+  "doctor.linuxDayuse.notTarget":
+    "macOS / Windows 不是本清单目标平台 — 项显示为 N/A。请在 Linux 构建上验证 CLI、带空格路径、沙箱 Landlock、托盘与显示服务器日常使用。",
+  "doctor.linuxDayuse.summary":
+    "{pass} 通过 · {fail} 失败 · {warn} 警告 · {manual} 手动 · {na} 不适用",
+  "doctor.linuxDayuse.copy": "复制清单",
+  "doctor.linuxDayuse.copied": "已复制清单",
+  "doctor.linuxDayuse.copyFail": "无法复制清单",
+  "doctor.linuxDayuse.docs": "验收文档",
+  "doctor.linuxDayuse.platform.win": "Windows",
+  "doctor.linuxDayuse.platform.mac": "macOS",
+  "doctor.linuxDayuse.platform.linux": "Linux",
+  "doctor.linuxDayuse.platform.other": "其他",
+  "doctor.linuxDayuse.status.pass": "通过",
+  "doctor.linuxDayuse.status.fail": "失败",
+  "doctor.linuxDayuse.status.manual": "手动",
+  "doctor.linuxDayuse.status.warn": "警告",
+  "doctor.linuxDayuse.status.na": "不适用",
+  "doctor.linuxDayuse.item.cliFound": "已找到 CLI（Doctor / Setup）",
+  "doctor.linuxDayuse.item.pathSpaces": "带空格的项目路径",
+  "doctor.linuxDayuse.item.sandboxLandlock": "沙箱 → Landlock 强制",
+  "doctor.linuxDayuse.item.trayAutostart": "托盘 / 自启动",
+  "doctor.linuxDayuse.item.waylandX11": "Wayland / X11 会话",
+  "doctor.linuxDayuse.item.appUpdateCheck": "检查更新（关于）",
+  "doctor.linuxDayuse.detail.na": "当前平台不适用。",
+  "doctor.linuxDayuse.detail.cliFound.pass": "已解析到 Grok Build CLI。",
+  "doctor.linuxDayuse.detail.cliFound.fail":
+    "未找到 CLI — 打开 Setup 或 设置 → 运行时 安装 / 设置路径。",
+  "doctor.linuxDayuse.detail.cliFound.manual":
+    "CLI 探测尚未就绪 — 重新运行 Doctor 或打开 Setup。",
+  "doctor.linuxDayuse.detail.pathSpaces.pass": "受信任项目路径包含空格。",
+  "doctor.linuxDayuse.detail.pathSpaces.fail":
+    "尚无受信任项目 — 请添加并信任一个文件夹（路径可含空格）。",
+  "doctor.linuxDayuse.detail.pathSpaces.manual":
+    "已有受信任项目；若尚未验证，请用含空格路径再测一次。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.na":
+    "沙箱配置文件为关闭 — Landlock 强制不适用。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.warn":
+    "沙箱配置文件非关闭。在 Linux 上内核强制为 Landlock（Seatbelt 仅限 macOS）。未探测时 App 不会重新验证 Landlock。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.pass":
+    "Landlock 探测报告：所选沙箱配置文件的强制已生效。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.fail":
+    "Landlock 探测报告：沙箱非关闭但强制未生效。",
+  "doctor.linuxDayuse.detail.sandboxLandlock.manual":
+    "沙箱配置未知 — 打开 设置 → 通用 → 权限 设置配置文件。关闭 = 不适用；非关闭 = Linux 上为 Landlock。",
+  "doctor.linuxDayuse.detail.trayAutostart.pass": "托盘 / 自启动探测为已启用。",
+  "doctor.linuxDayuse.detail.trayAutostart.fail": "托盘 / 自启动探测为未启用。",
+  "doctor.linuxDayuse.detail.trayAutostart.manual":
+    "手动：若依赖托盘图标与桌面自启动，请自行确认。未探测时 App 不会臆造状态。",
+  "doctor.linuxDayuse.detail.waylandX11.pass":
+    "显示服务器探测报告为 Wayland 或 X11。",
+  "doctor.linuxDayuse.detail.waylandX11.fail":
+    "显示服务器探测报告既非 Wayland 也非 X11。",
+  "doctor.linuxDayuse.detail.waylandX11.manual":
+    "未探测时状态未知 — 请手动确认 Wayland 或 X11，以便排查合成器相关问题。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.pass":
+    "可用的更新检查路径（应用内或 GitHub 手动）。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.fail":
+    "此构建不支持更新检查 — 请试 设置 → 关于。",
+  "doctor.linuxDayuse.detail.appUpdateCheck.manual":
+    "打开 设置 → 关于 → 检查更新（有新版本则下载安装包）。",
+  "doctor.linuxDayuse.link.about": "关于 / 更新",
+  "doctor.linuxDayuse.link.setup": "Setup / CLI",
+  "doctor.linuxDayuse.link.runtime": "运行时",
+  "doctor.linuxDayuse.link.sandbox": "沙箱",
+  "settings.runtime.platformTip": "平台",
+  "settings.runtime.platformTipDesc":
+    "用于界面文案的操作系统探测（文件管理器、日常验收清单）。Linux 构建可在 Doctor 中查看 day-use 验收卡片。",
 
   "reliability.title": "可靠性",
   "reliability.close": "关闭可靠性中心",

@@ -48,6 +48,24 @@ import {
   type DoctorFindingSourceFilter,
 } from "@/lib/doctorFindings";
 import { CliUpdateRow } from "@/components/CliUpdateRow";
+import { detectAppPlatform } from "@/lib/appPlatform";
+import {
+  buildSettingsHash,
+  isSettingsSectionId,
+  type SettingsSectionId,
+  type SettingsTabId,
+} from "@/lib/settingsCatalog";
+import {
+  LINUX_DAYUSE_DOCS_PATH,
+  buildLinuxDayuseChecklist,
+  deriveProjectSpacesProbe,
+  formatLinuxDayuseSummaryText,
+  resolveLinuxDayuseEmptyState,
+  linuxDayusePlatformBadgeKey,
+  linuxDayuseStatusKey,
+  linuxDayuseStatusTone,
+  type LinuxDayuseLinkTarget,
+} from "@/lib/linuxDayuseChecklist";
 import { redact } from "@/lib/redact";
 
 /** Client download for redacted findings JSON (no host round-trip). */
@@ -83,6 +101,11 @@ export type DoctorModalProps = {
   onResetDone?: () => void;
   /** Open Reliability / Observability center (busy · stalls · errors). */
   onOpenReliability?: () => void;
+  /**
+   * Open Settings at section/tab (day-use checklist deep links).
+   * When omitted, falls back to `location.hash` via `buildSettingsHash`.
+   */
+  onOpenSettings?: (section: string, tab?: string | null) => void;
 };
 
 const CHECK_TITLE_KEYS: Record<string, MessageKey> = {
@@ -180,6 +203,7 @@ export function DoctorModal({
   onConfirm,
   onResetDone,
   onOpenReliability,
+  onOpenSettings,
 }: DoctorModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
   const [report, setReport] = useState<DoctorReport | null>(null);
@@ -188,8 +212,20 @@ export function DoctorModal({
   const [copied, setCopied] = useState(false);
   const [copiedFindingKey, setCopiedFindingKey] = useState<string | null>(null);
   const [busy, setBusy] = useState<
-    "zip" | "reset" | "fix" | "findings-export" | null
+    "zip" | "reset" | "fix" | "findings-export" | "dayuse-copy" | null
   >(null);
+  /** Extra probes for Linux day-use card (projects / sandbox / updater). */
+  const [dayuseProbe, setDayuseProbe] = useState<{
+    hasTrustedProject: boolean | null;
+    pathHasSpaces: boolean | null;
+    sandboxProfile: string | null;
+    updateSupported: boolean | null;
+  }>({
+    hasTrustedProject: null,
+    pathHasSpaces: null,
+    sandboxProfile: null,
+    updateSupported: null,
+  });
   /** Which fix id is currently running (for per-row spinner). */
   const [fixingId, setFixingId] = useState<string | null>(null);
   const [keepSecrets, setKeepSecrets] = useState(true);
@@ -226,6 +262,61 @@ export function DoctorModal({
     void run();
   }, [open, run]);
 
+  /** Soft-probe projects / sandbox / updater for Linux day-use checklist. */
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      let hasTrustedProject: boolean | null = null;
+      let pathHasSpaces: boolean | null = null;
+      let sandboxProfile: string | null = null;
+      let updateSupported: boolean | null = null;
+      try {
+        const projects = await api.projectsList();
+        const derived = deriveProjectSpacesProbe(projects);
+        hasTrustedProject = derived.hasTrustedProject;
+        pathHasSpaces = derived.pathHasSpaces;
+      } catch {
+        /* leave null → manual */
+      }
+      try {
+        const settings = await api.settingsGet();
+        const raw = settings?.sandboxProfile;
+        sandboxProfile =
+          typeof raw === "string" && raw.trim() ? raw.trim() : "off";
+      } catch {
+        /* leave null → manual (do not invent off) */
+      }
+      try {
+        const up = await api.updaterStatus();
+        // GitHub manual or silent plugin both count as "can check".
+        updateSupported =
+          up.platformSupported === true ||
+          up.pluginEnabled === true ||
+          up.channel === "github_manual" ||
+          up.channel === "silent";
+      } catch {
+        try {
+          updateSupported = await api.isAutoUpdateSupported();
+        } catch {
+          /* leave null → manual */
+        }
+      }
+      // tray_autostart / wayland_x11: no invent probes — leave unprobed.
+      if (!cancelled) {
+        setDayuseProbe({
+          hasTrustedProject,
+          pathHasSpaces,
+          sandboxProfile,
+          updateSupported,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -246,6 +337,12 @@ export function DoctorModal({
     setIssuesOnly(false);
     setDetailKey(null);
     setCopiedFindingKey(null);
+    setDayuseProbe({
+      hasTrustedProject: null,
+      pathHasSpaces: null,
+      sandboxProfile: null,
+      updateSupported: null,
+    });
   }, [open]);
 
   const onCopyReport = async () => {
@@ -699,6 +796,35 @@ export function DoctorModal({
     };
   }, [report]);
 
+  const platform = useMemo(() => detectAppPlatform(), []);
+
+  const linuxDayuseEmpty = useMemo(
+    () => resolveLinuxDayuseEmptyState({ platform }),
+    [platform],
+  );
+
+  const linuxDayuseChecklist = useMemo(() => {
+    // Prefer Doctor report CLI probe; fall back to unresolved → manual.
+    let cliFound: boolean | null = null;
+    if (cliResolved) {
+      cliFound = cliResolved.found;
+    } else if (report?.checks) {
+      const cliCheck = report.checks.find((c) => c.id === "cli");
+      if (cliCheck) {
+        cliFound = cliCheck.level !== "fail";
+      }
+    }
+    return buildLinuxDayuseChecklist({
+      platform,
+      cliFound,
+      hasTrustedProject: dayuseProbe.hasTrustedProject,
+      pathHasSpaces: dayuseProbe.pathHasSpaces,
+      sandboxProfile: dayuseProbe.sandboxProfile,
+      updateSupported: dayuseProbe.updateSupported,
+      // Never invent Landlock / tray / Wayland·X11 probes.
+    });
+  }, [platform, cliResolved, report, dayuseProbe]);
+
   const copyCliPath = useCallback(
     async (path: string) => {
       try {
@@ -710,6 +836,57 @@ export function DoctorModal({
       }
     },
     [t],
+  );
+
+  const onCopyLinuxDayuse = useCallback(async () => {
+    setBusy("dayuse-copy");
+    setStatusMsg(null);
+    setError(null);
+    try {
+      const text = formatLinuxDayuseSummaryText(linuxDayuseChecklist, {
+        title: t("doctor.linuxDayuse.title"),
+        generatedAt: new Date().toISOString(),
+      });
+      await navigator.clipboard.writeText(text);
+      setStatusMsg(t("doctor.linuxDayuse.copied"));
+      window.setTimeout(() => setStatusMsg(null), 1600);
+    } catch {
+      setError(t("doctor.linuxDayuse.copyFail"));
+    } finally {
+      setBusy(null);
+    }
+  }, [t, linuxDayuseChecklist]);
+
+  const openDayuseLink = useCallback(
+    (link: LinuxDayuseLinkTarget) => {
+      if (!link) return;
+      let section: SettingsSectionId = "about";
+      let tab: SettingsTabId | null = null;
+      if (link === "about") {
+        section = "about";
+        tab = null;
+      } else if (link === "sandbox") {
+        section = "general";
+        tab = "permissions";
+      } else if (link === "setup" || link === "runtime") {
+        section = "runtime";
+        tab = "cli";
+      }
+      if (onOpenSettings) {
+        onClose();
+        onOpenSettings(section, tab);
+        return;
+      }
+      // Hash deep-link fallback (no window.confirm).
+      if (typeof window !== "undefined" && isSettingsSectionId(section)) {
+        const hash = buildSettingsHash({ section, tab });
+        onClose();
+        if (window.location.hash !== hash) {
+          window.location.hash = hash;
+        }
+      }
+    },
+    [onClose, onOpenSettings],
   );
 
   if (!open) return null;
@@ -1220,6 +1397,119 @@ export function DoctorModal({
               )}
             </section>
           )}
+
+          {linuxDayuseEmpty.show ? (
+            <section
+              className="doctor-linux-dayuse"
+              aria-labelledby="doctor-linux-dayuse-title"
+              data-testid="doctor-linux-dayuse"
+            >
+              <header className="doctor-linux-dayuse__head">
+                <div className="doctor-linux-dayuse__title-row">
+                  <h3
+                    id="doctor-linux-dayuse-title"
+                    className="doctor-linux-dayuse__title"
+                  >
+                    {t("doctor.linuxDayuse.title")}
+                  </h3>
+                  <span
+                    className="doctor-linux-dayuse__badge"
+                    data-platform={linuxDayuseChecklist.platform}
+                  >
+                    {t(
+                      linuxDayusePlatformBadgeKey(
+                        linuxDayuseChecklist.platform,
+                      ) as MessageKey,
+                    )}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!busy || loading}
+                  onClick={() => void onCopyLinuxDayuse()}
+                  data-testid="doctor-linux-dayuse-copy"
+                >
+                  {busy === "dayuse-copy"
+                    ? "…"
+                    : t("doctor.linuxDayuse.copy")}
+                </button>
+              </header>
+              <p className="doctor-linux-dayuse__lead">
+                {linuxDayuseEmpty.isTargetPlatform
+                  ? t("doctor.linuxDayuse.lead")
+                  : t("doctor.linuxDayuse.notTarget")}
+              </p>
+              {linuxDayuseEmpty.isTargetPlatform ? (
+                <p
+                  className="doctor-linux-dayuse__summary"
+                  aria-live="polite"
+                >
+                  {t("doctor.linuxDayuse.summary", {
+                    pass: linuxDayuseChecklist.counts.pass,
+                    fail: linuxDayuseChecklist.counts.fail,
+                    warn: linuxDayuseChecklist.counts.warn,
+                    manual: linuxDayuseChecklist.counts.manual,
+                    na: linuxDayuseChecklist.counts.na,
+                  })}
+                </p>
+              ) : null}
+              <ul className="doctor-linux-dayuse__list">
+                {linuxDayuseChecklist.items.map((item) => {
+                  const tone = linuxDayuseStatusTone(item.status);
+                  return (
+                    <li
+                      key={item.id}
+                      className="doctor-linux-dayuse__row"
+                      data-status={item.status}
+                      data-testid={`doctor-linux-dayuse-item-${item.id}`}
+                    >
+                      <div className="doctor-linux-dayuse__row-main">
+                        <span
+                          className={
+                            "doctor-linux-dayuse__chip doctor-linux-dayuse__chip--" +
+                            tone
+                          }
+                        >
+                          {t(linuxDayuseStatusKey(item.status) as MessageKey)}
+                        </span>
+                        <span className="doctor-linux-dayuse__label">
+                          {t(item.labelKey as MessageKey)}
+                        </span>
+                        {item.link ? (
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm doctor-linux-dayuse__link"
+                            disabled={!!busy || loading}
+                            onClick={() => openDayuseLink(item.link)}
+                          >
+                            {item.link === "about"
+                              ? t("doctor.linuxDayuse.link.about")
+                              : item.link === "sandbox"
+                                ? t("doctor.linuxDayuse.link.sandbox")
+                                : item.link === "runtime"
+                                  ? t("doctor.linuxDayuse.link.runtime")
+                                  : t("doctor.linuxDayuse.link.setup")}
+                          </button>
+                        ) : null}
+                      </div>
+                      <p className="doctor-linux-dayuse__detail">
+                        {t(item.detailKey as MessageKey)}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="doctor-linux-dayuse__docs">
+                <span className="doctor-linux-dayuse__docs-label">
+                  {t("doctor.linuxDayuse.docs")}
+                </span>
+                <code className="doctor-linux-dayuse__docs-path">
+                  {LINUX_DAYUSE_DOCS_PATH}
+                </code>
+              </p>
+            </section>
+          ) : null}
 
           <section className="doctor-advanced" aria-label={t("doctor.advanced")}>
             <h3 className="doctor-advanced__title">{t("doctor.advanced")}</h3>

@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Linux day-use checklist** (Doctor): honesty card for day-to-day Linux use — CLI found, project path spaces, sandbox→Landlock (off = N/A; not off → warn that enforcement is Landlock), tray/autostart (manual without probe), Wayland/X11 (unknown without probe), app update check. Pure `linuxDayuseChecklist` helpers; never invents Landlock / tray / display-server status. Non-Linux shows N/A with “not the target of this list”. Copy summary; deep links to About / Runtime / Sandbox. Settings → Runtime platform tip. en/zh/zh-TW + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

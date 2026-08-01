@@ -6589,6 +6589,30 @@ export function SettingsPage({
                     </div>
                   )}
                 </div>
+                <div
+                  className={
+                    "settings-row" + rowHighlight("settings-anchor-platform")
+                  }
+                  id="settings-anchor-platform"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.runtime.platformTip")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.runtime.platformTipDesc")}
+                    </div>
+                    <div className="settings-row__hint">
+                      {(() => {
+                        const p = detectAppPlatform();
+                        if (p === "win") return "Windows";
+                        if (p === "mac") return "macOS";
+                        if (p === "linux") return "Linux";
+                        return "—";
+                      })()}
+                    </div>
+                  </div>
+                </div>
                 {onAllowUnverifiedCliInstall ? (
                   <div
                     className={
