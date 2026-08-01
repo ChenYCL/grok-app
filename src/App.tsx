@@ -91,6 +91,12 @@ import {
   shouldConfirmQuit,
 } from "@/lib/confirmQuit";
 import {
+  formatSessionDataModeConfirmBody,
+  joinSessionDataModeConfirmMessage,
+  normalizeSessionDataMode,
+  planSessionDataModeSwitch,
+} from "@/lib/sessionDataMode";
+import {
   loadNotifySoundPref,
   NOTIFY_SOUND_CHANGE_EVENT,
   saveNotifySoundPref,
@@ -3161,7 +3167,9 @@ export default function App() {
           ) {
             setPrefsScope(settings.composerPrefsScope);
           }
-          setSessionDataMode(settings.sessionDataMode || "independent");
+          setSessionDataMode(
+            normalizeSessionDataMode(settings.sessionDataMode),
+          );
         }
         const catalog: ModelOption[] =
           modelsRes?.models?.length
@@ -3298,7 +3306,9 @@ export default function App() {
           }),
         );
       }
-      setSessionDataMode(settings.sessionDataMode || "independent");
+      setSessionDataMode(
+        normalizeSessionDataMode(settings.sessionDataMode),
+      );
       setDefaultOpenTarget(
         (settings as { defaultOpenTarget?: string }).defaultOpenTarget ||
           "finder",
@@ -16541,24 +16551,37 @@ export default function App() {
             })();
           }}
           onSessionDataMode={(v) => {
+            const to = normalizeSessionDataMode(v);
+            const from = normalizeSessionDataMode(sessionDataMode);
             const commit = () => {
-              setSessionDataMode(v);
+              setSessionDataMode(to);
               void api.settingsGet().then((s) =>
-                api.settingsSet({ ...s, sessionDataMode: v }),
+                api.settingsSet({ ...s, sessionDataMode: to }),
               );
             };
             // Tauri WebView: window.confirm is unreliable (often always false).
-            if (v === "shared") {
-              setAppDialog({
-                kind: "confirm",
-                title: tr("settings.sessionDataMode"),
-                message: tr("settings.sharedConfirm"),
-                confirmLabel: tr("common.confirm"),
-                onConfirm: commit,
-              });
+            // Independent ↔ shared always confirms with concrete risks (E04).
+            const plan = planSessionDataModeSwitch({ from, to });
+            if (!plan.needsConfirm) {
+              commit();
               return;
             }
-            commit();
+            const body = formatSessionDataModeConfirmBody(from, to);
+            const message = joinSessionDataModeConfirmMessage({
+              intro: tr(body.introKey as MessageKey, {
+                fromHome: body.fromHome,
+                toHome: body.toHome,
+              }),
+              riskLines: body.riskKeys.map((k) => tr(k as MessageKey)),
+            });
+            setAppDialog({
+              kind: "confirm",
+              title: tr("settings.sessionDataMode"),
+              message,
+              confirmLabel: tr("common.confirm"),
+              danger: body.danger,
+              onConfirm: commit,
+            });
           }}
           policy={policy}
           onPolicy={(v) => {

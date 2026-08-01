@@ -1975,7 +1975,7 @@ export const zhTW: Record<MessageKey, string> = {
   "agent.capacityRecycledToast":
     "已回收一個閒置的常駐 Agent 以騰出槽位 — 該工作階段下次傳送時會重新連線。",
   "agent.dataModeRecycledToast":
-    "資料模式切換後已重啟 Agent — 下次傳送將在新目錄下重連。",
+    "對話資料模式切換後已回收 Agent — 歷史不會靜默合併；下次傳送將在新目錄下重連。",
   "agent.softRespawnToast":
     "已依新設定重載 Agent — 下次傳送將重新連線。",
   "agent.processLimitToast":
@@ -2867,6 +2867,31 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.modeShared": "共用（~/.grok）",
   "settings.sessionModeHelp":
     "獨立模式會話存在應用目錄；共用模式使用 CLI 主目錄，與終端機共用會話。兩種模式均可匯入 CLI 工作階段；獨立模式掃描的是 agent-home（不一定是 ~/.grok）。",
+  "settings.sessionDataMode.status": "目前：{modeLabel} · Agent 主目錄 {path}",
+  "settings.sessionDataMode.independentNote":
+    "獨立模式使用 {path}。可寫入 agent 設定的應用程式設定作用於此目錄；不會改寫 CLI 的 ~/.grok。",
+  "settings.sessionDataMode.confirm.intro":
+    "將對話資料主目錄從 {fromHome} 切換到 {toHome}？\n歷史不會合併。線上 Agent 將被回收。",
+  "settings.sessionDataMode.risk.homesDiffer":
+    "Agent 主目錄會變更 — 重連只使用新目錄",
+  "settings.sessionDataMode.risk.noSilentMerge":
+    "不會靜默合併：獨立與共用兩套歷史保持分離",
+  "settings.sessionDataMode.risk.recycleAgents":
+    "將立即回收全部 live / background / parked Agent 行程",
+  "settings.sessionDataMode.risk.sharedWithCli":
+    "共用模式使用 ~/.grok — 與終端機 Grok Build CLI 同一工作階段列表",
+  "settings.sessionDataMode.risk.noConfigRewrite":
+    "應用程式不會在共用模式下改寫 CLI 的密鑰 / config.toml（隱私、供應商等）",
+  "settings.sessionDataMode.risk.conflictPossible":
+    "App 與 CLI 同時寫入時可能衝突；若報錯請鎖定或重試",
+  "settings.sessionDataMode.risk.leaveShared":
+    "離開共用：應用回到獨立 agent-home；終端機 CLI 的 ~/.grok 保持不變",
+  "settings.sessionDataMode.banner.sharedWithCli":
+    "與 CLI 共用：Agent 主目錄為 ~/.grok（與終端機 Grok Build 同一工作階段列表）。",
+  "settings.sessionDataMode.banner.noRewriteSecrets":
+    "共用模式下應用拒絕改寫 agent 密鑰 / config.toml — 需要應用代寫設定時請改用獨立模式。",
+  "settings.sessionDataMode.banner.conflictPossible":
+    "App 與 CLI 同時寫同一工作階段索引可能衝突 — 跨模式不會靜默合併歷史。",
   "settings.tabOfficial": "官方帳戶",
   "settings.tabProviders": "自訂供應商",
   "settings.tabOfficialHint":

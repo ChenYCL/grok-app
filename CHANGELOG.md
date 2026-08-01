@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Shared session-data mode switch honesty**: pure `sessionDataMode` helpers (normalize, honest home labels `~/.grok-app/agent-home` vs `~/.grok`, switch plan with concrete risk keys, shared-mode banner, always block silent mixed-read on flip). Settings shows current mode + home path, stronger shared banner (CLI share · no config rewrite · conflict possible). Independent ↔ shared confirm uses GlassModal risk list (not vague copy; no `window.confirm`); agents-recycled toast states histories were not merged. en/zh/zh-TW + `settingsCatalog` keywords; vitest.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

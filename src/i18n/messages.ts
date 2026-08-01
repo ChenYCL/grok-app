@@ -2097,7 +2097,7 @@ const en = {
   "agent.capacityRecycledToast":
     "Reclaimed an idle warm agent to free a slot — that session reconnects on its next message.",
   "agent.dataModeRecycledToast":
-    "Agents restarted after data mode change — next message reconnects under the new home.",
+    "Agents recycled after session data mode change — histories were not merged; next message reconnects under the new home.",
   "agent.softRespawnToast":
     "Agent reloaded with new settings — next message reconnects.",
   "agent.processLimitToast":
@@ -3000,6 +3000,31 @@ const en = {
   "settings.modeShared": "shared (~/.grok)",
   "settings.sessionModeHelp":
     "Independent keeps chats in the app data dir. Shared uses the CLI home so App and terminal see the same sessions. CLI session import works in both modes; independent mode scans agent-home (not always ~/.grok).",
+  "settings.sessionDataMode.status": "Current: {modeLabel} · agent home {path}",
+  "settings.sessionDataMode.independentNote":
+    "Independent mode uses {path}. App settings that write agent config apply here; CLI ~/.grok is not rewritten.",
+  "settings.sessionDataMode.confirm.intro":
+    "Switch session data home from {fromHome} → {toHome}?\nHistories are not merged. Live agents will be recycled.",
+  "settings.sessionDataMode.risk.homesDiffer":
+    "Agent home changes — reconnects use the new directory only",
+  "settings.sessionDataMode.risk.noSilentMerge":
+    "No silent merge: independent and shared histories stay separate",
+  "settings.sessionDataMode.risk.recycleAgents":
+    "All live / background / parked agents are recycled now",
+  "settings.sessionDataMode.risk.sharedWithCli":
+    "Shared mode uses ~/.grok — same sessions as terminal Grok Build CLI",
+  "settings.sessionDataMode.risk.noConfigRewrite":
+    "App will not rewrite CLI secrets/config.toml for privacy, providers, and similar keys",
+  "settings.sessionDataMode.risk.conflictPossible":
+    "Concurrent App + CLI writes may conflict; lock or retry if you see errors",
+  "settings.sessionDataMode.risk.leaveShared":
+    "Leaving shared: App isolates to agent-home; terminal CLI keeps ~/.grok unchanged",
+  "settings.sessionDataMode.banner.sharedWithCli":
+    "Shared with CLI: agent home is ~/.grok (same session list as terminal Grok Build).",
+  "settings.sessionDataMode.banner.noRewriteSecrets":
+    "App refuses rewriting agent-home secrets/config.toml keys in shared mode — use independent for App-managed config writes.",
+  "settings.sessionDataMode.banner.conflictPossible":
+    "Conflict possible if App and CLI write the same session index at once — no silent history merge across modes.",
   "settings.tabOfficial": "Official account",
   "settings.tabProviders": "Custom providers",
   "settings.tabOfficialHint":
@@ -8129,7 +8154,7 @@ const zh: Record<MessageKey, string> = {
   "agent.capacityRecycledToast":
     "已回收一个闲置的常驻 Agent 以腾出槽位 — 该会话下次发送时会重新连接。",
   "agent.dataModeRecycledToast":
-    "数据模式切换后已重启 Agent — 下次发送将在新目录下重连。",
+    "会话数据模式切换后已回收 Agent — 历史不会静默合并；下次发送将在新目录下重连。",
   "agent.softRespawnToast":
     "已按新设置重载 Agent — 下次发送将重新连接。",
   "agent.processLimitToast":
@@ -9012,6 +9037,31 @@ const zh: Record<MessageKey, string> = {
   "settings.modeShared": "共享（~/.grok）",
   "settings.sessionModeHelp":
     "独立模式会话存在应用目录；共享模式使用 CLI 主目录，与终端共用会话。两种模式均可导入 CLI 会话；独立模式扫描的是 agent-home（不一定是 ~/.grok）。",
+  "settings.sessionDataMode.status": "当前：{modeLabel} · Agent 主目录 {path}",
+  "settings.sessionDataMode.independentNote":
+    "独立模式使用 {path}。可写入 agent 配置的应用设置作用于此目录；不会改写 CLI 的 ~/.grok。",
+  "settings.sessionDataMode.confirm.intro":
+    "将会话数据主目录从 {fromHome} 切换到 {toHome}？\n历史不会合并。在线 Agent 将被回收。",
+  "settings.sessionDataMode.risk.homesDiffer":
+    "Agent 主目录会变更 — 重连只使用新目录",
+  "settings.sessionDataMode.risk.noSilentMerge":
+    "不会静默合并：独立与共享两套历史保持分离",
+  "settings.sessionDataMode.risk.recycleAgents":
+    "将立即回收全部 live / background / parked Agent 进程",
+  "settings.sessionDataMode.risk.sharedWithCli":
+    "共享模式使用 ~/.grok — 与终端 Grok Build CLI 同一会话列表",
+  "settings.sessionDataMode.risk.noConfigRewrite":
+    "应用不会在共享模式下改写 CLI 的密钥 / config.toml（隐私、供应商等）",
+  "settings.sessionDataMode.risk.conflictPossible":
+    "App 与 CLI 同时写入时可能冲突；若报错请锁定或重试",
+  "settings.sessionDataMode.risk.leaveShared":
+    "离开共享：应用回到独立 agent-home；终端 CLI 的 ~/.grok 保持不变",
+  "settings.sessionDataMode.banner.sharedWithCli":
+    "与 CLI 共享：Agent 主目录为 ~/.grok（与终端 Grok Build 同一会话列表）。",
+  "settings.sessionDataMode.banner.noRewriteSecrets":
+    "共享模式下应用拒绝改写 agent 密钥 / config.toml — 需要应用代写配置时请改用独立模式。",
+  "settings.sessionDataMode.banner.conflictPossible":
+    "App 与 CLI 同时写同一会话索引可能冲突 — 跨模式不会静默合并历史。",
   "settings.tabOfficial": "官方账户",
   "settings.tabProviders": "自定义提供商",
   "settings.tabOfficialHint":
