@@ -2660,6 +2660,8 @@ export default function App() {
   const [account, setAccount] = useState<api.AccountStatus | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
+  /** Soft-fail last account_status / billing probe error (never invents quota %). */
+  const [accountProbeError, setAccountProbeError] = useState<unknown>(null);
   const [loginHint, setLoginHint] = useState<string | null>(null);
   const platform = useMemo(() => detectAppPlatform(), []);
   /** Self-drawn chrome when OS title bar is disabled (Windows release config). */
@@ -14397,7 +14399,14 @@ export default function App() {
 
   const refreshAccount = useCallback(
     async (opts?: { refreshBilling?: boolean }) => {
-      if (!api.isTauri()) return;
+      if (!api.isTauri()) {
+        // Browser / non-host: soft-fail host_only so Account never invents %.
+        setAccountProbeError({
+          code: "host_only",
+          message: "Account requires Tauri desktop runtime",
+        });
+        return;
+      }
       setAccountLoading(true);
       try {
         const st = await api.accountStatus({
@@ -14405,6 +14414,7 @@ export default function App() {
           manualCliPath: manualCliPath || null,
         });
         setAccount(st);
+        setAccountProbeError(null);
         setSetup((s) => ({
           ...s,
           auth: isAccountConnected(st),
@@ -14421,6 +14431,7 @@ export default function App() {
         void api.trayRefresh();
       } catch (e) {
         console.warn("account status failed", e);
+        setAccountProbeError(e);
       } finally {
         setAccountLoading(false);
       }
@@ -16388,6 +16399,25 @@ export default function App() {
       "account.quotaRemaining",
       "account.quotaUsed",
       "account.quotaUnknown",
+      "account.quota.loading",
+      "account.quota.loadingHint",
+      "account.quota.signedOut",
+      "account.quota.signedOutHint",
+      "account.quota.chip.loading",
+      "account.quota.chip.unknown",
+      "account.quota.chip.signedOut",
+      "account.quota.chip.err.network",
+      "account.quota.chip.err.auth",
+      "account.quota.chip.err.host_only",
+      "account.quota.chip.err.other",
+      "account.quota.err.network",
+      "account.quota.err.networkHint",
+      "account.quota.err.auth",
+      "account.quota.err.authHint",
+      "account.quota.err.host_only",
+      "account.quota.err.host_onlyHint",
+      "account.quota.err.other",
+      "account.quota.err.otherHint",
       "account.period",
       "account.prepaid",
       "account.onDemand",
@@ -17102,6 +17132,7 @@ export default function App() {
           account={account}
           accountLoading={accountLoading}
           accountBusy={accountBusy}
+          accountProbeError={accountProbeError}
           loginHint={loginHint}
           savedAccounts={savedAccounts}
           activeAccountId={activeAccountId}

@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Account SuperGrok quota honesty**: never invent remaining % when Host is silent — pure `accountQuotaHonesty` helpers (`resolveQuotaEmptyState` · `classifyQuotaError` network|auth|host_only|other · `formatQuotaUnknown` chips); Account panel unknown/empty chips + soft-fail when billing probe fails; en/zh/zh-TW + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
