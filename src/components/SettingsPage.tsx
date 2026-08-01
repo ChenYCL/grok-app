@@ -43,6 +43,12 @@ import {
   filterCliSessions,
 } from "@/lib/cliSessionsFilter";
 import {
+  formatSessionDataModeStatusVars,
+  normalizeSessionDataMode,
+  resolveSessionDataModeBanner,
+  sessionDataModeHomeLabel,
+} from "@/lib/sessionDataMode";
+import {
   listArchiveAgeOptionPreviews,
   hasAnyArchiveAgeMatches,
   type ArchiveAgeSessionLike,
@@ -4203,35 +4209,82 @@ export function SettingsPage({
                   ]}
                 />
               </div>
-              <div
-                className={
-                  "settings-row" + rowHighlight("settings-anchor-sessionDataMode")
-                }
-                id="settings-anchor-sessionDataMode"
-              >
-                <div className="settings-row__text">
-                  <div className="settings-row__label">
-                    {t("settings.sessionDataMode")}
+              {(() => {
+                const mode = normalizeSessionDataMode(sessionDataMode);
+                const banner = resolveSessionDataModeBanner(mode);
+                const modeLabel =
+                  mode === "shared"
+                    ? t("settings.modeShared")
+                    : t("settings.modeIndependent");
+                const statusVars = formatSessionDataModeStatusVars(
+                  mode,
+                  modeLabel,
+                );
+                return (
+                  <div
+                    className={
+                      "settings-row settings-row--stack" +
+                      rowHighlight("settings-anchor-sessionDataMode")
+                    }
+                    id="settings-anchor-sessionDataMode"
+                  >
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("settings.sessionDataMode")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.sessionDataModeDesc")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.sessionModeHelp")}
+                      </div>
+                      <div
+                        className="settings-row__hint"
+                        role="status"
+                        style={{ marginTop: 6 }}
+                      >
+                        {t("settings.sessionDataMode.status", statusVars)}
+                      </div>
+                      {banner.showSharedBanner ? (
+                        <div
+                          className="settings-row__hint is-danger"
+                          role="status"
+                          style={{
+                            marginTop: 8,
+                            whiteSpace: "pre-line",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          {banner.keys
+                            .map((k) => t(k as MessageKey))
+                            .join("\n")}
+                        </div>
+                      ) : (
+                        <div
+                          className="settings-row__hint"
+                          role="note"
+                          style={{ marginTop: 6, fontFamily: "inherit" }}
+                        >
+                          {t("settings.sessionDataMode.independentNote", {
+                            path: sessionDataModeHomeLabel(mode),
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <Select
+                      value={mode}
+                      onChange={onSessionDataMode}
+                      options={[
+                        {
+                          value: "independent",
+                          label: t("settings.modeIndependent"),
+                        },
+                        { value: "shared", label: t("settings.modeShared") },
+                      ]}
+                    />
                   </div>
-                  <div className="settings-row__desc">
-                    {t("settings.sessionDataModeDesc")}
-                  </div>
-                  <div className="settings-row__desc">
-                    {t("settings.sessionModeHelp")}
-                  </div>
-                </div>
-                <Select
-                  value={sessionDataMode}
-                  onChange={onSessionDataMode}
-                  options={[
-                    {
-                      value: "independent",
-                      label: t("settings.modeIndependent"),
-                    },
-                    { value: "shared", label: t("settings.modeShared") },
-                  ]}
-                />
-              </div>
+                );
+              })()}
               <CliSessionsPanel
                 t={t}
                 sessionDataMode={sessionDataMode}
