@@ -1289,6 +1289,20 @@ export const zhTW: Record<MessageKey, string> = {
   "plan.reviseNoteDesc": "可填寫給 Agent 的說明；留空則請求一般性修訂。",
   "plan.reviseNotePlaceholder": "希望改什麼？（可選）",
   "plan.reviseNoteSubmit": "傳送修改請求",
+  /** Editable plan canvas (Resources → Plan before approve) */
+  "plan.edit": "編輯計劃",
+  "plan.cancelEdit": "取消編輯",
+  "plan.requestWithDraft": "用草稿請求修改",
+  "plan.approveDirtyHint":
+    "你有未提交的計劃修改。請先用草稿請求修改，或丟棄後再核准 Agent 的原計劃。",
+  "plan.draftPlaceholder": "編輯計劃 Markdown…",
+  "plan.draftAria": "計劃草稿 Markdown",
+  "plan.discardTitle": "丟棄計劃修改？",
+  "plan.discardMessage":
+    "本機修改將遺失。在請求修改或核准之前，仍以 Agent 原計劃為準。",
+  "plan.discardConfirm": "丟棄修改",
+  "plan.draftEmpty": "計劃草稿不能為空。",
+  "plan.draftTooLong": "計劃草稿過長（上限約 20 萬字元）。",
   "plan.phaseLabel": "思考 {n}",
   "plan.steps": "步驟",
   "plan.openInResources": "在資源中開啟",

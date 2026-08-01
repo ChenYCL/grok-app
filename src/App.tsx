@@ -20733,7 +20733,15 @@ export default function App() {
                 hasHistory: planHistoryNonEmpty,
               }}
               onApprovePlan={() => void approvePlan()}
-              onRequestPlanChanges={() => openRequestPlanChanges()}
+              onRequestPlanChanges={(note) => {
+                // Draft-from-edit canvas includes revised-plan markers — send
+                // immediately. Empty / omitted opens the optional note modal.
+                if (typeof note === "string" && note.trim().length > 0) {
+                  void requestPlanChanges(note);
+                  return;
+                }
+                openRequestPlanChanges();
+              }}
               onDismissPlan={() => void dismissPlan()}
               onOpenPlanHistory={() => setShowPlanHistory(true)}
               onShip={openShipFlow}
