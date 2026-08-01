@@ -5735,6 +5735,51 @@ const en = {
   "settings.preferredAgent.default": "Default (CLI)",
   "settings.preferredAgent.source.bundled": "Bundled",
   "settings.preferredAgent.source.builtin": "Built-in",
+  // Settings → General → Agent → Agents & Personas console
+  "settings.agentsPersonas.title": "Agents & Personas",
+  "settings.agentsPersonas.desc":
+    "Browse built-in, user, and project agent definitions and discovered personas (CLI `/config-agents` roots). Never invents personas — only files on disk. Preferred agent applies to new sessions.",
+  "settings.agentsPersonas.tab.agents": "Agents",
+  "settings.agentsPersonas.tab.personas": "Personas",
+  "settings.agentsPersonas.searchPlaceholder": "Filter by name, source, or path…",
+  "settings.agentsPersonas.refresh": "Refresh",
+  "settings.agentsPersonas.loading": "Loading…",
+  "settings.agentsPersonas.clearFilter": "Clear filter",
+  "settings.agentsPersonas.open": "Open",
+  "settings.agentsPersonas.reveal": "Reveal",
+  "settings.agentsPersonas.openUserAgents": "Open user agents folder",
+  "settings.agentsPersonas.openProjectAgents": "Open project agents folder",
+  "settings.agentsPersonas.openUserPersonas": "Open user personas folder",
+  "settings.agentsPersonas.openProjectPersonas": "Open project personas folder",
+  "settings.agentsPersonas.browsePersonas": "Browse personas folder",
+  "settings.agentsPersonas.needProjectHint":
+    "Select a project in the workbench to manage project-scoped definitions.",
+  "settings.agentsPersonas.agentsEmpty": "No agent definitions found",
+  "settings.agentsPersonas.agentsEmptyHint":
+    "Built-ins always list when the catalog loads. Add `*.md` under ~/.grok/agents or project `.grok/agents`, or create one under Extensions → Agents.",
+  "settings.agentsPersonas.personasEmpty": "No personas discovered",
+  "settings.agentsPersonas.personasEmptyHint":
+    "Personas are `*.toml` / `*.md` under ~/.grok/personas or project `.grok/personas`. The App never invents persona names — use the CLI or open the folder to add files.",
+  "settings.agentsPersonas.filterEmpty": "No matches for this filter",
+  "settings.agentsPersonas.filterEmptyHint": "Clear the filter to see the full list.",
+  "settings.agentsPersonas.hostOnly": "Open the desktop app to list agents and personas",
+  "settings.agentsPersonas.hostOnlyHint":
+    "Filesystem discovery needs the Tauri host. Built-in names may still appear from the catalog for preferred-agent honesty.",
+  "settings.agentsPersonas.noProject": "No project open",
+  "settings.agentsPersonas.noProjectHint":
+    "Open a workbench project to list project-scoped agents and personas.",
+  "settings.agentsPersonas.error": "Could not load agents and personas",
+  "settings.agentsPersonas.builtinNoPath": "Built-in · no definition file path",
+  "settings.agentsPersonas.setPreferred": "Set preferred",
+  "settings.agentsPersonas.preferredBadge": "Preferred",
+  "settings.agentsPersonas.preferredDefault":
+    "Preferred agent: Default (CLI) — new sessions omit `--agent`.",
+  "settings.agentsPersonas.preferredCurrent":
+    "Preferred agent: {name} · {source}",
+  "settings.agentsPersonas.preferredMissing":
+    "Preferred agent “{name}” is not in the catalog",
+  "settings.agentsPersonas.preferredMissingHint":
+    "It may have been renamed or removed. Pick another agent or Default (CLI). Spawn still passes the saved name until you change it.",
   // Remote control (settings section id: remote_im)
   "settings.nav.remoteIm": "Remote control",
   "settings.remoteIm.sidebarAria": "IM messaging channels",
@@ -11881,6 +11926,51 @@ const zh: Record<MessageKey, string> = {
   "settings.preferredAgent.default": "default",
   "settings.preferredAgent.source.bundled": "bundled",
   "settings.preferredAgent.source.builtin": "Built-in",
+  // Settings → General → Agent → Agents & Personas console
+  "settings.agentsPersonas.title": "Agents 与 Personas",
+  "settings.agentsPersonas.desc":
+    "浏览内置、用户与项目级 agent 定义，以及磁盘上发现的 personas（与 CLI `/config-agents` 根目录一致）。不会凭空编造 persona — 仅列出真实文件。首选 agent 作用于新会话。",
+  "settings.agentsPersonas.tab.agents": "Agents",
+  "settings.agentsPersonas.tab.personas": "Personas",
+  "settings.agentsPersonas.searchPlaceholder": "按名称、来源或路径筛选…",
+  "settings.agentsPersonas.refresh": "刷新",
+  "settings.agentsPersonas.loading": "加载中…",
+  "settings.agentsPersonas.clearFilter": "清除筛选",
+  "settings.agentsPersonas.open": "打开",
+  "settings.agentsPersonas.reveal": "在访达中显示",
+  "settings.agentsPersonas.openUserAgents": "打开用户 agents 目录",
+  "settings.agentsPersonas.openProjectAgents": "打开项目 agents 目录",
+  "settings.agentsPersonas.openUserPersonas": "打开用户 personas 目录",
+  "settings.agentsPersonas.openProjectPersonas": "打开项目 personas 目录",
+  "settings.agentsPersonas.browsePersonas": "浏览 personas 目录",
+  "settings.agentsPersonas.needProjectHint":
+    "请先在工作台选择项目，以管理项目级定义。",
+  "settings.agentsPersonas.agentsEmpty": "未发现 agent 定义",
+  "settings.agentsPersonas.agentsEmptyHint":
+    "目录加载后始终列出内置 agent。可在 ~/.grok/agents 或项目 `.grok/agents` 添加 `*.md`，或在「扩展 → Agents」新建。",
+  "settings.agentsPersonas.personasEmpty": "未发现 personas",
+  "settings.agentsPersonas.personasEmptyHint":
+    "Personas 为 ~/.grok/personas 或项目 `.grok/personas` 下的 `*.toml` / `*.md`。应用不会编造 persona 名称 — 请用 CLI 或打开目录添加文件。",
+  "settings.agentsPersonas.filterEmpty": "没有符合筛选条件的项",
+  "settings.agentsPersonas.filterEmptyHint": "清除筛选以查看完整列表。",
+  "settings.agentsPersonas.hostOnly": "请在桌面应用中列出 agents 与 personas",
+  "settings.agentsPersonas.hostOnlyHint":
+    "文件系统发现需要 Tauri 主机。内置名称仍可能来自目录，以便首选 agent 诚实展示。",
+  "settings.agentsPersonas.noProject": "未打开项目",
+  "settings.agentsPersonas.noProjectHint":
+    "打开工作台项目以列出项目级 agents 与 personas。",
+  "settings.agentsPersonas.error": "无法加载 agents 与 personas",
+  "settings.agentsPersonas.builtinNoPath": "内置 · 无定义文件路径",
+  "settings.agentsPersonas.setPreferred": "设为首选",
+  "settings.agentsPersonas.preferredBadge": "首选",
+  "settings.agentsPersonas.preferredDefault":
+    "首选 agent：默认（CLI）— 新会话不传 `--agent`。",
+  "settings.agentsPersonas.preferredCurrent":
+    "首选 agent：{name} · {source}",
+  "settings.agentsPersonas.preferredMissing":
+    "首选 agent “{name}” 不在目录中",
+  "settings.agentsPersonas.preferredMissingHint":
+    "可能已重命名或删除。请另选 agent 或默认（CLI）。在更改前，启动仍会使用已保存的名称。",
   // Remote control (settings section id: remote_im)
   "settings.nav.remoteIm": "远程控制",
   "settings.remoteIm.sidebarAria": "IM 通信渠道",
