@@ -482,6 +482,16 @@ export const zhTW: Record<MessageKey, string> = {
   "resources.emptyPreviewHint": "從右側檔案樹選擇檔案進行預覽。",
   "resources.plan": "計劃",
   "resources.planEmpty": "目前對話沒有待審閱的計劃。",
+  "resources.agents": "Agents",
+  "resources.agentsShow": "顯示 Agents 側欄",
+  "resources.agentsHide": "隱藏 Agents 側欄",
+  "agentsRail.noTasks": "本輪尚無 Agent 任務",
+  "agentsRail.busyHint":
+    "對話正在工作 — 工具步驟與巢狀子代理會在啟動後出現在這裡。",
+  "agentsRail.idleHint":
+    "當本對話執行工具或啟動子代理時，任務樹會顯示在這裡，無需開啟浮動任務面板。",
+  "agentsRail.filterEmpty": "沒有符合篩選條件的任務",
+  "agentsRail.filterEmptyHint": "清除搜尋或換一個狀態篩選以查看更多任務。",
   "resources.copyPathShort": "路徑",
   "resources.tabClose": "關閉分頁",
   "resources.tabCloseOthers": "關閉其他分頁",

@@ -11,6 +11,11 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+#### Composer & chat / Sessions
+- **Agents rail** (Resources side mode): first-class **Agents** tab in the right resource pane shows the current session’s subagent/tool task tree (reuses `AgentTasksPanel` + `sessionTasks` — no invented metrics). Running-count badge; honest empty states (no tasks · filter empty · idle hint); bind cwd / WT badge same as floating Tasks panel. Pure `agentsRail` helpers + tests; en/zh/zh-TW.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

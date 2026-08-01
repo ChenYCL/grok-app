@@ -52,6 +52,7 @@ import {
   type TasksBindCwdResult,
   type TasksPanelStatusFilter,
 } from "@/lib/tasksPanelPro";
+import { resolveAgentsRailEmptyState } from "@/lib/agentsRail";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -63,6 +64,8 @@ import {
 } from "@/components/icons";
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
+
+export type AgentTasksPanelVariant = "default" | "rail";
 
 export type AgentTasksPanelProps = {
   messages: ChatMessage[];
@@ -97,6 +100,16 @@ export type AgentTasksPanelProps = {
    * (`subagent_worktree_snapshot_enabled`, CLI 0.2.117+). Shows a short note.
    */
   subagentWorktreeSnapshotEnabled?: boolean;
+  /**
+   * `rail` = compact embed for Resources → Agents (no close chrome;
+   * session-local empty honesty via agentsRail helpers).
+   */
+  variant?: AgentTasksPanelVariant;
+  /**
+   * Whether the current session is streaming / busy (rail empty idle_hint).
+   * Ignored for the default floating panel.
+   */
+  sessionBusy?: boolean;
 };
 
 async function revealOrCopyCwd(cwd: string): Promise<"revealed" | "copied"> {
@@ -578,7 +591,10 @@ export function AgentTasksPanel({
   onOpenCwd,
   activeCwd = null,
   subagentWorktreeSnapshotEnabled = false,
+  variant = "default",
+  sessionBusy = false,
 }: AgentTasksPanelProps) {
+  const isRail = variant === "rail";
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<TasksPanelStatusFilter>("all");
@@ -628,30 +644,45 @@ export function AgentTasksPanel({
     () => tree.filter((n) => !taskTreeHasRunning(n)),
     [tree],
   );
+  // Rail is session-local: hide cross-session activity rows.
   const otherSessions = useMemo(
-    () => activitySessions.filter((r) => !r.isCurrent),
-    [activitySessions],
+    () =>
+      isRail ? [] : activitySessions.filter((r) => !r.isCurrent),
+    [activitySessions, isRail],
   );
   const stoppableSessions = useMemo(
-    () => stoppableActivitySessions(activitySessions),
-    [activitySessions],
+    () => (isRail ? [] : stoppableActivitySessions(activitySessions)),
+    [activitySessions, isRail],
   );
   const totalBusy = running + otherSessions.length;
   const showStopAll =
-    !!onStopAllSessions && stoppableSessions.length > 0;
+    !isRail && !!onStopAllSessions && stoppableSessions.length > 0;
   const hasTaskRows = activeTree.length > 0 || recentTree.length > 0;
   const showTreeChrome = taskTreeHasNesting(tree);
 
-  const emptyState = useMemo(
-    () =>
-      resolveTasksPanelEmptyState({
-        totalTasks: tasks.length,
-        filteredTasks: filteredFlat.length,
-        otherSessions: otherSessions.length,
-        hasFilters,
-      }),
-    [tasks.length, filteredFlat.length, otherSessions.length, hasFilters],
-  );
+  const emptyState = useMemo(() => {
+    if (isRail) {
+      return resolveAgentsRailEmptyState({
+        hasTasks: hasTaskRows || filteredFlat.length > 0,
+        filterActive: hasFilters,
+        sessionBusy,
+      });
+    }
+    return resolveTasksPanelEmptyState({
+      totalTasks: tasks.length,
+      filteredTasks: filteredFlat.length,
+      otherSessions: otherSessions.length,
+      hasFilters,
+    });
+  }, [
+    isRail,
+    hasTaskRows,
+    filteredFlat.length,
+    hasFilters,
+    sessionBusy,
+    tasks.length,
+    otherSessions.length,
+  ]);
 
   const snapshotNoteKey = tasksPanelSnapshotBannerKey(
     subagentWorktreeSnapshotEnabled,
@@ -670,12 +701,18 @@ export function AgentTasksPanel({
     !hasTaskRows &&
     otherSessions.length > 0;
 
+  const titleLabel = isRail ? t("resources.agents") : t("tasks.title");
+
   return (
-    <section className="agent-tasks" aria-label={t("tasks.title")}>
+    <section
+      className={"agent-tasks" + (isRail ? " agent-tasks--rail" : "")}
+      aria-label={titleLabel}
+      data-variant={variant}
+    >
       <header className="agent-tasks__head">
         <div className="agent-tasks__title-row">
           <IconList size={15} />
-          <h2 className="agent-tasks__title">{t("tasks.title")}</h2>
+          <h2 className="agent-tasks__title">{titleLabel}</h2>
           {totalBusy > 0 ? (
             <span className="agent-tasks__badge">
               {t("tasks.runningCount", { n: totalBusy })}
@@ -683,7 +720,7 @@ export function AgentTasksPanel({
           ) : null}
         </div>
         <div className="agent-tasks__head-actions">
-          {onOpenDashboard ? (
+          {!isRail && onOpenDashboard ? (
             <button
               type="button"
               className="btn btn--ghost btn--sm"
@@ -703,7 +740,7 @@ export function AgentTasksPanel({
               {t("tasks.activity.stopAll")}
             </button>
           ) : null}
-          {onClose ? (
+          {!isRail && onClose ? (
             <button
               type="button"
               className="chrome-btn"

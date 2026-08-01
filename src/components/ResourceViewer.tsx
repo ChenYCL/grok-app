@@ -40,6 +40,7 @@ import {
   IconFileDiff,
   IconFolder,
   IconFiles,
+  IconList,
   IconListTree,
   IconPlan,
   IconRefresh,
@@ -48,12 +49,23 @@ import {
   IconUpload,
 } from "@/components/icons";
 import { PlanReviewPanel } from "@/components/PlanReviewPanel";
+import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import type { PlanReviewState } from "@/lib/planBody";
+import type { ChatMessage } from "@/lib/session";
 import {
   resolvePlanResourceEmptyState,
   shouldAutoLeavePlanSideMode,
   shouldShowPlanChromeButton,
 } from "@/lib/planModePro";
+import {
+  AGENTS_RAIL_SIDE_MODE,
+  countAgentsRailRunning,
+  shouldShowAgentsRailBadge,
+} from "@/lib/agentsRail";
+import {
+  collectSessionTasks,
+} from "@/lib/sessionTasks";
+import type { TasksBindCwdResult } from "@/lib/tasksPanelPro";
 import { OfficeDocumentPreview } from "@/components/OfficeDocumentPreview";
 import { CodePreview } from "@/components/CodePreview";
 import { isOfficeKind } from "@/lib/filePreviewSrc";
@@ -163,11 +175,23 @@ export interface ResourceViewerProps {
    */
   sessionChanges?: SessionFileChange[];
   /**
-   * Active session messages (optional; used by some side-pane helpers).
-   * Accepted for forward-compat with App; not required for core file/plan UI.
+   * Active session messages — drives Resources → Agents task tree.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sessionMessages?: any[];
+  sessionMessages?: ChatMessage[];
+  /**
+   * Bind chat cwd from a subagent worktree path (Agents rail / Tasks panel).
+   */
+  onOpenAgentsCwd?: (
+    cwd: string,
+  ) => void | TasksBindCwdResult | Promise<void | TasksBindCwdResult>;
+  /** Current chat project path — marks active cwd on Agents rail rows. */
+  activeCwd?: string | null;
+  /**
+   * CLI subagent worktree snapshot mode (`subagent_worktree_snapshot_enabled`).
+   */
+  subagentWorktreeSnapshotEnabled?: boolean;
+  /** Current session is streaming / connecting / awaiting permission. */
+  sessionBusy?: boolean;
   /**
    * Live plan snapshot for Plan review mode (exit_plan_mode / progress).
    */
@@ -206,7 +230,7 @@ export interface ResourceViewerProps {
   onAsideLayoutHint?: (hint: AsideLayoutHint) => void;
 }
 
-type SideMode = "files" | "changes" | "plan";
+type SideMode = "files" | "changes" | "plan" | typeof AGENTS_RAIL_SIDE_MODE;
 
 type DiffLayout = "unified" | "split";
 
@@ -339,6 +363,11 @@ export function ResourceViewer({
   onOpenRequestConsumed,
   paneActive = true,
   sessionChanges = [],
+  sessionMessages = [],
+  onOpenAgentsCwd,
+  activeCwd = null,
+  subagentWorktreeSnapshotEnabled = false,
+  sessionBusy = false,
   plan = null,
   planFocusKey = null,
   planChrome = null,
@@ -365,6 +394,14 @@ export function ResourceViewer({
   const lastPlanFocusKey = useRef<number | null>(null);
   /** User opened Plan via open-in-resources / planFocus — keep empty states. */
   const [userPinnedPlanSide, setUserPinnedPlanSide] = useState(false);
+
+  const agentsRailRunningCount = useMemo(
+    () => countAgentsRailRunning(collectSessionTasks(sessionMessages)),
+    [sessionMessages],
+  );
+  const showAgentsRailBadge = shouldShowAgentsRailBadge(
+    agentsRailRunningCount,
+  );
 
   const planResourceEmpty = useMemo(
     () =>
@@ -3515,6 +3552,35 @@ export function ResourceViewer({
           ) : null}
           <Tip
             label={
+              treeVisible && sideMode === AGENTS_RAIL_SIDE_MODE
+                ? tr("resources.agentsHide")
+                : tr("resources.agentsShow")
+            }
+          >
+            <button
+              type="button"
+              className={
+                "chrome-btn main__pane-toggle rp-chrome__agents-btn" +
+                (treeVisible && sideMode === AGENTS_RAIL_SIDE_MODE
+                  ? " is-on"
+                  : "")
+              }
+              onClick={() => showSidePanel(AGENTS_RAIL_SIDE_MODE)}
+              aria-label={tr("resources.agents")}
+              data-testid="resources-agents-chrome-btn"
+            >
+              <IconList size={16} />
+              {showAgentsRailBadge ? (
+                <span className="rp-chrome__badge" aria-hidden>
+                  {agentsRailRunningCount > 99
+                    ? "99+"
+                    : agentsRailRunningCount}
+                </span>
+              ) : null}
+            </button>
+          </Tip>
+          <Tip
+            label={
               treeVisible && sideMode === "files"
                 ? tr("resources.collapseTree")
                 : tr("resources.expandTree")
@@ -3788,6 +3854,26 @@ export function ResourceViewer({
                     ) : null}
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sideMode === AGENTS_RAIL_SIDE_MODE}
+                  className={
+                    "rp-side-modes__btn" +
+                    (sideMode === AGENTS_RAIL_SIDE_MODE ? " is-active" : "")
+                  }
+                  onClick={() => setSideMode(AGENTS_RAIL_SIDE_MODE)}
+                  data-testid="resources-agents-tab"
+                >
+                  {tr("resources.agents")}
+                  {showAgentsRailBadge ? (
+                    <span className="rp-side-modes__count">
+                      {agentsRailRunningCount > 99
+                        ? "99+"
+                        : agentsRailRunningCount}
+                    </span>
+                  ) : null}
+                </button>
                 {plan?.visible ? (
                   <button
                     type="button"
@@ -3803,6 +3889,25 @@ export function ResourceViewer({
                   </button>
                 ) : null}
               </div>
+              {sideMode === AGENTS_RAIL_SIDE_MODE ? (
+                <div
+                  className="rp-agents-rail"
+                  data-testid="resources-agents-rail"
+                >
+                  <AgentTasksPanel
+                    variant="rail"
+                    messages={sessionMessages}
+                    t={(k, vars) => tr(k, vars)}
+                    onOpenCwd={onOpenAgentsCwd}
+                    activeCwd={activeCwd}
+                    subagentWorktreeSnapshotEnabled={
+                      subagentWorktreeSnapshotEnabled
+                    }
+                    sessionBusy={sessionBusy}
+                  />
+                </div>
+              ) : (
+                <>
               <div className="rp-tree-search">
                 <IconSearch size={14} />
                 <input
@@ -4278,6 +4383,8 @@ export function ResourceViewer({
                   renderTree(root, 0)
                 )}
               </OverlayScroll>
+                </>
+              )}
             </div>
           </>
         )}
