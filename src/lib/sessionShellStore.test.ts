@@ -41,7 +41,11 @@ describe("sessionShellStore", () => {
     expect(metaTicks).toBe(1);
     const rev1 = sessionShellStore.getMetaSnapshot().rev;
 
-    // streamingMessageId is not structural meta — session listeners fire, meta may not
+    // streamingMessageId is ignored for shell equality (state already streaming)
+    let sessionTicks = 0;
+    const unsubS = sessionShellStore.subscribeSession(() => {
+      sessionTicks += 1;
+    });
     sessionShellStore.setSession({
       ...IDLE_SNAPSHOT,
       sessionId: "s1",
@@ -50,6 +54,8 @@ describe("sessionShellStore", () => {
     });
     expect(sessionShellStore.getMetaSnapshot().rev).toBe(rev1);
     expect(metaTicks).toBe(1);
+    expect(sessionTicks).toBe(0);
+    unsubS();
 
     sessionShellStore.setSession({
       ...IDLE_SNAPSHOT,

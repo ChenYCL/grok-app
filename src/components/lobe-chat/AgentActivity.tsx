@@ -1,3 +1,4 @@
+import { memo } from "react";
 /**
  * Mid-stream tool activity — Grok icon + one-line title.
  */
@@ -17,7 +18,7 @@ export {
   toolStepDisplayTitle,
 } from "@/lib/session";
 
-export function LiveToolText({
+export const LiveToolText = memo(function LiveToolText({
   message,
   locale: _locale,
 }: {
@@ -47,7 +48,7 @@ export function LiveToolText({
       <span className="grok-act__label">{title}</span>
     </div>
   );
-}
+});
 
 /** @deprecated Prefer EndOfTurnChip */
 export function TurnCancelledRow({

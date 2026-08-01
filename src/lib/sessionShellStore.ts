@@ -49,6 +49,8 @@ function structuralEqual(
 }
 
 function shallowSessionEqual(a: SessionSnapshot, b: SessionSnapshot): boolean {
+  // streamingMessageId churns once per turn start and is not needed for shell
+  // chrome — excluding it avoids a full workbench re-render mid-stream.
   return (
     a.sessionId === b.sessionId &&
     a.state === b.state &&
@@ -56,7 +58,6 @@ function shallowSessionEqual(a: SessionSnapshot, b: SessionSnapshot): boolean {
     a.title === b.title &&
     a.lastError?.code === b.lastError?.code &&
     a.lastError?.message === b.lastError?.message &&
-    a.streamingMessageId === b.streamingMessageId &&
     a.backend === b.backend &&
     a.modelId === b.modelId &&
     a.projectPath === b.projectPath

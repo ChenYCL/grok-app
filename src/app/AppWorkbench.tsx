@@ -845,10 +845,7 @@ import {
   ProviderBrandIcon,
   providerAvatarLetter
 } from "@/components/ProviderBrandIcon";
-import {
-  ResourceViewer,
-  type ResourceOpenTarget
-} from "@/components/ResourceViewer";
+import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import { ProjectRulesModal } from "@/components/ProjectRulesModal";
 import {
   mergeSessionChange,
@@ -870,6 +867,10 @@ const SettingsPage = lazy(async () => {
 const AutomationsPage = lazy(async () => {
   const m = await import("@/components/AutomationsPage");
   return { default: m.AutomationsPage };
+});
+const ResourceViewer = lazy(async () => {
+  const m = await import("@/components/ResourceViewer");
+  return { default: m.ResourceViewer };
 });
 import { dispatchCollapseAllActivity } from "@/lib/collapseAllActivity";
 import {
@@ -18808,28 +18809,29 @@ export function AppWorkbench() {
             />
           )}
           <div className="aside__inner">
-            <ResourceViewer
+                        <Suspense fallback={null}>
+              <ResourceViewer
               projectPath={effectiveProjectPath}
               projectName={
-                activeProject
-                  ? projectDisplayName(activeProject, tr)
-                  : tr("composer.noProject")
+              activeProject
+              ? projectDisplayName(activeProject, tr)
+              : tr("composer.noProject")
               }
               locale={locale}
               paneActive={!layout.asideCollapsed}
               openRequest={resourceOpenTarget}
               onOpenRequestConsumed={() => setResourceOpenTarget(null)}
               sessionChanges={
-                sessionChangesById[session.sessionId || ""] ?? []
+              sessionChangesById[session.sessionId || ""] ?? []
               }
               sessionMessages={messages}
               plan={plan}
               planFocusKey={planFocusKey}
               planChrome={{
-                composerMode: mode,
-                planEnabled,
-                userClosed: plan.userClosed,
-                hasHistory: planHistoryNonEmpty,
+              composerMode: mode,
+              planEnabled,
+              userClosed: plan.userClosed,
+              hasHistory: planHistoryNonEmpty,
               }}
               onApprovePlan={() => void approvePlan()}
               onRequestPlanChanges={() => openRequestPlanChanges()}
@@ -18838,15 +18840,15 @@ export function AppWorkbench() {
               onShip={openShipFlow}
               onAsideLayoutHint={applyAsideLayoutHint}
               onClose={() => {
-                // Manual close — do not treat as plan-owned pane on later dismiss.
-                planOpenedAsideRef.current = false;
-                setLayout((l) => {
-                  const n = { ...l, asideCollapsed: true };
-                  saveLayout(localStorage, n);
-                  return n;
-                });
+              // Manual close — do not treat as plan-owned pane on later dismiss.
+              planOpenedAsideRef.current = false;
+              setLayout((l) => {
+              const n = { ...l, asideCollapsed: true };
+              saveLayout(localStorage, n);
+              return n;
+              });
               }}
-            />
+              />            </Suspense>
           </div>
         </aside>
       </div>
