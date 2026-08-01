@@ -525,6 +525,17 @@ const en = {
     "Pick a file from the tree on the right to preview it here.",
   "resources.plan": "Plan",
   "resources.planEmpty": "No plan is waiting for review in this session.",
+  "resources.agents": "Agents",
+  "resources.agentsShow": "Show agents rail",
+  "resources.agentsHide": "Hide agents rail",
+  "agentsRail.noTasks": "No agent tasks in this turn",
+  "agentsRail.busyHint":
+    "The session is working — tool steps and nested subagents will appear here as they start.",
+  "agentsRail.idleHint":
+    "When this chat runs tools or spawns subagents, their task tree shows here without opening the floating Tasks panel.",
+  "agentsRail.filterEmpty": "No tasks match these filters",
+  "agentsRail.filterEmptyHint":
+    "Clear the search or pick another status to see more tasks.",
   "resources.copyPathShort": "Path",
   "resources.tabClose": "Close tab",
   "resources.tabCloseOthers": "Close other tabs",
@@ -6806,6 +6817,16 @@ const zh: Record<MessageKey, string> = {
   "resources.emptyPreviewHint": "从右侧文件树选择文件进行预览。",
   "resources.plan": "计划",
   "resources.planEmpty": "当前会话没有待审阅的计划。",
+  "resources.agents": "Agents",
+  "resources.agentsShow": "显示 Agents 侧栏",
+  "resources.agentsHide": "隐藏 Agents 侧栏",
+  "agentsRail.noTasks": "本轮暂无 Agent 任务",
+  "agentsRail.busyHint":
+    "会话正在工作 — 工具步骤与嵌套子代理会在启动后出现在这里。",
+  "agentsRail.idleHint":
+    "当本对话运行工具或拉起子代理时，任务树会显示在这里，无需打开浮动任务面板。",
+  "agentsRail.filterEmpty": "没有符合筛选条件的任务",
+  "agentsRail.filterEmptyHint": "清除搜索或换一个状态筛选以查看更多任务。",
   "resources.copyPathShort": "路径",
   "resources.tabClose": "关闭标签",
   "resources.tabCloseOthers": "关闭其他标签",

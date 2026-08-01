@@ -16452,8 +16452,45 @@ textarea::-webkit-scrollbar-thumb:active,
 }
 
 .rp-chrome__changes-btn,
-.rp-chrome__tasks-btn {
+.rp-chrome__tasks-btn,
+.rp-chrome__agents-btn {
   position: relative;
+}
+
+/* Resources → Agents rail (embedded session task tree) */
+.rp-agents-rail {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rp-agents-rail .agent-tasks--rail {
+  border-bottom: none;
+  background: transparent;
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.rp-agents-rail .agent-tasks__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rp-agents-rail .agent-tasks__head {
+  padding: 6px 10px 2px;
+}
+
+.rp-agents-rail .agent-tasks__filters {
+  padding: 0 8px 6px;
+}
+
+.rp-agents-rail .agent-tasks__empty {
+  padding: 16px 12px;
 }
 
 /* Agent tasks panel (L05) — derived from live tool_step / session://tool */

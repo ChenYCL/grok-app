@@ -20,6 +20,8 @@ See `docs/llm-wiki/release.md`.
 - **Parallel task (worktree)**: one flow to create a linked git worktree and open a new chat there (palette `parallel-worktree-task` + worktree menu). Optional first prompt fills the composer; optional “send after open” (default off, trusted only). Pure `worktreeParallel` helpers + tests; en/zh/zh-TW
 - **Editable plan canvas** (Resources → Plan): when a plan is awaiting review, **Edit plan** opens a local markdown draft; dirty drafts disable **Approve** (hint: request changes with your edits first); **Request changes with draft** sends feedback with clear revised-plan markers; discard dirty edit uses GlassModal (no `window.confirm`). Pure `planEditCanvas` helpers + tests; en/zh/zh-TW.
 - **Send-intent honesty** (steer / queue / concurrent): pure `resolveSendIntent` classifies what Send will do — enqueue follow-up on same-session busy, foreign concurrent when another chat is live, blocked on permission/empty — without changing enqueue rules. Composer shows a pre-send banner + optional **Open as new chat** CTA; queue strip labels stay consistent (follow-up vs hold vs steer hint). en/zh/zh-TW + tests.
+#### Composer & chat / Sessions
+- **Agents rail** (Resources side mode): first-class **Agents** tab in the right resource pane shows the current session’s subagent/tool task tree (reuses `AgentTasksPanel` + `sessionTasks` — no invented metrics). Running-count badge; honest empty states (no tasks · filter empty · idle hint); bind cwd / WT badge same as floating Tasks panel. Pure `agentsRail` helpers + tests; en/zh/zh-TW.
 
 ## [0.2.3] - 2026-07-31
 

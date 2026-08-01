@@ -249,6 +249,7 @@ import { ReliabilityCenterModal } from "@/components/ReliabilityCenterModal";
 import {
   collectActivitySessions,
   countBusyLiveMapSessions,
+  isActiveSessionSnapshot,
   stoppableActivitySessions,
 } from "@/lib/agentActivity";
 import {
@@ -20824,6 +20825,50 @@ export default function App() {
                 sessionChangesById[session.sessionId || ""] ?? []
               }
               sessionMessages={messages}
+              activeCwd={activeProject?.path ?? null}
+              subagentWorktreeSnapshotEnabled={
+                subagentWorktreeSnapshotEnabled
+              }
+              sessionBusy={
+                !!session.sessionId &&
+                isActiveSessionSnapshot(liveMap[session.sessionId])
+              }
+              onOpenAgentsCwd={async (cwd): Promise<TasksBindCwdResult> => {
+                const path = (cwd || "").trim();
+                if (!path) {
+                  return { ok: false, kind: "empty_path" };
+                }
+                if (!api.isTauri()) {
+                  return { ok: false, kind: "host_only" };
+                }
+                if (
+                  activeProject?.path &&
+                  pathsEqual(path, activeProject.path)
+                ) {
+                  return { ok: false, kind: "already_active" };
+                }
+                const wt = worktreeEntryForPath(path, gitWorktrees);
+                if (!wt) {
+                  return { ok: false, kind: "not_worktree" };
+                }
+                try {
+                  await switchToWorktree(wt);
+                  const liveId =
+                    viewingSessionIdRef.current || session.sessionId || null;
+                  if (liveId) {
+                    await markSessionWorktree(liveId, wt.path, wt.branch);
+                  }
+                  return { ok: true };
+                } catch (e) {
+                  const view = classifyTasksBindCwdError(e);
+                  showToast(tr(view.titleKey as MessageKey), 4000);
+                  return {
+                    ok: false,
+                    kind: view.kind,
+                    detail: view.detail || undefined,
+                  };
+                }
+              }}
               plan={plan}
               planFocusKey={planFocusKey}
               planChrome={{
