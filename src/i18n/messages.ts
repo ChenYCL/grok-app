@@ -1231,6 +1231,32 @@ const en = {
   "composer.modelSearchPlaceholder": "Search models…",
   "composer.modelSearchEmpty": "No models match",
   "composer.effort": "Reasoning",
+  // Model / effort mid-session apply honesty (toast + menu footer)
+  "composer.apply.model.immediate":
+    "Model applied on the live agent (session/set_model).",
+  "composer.apply.model.softRespawn":
+    "Model applies on next message after reconnect.",
+  "composer.apply.model.nextMessage":
+    "Model saved — applies on the next message.",
+  "composer.apply.model.unsupported":
+    "This model change cannot be applied mid-session.",
+  "composer.apply.effort.immediate": "Reasoning effort applied immediately.",
+  "composer.apply.effort.softRespawn":
+    "Reasoning applies on next message after reconnect (no mid-session set_effort).",
+  "composer.apply.effort.nextMessage":
+    "Reasoning saved — applies on the next message.",
+  "composer.apply.effort.unsupported":
+    "This reasoning change cannot be applied mid-session.",
+  "composer.apply.error.setModelFailed":
+    "Could not switch model on the live agent",
+  "composer.apply.error.softRespawnFailed":
+    "Could not reload the agent with new settings",
+  "composer.apply.error.invalidModel": "Invalid model",
+  "composer.apply.error.invalidEffort": "Invalid reasoning effort",
+  "composer.apply.error.disconnected": "Agent is not connected",
+  "composer.apply.error.busy":
+    "Agent is mid-turn — change applies after this turn",
+  "composer.apply.error.other": "Could not apply model or reasoning change",
   "composer.mode": "Mode",
   "composer.permission": "Permission",
   "composer.access": "Access",
@@ -7793,6 +7819,23 @@ const zh: Record<MessageKey, string> = {
   "composer.modelSearchPlaceholder": "搜索模型…",
   "composer.modelSearchEmpty": "没有匹配的模型",
   "composer.effort": "推理强度",
+  // Model / effort mid-session apply honesty (toast + menu footer)
+  "composer.apply.model.immediate": "模型已在当前 Agent 上生效（session/set_model）。",
+  "composer.apply.model.softRespawn": "模型将在重新连接后的下一条消息生效。",
+  "composer.apply.model.nextMessage": "模型已保存 — 下一条消息生效。",
+  "composer.apply.model.unsupported": "此模型变更无法在会话中途应用。",
+  "composer.apply.effort.immediate": "推理强度已立即生效。",
+  "composer.apply.effort.softRespawn":
+    "推理强度将在重新连接后的下一条消息生效（无 mid-session set_effort）。",
+  "composer.apply.effort.nextMessage": "推理强度已保存 — 下一条消息生效。",
+  "composer.apply.effort.unsupported": "此推理强度变更无法在会话中途应用。",
+  "composer.apply.error.setModelFailed": "无法在当前 Agent 上切换模型",
+  "composer.apply.error.softRespawnFailed": "无法按新设置重载 Agent",
+  "composer.apply.error.invalidModel": "无效模型",
+  "composer.apply.error.invalidEffort": "无效推理强度",
+  "composer.apply.error.disconnected": "Agent 未连接",
+  "composer.apply.error.busy": "Agent 回合进行中 — 本轮结束后生效",
+  "composer.apply.error.other": "无法应用模型或推理强度变更",
   "composer.mode": "模式",
   "composer.permission": "授权",
   "composer.access": "访问",

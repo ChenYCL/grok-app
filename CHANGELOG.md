@@ -33,6 +33,7 @@ See `docs/llm-wiki/release.md`.
 - **Live Voice command center**: delegated session chips with title/status (click focuses session), dedicated tool + permission status region, footer honesty for Keep coding sessions on/off and end-session plan (keep vs cancel delegates). Pure `voiceCommandCenter` helpers + tests; empty transcript honesty (no invented STT); en/zh/zh-TW. No `window.confirm`.
 #### Agent / search
 - **Code graph product honesty** (Settings → Agent): unify codebase indexing status + project search mode chips so users see honest **keyword vs graph** states. Pure `codeGraphProduct` helpers (`resolveCodeGraphMode`, `buildCodeGraphStatusChips`, `annotateSearchHits`, `resolveCodeGraphEmptyState`, `planCodeGraphRebuild`) — **never invent graph hits** when only keyword (rg/walk) search exists; rebuild stays CLI-only until a host API lands. Indexing panel status line + soft “App search remains keyword” note; search panel mode chips + link to indexing. en/zh/zh-TW + `settingsCatalog` + tests.
+- **Composer model / effort apply honesty**: after changing model or reasoning in the composer menus, a short toast states when it takes effect (immediate `session/set_model` · soft-respawn next message · next message when idle). Nested model/effort lists show a live-agent footer note; prefs errors are classified (set_model / soft-respawn / invalid / disconnected / busy). Pure `modelEffortApply` helpers + tests; en/zh/zh-TW. Spawn flags unchanged.
 
 ## [0.2.3] - 2026-07-31
 

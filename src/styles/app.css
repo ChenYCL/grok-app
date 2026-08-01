@@ -8591,6 +8591,18 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   text-transform: uppercase;
 }
 
+.effort-panel__apply-note {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+  text-align: center;
+  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--border-subtle, transparent);
+}
+
 @keyframes blink {
   50% {
     opacity: 0;
@@ -14337,6 +14349,18 @@ html[data-composer-min-rows="8"] .composer__input {
 .cmm__back:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+/* Model / effort mid-session apply honesty (live agent footer). */
+.cmm__apply-note {
+  margin: 6px 8px 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--border-subtle, transparent);
 }
 
 .cmm__opt {

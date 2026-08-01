@@ -47,6 +47,15 @@ Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极
 
 Spawn：`--reasoning-effort <spawnId>`。切换通道时按阶梯对齐（极高在 3 档上钳到「高」）。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
 
+**Apply honesty（UI）**：纯 helper `src/lib/modelEffortApply.ts`。Composer 改模型 / 推理后 toast + 菜单 footer 说明生效路径：
+
+| 控制 | 无 live Agent | Live Agent |
+|------|---------------|------------|
+| 模型 | `next_message`（下条消息 spawn） | `session/set_model` → `immediate_rpc`；不支持则 `soft_respawn` |
+| 推理 | `next_message` | `soft_respawn`（无 set_effort） |
+
+不得静默失败：prefs / set_model 错误经 `classifyModelEffortError` 分类 toast。
+
 ### 连接加速（Host）
 
 | 手段 | 说明 |

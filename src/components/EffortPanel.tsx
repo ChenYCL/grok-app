@@ -25,6 +25,11 @@ export interface EffortPanelProps {
   labels: Record<EffortId, string>;
   ariaLabel: string;
   title?: string;
+  /**
+   * Apply-path honesty when a live agent is attached (soft-respawn /
+   * next message). Shown under the track when set.
+   */
+  applyNote?: string | null;
 }
 
 export function EffortPanel({
@@ -33,6 +38,7 @@ export function EffortPanel({
   labels,
   ariaLabel,
   title,
+  applyNote,
 }: EffortPanelProps) {
   const [open, setOpen] = useState(false);
   const [particles, setParticles] = useState(0);
@@ -164,6 +170,11 @@ export function EffortPanel({
             <div className="effort-panel__hint">
               {GROK_BUILD_EFFORTS.map((e) => e.id).join(" · ")}
             </div>
+            {applyNote ? (
+              <div className="effort-panel__apply-note" role="note">
+                {applyNote}
+              </div>
+            ) : null}
           </div>,
           document.body,
         )
