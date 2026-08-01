@@ -259,6 +259,7 @@ import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
 import { AgentsPersonasConsolePanel } from "@/components/AgentsPersonasConsolePanel";
 import { MemoryEmbedPanel } from "@/components/MemoryEmbedPanel";
 import { CodebaseIndexingPanel } from "@/components/CodebaseIndexingPanel";
+import { LspToolsPanel } from "@/components/LspToolsPanel";
 import { CodebaseSearchPanel } from "@/components/CodebaseSearchPanel";
 import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { ProcessBudgetPanel } from "@/components/ProcessBudgetPanel";
@@ -3495,6 +3496,41 @@ export function SettingsPage({
                     onOpenInResources={onOpenProjectFileInResources}
                   />
                 </div>
+                  onError={(msg) => showSettingsToast(msg, 3200)}
+                />
+              </div>
+              <div
+                className={
+                  "settings-lsp-tools-wrap" +
+                  rowHighlight("settings-anchor-lspTools")
+                }
+              >
+                <LspToolsPanel
+                  locale={resolveLocale(locale)}
+                  cliVersion={cliInfo.version}
+                  onSaved={() =>
+                    showSettingsToast(t("settings.lspTools.saved"), 2200)
+                  }
+                  onError={(msg) => showSettingsToast(msg, 3200)}
+                  onOpenConfigSection={() => {
+                    const el = document.getElementById(
+                      "settings-anchor-configTomlEdit",
+                    );
+                    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+                  }}
+                />
+              </div>
+              <div
+                className={
+                  "settings-codebase-search-wrap" +
+                  rowHighlight("settings-anchor-codebaseSearch")
+                }
+              >
+                <CodebaseSearchPanel
+                  locale={resolveLocale(locale)}
+                  projectPath={workspaceCwd}
+                  onOpenInResources={onOpenProjectFileInResources}
+                />
               </div>
               {onSubagentsEnabled ? (
                 <div

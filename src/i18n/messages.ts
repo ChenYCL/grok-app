@@ -2121,6 +2121,93 @@ const en = {
   "settings.codebaseIndexing.saving": "Saving…",
   "settings.codebaseIndexing.needTauri":
     "Codebase indexing settings require the desktop app.",
+  "settings.lspTools": "LSP tools",
+  "settings.lspToolsDesc":
+    "Honest status for Grok Build `[features].lsp_tools` in the active GROK_HOME config.toml. Exposes CLI agent lsp tools when on — the App does not run language servers or show live diagnostics. Independent agent-home can write the bool + soft-respawn; shared mode is read-only. Soft-fails when CLI is known older.",
+  "settings.lspTools.path": "Config: {path}",
+  "settings.lspTools.loading": "Loading LSP tools config…",
+  "settings.lspTools.error": "Could not load or update LSP tools config",
+  "settings.lspTools.saved": "LSP tools config saved (agent soft-respawned)",
+  "settings.lspTools.sharedWarning":
+    "Shared mode shows ~/.grok/config.toml (read-only probe). Switch session data mode to independent to write `[features].lsp_tools` into App agent-home.",
+  "settings.lspTools.mode.independent": "Independent (agent-home)",
+  "settings.lspTools.mode.shared": "Shared (~/.grok)",
+  "settings.lspTools.missing": "File not found yet",
+  "settings.lspTools.writable": "Editable",
+  "settings.lspTools.readOnly": "Read-only",
+  "settings.lspTools.presence.unset": "unset",
+  "settings.lspTools.presence.on": "on",
+  "settings.lspTools.presence.off": "off",
+  "settings.lspTools.status.off": "off — agent has no lsp tools",
+  "settings.lspTools.status.on": "on — CLI agent tools only",
+  "settings.lspTools.status.unset": "unset — CLI default off",
+  "settings.lspTools.status.sharedReadonly": "shared read-only",
+  "settings.lspTools.status.cliOld": "CLI older than {min} (soft-fail)",
+  "settings.lspTools.status.hostOnly": "desktop host required",
+  "settings.lspTools.chip.off": "off",
+  "settings.lspTools.chip.on": "on",
+  "settings.lspTools.chip.unset": "unset",
+  "settings.lspTools.chip.sharedReadonly": "shared read-only",
+  "settings.lspTools.chip.cliOld": "CLI < {min}",
+  "settings.lspTools.chip.hostOnly": "host only",
+  "settings.lspTools.chip.cliDefaultOff": "CLI default off",
+  "settings.lspTools.chip.noAppLsp": "App: no LSP client",
+  "settings.lspTools.chip.noDiagnostics": "no live diagnostics",
+  "settings.lspTools.cliUnknown": "CLI version unknown (soft-fail)",
+  "settings.lspTools.enable": "Enable LSP tools",
+  "settings.lspTools.enableDesc":
+    "When on, the CLI agent may use lsp tools if language servers are configured in agent config. When off or unset (CLI default), the agent has no lsp tools. The App never shows a diagnostics list here.",
+  "settings.lspTools.unsetDefaultHint":
+    "Key is unset — CLI default is off. Toggle once to write an explicit bool into config.toml.",
+  "settings.lspTools.empty.off": "When off, the agent has no lsp tools.",
+  "settings.lspTools.empty.offHint":
+    "Enable the flag in independent agent-home to expose CLI agent lsp tools after soft-respawn.",
+  "settings.lspTools.empty.on":
+    "On: CLI agent may use lsp tools if servers are configured.",
+  "settings.lspTools.empty.onHint":
+    "App does not show live diagnostics yet — tools run in the CLI agent only.",
+  "settings.lspTools.empty.unset":
+    "Key unset — CLI default is off (agent has no lsp tools).",
+  "settings.lspTools.empty.unsetHint":
+    "Toggle once to write an explicit `[features].lsp_tools` bool.",
+  "settings.lspTools.empty.sharedReadonly":
+    "Shared mode is read-only for this flag.",
+  "settings.lspTools.empty.sharedReadonlyHint":
+    "Switch session data mode to independent to edit agent-home config.toml.",
+  "settings.lspTools.empty.cliOld":
+    "CLI may be older than {min}; lsp_tools may be ignored (soft-fail).",
+  "settings.lspTools.empty.cliOldHint":
+    "Upgrade Grok Build CLI for the documented surface. Config write still allowed.",
+  "settings.lspTools.empty.hostOnly":
+    "LSP tools settings require the desktop app.",
+  "settings.lspTools.empty.hostOnlyHint":
+    "Open the Tauri desktop host to read or write agent-home config.",
+  "settings.lspTools.empty.noDiagnostics":
+    "No live diagnostics in App — CLI agent tools only when enabled.",
+  "settings.lspTools.empty.noDiagnosticsHint":
+    "When on, the CLI agent may use lsp tools if servers are configured. This workbench never invents a diagnostics list.",
+  "settings.lspTools.banner.sharedReadonly":
+    "Shared mode is read-only — switch to independent to write lsp_tools.",
+  "settings.lspTools.banner.cliOld":
+    "CLI older than {min} — key may be ignored (soft-fail).",
+  "settings.lspTools.banner.hostOnly": "Desktop host required.",
+  "settings.lspTools.banner.softRespawn":
+    "Saving writes config.toml and soft-respawns the agent so the flag is picked up.",
+  "settings.lspTools.banner.noAppLsp":
+    "Grok App does not run language servers itself.",
+  "settings.lspTools.banner.agentToolsOnly":
+    "CLI agent tools only when enabled and servers are configured.",
+  "settings.lspTools.banner.noDiagnostics":
+    "App does not show live diagnostics yet.",
+  "settings.lspTools.refresh": "Refresh",
+  "settings.lspTools.reset": "Reset",
+  "settings.lspTools.save": "Save LSP tools",
+  "settings.lspTools.saving": "Saving…",
+  "settings.lspTools.needTauri": "LSP tools settings require the desktop app.",
+  "settings.lspTools.openConfigSection": "Open agent config sections",
+  "settings.lspTools.copySummary": "Copy status summary",
+  "settings.lspTools.copied": "Copied",
+  "settings.lspTools.copyFailed": "Could not copy summary to clipboard",
   "settings.codebaseSearch": "Project codebase search",
   "settings.codebaseSearchDesc":
     "Search the active project by file path/name and/or file content. Host uses ripgrep when available, otherwise a capped walk. Path-scoped to the trusted project — keyword only; never invents embeddings or CLI code-graph results.",
@@ -8730,6 +8817,87 @@ const zh: Record<MessageKey, string> = {
   "settings.codebaseIndexing.save": "保存代码库索引",
   "settings.codebaseIndexing.saving": "保存中…",
   "settings.codebaseIndexing.needTauri": "代码库索引设置需要桌面应用。",
+  "settings.lspTools": "LSP 工具",
+  "settings.lspToolsDesc":
+    "如实展示当前 GROK_HOME config.toml 中的 Grok Build `[features].lsp_tools`。开启后向 CLI agent 暴露 lsp 工具——应用本身不运行语言服务器，也不显示实时诊断。独立 agent-home 可写入 bool 并 soft-respawn；共享模式只读。已知旧版 CLI 时 soft-fail。",
+  "settings.lspTools.path": "配置：{path}",
+  "settings.lspTools.loading": "正在加载 LSP 工具配置…",
+  "settings.lspTools.error": "无法加载或更新 LSP 工具配置",
+  "settings.lspTools.saved": "LSP 工具配置已保存（agent 已 soft-respawn）",
+  "settings.lspTools.sharedWarning":
+    "共享模式显示 ~/.grok/config.toml（只读探测）。切换到独立会话数据模式后，才能将 `[features].lsp_tools` 写入 App agent-home。",
+  "settings.lspTools.mode.independent": "独立（agent-home）",
+  "settings.lspTools.mode.shared": "共享（~/.grok）",
+  "settings.lspTools.missing": "文件尚不存在",
+  "settings.lspTools.writable": "可编辑",
+  "settings.lspTools.readOnly": "只读",
+  "settings.lspTools.presence.unset": "未设置",
+  "settings.lspTools.presence.on": "开",
+  "settings.lspTools.presence.off": "关",
+  "settings.lspTools.status.off": "关 — agent 无 lsp 工具",
+  "settings.lspTools.status.on": "开 — 仅 CLI agent 工具",
+  "settings.lspTools.status.unset": "未设置 — CLI 默认关闭",
+  "settings.lspTools.status.sharedReadonly": "共享只读",
+  "settings.lspTools.status.cliOld": "CLI 低于 {min}（soft-fail）",
+  "settings.lspTools.status.hostOnly": "需要桌面主机",
+  "settings.lspTools.chip.off": "关",
+  "settings.lspTools.chip.on": "开",
+  "settings.lspTools.chip.unset": "未设置",
+  "settings.lspTools.chip.sharedReadonly": "共享只读",
+  "settings.lspTools.chip.cliOld": "CLI < {min}",
+  "settings.lspTools.chip.hostOnly": "仅主机",
+  "settings.lspTools.chip.cliDefaultOff": "CLI 默认关",
+  "settings.lspTools.chip.noAppLsp": "应用：无 LSP 客户端",
+  "settings.lspTools.chip.noDiagnostics": "无实时诊断",
+  "settings.lspTools.cliUnknown": "CLI 版本未知（soft-fail）",
+  "settings.lspTools.enable": "启用 LSP 工具",
+  "settings.lspTools.enableDesc":
+    "开启后，若 agent 配置中已配置语言服务器，CLI agent 可使用 lsp 工具。关闭或未设置（CLI 默认）时 agent 无 lsp 工具。应用不会在此显示诊断列表。",
+  "settings.lspTools.unsetDefaultHint":
+    "键未设置 — CLI 默认关闭。切换一次即可将显式 bool 写入 config.toml。",
+  "settings.lspTools.empty.off": "关闭时，agent 无 lsp 工具。",
+  "settings.lspTools.empty.offHint":
+    "在独立 agent-home 中启用该标志，soft-respawn 后即可向 CLI agent 暴露 lsp 工具。",
+  "settings.lspTools.empty.on": "已开启：若已配置服务器，CLI agent 可使用 lsp 工具。",
+  "settings.lspTools.empty.onHint":
+    "应用尚未显示实时诊断——工具仅在 CLI agent 中运行。",
+  "settings.lspTools.empty.unset": "键未设置 — CLI 默认关闭（agent 无 lsp 工具）。",
+  "settings.lspTools.empty.unsetHint":
+    "切换一次即可写入显式的 `[features].lsp_tools` bool。",
+  "settings.lspTools.empty.sharedReadonly": "共享模式对此标志只读。",
+  "settings.lspTools.empty.sharedReadonlyHint":
+    "切换到独立会话数据模式后才能编辑 agent-home config.toml。",
+  "settings.lspTools.empty.cliOld":
+    "CLI 可能低于 {min}；可能忽略 lsp_tools（soft-fail）。",
+  "settings.lspTools.empty.cliOldHint":
+    "升级 Grok Build CLI 以获得文档化能力。仍可写入配置。",
+  "settings.lspTools.empty.hostOnly": "LSP 工具设置需要桌面应用。",
+  "settings.lspTools.empty.hostOnlyHint":
+    "打开 Tauri 桌面主机以读取或写入 agent-home 配置。",
+  "settings.lspTools.empty.noDiagnostics":
+    "应用内无实时诊断 — 仅在启用时提供 CLI agent 工具。",
+  "settings.lspTools.empty.noDiagnosticsHint":
+    "开启后，若已配置服务器，CLI agent 可使用 lsp 工具。此工作台不会虚构诊断列表。",
+  "settings.lspTools.banner.sharedReadonly":
+    "共享模式只读 — 切换到独立模式后才能写入 lsp_tools。",
+  "settings.lspTools.banner.cliOld":
+    "CLI 低于 {min} — 可能忽略该键（soft-fail）。",
+  "settings.lspTools.banner.hostOnly": "需要桌面主机。",
+  "settings.lspTools.banner.softRespawn":
+    "保存会写入 config.toml 并 soft-respawn agent，以便生效该标志。",
+  "settings.lspTools.banner.noAppLsp": "Grok App 本身不运行语言服务器。",
+  "settings.lspTools.banner.agentToolsOnly":
+    "仅在启用且已配置服务器时提供 CLI agent 工具。",
+  "settings.lspTools.banner.noDiagnostics": "应用尚未显示实时诊断。",
+  "settings.lspTools.refresh": "刷新",
+  "settings.lspTools.reset": "重置",
+  "settings.lspTools.save": "保存 LSP 工具",
+  "settings.lspTools.saving": "保存中…",
+  "settings.lspTools.needTauri": "LSP 工具设置需要桌面应用。",
+  "settings.lspTools.openConfigSection": "打开 agent 配置分区",
+  "settings.lspTools.copySummary": "复制状态摘要",
+  "settings.lspTools.copied": "已复制",
+  "settings.lspTools.copyFailed": "无法复制摘要到剪贴板",
   "settings.codebaseSearch": "项目代码库搜索",
   "settings.codebaseSearchDesc":
     "按路径/文件名和/或文件内容搜索当前项目。Host 优先使用 ripgrep，否则有上限地遍历。范围限制在已信任项目——仅关键词，不会虚构 embedding 或 CLI 代码图结果。",
