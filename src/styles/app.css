@@ -26041,6 +26041,50 @@ html[data-theme="light"] .rim-sidebar {
   border-color: var(--accent);
   color: var(--text-primary);
 }
+.batch-agents__templates {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.batch-agents__templates-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.batch-agents__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.batch-agents__chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.batch-agents__chip:hover:not(:disabled) {
+  border-color: var(--border-strong, var(--border-subtle));
+  color: var(--text-primary);
+  background: var(--hover-bg, rgba(127, 127, 127, 0.08));
+}
+.batch-agents__chip.is-active {
+  background: var(--accent-soft, color-mix(in srgb, var(--accent) 16%, transparent));
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.batch-agents__chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .batch-agents__label {
   font-size: 12px;
   font-weight: 600;
@@ -26052,6 +26096,23 @@ html[data-theme="light"] .rim-sidebar {
   min-height: 72px;
   resize: vertical;
   font: inherit;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.batch-agents__eligibility {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.batch-agents__eligibility--none {
+  color: var(--warning, #c9a227);
+}
+.batch-agents__export-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--warning, #c9a227);
   line-height: 1.4;
   flex-shrink: 0;
 }
@@ -26232,6 +26293,15 @@ html[data-theme="light"] .rim-sidebar {
   color: var(--success, #2f9e6b);
   border-color: color-mix(in srgb, var(--success, #2f9e6b) 40%, transparent);
 }
+.batch-agents__status--ok-empty {
+  color: var(--text-secondary);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--success, #2f9e6b) 35%, transparent);
+}
+.batch-agents__status--partial {
+  color: var(--warning, #c9892e);
+  border-style: dashed;
+}
 .batch-agents__status--soft {
   color: var(--warning, #c9892e);
 }
@@ -26239,6 +26309,7 @@ html[data-theme="light"] .rim-sidebar {
   color: var(--danger, #d14);
 }
 .batch-agents__status--skip,
+.batch-agents__status--skipped,
 .batch-agents__status--pending {
   color: var(--text-tertiary);
 }
@@ -26263,6 +26334,10 @@ html[data-theme="light"] .rim-sidebar {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.batch-agents__result-summary--empty {
+  opacity: 0.55;
+  font-style: italic;
 }
 
 /* ── Cost rollup (Settings → Runtime → Tools) ───────────────────────── */

@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Batch agents pro**: prompt template chips (code review · fix tests · summarize) with i18n titles/bodies; eligibility strip for selected projects (ready vs not eligible); results matrix **Copy summary** + **Download .txt** via pure `batchAgentsPro` (`applyBatchTemplate`, `exportBatchResultsSummary`, `planBatchExport` soft-fail empty, `classifyBatchResultRow` for ok-without-detail / partial honesty). en/zh/zh-TW + tests. No `window.confirm`.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

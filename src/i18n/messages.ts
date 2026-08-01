@@ -896,8 +896,27 @@ const en = {
   "batchAgents.resultsMeta":
     "ok {ok} · soft-fail {soft} · error {err} · skipped {skip}",
   "batchAgents.copySummary": "Copy summary",
+  "batchAgents.downloadSummary": "Download .txt",
   "batchAgents.copied": "Copied",
+  "batchAgents.downloaded": "Downloaded",
+  "batchAgents.exportEmpty": "No batch results to export yet.",
+  "batchAgents.exportFailed": "Could not export results.",
+  "batchAgents.templatesLabel": "Prompt templates",
+  "batchAgents.tpl.codeReview.title": "Code review",
+  "batchAgents.tpl.codeReview.body":
+    "Review recent changes in this repository. Call out risks, missing tests, and incomplete work with concrete file paths. Be honest about uncertainty — do not invent findings.",
+  "batchAgents.tpl.fixTests.title": "Fix tests",
+  "batchAgents.tpl.fixTests.body":
+    "Find failing or flaky tests in this repository, fix them with minimal changes, and report what still fails. Do not claim green if tests were not run.",
+  "batchAgents.tpl.summarize.title": "Summarize",
+  "batchAgents.tpl.summarize.body":
+    "Summarize what this repository does, its layout, and current risks or open TODOs. Prefer evidence from the tree over speculation.",
+  "batchAgents.eligibilitySummary":
+    "{ready} ready · {skip} not eligible of {selected} selected",
+  "batchAgents.eligibilityNone": "No eligible projects in the current selection.",
   "batchAgents.status.ok": "OK",
+  "batchAgents.status.okEmpty": "OK (no detail)",
+  "batchAgents.status.partial": "Partial",
   "batchAgents.status.softFail": "Soft-fail",
   "batchAgents.status.error": "Error",
   "batchAgents.status.skipped": "Skipped",
@@ -6985,8 +7004,27 @@ const zh: Record<MessageKey, string> = {
   "batchAgents.resultsMeta":
     "成功 {ok} · soft-fail {soft} · 错误 {err} · 跳过 {skip}",
   "batchAgents.copySummary": "复制摘要",
+  "batchAgents.downloadSummary": "下载 .txt",
   "batchAgents.copied": "已复制",
+  "batchAgents.downloaded": "已下载",
+  "batchAgents.exportEmpty": "暂无批量结果可导出。",
+  "batchAgents.exportFailed": "无法导出结果。",
+  "batchAgents.templatesLabel": "提示词模板",
+  "batchAgents.tpl.codeReview.title": "代码审查",
+  "batchAgents.tpl.codeReview.body":
+    "审查本仓库近期变更。指出风险、缺失测试与未完成工作，并给出具体文件路径。对不确定处保持诚实——不要编造发现。",
+  "batchAgents.tpl.fixTests.title": "修复测试",
+  "batchAgents.tpl.fixTests.body":
+    "找出本仓库失败或不稳定的测试，用最小改动修复，并汇报仍失败的项。若未实际跑测试，不要声称已通过。",
+  "batchAgents.tpl.summarize.title": "总结仓库",
+  "batchAgents.tpl.summarize.body":
+    "总结本仓库用途、目录结构与当前风险或未完成 TODO。优先依据树中证据，避免臆测。",
+  "batchAgents.eligibilitySummary":
+    "可运行 {ready} · 不合格 {skip}（已选 {selected}）",
+  "batchAgents.eligibilityNone": "当前选择中没有可运行的项目。",
   "batchAgents.status.ok": "成功",
+  "batchAgents.status.okEmpty": "成功（无详情）",
+  "batchAgents.status.partial": "部分",
   "batchAgents.status.softFail": "Soft-fail",
   "batchAgents.status.error": "错误",
   "batchAgents.status.skipped": "跳过",
