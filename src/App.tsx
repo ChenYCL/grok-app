@@ -2776,6 +2776,8 @@ export default function App() {
   const [account, setAccount] = useState<api.AccountStatus | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
+  /** Soft-fail heatmap / account_status error (never invents activity or quota). */
+  const [accountHeatmapError, setAccountHeatmapError] = useState<unknown>(null);
   const [loginHint, setLoginHint] = useState<string | null>(null);
   const platform = useMemo(() => detectAppPlatform(), []);
   /** Self-drawn chrome when OS title bar is disabled (Windows release config). */
@@ -15078,7 +15080,11 @@ export default function App() {
 
   const refreshAccount = useCallback(
     async (opts?: { refreshBilling?: boolean }) => {
-      if (!api.isTauri()) return;
+      if (!api.isTauri()) {
+        // Browser preview: soft-fail host_only — never invent heatmap/quota.
+        setAccountHeatmapError({ code: "host_only", message: "need tauri" });
+        return;
+      }
       setAccountLoading(true);
       try {
         const st = await api.accountStatus({
@@ -15086,6 +15092,7 @@ export default function App() {
           manualCliPath: manualCliPath || null,
         });
         setAccount(st);
+        setAccountHeatmapError(null);
         setSetup((s) => ({
           ...s,
           auth: isAccountConnected(st),
@@ -15102,6 +15109,7 @@ export default function App() {
         void api.trayRefresh();
       } catch (e) {
         console.warn("account status failed", e);
+        setAccountHeatmapError(e);
       } finally {
         setAccountLoading(false);
       }
@@ -17818,6 +17826,7 @@ export default function App() {
           account={account}
           accountLoading={accountLoading}
           accountBusy={accountBusy}
+          accountHeatmapError={accountHeatmapError}
           loginHint={loginHint}
           savedAccounts={savedAccounts}
           activeAccountId={activeAccountId}

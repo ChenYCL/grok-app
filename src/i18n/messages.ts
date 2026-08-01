@@ -3241,14 +3241,35 @@ const en = {
   "account.products": "By product",
   "account.heatmap": "Activity heatmap",
   "account.heatmapHint":
-    "Local Grok Build session activity (about one year). Color = tokens used; hover for detail; click a day to filter recent logs by session count.",
+    "Local Grok Build session activity (about one year). Color = tokens used; hover for detail; click a day to filter recent logs by session count. Not SuperGrok quota.",
   "account.heatmap.less": "Less",
   "account.heatmap.more": "More",
   "account.heatmap.noData": "No activity data yet",
+  "account.heatmap.noDataHint":
+    "No local session signals under ~/.grok/sessions for this range. This is not SuperGrok quota — chat still works.",
+  "account.heatmap.loading": "Loading activity…",
+  "account.heatmap.loadingHint": "Reading local session signals.",
+  "account.heatmap.rangeEmpty": "No activity in this range",
+  "account.heatmap.rangeEmptyHint":
+    "The selected day or week has no local sessions. Clear the selection to see the full heatmap.",
   "account.heatmap.aria": "Token activity heatmap",
   "account.heatmap.requests": "Sessions",
   "account.heatmap.tokens": "Tokens used",
-  "account.heatmap.totalTokens": "Total tokens: {count}",
+  "account.heatmap.totalTokens": "Tokens {count}",
+  "account.heatmap.activeDays": "Active days {count}",
+  "account.heatmap.sessionsCount": "Sessions {count}",
+  "account.heatmap.err.host_only": "Desktop only",
+  "account.heatmap.err.host_onlyHint":
+    "Activity heatmap needs the desktop app Host. Browser preview never invents local usage.",
+  "account.heatmap.err.network": "Could not refresh usage",
+  "account.heatmap.err.networkHint":
+    "Network soft-fail — local heatmap may still load after reconnect. Never invents quota.",
+  "account.heatmap.err.empty": "No usage path",
+  "account.heatmap.err.emptyHint":
+    "Host found no local session signals. Soft-fail — not the same as SuperGrok quota empty.",
+  "account.heatmap.err.other": "Usage load soft-fail",
+  "account.heatmap.err.otherHint":
+    "Could not load local activity. Refresh to retry; we never invent heatmap cells or quota.",
   "account.callLogs": "Recent sessions",
   "account.callLogsEmpty": "No local session activity found under ~/.grok/sessions.",
   "account.callLogs.dayFilter": "{date} · {count} sessions",
@@ -10493,14 +10514,35 @@ const zh: Record<MessageKey, string> = {
   "account.products": "产品拆分",
   "account.heatmap": "活动热力图",
   "account.heatmapHint":
-    "本机 Grok Build 会话活动（约一年）。颜色按 Token 用量；悬停看用量；点击某天按会话数筛选下方日志。",
+    "本机 Grok Build 会话活动（约一年）。颜色按 Token 用量；悬停看用量；点击某天按会话数筛选下方日志。不是 SuperGrok 额度。",
   "account.heatmap.less": "少",
   "account.heatmap.more": "多",
   "account.heatmap.noData": "暂无活动数据",
+  "account.heatmap.noDataHint":
+    "在 ~/.grok/sessions 下未找到该时段的本机会话信号。这不是 SuperGrok 额度——对话仍可正常使用。",
+  "account.heatmap.loading": "正在加载活动…",
+  "account.heatmap.loadingHint": "正在读取本机会话信号。",
+  "account.heatmap.rangeEmpty": "该时段无活动",
+  "account.heatmap.rangeEmptyHint":
+    "所选日或周没有本机会话。清除选择可查看完整热力图。",
   "account.heatmap.aria": "Token 活动热力图",
   "account.heatmap.requests": "会话数",
   "account.heatmap.tokens": "已用 Token",
-  "account.heatmap.totalTokens": "总 Token：{count}",
+  "account.heatmap.totalTokens": "Token {count}",
+  "account.heatmap.activeDays": "活跃天 {count}",
+  "account.heatmap.sessionsCount": "会话 {count}",
+  "account.heatmap.err.host_only": "仅桌面端",
+  "account.heatmap.err.host_onlyHint":
+    "活动热力图需要桌面 Host。浏览器预览不会编造本机用量。",
+  "account.heatmap.err.network": "无法刷新用量",
+  "account.heatmap.err.networkHint":
+    "网络 soft-fail——重连后本机热力图仍可能加载。不会编造额度。",
+  "account.heatmap.err.empty": "无用量路径",
+  "account.heatmap.err.emptyHint":
+    "Host 未找到本机会话信号。soft-fail——不等于 SuperGrok 额度为 0。",
+  "account.heatmap.err.other": "用量加载 soft-fail",
+  "account.heatmap.err.otherHint":
+    "无法加载本机活动。可刷新重试；我们不会编造热力格或额度。",
   "account.callLogs": "近期调用日志",
   "account.callLogsEmpty": "在 ~/.grok/sessions 下未发现本地会话活动。",
   "account.callLogs.dayFilter": "{date} · {count} 个会话",

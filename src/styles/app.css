@@ -3976,8 +3976,124 @@ html[data-sidebar-density="compact"] .session-row__meta {
 }
 
 .account-heatmap__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 4px 8px;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.account-heatmap__empty--soft {
+  color: var(--text-secondary);
+}
+
+.account-heatmap__empty--error {
+  gap: 8px;
+}
+
+.account-heatmap__empty--loading {
+  opacity: 0.85;
+}
+
+.account-heatmap__empty-title {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-primary);
+}
+
+.account-heatmap__empty-body {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  max-width: 52ch;
+}
+
+.account-heatmap__err-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn, #d97706) 28%, transparent);
+  width: fit-content;
+}
+
+.account-heatmap__range-empty {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.account-heatmap__range-empty-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-heatmap__clear-range {
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.account-heatmap-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.account-heatmap-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.45;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.account-heatmap-chip--muted {
+  color: var(--text-tertiary);
+  font-weight: 450;
+}
+
+.account-heatmap-err-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn, #d97706) 28%, transparent);
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-heatmap-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
 }
 
 /* GitHub-style heatmap (grok-go port) */
@@ -4106,10 +4222,12 @@ html[data-sidebar-density="compact"] .session-row__meta {
 
 .account-heatmap-title-meta {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 8px;
   min-width: 0;
-  flex-shrink: 0;
+  flex-shrink: 1;
 }
 
 .account-heatmap-total {

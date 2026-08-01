@@ -5,20 +5,33 @@
  * Granularity: day (7×N grid) or week (1×N row of aggregated weeks).
  * Hover: instant portaled tip (token usage) — no Tip delay.
  * Click: select a day or week range for parent (call-log filter).
+ *
+ * Empty honesty (HEATMAP-USAGE-PRO): never invent activity cells or SuperGrok
+ * quota. Zero-padded host calendars surface no-data / soft-fail chrome instead
+ * of a fake “busy” grid of invented levels.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { HeatmapDay } from "@/lib/api";
 import { formatLocaleCount } from "@/lib/accountUi";
+import {
+  dateInHeatRange,
+  heatRangesEqual,
+  sumHeatInRange,
+  type HeatRange,
+} from "@/lib/heatmapRange";
+import {
+  heatmapHasSamples,
+  resolveHeatmapEmptyState,
+  summarizeHeatmapRange,
+  type HeatmapEmptyState,
+} from "@/lib/heatmapUsagePro";
 
 export type HeatGranularity = "day" | "week";
 
-/** Inclusive local calendar range (YYYY-MM-DD). Day mode: start === end. */
-export type HeatRange = {
-  start: string;
-  end: string;
-};
+export type { HeatRange };
+export { dateInHeatRange, heatRangesEqual, sumHeatInRange };
 
 type Metric = "requests" | "tokens";
 
@@ -62,34 +75,6 @@ const LEVEL_COLORS = [
   "var(--heatmap-3, #30a14e)",
   "var(--heatmap-4, #216e39)",
 ] as const;
-
-export function heatRangesEqual(
-  a: HeatRange | null | undefined,
-  b: HeatRange | null | undefined,
-): boolean {
-  if (!a && !b) return true;
-  if (!a || !b) return false;
-  return a.start === b.start && a.end === b.end;
-}
-
-export function dateInHeatRange(ymd: string, range: HeatRange): boolean {
-  return ymd >= range.start && ymd <= range.end;
-}
-
-export function sumHeatInRange(
-  days: HeatmapDay[],
-  range: HeatRange,
-): { requests: number; tokens: number } {
-  let requests = 0;
-  let tokens = 0;
-  for (const d of days) {
-    if (dateInHeatRange(d.date, range)) {
-      requests += d.requests;
-      tokens += d.tokens;
-    }
-  }
-  return { requests, tokens };
-}
 
 function metricValue(day: HeatmapDay, metric: Metric): number {
   if (metric === "tokens") return day.tokens;
@@ -294,6 +279,9 @@ export function Heatmap({
   labels,
   selectedRange = null,
   onSelectRange,
+  loading = false,
+  error = null,
+  onClearRange,
 }: {
   days: HeatmapDay[];
   metric?: Metric;
@@ -303,12 +291,28 @@ export function Heatmap({
     less: string;
     more: string;
     noData: string;
+    /** Optional no-data body (falls back to heatmapHint-style copy). */
+    noDataHint?: string;
+    loading?: string;
+    loadingHint?: string;
+    rangeEmpty?: string;
+    rangeEmptyHint?: string;
+    clearRange?: string;
     aria: string;
     requests: string;
     tokens: string;
+    /** Map error title/hint keys → localized strings. */
+    errorTitle?: string;
+    errorHint?: string;
   };
   selectedRange?: HeatRange | null;
   onSelectRange?: (range: HeatRange | null) => void;
+  /** Account status still loading. */
+  loading?: boolean;
+  /** Host / account_status soft-fail error. */
+  error?: unknown;
+  /** Clear selected range (range_empty CTA). */
+  onClearRange?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -320,13 +324,37 @@ export function Heatmap({
     placeAbove: boolean;
   } | null>(null);
 
+  const hasSamples = useMemo(() => heatmapHasSamples(days), [days]);
+  const rangeSummary = useMemo(
+    () => summarizeHeatmapRange(days, selectedRange),
+    [days, selectedRange],
+  );
+
+  const emptyState: HeatmapEmptyState | null = useMemo(
+    () =>
+      resolveHeatmapEmptyState({
+        loading,
+        hasSamples,
+        range: selectedRange,
+        rangeHasSamples: selectedRange ? rangeSummary.hasActivity : undefined,
+        error: error ?? undefined,
+      }),
+    [loading, hasSamples, selectedRange, rangeSummary.hasActivity, error],
+  );
+
+  // Only build the contribution grid when we have real samples and no hard empty.
+  const showGrid =
+    emptyState == null || emptyState.kind === "range_empty";
+
   const dayGrid = useMemo(
-    () => (granularity === "day" ? buildDayGrid(days, metric) : null),
-    [days, metric, granularity],
+    () =>
+      showGrid && granularity === "day" ? buildDayGrid(days, metric) : null,
+    [days, metric, granularity, showGrid],
   );
   const weekRow = useMemo(
-    () => (granularity === "week" ? buildWeekRow(days, metric) : null),
-    [days, metric, granularity],
+    () =>
+      showGrid && granularity === "week" ? buildWeekRow(days, metric) : null,
+    [days, metric, granularity, showGrid],
   );
 
   const weekCount =
@@ -397,8 +425,75 @@ export function Heatmap({
     );
   };
 
+  const emptyTitle = (() => {
+    if (!emptyState) return labels.noData;
+    switch (emptyState.kind) {
+      case "loading":
+        return labels.loading ?? emptyState.titleKey;
+      case "error":
+        return labels.errorTitle ?? emptyState.titleKey;
+      case "range_empty":
+        return labels.rangeEmpty ?? emptyState.titleKey;
+      case "no_data":
+      default:
+        return labels.noData;
+    }
+  })();
+
+  const emptyBody = (() => {
+    if (!emptyState) return null;
+    switch (emptyState.kind) {
+      case "loading":
+        return labels.loadingHint ?? null;
+      case "error":
+        return labels.errorHint ?? null;
+      case "range_empty":
+        return labels.rangeEmptyHint ?? null;
+      case "no_data":
+        return labels.noDataHint ?? null;
+      default:
+        return null;
+    }
+  })();
+
+  // Full empty (loading / error / no samples) — no invented contribution grid.
+  if (emptyState && emptyState.kind !== "range_empty") {
+    return (
+      <div
+        className={
+          "account-heatmap__empty" +
+          (emptyState.softFail ? " account-heatmap__empty--soft" : "") +
+          (emptyState.kind === "loading"
+            ? " account-heatmap__empty--loading"
+            : "") +
+          (emptyState.kind === "error" ? " account-heatmap__empty--error" : "")
+        }
+        data-heatmap-empty={emptyState.kind}
+        role="status"
+      >
+        {emptyState.kind === "error" ? (
+          <span className="account-heatmap__err-chip" data-kind={emptyState.error?.kind}>
+            {emptyTitle}
+          </span>
+        ) : (
+          <div className="account-heatmap__empty-title">{emptyTitle}</div>
+        )}
+        {emptyBody ? (
+          <div className="account-heatmap__empty-body">{emptyBody}</div>
+        ) : null}
+      </div>
+    );
+  }
+
   if (weekCount === 0) {
-    return <div className="account-heatmap__empty">{labels.noData}</div>;
+    return (
+      <div className="account-heatmap__empty" data-heatmap-empty="no_data" role="status">
+        <div className="account-heatmap__empty-title">{labels.noData}</div>
+        {labels.noDataHint ? (
+          <div className="account-heatmap__empty-body">{labels.noDataHint}</div>
+        ) : null}
+      </div>
+    );
   }
 
   const graphWidth = weekCount * (cell + GAP) - GAP;
@@ -419,6 +514,32 @@ export function Heatmap({
 
   return (
     <div ref={containerRef} className="gh-heatmap">
+      {emptyState?.kind === "range_empty" ? (
+        <div
+          className="account-heatmap__range-empty"
+          data-heatmap-empty="range_empty"
+          role="status"
+        >
+          <div className="account-heatmap__range-empty-text">
+            <span className="account-heatmap__empty-title">{emptyTitle}</span>
+            {emptyBody ? (
+              <span className="account-heatmap__empty-body">{emptyBody}</span>
+            ) : null}
+          </div>
+          {emptyState.showClearRange && (onClearRange || onSelectRange) ? (
+            <button
+              type="button"
+              className="account-link account-heatmap__clear-range"
+              onClick={() => {
+                if (onClearRange) onClearRange();
+                else onSelectRange?.(null);
+              }}
+            >
+              {labels.clearRange ?? labels.rangeEmpty ?? "Show all"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="gh-heatmap__inner" style={{ width: totalWidth }}>
         <div
           className="gh-heatmap__months"

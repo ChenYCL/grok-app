@@ -763,6 +763,11 @@ export interface SettingsPageProps {
   account: AccountStatus | null;
   accountLoading: boolean;
   accountBusy: boolean;
+  /**
+   * Soft-fail error from account_status (heatmap empty honesty).
+   * Never invents activity cells or SuperGrok quota.
+   */
+  accountHeatmapError?: unknown;
   loginHint?: string | null;
   savedAccounts?: import("@/lib/api").SavedAccount[];
   activeAccountId?: string | null;
@@ -1474,6 +1479,7 @@ export function SettingsPage({
   account,
   accountLoading,
   accountBusy,
+  accountHeatmapError = null,
   loginHint = null,
   savedAccounts = [],
   activeAccountId = null,
@@ -6455,6 +6461,7 @@ export function SettingsPage({
             busy={accountBusy}
             locale={locale}
             t={t}
+            heatmapError={accountHeatmapError}
             labels={{
               signedIn: t("account.signedIn"),
               signedOut: t("account.signedOut"),
@@ -6495,6 +6502,11 @@ export function SettingsPage({
               fetchedAt: t("account.fetchedAt"),
               products: t("account.products"),
               heatmapNoData: t("account.heatmap.noData"),
+              heatmapNoDataHint: t("account.heatmap.noDataHint"),
+              heatmapLoading: t("account.heatmap.loading"),
+              heatmapLoadingHint: t("account.heatmap.loadingHint"),
+              heatmapRangeEmpty: t("account.heatmap.rangeEmpty"),
+              heatmapRangeEmptyHint: t("account.heatmap.rangeEmptyHint"),
               heatmapAria: t("account.heatmap.aria"),
               heatmapRequests: t("account.heatmap.requests"),
               heatmapTokens: t("account.heatmap.tokens"),
@@ -6505,6 +6517,8 @@ export function SettingsPage({
               heatmapDay: t("account.heatmap.day"),
               heatmapWeek: t("account.heatmap.week"),
               heatmapTotalTokens: t("account.heatmap.totalTokens"),
+              heatmapActiveDays: t("account.heatmap.activeDays"),
+              heatmapSessionsCount: t("account.heatmap.sessionsCount"),
               weeklyTitle: t("account.weeklyTitle"),
               loginHelpTitle: t("account.loginHelpTitle"),
               loginHelpBody: t("account.loginHelpBody"),

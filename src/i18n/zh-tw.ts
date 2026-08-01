@@ -3121,14 +3121,35 @@ export const zhTW: Record<MessageKey, string> = {
   "account.products": "產品明細",
   "account.heatmap": "活動熱力圖",
   "account.heatmapHint":
-    "本機 Grok Build 對話活動（約一年）。顏色依 Token 用量；懸停看用量；點某天依對話數篩選下方日誌。",
+    "本機 Grok Build 對話活動（約一年）。顏色依 Token 用量；懸停看用量；點某天依對話數篩選下方日誌。不是 SuperGrok 額度。",
   "account.heatmap.less": "少",
   "account.heatmap.more": "多",
   "account.heatmap.noData": "尚無活動資料",
+  "account.heatmap.noDataHint":
+    "在 ~/.grok/sessions 下未找到該時段的本機對話訊號。這不是 SuperGrok 額度——對話仍可正常使用。",
+  "account.heatmap.loading": "正在載入活動…",
+  "account.heatmap.loadingHint": "正在讀取本機對話訊號。",
+  "account.heatmap.rangeEmpty": "該時段無活動",
+  "account.heatmap.rangeEmptyHint":
+    "所選日或週沒有本機對話。清除選擇可查看完整熱力圖。",
   "account.heatmap.aria": "Token 活動熱力圖",
   "account.heatmap.requests": "對話數",
   "account.heatmap.tokens": "已用 Token",
-  "account.heatmap.totalTokens": "總 Token：{count}",
+  "account.heatmap.totalTokens": "Token {count}",
+  "account.heatmap.activeDays": "活躍天 {count}",
+  "account.heatmap.sessionsCount": "對話 {count}",
+  "account.heatmap.err.host_only": "僅桌面端",
+  "account.heatmap.err.host_onlyHint":
+    "活動熱力圖需要桌面 Host。瀏覽器預覽不會編造本機用量。",
+  "account.heatmap.err.network": "無法重新整理用量",
+  "account.heatmap.err.networkHint":
+    "網路 soft-fail——重連後本機熱力圖仍可能載入。不會編造額度。",
+  "account.heatmap.err.empty": "無用量路徑",
+  "account.heatmap.err.emptyHint":
+    "Host 未找到本機對話訊號。soft-fail——不等於 SuperGrok 額度為 0。",
+  "account.heatmap.err.other": "用量載入 soft-fail",
+  "account.heatmap.err.otherHint":
+    "無法載入本機活動。可重新整理重試；我們不會編造熱力格或額度。",
   "account.callLogs": "近期呼叫日誌",
   "account.callLogsEmpty": "在 ~/.grok/sessions 下未發現本機對話活動。",
   "account.callLogs.dayFilter": "{date} · {count} 個對話",

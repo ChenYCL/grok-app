@@ -3,7 +3,7 @@ import {
   dateInHeatRange,
   heatRangesEqual,
   sumHeatInRange,
-} from "@/components/Heatmap";
+} from "@/lib/heatmapRange";
 import type { HeatmapDay } from "@/lib/api";
 
 describe("heat range helpers", () => {
@@ -26,7 +26,7 @@ describe("heat range helpers", () => {
     expect(dateInHeatRange("2026-04-13", r)).toBe(false);
   });
 
-  it("sums heatmap days in range", () => {
+  it("sums heatmap days in range without inventing zeros as activity math side effects", () => {
     const days: HeatmapDay[] = [
       { date: "2026-04-06", requests: 1, tokens: 100, costUsd: 0 },
       { date: "2026-04-07", requests: 2, tokens: 50, costUsd: 0 },
@@ -35,5 +35,15 @@ describe("heat range helpers", () => {
     expect(
       sumHeatInRange(days, { start: "2026-04-06", end: "2026-04-07" }),
     ).toEqual({ requests: 3, tokens: 150 });
+  });
+
+  it("ignores non-positive / invalid counts", () => {
+    const days: HeatmapDay[] = [
+      { date: "2026-04-06", requests: 0, tokens: 0, costUsd: 0 },
+      { date: "2026-04-07", requests: -1, tokens: NaN, costUsd: 0 },
+    ];
+    expect(
+      sumHeatInRange(days, { start: "2026-04-06", end: "2026-04-07" }),
+    ).toEqual({ requests: 0, tokens: 0 });
   });
 });
