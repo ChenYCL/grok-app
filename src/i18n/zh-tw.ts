@@ -855,6 +855,32 @@ export const zhTW: Record<MessageKey, string> = {
   "dashboard.dispatch.noProject": "請先選擇一個已信任專案。",
   "dashboard.dispatch.untrusted": "該專案尚未信任。請先信任後再派發。",
   "dashboard.dispatch.started": "已派發到 {name}",
+  "dashboard.openBoard": "看板檢視",
+  "dashboard.openBoardTitle":
+    "依狀態分欄檢視工作階段（需你處理 / 執行中 / 閒置 / 完成）",
+
+  "taskBoard.title": "工作階段任務看板",
+  "taskBoard.hint":
+    "依應用程式內工作階段與本地 live 狀態分欄 — 非 CI/雲端。點擊卡片開啟該對話。",
+  "taskBoard.open": "工作階段任務看板",
+  "taskBoard.searchPlaceholder": "篩選工作階段…",
+  "taskBoard.projectSearchPlaceholder": "依專案篩選…",
+  "taskBoard.includeArchived": "含已封存",
+  "taskBoard.includeArchivedTitle": "在「完成」欄顯示已封存的閒置工作階段",
+  "taskBoard.columnsLabel": "工作階段狀態欄",
+  "taskBoard.column.needsYou": "需你處理",
+  "taskBoard.column.running": "執行中",
+  "taskBoard.column.idle": "閒置",
+  "taskBoard.column.done": "完成",
+  "taskBoard.column.error": "異常",
+  "taskBoard.columnEmpty": "尚無工作階段",
+  "taskBoard.empty": "尚無工作階段",
+  "taskBoard.emptyHint":
+    "開始對話或等待 Agent 回合 — 工作階段會依狀態出現在這裡。",
+  "taskBoard.filterEmpty": "沒有符合篩選條件的工作階段",
+  "taskBoard.filterEmptyHint": "清空搜尋或勾選「含已封存」以查看更多工作階段。",
+  "taskBoard.clearFilters": "清除篩選",
+  "taskBoard.totalCount": "{n} 個工作階段",
 
   "batchAgents.title": "批量 Agent",
   "batchAgents.hint":

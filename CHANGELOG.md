@@ -23,6 +23,8 @@ See `docs/llm-wiki/release.md`.
 #### Composer & chat / Sessions
 - **Agents rail** (Resources side mode): first-class **Agents** tab in the right resource pane shows the current session’s subagent/tool task tree (reuses `AgentTasksPanel` + `sessionTasks` — no invented metrics). Running-count badge; honest empty states (no tasks · filter empty · idle hint); bind cwd / WT badge same as floating Tasks panel. Pure `agentsRail` helpers + tests; en/zh/zh-TW.
 - **Goal orchestration control panel**: Reliability Goal section gains **Clear timeline** (local event ring only — GlassModal confirm with count; never `window.confirm`) alongside phase filter chips and **Copy summary** (redacted one-pager). Session goal chip opens a small menu: open Reliability · copy summary · clear local timeline. Pure helpers `planClearGoalOrchEvents` / `shouldConfirmClearGoalOrch` / `resolveGoalControlEmptyState` (ui_off · no_events · filtered · session_mismatch) / `buildGoalControlSummary` / `canClearGoalBar` (composer `/goal` bar remains independent of the event ring). Honest empty states only — never invents goal progress. en/zh/zh-TW + tests.
+#### Sessions & sidebar
+- **Session task board**: cross-session board view of local sessions by status columns (needs you · running · error · idle · done/archived). Pure `sessionTaskBoard` helpers from sessions + liveMap only — no invented CI/cloud state; include-archived chip, title/project search, honest empty / filter-empty states. Open from Agent dashboard **Board view**, command palette `open-task-board`, or App state. en/zh/zh-TW + tests.
 
 ## [0.2.3] - 2026-07-31
 

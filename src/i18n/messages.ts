@@ -910,6 +910,34 @@ const en = {
   "dashboard.dispatch.untrusted":
     "That project is not trusted. Trust it before dispatching.",
   "dashboard.dispatch.started": "Dispatched to {name}",
+  "dashboard.openBoard": "Board view",
+  "dashboard.openBoardTitle":
+    "Open sessions as a status board (needs you / running / idle / done)",
+
+  "taskBoard.title": "Session task board",
+  "taskBoard.hint":
+    "Sessions grouped by local status from the app and live agent state — not CI or cloud. Click a card to open that chat.",
+  "taskBoard.open": "Session task board",
+  "taskBoard.searchPlaceholder": "Filter sessions…",
+  "taskBoard.projectSearchPlaceholder": "Filter by project…",
+  "taskBoard.includeArchived": "Include archived",
+  "taskBoard.includeArchivedTitle":
+    "Show archived idle sessions in the Done column",
+  "taskBoard.columnsLabel": "Session status columns",
+  "taskBoard.column.needsYou": "Needs you",
+  "taskBoard.column.running": "Running",
+  "taskBoard.column.idle": "Idle",
+  "taskBoard.column.done": "Done",
+  "taskBoard.column.error": "Error",
+  "taskBoard.columnEmpty": "No sessions",
+  "taskBoard.empty": "No sessions to show",
+  "taskBoard.emptyHint":
+    "Start a chat or wait for an agent turn — sessions appear here by status.",
+  "taskBoard.filterEmpty": "No sessions match these filters",
+  "taskBoard.filterEmptyHint":
+    "Clear the search or include archived to see more sessions.",
+  "taskBoard.clearFilters": "Clear filters",
+  "taskBoard.totalCount": "{n} sessions",
 
   "batchAgents.title": "Batch agents",
   "batchAgents.hint":
@@ -7200,6 +7228,32 @@ const zh: Record<MessageKey, string> = {
   "dashboard.dispatch.noProject": "请先选择一个已信任项目。",
   "dashboard.dispatch.untrusted": "该项目尚未信任。请先信任后再派发。",
   "dashboard.dispatch.started": "已派发到 {name}",
+  "dashboard.openBoard": "看板视图",
+  "dashboard.openBoardTitle":
+    "按状态分列查看会话（需你处理 / 运行中 / 空闲 / 完成）",
+
+  "taskBoard.title": "会话任务看板",
+  "taskBoard.hint":
+    "按应用内会话与本地 live 状态分列 — 非 CI/云端。点击卡片打开该对话。",
+  "taskBoard.open": "会话任务看板",
+  "taskBoard.searchPlaceholder": "筛选会话…",
+  "taskBoard.projectSearchPlaceholder": "按项目筛选…",
+  "taskBoard.includeArchived": "含已归档",
+  "taskBoard.includeArchivedTitle": "在「完成」列显示已归档的空闲会话",
+  "taskBoard.columnsLabel": "会话状态列",
+  "taskBoard.column.needsYou": "需你处理",
+  "taskBoard.column.running": "运行中",
+  "taskBoard.column.idle": "空闲",
+  "taskBoard.column.done": "完成",
+  "taskBoard.column.error": "异常",
+  "taskBoard.columnEmpty": "暂无会话",
+  "taskBoard.empty": "暂无会话",
+  "taskBoard.emptyHint":
+    "开始对话或等待 Agent 回合 — 会话会按状态出现在这里。",
+  "taskBoard.filterEmpty": "没有符合筛选条件的会话",
+  "taskBoard.filterEmptyHint": "清空搜索或勾选「含已归档」以查看更多会话。",
+  "taskBoard.clearFilters": "清除筛选",
+  "taskBoard.totalCount": "{n} 个会话",
 
   "batchAgents.title": "批量 Agent",
   "batchAgents.hint":

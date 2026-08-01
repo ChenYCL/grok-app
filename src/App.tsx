@@ -244,6 +244,7 @@ import {
 } from "@/lib/planSession";
 import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import { AgentDashboardModal } from "@/components/AgentDashboardModal";
+import { SessionTaskBoardModal } from "@/components/SessionTaskBoardModal";
 import { BatchAgentsModal } from "@/components/BatchAgentsModal";
 import { ReliabilityCenterModal } from "@/components/ReliabilityCenterModal";
 import {
@@ -267,6 +268,7 @@ import {
   countBusyDashboardRows,
   planDashboardDispatch,
 } from "@/lib/agentDashboard";
+import { buildTaskBoard } from "@/lib/sessionTaskBoard";
 import {
   BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
   buildBatchPromptBody,
@@ -1032,6 +1034,8 @@ function paletteActionIcon(id: string) {
       return <IconList size={size} />;
     case "open-agent-dashboard":
       return <IconActivity size={size} />;
+    case "open-task-board":
+      return <IconList size={size} />;
     case "open-batch-agents":
       return <IconList size={size} />;
     case "doctor":
@@ -2586,6 +2590,9 @@ export default function App() {
   const didRestoreLastRef = useRef(false);
   const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
   const [agentDashboardOpen, setAgentDashboardOpen] = useState(false);
+  const [taskBoardOpen, setTaskBoardOpen] = useState(false);
+  const [taskBoardIncludeArchived, setTaskBoardIncludeArchived] =
+    useState(false);
   const [batchAgentsOpen, setBatchAgentsOpen] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
@@ -8097,6 +8104,33 @@ export default function App() {
   const agentDashboardBusyCount = useMemo(
     () => countBusyDashboardRows(agentDashboardRows),
     [agentDashboardRows],
+  );
+
+  const taskBoard = useMemo(
+    () =>
+      buildTaskBoard({
+        sessions,
+        projects: projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          path: p.path,
+        })),
+        liveMap,
+        currentSessionId: session.sessionId,
+        includeArchived: taskBoardIncludeArchived,
+        untitledLabel: tr("session.untitled"),
+        generalWorkspacePath,
+        unboundProjectLabel: tr("sidebar.otherSessions"),
+      }),
+    [
+      sessions,
+      projects,
+      liveMap,
+      session.sessionId,
+      taskBoardIncludeArchived,
+      tr,
+      generalWorkspacePath,
+    ],
   );
 
   const connPill = useMemo(
@@ -13822,6 +13856,16 @@ export default function App() {
           window.location.hash = "#/workbench";
         }
         break;
+      case "open-task-board":
+        setAppView("workbench");
+        setTaskBoardOpen(true);
+        if (
+          typeof window !== "undefined" &&
+          window.location.hash.includes("settings")
+        ) {
+          window.location.hash = "#/workbench";
+        }
+        break;
       case "open-batch-agents":
         openBatchAgents();
         break;
@@ -16674,7 +16718,8 @@ export default function App() {
         worktreeGcOpen ||
         shipOpen ||
         projectRulesTarget ||
-        agentDashboardOpen,
+        agentDashboardOpen ||
+        taskBoardOpen,
     ),
     permOpen: !!perm,
     askUserOpen: !!askUser,
@@ -22061,6 +22106,23 @@ export default function App() {
               2200,
             );
           })();
+        onOpenTaskBoard={() => {
+          setAgentDashboardOpen(false);
+          setTaskBoardOpen(true);
+        }}
+      />
+      <SessionTaskBoardModal
+        open={taskBoardOpen}
+        locale={locale}
+        board={taskBoard}
+        includeArchived={taskBoardIncludeArchived}
+        onIncludeArchivedChange={setTaskBoardIncludeArchived}
+        onClose={() => setTaskBoardOpen(false)}
+        onSelectSession={(id) => {
+          const row = sessions.find((s) => s.id === id);
+          if (!row) return;
+          const proj = projects.find((p) => p.id === row.projectId) || null;
+          void openSession(row, proj);
         }}
       />
       <BatchAgentsModal
