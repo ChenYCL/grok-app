@@ -72,6 +72,25 @@ export function defaultPaletteActions(): PaletteActionDef[] {
       group: "navigate",
     },
     {
+      id: "open-task-board",
+      labelKey: "taskBoard.open",
+      keywords: [
+        "task board",
+        "session board",
+        "kanban",
+        "columns",
+        "needs you",
+        "running",
+        "idle",
+        "done",
+        "board view",
+        "status board",
+        "看板",
+        "任务板",
+      ],
+      group: "navigate",
+    },
+    {
       id: "open-batch-agents",
       labelKey: "batchAgents.open",
       keywords: [

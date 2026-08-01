@@ -11,6 +11,11 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+#### Sessions & sidebar
+- **Session task board**: cross-session board view of local sessions by status columns (needs you · running · error · idle · done/archived). Pure `sessionTaskBoard` helpers from sessions + liveMap only — no invented CI/cloud state; include-archived chip, title/project search, honest empty / filter-empty states. Open from Agent dashboard **Board view**, command palette `open-task-board`, or App state. en/zh/zh-TW + tests.
+
 ## [0.2.3] - 2026-07-31
 
 > **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.

@@ -214,6 +214,8 @@ export type AgentDashboardModalProps = {
   onStopSessions?: (sessionIds: string[]) => void;
   /** Open multi-project batch agents dispatch. */
   onOpenBatchAgents?: () => void;
+  /** Open session task board (status columns). */
+  onOpenTaskBoard?: () => void;
 };
 
 export function AgentDashboardModal({
@@ -225,6 +227,7 @@ export function AgentDashboardModal({
   onStopAllBusy,
   onStopSessions,
   onOpenBatchAgents,
+  onOpenTaskBoard,
 }: AgentDashboardModalProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [query, setQuery] = useState("");
@@ -349,6 +352,16 @@ export function AgentDashboardModal({
       footer={
         <div className="agent-dash-modal__footer">
           <div className="agent-dash-modal__footer-actions">
+            {onOpenTaskBoard ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={onOpenTaskBoard}
+                title={tr("dashboard.openBoardTitle")}
+              >
+                {tr("dashboard.openBoard")}
+              </button>
+            ) : null}
             {onOpenBatchAgents ? (
               <button
                 type="button"
