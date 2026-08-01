@@ -2,7 +2,12 @@
 packages:
   - "."
 
-# Allowlist for packages that may run install scripts (pnpm 10+).
+# pnpm 11: explicit allowlist for packages that may run postinstall scripts.
+allowBuilds:
+  "@swc/core": true
+  esbuild: true
+  canvas: true
+
 onlyBuiltDependencies:
   - esbuild
   - canvas
