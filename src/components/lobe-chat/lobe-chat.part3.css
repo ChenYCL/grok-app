@@ -322,36 +322,61 @@
 .lobe-chat-atts {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
   width: 100%;
-  max-width: min(100%, 360px);
+  max-width: 100%;
+  align-items: center;
 }
 
+/* User strip: pack horizontally up to ~70% chat width, then wrap.
+ * (Avoid the old 360px cap that stacked cards while the row still had room.) */
 .lobe-chat-atts--user {
   justify-content: flex-end;
+  align-content: flex-end;
   margin: 0;
+  width: max-content;
+  max-width: 70%;
+  flex-wrap: wrap;
 }
 
-/* Image / file / folder cards: ~64px (ref red-box) */
-.lobe-chat .att-card--image {
-  width: 64px;
-  height: 64px;
-  min-height: 64px;
-  flex: 0 0 64px;
-  border-radius: 12px;
+.lobe-chat-atts--user.lobe-chat-atts--user-expanded {
+  /* Expanded: use full 70% band so overflow cards can multi-row cleanly. */
+  width: 100%;
+  max-width: 70%;
+}
+
+/* Shared message cards: 36px row (overrides older 64px thumbs). */
+.lobe-chat .att-card {
+  --attach-h: 36px;
+  height: var(--attach-h);
+  min-height: var(--attach-h);
+  border-radius: 8px;
   border: 1px solid var(--chat-card-border);
+  background: var(--chat-card);
+  box-shadow: none;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.lobe-chat .att-card--image {
+  width: var(--attach-h);
+  height: var(--attach-h);
+  min-height: var(--attach-h);
+  flex: 0 0 var(--attach-h);
+  border-radius: 8px;
   overflow: hidden;
 }
 
-.lobe-chat .att-card:not(.att-card--image) {
+.lobe-chat .att-card:not(.att-card--image):not(.att-card--more) {
   display: flex;
   align-items: center;
   flex: 0 1 auto;
-  min-width: 120px;
-  max-width: 220px;
-  min-height: 64px;
-  border-radius: 12px;
-  border: 1px solid var(--chat-card-border);
+  min-width: 0;
+  max-width: 180px;
+  width: max-content;
+  height: var(--attach-h);
+  min-height: var(--attach-h);
+  border-radius: 8px;
   background: var(--chat-card);
   box-shadow: none;
   overflow: hidden;
@@ -360,9 +385,10 @@
 .lobe-chat .att-card:not(.att-card--image) .att-card__btn {
   flex: 1;
   min-width: 0;
-  gap: 10px;
-  padding: 10px 12px;
-  min-height: 64px;
+  gap: 6px;
+  padding: 0 10px 0 6px;
+  height: 100%;
+  min-height: 0;
 }
 
 .lobe-chat .att-card:not(.att-card--image) .att-card__btn:hover {
@@ -373,9 +399,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   background: rgba(109, 179, 242, 0.12);
   color: var(--chat-link);
   flex-shrink: 0;
@@ -390,12 +416,14 @@
 }
 
 .lobe-chat .att-card__name {
-  font-size: 13px;
+  max-width: 140px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--chat-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.2;
 }
 
 .lobe-chat .att-card__path,
@@ -406,9 +434,48 @@
 
 .lobe-chat .att-card__btn--image,
 .lobe-chat .att-card__thumb {
-  width: 64px;
-  height: 64px;
-  min-height: 64px;
+  width: var(--attach-h);
+  height: var(--attach-h);
+  min-height: var(--attach-h);
+}
+
+/* +N / collapse chip — same 36px shell as image cards */
+.lobe-chat .att-card--more {
+  flex: 0 0 var(--attach-h);
+  width: var(--attach-h);
+  height: var(--attach-h);
+  min-height: var(--attach-h);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--chat-text);
+  background: var(--chat-card);
+  border: 1px solid var(--chat-card-border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.lobe-chat .att-card--more:hover {
+  background: var(--chat-card-hover);
+}
+
+.lobe-chat .att-card__more-label {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--chat-text-secondary, var(--chat-text));
+  user-select: none;
+}
+
+/* Collapsed user row: file names can shrink so siblings stay on one line */
+.lobe-chat-atts--user:not(.lobe-chat-atts--user-expanded)
+  .att-card:not(.att-card--image):not(.att-card--more) {
+  flex: 0 1 auto;
+  min-width: 72px;
+  max-width: 160px;
 }
 
 /* Plan */

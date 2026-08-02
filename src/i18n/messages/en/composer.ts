@@ -188,6 +188,8 @@ export const enComposer = {
   "attach.typeFile": "File",
   "attach.typeUrl": "Link",
   "attach.typeDir": "Folder",
+  "attach.showMore": "Show {n} more attachments",
+  "attach.showLess": "Show fewer attachments",
   "composer.editing": "Editing message",
   "composer.editingCancel": "Cancel edit",
   "composer.effortPanelHint": "Drag to set reasoning depth",

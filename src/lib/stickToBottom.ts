@@ -21,8 +21,13 @@ export const STICK_HARD_BOTTOM_PX = 2;
 
 /**
  * Sub-pixel / font / thought-stream reflows under this delta should not
- * force a scroll follow (avoids up-down flicker while thinking grows).
+ * run the full follow machinery (avoids up-down flicker while thinking grows).
  * Slightly higher than 1–2px so virtual-list spacer remeasure does not thrash.
+ *
+ * Callers must still clamp when pinned and scrollTop has drifted off hard
+ * bottom — smooth stream often grows 2–7px per frame, and stacking pure
+ * "noise" skips leaves the viewport stranded above the latest tokens.
+ * See {@link shouldClampPinnedStreamDrift}.
  */
 export const STICK_HEIGHT_NOISE_PX = 8;
 
@@ -93,6 +98,27 @@ export function isHeightDeltaNoise(
   noisePx: number = STICK_HEIGHT_NOISE_PX,
 ): boolean {
   return Math.abs(difference) < noisePx;
+}
+
+/**
+ * While stick is pinned, stream/thinking often grows a few px per frame
+ * (smooth reveal). Those deltas are "noise" for bounce suppression, but
+ * stacked they leave the viewport off the true bottom. Callers should still
+ * clamp scrollTop when this returns true.
+ *
+ * Returns false when escaped (user reading history) or already hard-bottom.
+ */
+export function shouldClampPinnedStreamDrift(
+  pinned: boolean,
+  escaped: boolean,
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number,
+  slackPx: number = 0.5,
+): boolean {
+  if (!pinned || escaped) return false;
+  const maxTop = bottomScrollTop(scrollHeight, clientHeight);
+  return Math.abs(scrollTop - maxTop) > slackPx;
 }
 
 /** Pin + escape lock used by the chat scroll hook. */

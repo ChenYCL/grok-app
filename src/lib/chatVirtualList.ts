@@ -53,7 +53,7 @@ export const CHAT_FORCE_EXPAND_MAX_GAP = 12;
  * are not first measured as ~120px (that underestimates scrollHeight and
  * makes mid-document look "near bottom" → stick bounce).
  *
- * Media: fixed-size attachment thumbs (~64px) and inline video cards (~240px)
+ * Media: fixed-size attachment chips (~36px) and inline video cards (~240px)
  * are not reflected in `contentLength` — include them so first paint is closer
  * to final height (fewer remeasure snaps near the bottom).
  */
@@ -90,9 +90,11 @@ export function estimateChatRowHeight(input: {
   const lines = Math.ceil((content + thought * 0.5) / 42);
   const chrome = role === "user" ? 72 : role === "tool" ? 28 : 96;
   const atts = Math.max(0, input.attachmentCount ?? 0);
-  // 64px thumbs + gap, wrap ~5 per row in a ~360px stack.
-  const attRows = atts > 0 ? Math.ceil(atts / 5) : 0;
-  const attBoost = attRows * 74;
+  // 36px chips + gap; user strip packs to ~70% width (~6–8 chips/row typical).
+  // Collapsed default shows ≤3 + "+N" (≤4 slots) on one row when possible.
+  const slots = atts > 3 ? 4 : atts;
+  const attRows = slots > 0 ? Math.ceil(slots / 6) : 0;
+  const attBoost = attRows * 44;
   const videoBoost = input.hasVideoCard ? 260 : 0;
   const raw = chrome + lines * 20 + attBoost + videoBoost;
   // Tool rows are compact; do not floor them at the assistant default (120px).

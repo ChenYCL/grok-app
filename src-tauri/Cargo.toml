@@ -42,7 +42,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 directories = "6"
 which = "7"
 chrono = { version = "0.4", features = ["serde", "clock"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart", "system-proxy"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart", "system-proxy", "blocking"] }
 futures-util = "0.3"
 base64 = "0.22"
 sha2 = "0.10"

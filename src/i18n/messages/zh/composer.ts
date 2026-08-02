@@ -188,6 +188,8 @@ export const zhComposer = {
   "attach.typeFile": "文件",
   "attach.typeUrl": "链接",
   "attach.typeDir": "文件夹",
+  "attach.showMore": "再显示 {n} 个附件",
+  "attach.showLess": "收起附件",
   "composer.editing": "正在编辑消息",
   "composer.editingCancel": "取消编辑",
   "composer.effortPanelHint": "拖动设置思考深度",

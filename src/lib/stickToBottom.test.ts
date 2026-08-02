@@ -11,6 +11,7 @@ import {
   isMeaningfulScrollUp,
   isNearBottom,
   nextStickPinState,
+  shouldClampPinnedStreamDrift,
 } from "./stickToBottom";
 
 describe("distanceFromBottom", () => {
@@ -79,6 +80,33 @@ describe("isHeightDeltaNoise", () => {
     expect(isHeightDeltaNoise(8)).toBe(false);
     expect(isHeightDeltaNoise(24)).toBe(false);
     expect(isHeightDeltaNoise(-40)).toBe(false);
+  });
+});
+
+describe("shouldClampPinnedStreamDrift", () => {
+  // Viewport 400, content grew to 1000 → max scrollTop = 600.
+  const sh = 1000;
+  const ch = 400;
+
+  it("clamps when pinned and stream micro-growth left us off bottom", () => {
+    // Many 2–7px noise deltas stacked: scrollTop still 580 while max is 600.
+    expect(shouldClampPinnedStreamDrift(true, false, 580, sh, ch)).toBe(true);
+  });
+
+  it("does not clamp when already hard at bottom", () => {
+    expect(shouldClampPinnedStreamDrift(true, false, 600, sh, ch)).toBe(false);
+    expect(shouldClampPinnedStreamDrift(true, false, 599.6, sh, ch)).toBe(
+      false,
+    );
+  });
+
+  it("does not clamp when user escaped (reading history)", () => {
+    expect(shouldClampPinnedStreamDrift(false, true, 200, sh, ch)).toBe(false);
+    expect(shouldClampPinnedStreamDrift(true, true, 200, sh, ch)).toBe(false);
+  });
+
+  it("does not clamp when unpinned without escape flag either", () => {
+    expect(shouldClampPinnedStreamDrift(false, false, 200, sh, ch)).toBe(false);
   });
 });
 

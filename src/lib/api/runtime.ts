@@ -97,6 +97,35 @@ export async function mcpDoctor(name?: string | null) {
   });
 }
 
+/** Host MCP OAuth start — returns authorize URL; host waits for loopback callback. */
+export type McpOauthStartResult = {
+  ok: boolean;
+  server: string;
+  authUrl: string;
+  redirectUri?: string;
+  message?: string;
+};
+
+export type McpOauthStatusResult = {
+  ok: boolean;
+  server: string;
+  phase: "idle" | "pending" | "success" | "error" | string;
+  message: string;
+  error?: string | null;
+};
+
+export async function mcpOauthStart(name: string) {
+  return invoke<McpOauthStartResult>("mcp_oauth_start", {
+    name: name.trim(),
+  });
+}
+
+export async function mcpOauthStatus(name: string) {
+  return invoke<McpOauthStatusResult>("mcp_oauth_status", {
+    name: name.trim(),
+  });
+}
+
 export type ProjectRuleEntry = {
   path?: string;
   name?: string;

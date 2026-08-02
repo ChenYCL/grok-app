@@ -29,6 +29,7 @@ import {
   isMeaningfulScrollUp,
   isNearBottom,
   nextStickPinState,
+  shouldClampPinnedStreamDrift,
 } from "@/lib/stickToBottom";
 
 export type UseStickToBottomOptions = {
@@ -442,10 +443,23 @@ export function useStickToBottom(
 
     const onHeightChange = (height: number) => {
       const difference = height - (previousHeight ?? height);
-      // Thought-stream / font / 1–3px reflow: update baseline only — re-follow
-      // would fight itself and look like the page bouncing while thinking.
+      // Thought-stream / font / 1–3px reflow: skip full follow machinery so
+      // micro reflows do not bounce — BUT still clamp if many small stream
+      // deltas stacked and left us off hard bottom while pinned (smooth
+      // thinking/body reveal is usually 2–7px per frame).
       if (previousHeight != null && isHeightDeltaNoise(difference)) {
         previousHeight = height;
+        if (
+          shouldClampPinnedStreamDrift(
+            isPinnedRef.current,
+            escapedRef.current,
+            el.scrollTop,
+            el.scrollHeight,
+            el.clientHeight,
+          )
+        ) {
+          applyScrollTop(bottomScrollTop(el.scrollHeight, el.clientHeight));
+        }
         return;
       }
       resizeDifferenceRef.current = difference;

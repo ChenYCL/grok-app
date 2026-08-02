@@ -4,6 +4,7 @@ import {
   isMediaEndpointReady,
   isViewableSrc,
   localPathToMediaHttpUrl,
+  normalizeMediaRef,
   resetMediaEndpointForTests,
   resolveImageSrcSync,
   setMediaEndpoint,
@@ -24,6 +25,28 @@ describe("isViewableSrc", () => {
   it("rejects bare paths", () => {
     expect(isViewableSrc("/Users/me/pic.png")).toBe(false);
     expect(isViewableSrc("C:\\Users\\me\\pic.png")).toBe(false);
+  });
+});
+
+describe("normalizeMediaRef / ChatCut refs", () => {
+  it("upgrades protocol-relative S3 URLs to https", () => {
+    const raw =
+      "//chatcut-production-mainbucketbucket-oxvbnfsx.s3.us-east-1.amazonaws.com/users/u/projects/p/assets/image/id/%E7%AC%AC2%E9%9B%86-thumbnail.jpg";
+    expect(normalizeMediaRef(raw)).toBe(`https:${raw}`);
+    expect(resolveImageSrcSync(raw)).toBe(`https:${raw}`);
+  });
+
+  it("rejects angle-bracket placeholders", () => {
+    expect(normalizeMediaRef("/<frame-name>.jpg")).toBe(null);
+    expect(resolveImageSrcSync("/<frame-name>.jpg")).toBe(null);
+  });
+
+  it("collapses double slashes in local temp paths", () => {
+    const raw =
+      "/var/folders/75/xx/T//chatcut-frames.qVukfi/f2150.jpg";
+    expect(normalizeMediaRef(raw)).toBe(
+      "/var/folders/75/xx/T/chatcut-frames.qVukfi/f2150.jpg",
+    );
   });
 });
 

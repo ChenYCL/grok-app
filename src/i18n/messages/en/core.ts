@@ -71,7 +71,7 @@ export const enCore = {
   "agent.streamStallCancel": "End turn",
   "agent.streamStallEndTurn": "End turn",
   "agent.streamStallKeepWaiting": "Keep waiting",
-  "agent.streamStallHardEndToast": "Turn ended after a long silence — your reply was kept.",
+  "agent.streamStallHardEndToast": "Turn was closed after Host recovery — your reply was kept.",
   "app.quitBusy.title": "Quit while agents are busy?",
   "app.quitBusy.message": "{n} session(s) are still running. Quitting will stop in-progress agent work.",
   "app.quitBusy.confirm": "Quit",

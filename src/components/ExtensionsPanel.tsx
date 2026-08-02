@@ -2014,24 +2014,66 @@ export function ExtensionsPanel({
                       {redactMcpText(st.reason)}
                     </p>
                   ) : null}
-                  {st?.needsAuthRefresh && guidanceKey ? (
-                    <div className="ext-mcp-auth-row">
-                      <p className="ext-mcp-auth-hint">
-                        {tr(guidanceKey as MessageKey)}
-                      </p>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        onClick={() => openOauthWizard(oauthAction, st)}
-                      >
-                        {tr(
-                          (oauthAction
-                            ? mcpOauthActionLabelKey(oauthAction.kind)
-                            : "ext.mcp.auth.howToRefresh") as MessageKey,
-                        )}
-                      </button>
-                    </div>
-                  ) : null}
+                  {/*
+                    OAuth row:
+                    - After doctor: needsAuthRefresh (ChatCut etc.)
+                    - Or remote HTTP/SSE without doctor yet: still offer 授权…
+                      so users are not stuck when doctor was never run / not found.
+                  */}
+                  {(() => {
+                    const transport = (s.transport || "").toLowerCase();
+                    const isRemoteHttp =
+                      transport === "http" ||
+                      transport === "sse" ||
+                      /^https?:\/\//i.test(s.target || "");
+                    const showAuth =
+                      (st?.needsAuthRefresh && guidanceKey) ||
+                      (isRemoteHttp &&
+                        (!st ||
+                          st.tone === "auth_required" ||
+                          st.tone === "auth_expired" ||
+                          st.tone === "error" ||
+                          st.tone === "unknown"));
+                    if (!showAuth) return null;
+                    const syntheticStatus: McpServerStatus = st ?? {
+                      name: s.name,
+                      tone: "auth_required",
+                      needsAuthRefresh: true,
+                      reason: null,
+                      issues: [],
+                      healthy: null,
+                    };
+                    const action =
+                      oauthAction ??
+                      classifyMcpOauthFromStatus(syntheticStatus) ??
+                      ({
+                        kind: "authorize" as const,
+                        authUrls: [] as string[],
+                        preferredUrl: null as string | null,
+                        server: s.name,
+                        isRetry: false,
+                      });
+                    return (
+                      <div className="ext-mcp-auth-row">
+                        <p className="ext-mcp-auth-hint">
+                          {guidanceKey
+                            ? tr(guidanceKey as MessageKey)
+                            : tr("ext.mcp.auth.requiredHint")}
+                        </p>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() =>
+                            openOauthWizard(action, syntheticStatus)
+                          }
+                        >
+                          {tr(
+                            mcpOauthActionLabelKey(action.kind) as MessageKey,
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })()}
                   {s.target ? (
                     <div className="ext-item__meta">
                       <em className="ext-item__target" title={s.target}>

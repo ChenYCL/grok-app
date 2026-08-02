@@ -63,8 +63,8 @@
   justify-content: flex-end;
   align-items: center;
   gap: 6px;
-  width: 100%;
-  max-width: min(100%, 360px);
+  width: max-content;
+  max-width: min(100%, 70%);
 }
 
 .message__atts--assistant {

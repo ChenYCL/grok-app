@@ -259,6 +259,31 @@ pub async fn mcp_add(
 
 // from PR #68
 
+/// Start interactive MCP OAuth (PKCE + loopback). Returns authorize URL for
+/// the UI to open; host waits for callback and persists Bearer token.
+#[tauri::command]
+pub async fn mcp_oauth_start(name: String) -> Result<crate::mcp_oauth::McpOauthStartResult, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("MCP server name required".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || crate::mcp_oauth::mcp_oauth_start(&name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Poll in-flight MCP OAuth (pending | success | error | idle).
+#[tauri::command]
+pub async fn mcp_oauth_status(
+    name: String,
+) -> Result<crate::mcp_oauth::McpOauthStatusResult, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("MCP server name required".into());
+    }
+    Ok(crate::mcp_oauth::mcp_oauth_status(&name))
+}
+
 /// Run `grok mcp doctor --json` (optional server name) under the active GROK_HOME.
 #[tauri::command]
 pub async fn mcp_doctor(
@@ -449,12 +474,23 @@ pub fn refuse_remove_main_worktree(
 /// Runs `grok mcp doctor --json [NAME]` with a hard timeout. Errors are
 /// redacted/truncated so secrets never leave the host. Returns a structured
 /// report (JSON-serializable) — never invents servers.
+///
+/// Independent mode: HTTP MCP often exists only in `~/.grok/config.toml` (CLI)
+/// while doctor uses App `agent-home`. Mirror missing user HTTP servers into
+/// agent-home first so focused doctor (e.g. `chatcut`) does not false-report
+/// "MCP server not found".
 fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorReport, String> {
     let settings = store::load_settings();
     let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
     let Some(cli_path) = probe.path.filter(|_| probe.found) else {
         return Err("Grok Build CLI not found".into());
     };
+    // Sync user-scoped HTTP MCP into agent-home before doctor (independent mode).
+    let mirrored =
+        crate::extensions::mirror_user_http_mcp_into_agent_home(&settings.session_data_mode);
+    if mirrored > 0 {
+        tracing::info!("mcp doctor: mirrored {mirrored} HTTP MCP server(s) into agent-home");
+    }
     let grok_home = crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
 
     let mut args: Vec<String> = vec!["mcp".into(), "doctor".into(), "--json".into()];
@@ -498,6 +534,52 @@ fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorRepo
                     redact_doctor_fix_output(&stderr, 400)
                 } else {
                     "mcp doctor returned no output".into()
+                });
+            }
+            // Plain-text "MCP server 'x' not found" (no JSON) — surface as structured fail
+            // so UI can show authorize / re-add guidance instead of an empty report.
+            let lower = blob.to_ascii_lowercase();
+            if lower.contains("not found") && lower.contains("mcp server") {
+                let focus = name.unwrap_or("").trim();
+                let label = if focus.is_empty() {
+                    "MCP server not found under active GROK_HOME".to_string()
+                } else {
+                    format!(
+                        "MCP server '{focus}' not found under active agent home. \
+                         It may only exist in ~/.grok (terminal CLI). \
+                         Re-add in App or re-run doctor after sync."
+                    )
+                };
+                return Ok(crate::extensions::McpDoctorReport {
+                    ok: false,
+                    summary: crate::extensions::McpDoctorSummary {
+                        total: 1,
+                        healthy: 0,
+                        unhealthy: 1,
+                    },
+                    servers: if focus.is_empty() {
+                        vec![]
+                    } else {
+                        vec![crate::extensions::McpDoctorServer {
+                            name: focus.to_string(),
+                            transport: None,
+                            target: None,
+                            source: Some("agent-home".into()),
+                            healthy: false,
+                            checks: vec![crate::extensions::McpDoctorCheck {
+                                label: "server present".into(),
+                                passed: false,
+                                detail: Some(label.clone()),
+                                hint: Some(
+                                    "Independent mode uses App agent-home; add HTTP MCP there \
+                                     or re-run doctor (auto-mirrors from ~/.grok)."
+                                        .into(),
+                                ),
+                            }],
+                        }]
+                    },
+                    sources: vec![],
+                    raw_text: Some(redact_doctor_fix_output(&blob, 400)),
                 });
             }
             Ok(crate::extensions::parse_mcp_doctor_json(&blob))

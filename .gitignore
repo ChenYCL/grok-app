@@ -61,3 +61,7 @@ temp/
 
 # Playwright MCP local dumps
 .playwright-mcp/
+
+# ChatCut upstream clone (re-fetched by scripts; pin in vendor/chatcut-agent-plugin.pin)
+vendor/chatcut-agent-plugin/
+vendor/chatcut-grok-adapted/

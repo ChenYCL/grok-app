@@ -53,6 +53,7 @@ import {
   mergePathMaps,
 } from "@/lib/sessionPathMap";
 import { AttachmentCard } from "@/components/AttachmentCard";
+import { UserAttachments } from "@/components/lobe-chat/UserAttachments";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import {
   IconArrowsMinimize,
@@ -885,20 +886,13 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
             {!isEditing &&
             m.attachments &&
             m.attachments.length > 0 ? (
-              <div className="lobe-chat-atts lobe-chat-atts--user">
-                {m.attachments.map((a) => (
-                  <AttachmentCard
-                    key={a.path}
-                    attachment={a}
-                    variant="card"
-                    labels={attachLabels}
-                    galleryPaths={m.attachments
-                      ?.filter((x) => !x.isDir && isImagePath(x.path))
-                      .map((x) => x.path)}
-                    onAddToComposer={onAddAttachmentToComposer}
-                  />
-                ))}
-              </div>
+              <UserAttachments
+                attachments={m.attachments}
+                labels={attachLabels}
+                onAddToComposer={onAddAttachmentToComposer}
+                moreLabel={(n) => tr("attach.showMore", { n: String(n) })}
+                lessLabel={tr("attach.showLess")}
+              />
             ) : null}
             {isEditing ? (
               <InlineUserEdit

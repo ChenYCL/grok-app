@@ -40,3 +40,55 @@ fn extracts_path_from_content_text_markdown() {
         Some("/Users/me/out/pixel.png")
     );
 }
+
+#[test]
+fn normalizes_chatcut_protocol_relative_s3_url() {
+    let raw = "//chatcut-production-mainbucketbucket-oxvbnfsx.s3.us-east-1.amazonaws.com/users/u/projects/p/assets/image/id/%E7%AC%AC2-thumbnail.jpg";
+    assert_eq!(
+        normalize_media_ref(raw).as_deref(),
+        Some(
+            "https://chatcut-production-mainbucketbucket-oxvbnfsx.s3.us-east-1.amazonaws.com/users/u/projects/p/assets/image/id/%E7%AC%AC2-thumbnail.jpg"
+        )
+    );
+    assert!(!is_local_media_fs_path(raw));
+    assert!(is_media_fs_path(
+        &normalize_media_ref(raw).unwrap()
+    ));
+}
+
+#[test]
+fn rejects_frame_name_placeholder() {
+    assert!(normalize_media_ref("/<frame-name>.jpg").is_none());
+    assert!(!is_local_media_fs_path("/<frame-name>.jpg"));
+    let text = "tool_step|completed|use_tool|chatcut__view_timeline_frames\n/<frame-name>.jpg";
+    // Must not return the placeholder as a media path.
+    let got = first_media_path_in_text(text);
+    assert!(
+        got.as_ref().map(|s| !s.contains('<')).unwrap_or(true),
+        "unexpected {got:?}"
+    );
+}
+
+#[test]
+fn collapses_double_slash_in_temp_frame_path() {
+    let raw = "/var/folders/75/xx/T//chatcut-frames.qVukfi/f2150.jpg";
+    assert_eq!(
+        normalize_media_ref(raw).as_deref(),
+        Some("/var/folders/75/xx/T/chatcut-frames.qVukfi/f2150.jpg")
+    );
+    assert!(is_local_media_fs_path(raw));
+}
+
+#[test]
+fn extracts_chatcut_s3_from_mcp_text() {
+    let raw = json!({
+        "status": "completed",
+        "rawOutput": {
+            "output": "thumbnail: //cdn.example.com/a/b/thumb.jpg\n"
+        }
+    });
+    assert_eq!(
+        extract_generated_media_path(&raw).as_deref(),
+        Some("https://cdn.example.com/a/b/thumb.jpg")
+    );
+}

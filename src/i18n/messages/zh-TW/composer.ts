@@ -188,6 +188,8 @@ export const zhTWComposer = {
   "attach.typeFile": "檔案",
   "attach.typeUrl": "連結",
   "attach.typeDir": "資料夾",
+  "attach.showMore": "再顯示 {n} 個附件",
+  "attach.showLess": "收起附件",
   "composer.editing": "正在編輯訊息",
   "composer.editingCancel": "取消編輯",
   "composer.effortPanelHint": "拖動設定思考深度",
