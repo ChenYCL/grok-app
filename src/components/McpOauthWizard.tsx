@@ -1,11 +1,9 @@
 /**
  * MCP OAuth recovery wizard (GlassModal steps).
  *
- * intro → auth URL / TUI instructions → “I’ve authorized” → doctor refresh
- * → success / classified soft-fail.
- *
- * No window.confirm. No headless CLI oauth — honest TUI fallback copy.
- * Secrets never logged; URLs sanitized via mcpOauth helpers.
+ * Prefers host `mcp_oauth_start` (PKCE + loopback): auto-open browser, poll
+ * until tokens land, then re-run doctor. Falls back to TUI instructions only
+ * when the host command is missing / fails.
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
@@ -20,6 +18,7 @@ import {
 import * as api from "@/lib/api";
 import {
   redactMcpOauthText,
+  sanitizeMcpAuthUrl,
   type McpOauthAction,
 } from "@/lib/mcpOauth";
 import {
@@ -92,6 +91,9 @@ export function McpOauthWizard({
     emptyMcpOauthWizardState,
   );
   const [busy, setBusy] = useState(false);
+  /** Host PKCE start error (shown above soft-fail chip). */
+  const [hostStartError, setHostStartError] = useState<string | null>(null);
+  const [hostBooting, setHostBooting] = useState(false);
 
   const openExternal = useCallback(
     async (url: string) => {
@@ -108,119 +110,126 @@ export function McpOauthWizard({
     [onOpenExternalUrl],
   );
 
-  // Seed when opened / target changes; reset when closed.
-  // Prefer host `mcp_oauth_start` (PKCE + loopback) so we auto-open a real
-  // authorize URL instead of only showing TUI instructions.
+  const applyAuthUrlAndOpen = useCallback(
+    async (rawUrl: string) => {
+      const preferUrl = sanitizeMcpAuthUrl(rawUrl) ?? rawUrl.trim();
+      if (!preferUrl || !action) return false;
+      const enriched: McpOauthAction = {
+        ...action,
+        preferredUrl: preferUrl,
+        authUrls: [preferUrl, ...(action.authUrls ?? []).filter((u) => u !== preferUrl)],
+      };
+      dispatch({
+        type: "init",
+        input: {
+          action: enriched,
+          reason: statusReason ?? null,
+          preferUrl,
+        },
+      });
+      // intro → auth
+      dispatch({ type: "continue" });
+      try {
+        await openExternal(preferUrl);
+        dispatch({ type: "open_url_ok" });
+        // auth → waiting (host is listening on loopback)
+        dispatch({ type: "continue" });
+        return true;
+      } catch (e) {
+        dispatch({
+          type: "open_url_error",
+          error: redactMcpOauthText(String(e)).slice(0, 240),
+        });
+        return false;
+      }
+    },
+    [action, openExternal, statusReason],
+  );
+
+  /** Start host OAuth (PKCE) and open browser — used on open + retry button. */
+  const startHostBrowserOauth = useCallback(async () => {
+    if (!action?.server?.trim()) {
+      setHostStartError(tr("mcpOauth.wizard.hostNoServer"));
+      return;
+    }
+    if (!api.isTauri()) {
+      setHostStartError(tr("ext.needTauri"));
+      return;
+    }
+    setHostBooting(true);
+    setHostStartError(null);
+    setBusy(true);
+    try {
+      const started = await api.mcpOauthStart(action.server.trim());
+      const url = (started?.authUrl || "").trim();
+      if (!url) {
+        setHostStartError(
+          started?.message?.trim() || tr("mcpOauth.wizard.hostNoUrl"),
+        );
+        // Still seed wizard so user sees steps / TUI fallback.
+        dispatch({
+          type: "init",
+          input: { action, reason: statusReason ?? null },
+        });
+        return;
+      }
+      await applyAuthUrlAndOpen(url);
+    } catch (e) {
+      const msg = redactMcpOauthText(String(e)).slice(0, 320);
+      setHostStartError(msg || tr("mcpOauth.wizard.hostStartFailed"));
+      dispatch({
+        type: "init",
+        input: {
+          action,
+          reason: statusReason ?? msg,
+        },
+      });
+      try {
+        console.warn("[mcp-oauth-wizard] host oauth start failed", msg);
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setHostBooting(false);
+      setBusy(false);
+    }
+  }, [action, applyAuthUrlAndOpen, statusReason, tr]);
+
+  // Seed when opened: immediately try host browser OAuth.
   useEffect(() => {
     if (!open || !action) {
       if (!open) {
         dispatch({ type: "reset" });
         setBusy(false);
+        setHostStartError(null);
+        setHostBooting(false);
       }
       return;
     }
-    let cancelled = false;
-    const seed = async () => {
-      let preferUrl = action.preferredUrl ?? null;
-      let hostStarted = false;
-      if (api.isTauri() && action.server?.trim()) {
-        setBusy(true);
-        try {
-          const started = await api.mcpOauthStart(action.server.trim());
-          if (!cancelled && started?.authUrl) {
-            preferUrl = started.authUrl;
-            hostStarted = true;
-          }
-        } catch (e) {
-          try {
-            console.warn(
-              "[mcp-oauth-wizard] host oauth start failed",
-              String(e).slice(0, 200),
-            );
-          } catch {
-            /* ignore */
-          }
-        } finally {
-          if (!cancelled) setBusy(false);
-        }
-      }
-      if (cancelled) return;
-      const next = createMcpOauthWizardState({
-        action: {
-          ...action,
-          preferredUrl: preferUrl,
-          authUrls:
-            preferUrl && !action.authUrls?.includes(preferUrl)
-              ? [preferUrl, ...(action.authUrls ?? [])]
-              : action.authUrls,
-        },
-        reason: statusReason ?? null,
-        preferUrl,
-      });
-      dispatch({
-        type: "init",
-        input: {
-          action: {
-            ...action,
-            preferredUrl: preferUrl,
-            authUrls:
-              preferUrl && !action.authUrls?.includes(preferUrl)
-                ? [preferUrl, ...(action.authUrls ?? [])]
-                : action.authUrls,
-          },
-          reason: statusReason ?? null,
-          preferUrl,
-        },
-      });
-      try {
-        console.info(
-          "[mcp-oauth-wizard] open",
-          sanitizeMcpOauthWizardLog(next),
-        );
-      } catch {
-        /* ignore */
-      }
-      // Auto-open browser when host produced a real authorize URL.
-      if (hostStarted && preferUrl && !cancelled) {
-        // intro → auth first (open_url_ok only accepted on auth/waiting).
-        dispatch({ type: "continue" });
-        try {
-          await openExternal(preferUrl);
-          if (!cancelled) {
-            dispatch({ type: "open_url_ok" });
-            // auth → waiting while host loopback waits for provider callback.
-            dispatch({ type: "continue" });
-          }
-        } catch (e) {
-          if (!cancelled) {
-            dispatch({
-              type: "open_url_error",
-              error: redactMcpOauthText(String(e)).slice(0, 240),
-            });
-          }
-        }
-      }
-    };
-    void seed();
-    return () => {
-      cancelled = true;
-    };
+    // Seed skeleton immediately so modal is not blank while host boots.
+    dispatch({
+      type: "init",
+      input: { action, reason: statusReason ?? null },
+    });
+    void startHostBrowserOauth();
   }, [
     open,
     action?.server,
     action?.kind,
-    action?.preferredUrl,
     action?.isRetry,
     statusReason,
-    openExternal,
+    // intentionally not depending on startHostBrowserOauth identity every render
   ]);
 
   const handleOpenUrl = useCallback(async () => {
-    const url = state.authUrl;
-    if (!url) return;
+    // Prefer re-starting host flow (fresh loopback port) when no URL yet.
+    if (!state.authUrl) {
+      await startHostBrowserOauth();
+      return;
+    }
     setBusy(true);
     try {
-      await openExternal(url);
+      await openExternal(state.authUrl);
       dispatch({ type: "open_url_ok" });
     } catch (e) {
       dispatch({
@@ -230,7 +239,7 @@ export function McpOauthWizard({
     } finally {
       setBusy(false);
     }
-  }, [openExternal, state.authUrl]);
+  }, [openExternal, startHostBrowserOauth, state.authUrl]);
 
   const runDoctorRefresh = useCallback(async () => {
     const server = state.server;
@@ -352,58 +361,39 @@ export function McpOauthWizard({
 
   const footer = (
     <>
-      {state.step === "intro" ? (
+      {state.step === "intro" || state.step === "auth" ? (
         <>
           <button
             type="button"
             className="btn btn--ghost"
             onClick={handleClose}
+            disabled={hostBooting}
           >
             {tr("common.cancel")}
           </button>
           <button
             type="button"
             className="btn btn--solid"
-            onClick={() => dispatch({ type: "continue" })}
+            disabled={busy || hostBooting}
+            onClick={() => void startHostBrowserOauth()}
           >
-            {tr("mcpOauth.wizard.next")}
-          </button>
-        </>
-      ) : null}
-
-      {state.step === "auth" ? (
-        <>
-          <button
-            type="button"
-            className="btn btn--ghost"
-            disabled={busy}
-            onClick={() => dispatch({ type: "back" })}
-          >
-            {tr("mcpOauth.wizard.back")}
+            <IconExternalLink size={14} />
+            <span>
+              {hostBooting || busy
+                ? tr("mcpOauth.wizard.openingUrl")
+                : tr("mcpOauth.wizard.startBrowser")}
+            </span>
           </button>
           {hasUrl ? (
             <button
               type="button"
               className="btn btn--ghost"
-              disabled={busy}
+              disabled={busy || hostBooting}
               onClick={() => void handleOpenUrl()}
             >
-              <IconExternalLink size={14} />
-              <span>
-                {busy
-                  ? tr("mcpOauth.wizard.openingUrl")
-                  : tr("mcpModal.oauth.openUrl")}
-              </span>
+              <span>{tr("mcpModal.oauth.openUrl")}</span>
             </button>
           ) : null}
-          <button
-            type="button"
-            className="btn btn--solid"
-            disabled={busy}
-            onClick={() => dispatch({ type: "continue" })}
-          >
-            {tr("mcpOauth.wizard.next")}
-          </button>
         </>
       ) : null}
 
@@ -542,7 +532,21 @@ export function McpOauthWizard({
         </div>
       </div>
 
-      {showSoftChip && state.softFail !== "none" ? (
+      {hostBooting ? (
+        <p className="modal-status" role="status">
+          {tr("mcpOauth.wizard.hostBooting")}
+        </p>
+      ) : null}
+      {hostStartError ? (
+        <p className="modal-status modal-status--error" role="alert">
+          {tr("mcpOauth.wizard.hostStartFailed")}: {hostStartError}
+        </p>
+      ) : null}
+
+      {/* Hide "no headless CLI" chip when we already have a browser URL / host path. */}
+      {showSoftChip &&
+      state.softFail !== "none" &&
+      !(hasUrl || state.urlOpened) ? (
         <p className="mcp-oauth-wizard__chip-row">
           <span
             className={
@@ -559,12 +563,14 @@ export function McpOauthWizard({
         </p>
       ) : null}
 
-      {state.step === "intro" ? (
+      {(state.step === "intro" || state.step === "auth") && (
         <div className="mcp-oauth-wizard__panel">
           <p className="app-dialog__msg">
-            {state.isRetry
-              ? tr("mcpModal.oauth.retryLead")
-              : tr("mcpModal.oauth.authorizeLead")}
+            {hasUrl
+              ? tr("mcpOauth.wizard.authLeadUrl")
+              : state.isRetry
+                ? tr("mcpModal.oauth.retryLead")
+                : tr("mcpModal.oauth.authorizeLead")}
           </p>
           <dl className="mcp-oauth-wizard__meta">
             <div>
@@ -578,22 +584,8 @@ export function McpOauthWizard({
               </div>
             ) : null}
           </dl>
-          <p className="ext-field-hint">{tr("mcpModal.oauth.noCliHelper")}</p>
-        </div>
-      ) : null}
-
-      {state.step === "auth" ? (
-        <div className="mcp-oauth-wizard__panel">
-          <p className="app-dialog__msg">
-            {hasUrl
-              ? tr("mcpOauth.wizard.authLeadUrl")
-              : tr("mcpOauth.wizard.authLeadTui")}
-          </p>
           {hasUrl && state.authUrl ? (
-            <p
-              className="mcp-modal__oauth-url"
-              title={state.authUrl}
-            >
+            <p className="mcp-modal__oauth-url" title={state.authUrl}>
               <span className="mcp-modal__oauth-url-label">
                 {tr("mcpModal.oauth.urlLabel")}
               </span>{" "}
@@ -612,29 +604,28 @@ export function McpOauthWizard({
               {tr("mcpOauth.wizard.urlOpened")}
             </p>
           ) : null}
-          <ol className="ext-mcp-auth-steps">
-            <li>{tr("mcpModal.oauth.stepTui")}</li>
-            <li>{tr("mcpModal.oauth.stepBrowser")}</li>
-            {!hasUrl ? (
-              <li>{tr("ext.mcp.auth.stepReauth")}</li>
-            ) : null}
-          </ol>
-          <p className="ext-field-hint">{tr("mcpModal.oauth.noCliHelper")}</p>
+          <p className="ext-field-hint">{tr("mcpModal.oauth.stepBrowser")}</p>
+          {!hasUrl ? (
+            <p className="ext-field-hint">{tr("mcpModal.oauth.stepTui")}</p>
+          ) : null}
         </div>
-      ) : null}
+      )}
 
       {state.step === "waiting" ? (
         <div className="mcp-oauth-wizard__panel">
           <p className="app-dialog__msg">
-            {tr("mcpOauth.wizard.waitingLead")}
+            {tr("mcpOauth.wizard.waitingLeadBrowser")}
           </p>
-          <ol className="ext-mcp-auth-steps">
-            <li>{tr("mcpModal.oauth.stepDoctor")}</li>
-            <li>{tr("ext.mcp.auth.stepDoctor")}</li>
-          </ol>
           <p className="ext-field-hint">
             {tr("mcpOauth.wizard.waitingHint")}
           </p>
+          {state.authUrl ? (
+            <p className="mcp-modal__oauth-url" title={state.authUrl}>
+              <code className="mcp-modal__oauth-url-value">
+                {state.authUrl}
+              </code>
+            </p>
+          ) : null}
         </div>
       ) : null}
 
