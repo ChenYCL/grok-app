@@ -58,7 +58,7 @@ export const zhTWExtensions = {
   "mcpModal.oauth.retry": "重試 OAuth",
   "mcpModal.oauth.authorizeTitle": "授權 MCP · {name}",
   "mcpModal.oauth.retryTitle": "重試 MCP OAuth · {name}",
-  "mcpModal.oauth.authorizeLead": "診斷顯示該 MCP 伺服器需要 OAuth。完成提供方登入後，請重新執行診斷。",
+  "mcpModal.oauth.authorizeLead": "將開啟瀏覽器完成 ChatCut / MCP 登入。完成後 App 會自動接收回調並儲存權杖，再重新診斷。",
   "mcpModal.oauth.retryLead": "診斷顯示 OAuth 憑證已過期或被拒絕。請向提供方重新登入，然後再執行診斷。",
   "mcpModal.oauth.openUrl": "開啟授權 URL",
   "mcpModal.oauth.urlLabel": "授權 URL",
