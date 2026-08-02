@@ -802,18 +802,75 @@ pub(super) fn is_uuid_str(s: &str) -> bool {
     true
 }
 
-/// First absolute media filesystem path found in free text (MCP / markdown).
-/// Prefer backtick-wrapped paths, then bare absolute paths ending in media ext.
+/// Normalize a media path/URL from MCP / ChatCut tool text.
+/// - Protocol-relative `//host/…` → `https://host/…` (S3 thumbnails)
+/// - Angle-bracket placeholders (`/<frame-name>.jpg`) → reject
+/// - Collapse `//` only inside local absolute paths
+pub(super) fn normalize_media_ref(path: &str) -> Option<String> {
+    let t = path.trim();
+    if t.is_empty() {
+        return None;
+    }
+    if t.contains('<') || t.contains('>') || t.contains('{') || t.contains('}') {
+        return None;
+    }
+    // Protocol-relative remote URL (not /// weird absolute).
+    if t.starts_with("//") && !t.starts_with("///") {
+        let host = t.trim_start_matches('/').split('/').next().unwrap_or("");
+        if host.contains('.') || host.eq_ignore_ascii_case("localhost") {
+            return Some(format!("https:{t}"));
+        }
+        return None;
+    }
+    if t.starts_with("https://") || t.starts_with("http://") {
+        return Some(t.to_string());
+    }
+    if t.starts_with('/') {
+        // Local absolute: collapse accidental double slashes (…/T//chatcut-…).
+        let collapsed = t.split('/').filter(|s| !s.is_empty()).collect::<Vec<_>>().join("/");
+        return Some(format!("/{collapsed}"));
+    }
+    // Windows absolute
+    if t.len() > 3 && t.as_bytes().get(1) == Some(&b':') {
+        return Some(t.to_string());
+    }
+    None
+}
+
+/// True for local filesystem media paths (not remote http(s) / protocol-relative).
+pub(super) fn is_local_media_fs_path(path: &str) -> bool {
+    let Some(n) = normalize_media_ref(path) else {
+        return false;
+    };
+    if n.starts_with("http://") || n.starts_with("https://") {
+        return false;
+    }
+    is_media_fs_path(&n)
+}
+
+/// First media ref found in free text (MCP / markdown).
+/// Prefers remote https media URLs, then local absolute media paths.
 pub(super) fn first_media_path_in_text(text: &str) -> Option<String> {
-    // ` /abs/path/to/file.jpg `
+    // Explicit https://…media
+    for token in text.split_whitespace() {
+        let t = token.trim_matches(|c: char| matches!(c, '`' | '"' | '\'' | ')' | ']' | '(' | '['));
+        if let Some(n) = normalize_media_ref(t) {
+            if (n.starts_with("http://") || n.starts_with("https://")) && is_media_fs_path(&n) {
+                return Some(n);
+            }
+        }
+    }
+    // ` /abs/path/to/file.jpg ` or `//cdn/…`
     for part in text.split('`') {
         let p = part.trim();
-        if p.starts_with('/') && is_media_fs_path(p) {
-            return Some(p.to_string());
-        }
-        // Windows-ish absolute (rare in macOS logs but harmless)
-        if p.len() > 3 && p.as_bytes().get(1) == Some(&b':') && is_media_fs_path(p) {
-            return Some(p.to_string());
+        if let Some(n) = normalize_media_ref(p) {
+            if is_media_fs_path(&n) {
+                // Prefer remote URLs and real local paths; skip non-media.
+                if n.starts_with("http://") || n.starts_with("https://") || is_local_media_fs_path(&n)
+                {
+                    return Some(n);
+                }
+            }
         }
     }
     // Bare absolute path token (stop at whitespace / quote / paren / markdown)
@@ -831,8 +888,13 @@ pub(super) fn first_media_path_in_text(text: &str) -> Option<String> {
             if end || i + ch.len_utf8() >= text.len() {
                 let end_i = if end { i } else { text.len() };
                 let candidate = text[s..end_i].trim_end_matches(['.', ',', ';', '。', '，']);
-                if is_media_fs_path(candidate) {
-                    return Some(candidate.to_string());
+                if let Some(n) = normalize_media_ref(candidate) {
+                    if is_local_media_fs_path(&n) || {
+                        (n.starts_with("http://") || n.starts_with("https://"))
+                            && is_media_fs_path(&n)
+                    } {
+                        return Some(n);
+                    }
                 }
                 start = None;
             }
@@ -841,16 +903,27 @@ pub(super) fn first_media_path_in_text(text: &str) -> Option<String> {
     None
 }
 
-/// Pull absolute media path from ACP tool_call / tool_call_update payload
-/// (image_gen, image_edit, image_to_video, reference_to_video, MCP official-aux, …).
+/// Pull media path/URL from ACP tool_call / tool_call_update payload
+/// (image_gen, image_edit, image_to_video, reference_to_video, MCP / ChatCut, …).
+/// Returns normalized local path or https URL (never protocol-relative / placeholders).
 pub(super) fn extract_generated_media_path(raw: &serde_json::Value) -> Option<String> {
+    let accept = |s: &str| -> Option<String> {
+        let n = normalize_media_ref(s)?;
+        if is_media_fs_path(&n) {
+            Some(n)
+        } else {
+            None
+        }
+    };
     // ImageGen / ImageEdit / video tools rawOutput
     if let Some(path) = raw
         .pointer("/rawOutput/path")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
     {
-        return Some(path.to_string());
+        if let Some(n) = accept(path) {
+            return Some(n);
+        }
     }
     // Nested under toolCall (some hosts wrap)
     if let Some(path) = raw
@@ -858,7 +931,9 @@ pub(super) fn extract_generated_media_path(raw: &serde_json::Value) -> Option<St
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
     {
-        return Some(path.to_string());
+        if let Some(n) = accept(path) {
+            return Some(n);
+        }
     }
     // MCP use_tool result: rawOutput.output.OkayOutput | output (string)
     for key in [
@@ -884,8 +959,16 @@ pub(super) fn extract_generated_media_path(raw: &serde_json::Value) -> Option<St
             if let Some(t) = text {
                 if let Ok(j) = serde_json::from_str::<serde_json::Value>(t) {
                     if let Some(path) = j.get("path").and_then(|v| v.as_str()) {
-                        if !path.is_empty() && is_media_fs_path(path) {
-                            return Some(path.to_string());
+                        if let Some(n) = accept(path) {
+                            return Some(n);
+                        }
+                    }
+                    // ChatCut: editorUrl / thumbnail / browserHandoff.image
+                    for key in ["thumbnail", "thumbnailUrl", "imageUrl", "url", "editorUrl"] {
+                        if let Some(u) = j.get(key).and_then(|v| v.as_str()) {
+                            if let Some(n) = accept(u) {
+                                return Some(n);
+                            }
                         }
                     }
                 }
@@ -921,15 +1004,44 @@ pub(super) fn is_media_fs_path(path: &str) -> bool {
 }
 
 pub(super) fn attachment_from_path(path: &str) -> MessageAttachmentStored {
-    let name = std::path::Path::new(path)
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.to_string());
+    // Normalize ChatCut protocol-relative / placeholder / double-slash paths.
+    let path = normalize_media_ref(path).unwrap_or_else(|| path.to_string());
+    let name = if path.starts_with("http://") || path.starts_with("https://") {
+        path.rsplit('/').next().unwrap_or(path.as_str()).to_string()
+    } else {
+        std::path::Path::new(&path)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone())
+    };
+    // Percent-decode display name when possible (ChatCut S3 keys).
+    let name = urlencoding_soft_decode(&name);
     MessageAttachmentStored {
-        path: path.to_string(),
+        path,
         name,
         is_dir: false,
     }
+}
+
+fn urlencoding_soft_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(v) = u8::from_str_radix(
+                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
+                16,
+            ) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Append sole-line `@/abs/path` refs for journal dual-write (idempotent).

@@ -393,6 +393,7 @@ impl SessionManager {
                 let (before_snip, after_snip) = extract_tool_content_snippets(&raw);
 
                 if let Some(path) = media_path.as_ref() {
+                    // Local file or remote https media (ChatCut S3) — never protocol-relative.
                     let att = attachment_from_path(path);
                     let (app_sid, mid) = {
                         let mut guard = self.inner.lock();
@@ -418,13 +419,13 @@ impl SessionManager {
                             "path": att.path,
                             "name": att.name,
                             "toolCallId": tool_call_id,
-                            "kind": if is_video_fs_path(path) { "video" } else { "image" },
+                            "kind": if is_video_fs_path(&att.path) { "video" } else { "image" },
                         }),
                     );
-                } else if let Some(path) = path_out
-                    .as_ref()
-                    .filter(|p| is_media_fs_path(p) && std::path::Path::new(p).is_file())
-                {
+                } else if let Some(path) = path_out.as_ref().filter(|p| {
+                    let n = normalize_media_ref(p).unwrap_or_else(|| (*p).to_string());
+                    is_local_media_fs_path(&n) && std::path::Path::new(&n).is_file()
+                }) {
                     // Write / read / copy of workspace media: persist as attachment so
                     // history reload can render bare basenames after session switch.
                     let att = attachment_from_path(path);

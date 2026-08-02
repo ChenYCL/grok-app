@@ -45,7 +45,43 @@ export function isViewableSrc(src: string): boolean {
   );
 }
 
+/**
+ * ChatCut / MCP often emit protocol-relative media URLs (`//bucket.s3…/x.jpg`)
+ * or angle-bracket placeholders (`/<frame-name>.jpg`). Those must not hit the
+ * loopback media server as local paths.
+ *
+ * Returns a normalized viewable URL, a cleaned local path, or null to skip.
+ */
+export function normalizeMediaRef(pathOrUrl: string): string | null {
+  const raw = (pathOrUrl ?? "").trim();
+  if (!raw) return null;
+  // Template placeholders from tool schemas (not real files).
+  if (raw.includes("<") || raw.includes(">") || raw.includes("{") || raw.includes("}")) {
+    return null;
+  }
+  // Protocol-relative URL → https (ChatCut S3 thumbnails, CDN frames).
+  // Distinguish from "///abs" oddities: //host/… has a hostname segment.
+  if (raw.startsWith("//") && !raw.startsWith("///")) {
+    const rest = raw.slice(2);
+    const host = rest.split("/")[0] ?? "";
+    // Require a dot (domain) or known host shape so //relative/local is not forced https.
+    if (host.includes(".") || host.includes("localhost") || host.includes("amazonaws")) {
+      return `https:${raw}`;
+    }
+  }
+  if (isViewableSrc(raw)) return raw;
+  // Collapse accidental double slashes in absolute local paths only
+  // (e.g. /var/folders/…/T//chatcut-frames/…), not protocol-relative.
+  if (raw.startsWith("/") && !raw.startsWith("//")) {
+    return raw.replace(/\/{2,}/g, "/");
+  }
+  if (/^[A-Za-z]:[\\/]/.test(raw)) return raw;
+  return raw;
+}
+
 function looksAbsoluteFsPath(raw: string): boolean {
+  // Protocol-relative //host is NOT a filesystem path.
+  if (raw.startsWith("//")) return false;
   return raw.startsWith("/") || /^[A-Za-z]:[\\/]/.test(raw);
 }
 
@@ -107,49 +143,63 @@ export async function ensureMediaEndpoint(): Promise<MediaServerEndpoint | null>
  * Returns null when the path cannot be turned into a viewable src.
  */
 export function resolveImageSrcSync(pathOrUrl: string): string | null {
-  const raw = pathOrUrl.trim();
-  if (!raw) return null;
-  if (isViewableSrc(raw)) return raw;
+  const input = pathOrUrl.trim();
+  if (!input) return null;
 
-  if (resolveCache.has(raw)) {
-    return resolveCache.get(raw) ?? null;
+  const normalized = normalizeMediaRef(input);
+  if (normalized == null) {
+    // Placeholder / rejected ref — cache under original key so we do not retry.
+    resolveCache.set(input, null);
+    return null;
+  }
+  if (isViewableSrc(normalized)) {
+    resolveCache.set(input, normalized);
+    return normalized;
+  }
+
+  if (resolveCache.has(input)) {
+    return resolveCache.get(input) ?? null;
   }
 
   // Ellipsis-truncated paths need host smart-open first.
-  if (raw.startsWith("...") || raw.startsWith("…") || raw.includes("/.../")) {
-    resolveCache.set(raw, null);
+  if (
+    normalized.startsWith("...") ||
+    normalized.startsWith("…") ||
+    normalized.includes("/.../")
+  ) {
+    resolveCache.set(input, null);
     return null;
   }
 
-  if (!looksAbsoluteFsPath(raw)) {
-    resolveCache.set(raw, null);
+  if (!looksAbsoluteFsPath(normalized)) {
+    resolveCache.set(input, null);
     return null;
   }
 
   // Preferred: loopback HTTP (token + path_scope on Host).
-  const httpUrl = localPathToMediaHttpUrl(raw);
+  const httpUrl = localPathToMediaHttpUrl(normalized);
   if (httpUrl) {
-    resolveCache.set(raw, httpUrl);
+    resolveCache.set(input, httpUrl);
     return httpUrl;
   }
 
   if (!isTauri()) {
-    resolveCache.set(raw, null);
+    resolveCache.set(input, null);
     return null;
   }
 
   // Cold-start fallback: custom media:// until ensureMediaEndpoint() finishes.
   try {
-    const url = convertFileSrc(raw, "media");
-    resolveCache.set(raw, url);
+    const url = convertFileSrc(normalized, "media");
+    resolveCache.set(input, url);
     return url;
   } catch {
     try {
-      const url = convertFileSrc(raw);
-      resolveCache.set(raw, url);
+      const url = convertFileSrc(normalized);
+      resolveCache.set(input, url);
       return url;
     } catch {
-      resolveCache.set(raw, null);
+      resolveCache.set(input, null);
       return null;
     }
   }
@@ -164,8 +214,9 @@ export async function resolveImageSrc(
 ): Promise<string | null> {
   const raw = pathOrUrl.trim();
   if (!raw) return null;
-  if (isViewableSrc(raw)) return raw;
-  if (looksAbsoluteFsPath(raw) && isTauri()) {
+  const pre = normalizeMediaRef(raw);
+  if (pre && isViewableSrc(pre)) return pre;
+  if (pre && looksAbsoluteFsPath(pre) && isTauri()) {
     await ensureMediaEndpoint();
     // Drop stale entries from before endpoint was ready:
     // - null (hard fail while server was down)
