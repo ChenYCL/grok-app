@@ -32,10 +32,12 @@ import { IconChevronRight } from "@/components/icons";
 
 export type ContextMenuItem = {
   id?: string;
-  label: ReactNode;
+  label?: ReactNode;
   icon?: ReactNode;
   danger?: boolean;
   disabled?: boolean;
+  /** Horizontal rule between groups (no label / action). */
+  separator?: boolean;
   /** Leaf action. Optional when `children` is set (submenu parent). */
   onClick?: () => void;
   /** Flyout submenu items. When set, row acts as a parent (no close on click). */
@@ -78,7 +80,8 @@ export function clampContextMenuPos(
 }
 
 const FLYOUT_GAP = 4;
-const FLYOUT_MIN_W = 160;
+/** Positioning estimate only — real width comes from content (max-content). */
+const FLYOUT_EST_W = 160;
 const FLYOUT_EST_H = 200;
 
 function computeFlyoutStyle(
@@ -108,7 +111,8 @@ function computeFlyoutStyle(
     position: "fixed",
     left,
     top,
-    minWidth: FLYOUT_MIN_W,
+    width: "max-content",
+    minWidth: 0,
     zIndex: 13001,
   };
 }
@@ -131,7 +135,7 @@ function ContextMenuFlyout({
   const flyoutRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<CSSProperties>(() => {
     const rect = anchorEl.getBoundingClientRect();
-    return computeFlyoutStyle(rect, FLYOUT_MIN_W, FLYOUT_EST_H);
+    return computeFlyoutStyle(rect, FLYOUT_EST_W, FLYOUT_EST_H);
   });
 
   const updatePos = useCallback(() => {
@@ -141,7 +145,7 @@ function ContextMenuFlyout({
     setStyle(
       computeFlyoutStyle(
         rect,
-        Math.ceil(fr.width) || FLYOUT_MIN_W,
+        Math.ceil(fr.width) || FLYOUT_EST_W,
         Math.ceil(fr.height) || FLYOUT_EST_H,
       ),
     );
@@ -210,7 +214,7 @@ export function ContextMenu({
   onClose,
   extra,
   className,
-  estimatedWidth = 200,
+  estimatedWidth = 180,
   estimatedHeight = 240,
 }: ContextMenuProps) {
   const menuId = useId();
@@ -324,6 +328,15 @@ export function ContextMenu({
       >
         {visibleItems.map((item, i) => {
           const id = item.id ?? `ctx-item-${i}`;
+          if (item.separator) {
+            return (
+              <div
+                key={id}
+                className="context-menu__sep open-loc-menu__sep"
+                role="separator"
+              />
+            );
+          }
           const hasChildren = (item.children?.length ?? 0) > 0;
           const isSubOpen = openSubId === id;
 

@@ -37,18 +37,25 @@ export const WINDOW_CONTROLS_INSET = 138;
 export const ASIDE_CHROME_CONTENT_MIN = 280;
 
 /**
- * Absolute floor for the right pane. Still below chrome-safe when window
- * controls are present — use {@link asideChromeSafeMin} for the real floor.
+ * Absolute floor for the right pane (Side Workbench min ≥ 400px per PLAN).
+ * Still below chrome-safe when window controls are present — use
+ * {@link asideChromeSafeMin} for the real floor.
  */
-export const ASIDE_WIDTH_MIN = 320;
+export const ASIDE_WIDTH_MIN = 400;
 
+/**
+ * Historical soft comfort width for the right pane. **Not a hard max** —
+ * aside may grow with the window as long as chat keeps
+ * {@link MAIN_CHAT_MIN_WIDTH}. Prefer {@link asideWidthMax} for the real cap.
+ */
 export const ASIDE_WIDTH_MAX = 720;
 
 /**
  * Minimum width for the center chat column. Aside drag / auto-size must not
  * squeeze the conversation below this (composer + bubbles become unreadable).
+ * Expanded side-overlay mode does not use this split (aside covers chat).
  */
-export const MAIN_CHAT_MIN_WIDTH = 400;
+export const MAIN_CHAT_MIN_WIDTH = 360;
 
 /**
  * Leave at least this much for the main chat column when auto-sizing the aside.
@@ -190,32 +197,44 @@ export type AsideClampOpts = {
 /**
  * Chrome-safe minimum: tabs + action icons must not collide with window
  * controls. Platform without custom chrome uses `windowControlsInset: 0`.
+ * Not capped by a fixed aside max — only floor is {@link ASIDE_WIDTH_MIN}.
  */
 export function asideChromeSafeMin(opts?: AsideClampOpts): number {
   const inset = Math.max(0, opts?.windowControlsInset ?? 0);
   // Extra 40px so an active tab label remains readable beside actions.
   const min = ASIDE_CHROME_CONTENT_MIN + inset + 40;
-  return Math.min(ASIDE_WIDTH_MAX, Math.max(ASIDE_WIDTH_MIN, Math.round(min)));
+  return Math.max(ASIDE_WIDTH_MIN, Math.round(min));
 }
 
+/**
+ * Upper bound for the right pane when chat is still visible beside it.
+ * Only constraint: leave ≥ {@link MAIN_CHAT_MIN_WIDTH} for the center column
+ * (plus open left sidebar). No fixed 720px (or similar) hard max.
+ * When viewport is unknown, returns a large number so clamp only applies min.
+ * Expanded side-overlay does not use this (aside is full free area).
+ */
 export function asideWidthMax(opts?: AsideClampOpts): number {
-  let max = ASIDE_WIDTH_MAX;
   const vw = opts?.viewportWidth;
   if (typeof vw === "number" && Number.isFinite(vw) && vw > 0) {
-    const chromeMin = asideChromeSafeMin(opts);
     const sidebar = Math.max(0, opts?.sidebarOccupiedWidth ?? 0);
-    // Keep chat ≥ MAIN_CHAT_MIN_WIDTH after sidebar; never go below chrome min.
+    // Keep chat ≥ MAIN_CHAT_MIN_WIDTH after sidebar.
     const room = Math.floor(vw - sidebar - MAIN_CHAT_MIN_WIDTH);
-    max = Math.min(max, Math.max(chromeMin, room));
+    // Narrow windows: room may be below chrome min — still return room so
+    // clamp can prefer fitting over blowing past the chat floor.
+    return Math.max(0, room);
   }
-  return max;
+  // No viewport: do not invent a 720px ceiling.
+  return Number.MAX_SAFE_INTEGER;
 }
 
 export function clampAsideWidth(w: number, opts?: AsideClampOpts): number {
   if (!Number.isFinite(w)) return DEFAULT_LAYOUT.asideWidth;
   const min = asideChromeSafeMin(opts);
   const max = asideWidthMax(opts);
-  return Math.min(max, Math.max(min, Math.round(w)));
+  const raw = Math.round(w);
+  // Squeezed frame: prefer the chat floor (max) over forcing chrome min.
+  if (max < min) return Math.max(0, max);
+  return Math.min(max, Math.max(min, raw));
 }
 
 /**

@@ -314,6 +314,12 @@ const openFile = async (relativePath: string) => {
     const src = await resolvePreviewSrc(r);
     applyReadResult(id, r, src, relativePath);
   } catch (e) {
+    const msg = String(e || "");
+    if (/not a file/i.test(msg)) {
+      setTabs((prev) => prev.filter((t) => t.id !== id));
+      setActiveId((cur) => (cur === id ? null : cur));
+      return;
+    }
     setTabs((prev) =>
       prev.map((t) =>
         t.id === id
@@ -390,6 +396,13 @@ const openAbsoluteFile = useCallback(
       }
       applyReadResult(id, r, src, relKey);
     } catch (e) {
+      // Directory / non-file: drop the tab so the preview shows empty placeholder.
+      const msg = String(e || "");
+      if (/not a file/i.test(msg)) {
+        setTabs((prev) => prev.filter((t) => t.id !== id));
+        setActiveId((cur) => (cur === id ? null : cur));
+        return;
+      }
       setTabs((prev) =>
         prev.map((t) =>
           t.id === id

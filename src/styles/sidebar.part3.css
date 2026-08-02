@@ -165,8 +165,9 @@
 }
 
 .context-menu__label {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .context-menu__sub-chev {
@@ -273,7 +274,8 @@
 }
 
 .open-loc-menu__sep,
-.rp-open-menu__sep {
+.rp-open-menu__sep,
+.context-menu__sep {
   height: 1px;
   margin: var(--menu-sep-margin-y) var(--menu-sep-margin-x);
   background: var(--menu-border);
@@ -579,7 +581,10 @@
   right: 4px;
   top: calc(100% - 2px);
   z-index: 40;
-  min-width: 160px;
+  /* Content-sized; do not force a wide empty panel */
+  width: max-content;
+  min-width: 0;
+  max-width: var(--menu-max-width, 360px);
   margin: 0;
   list-style: none;
   display: flex;

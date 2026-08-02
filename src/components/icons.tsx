@@ -6,7 +6,9 @@
 import type { ComponentType } from "react";
 import {
   IconActivity as TbActivity,
+  IconAdjustmentsHorizontal as TbAdjustmentsHorizontal,
   IconAlertTriangle as TbAlertTriangle,
+  IconArrowsMaximize as TbArrowsMaximize,
   IconArchive as TbArchive,
   IconArrowBackUp as TbArrowBackUp,
   IconArrowLeft as TbArrowLeft,
@@ -17,7 +19,9 @@ import {
   IconBellOff as TbBellOff,
   IconBold as TbBold,
   IconBolt as TbBolt,
+  IconBrandGithub as TbBrandGithub,
   IconGitBranch as TbGitBranch,
+  IconGitCommit as TbGitCommit,
   IconBox as TbBox,
   IconBrush as TbBrush,
   IconCalendarTime as TbCalendarTime,
@@ -35,11 +39,13 @@ import {
   IconCircleDashed as TbCircleDashed,
   IconCopy as TbCopy,
   IconGridDots as TbGridDots,
+  IconGripVertical as TbGripVertical,
   IconDeviceDesktop as TbDeviceDesktop,
   IconDeviceMobile as TbDeviceMobile,
   IconDots as TbDots,
   IconCrop as TbCrop,
   IconEdit as TbEdit,
+  IconEye as TbEye,
   IconH1 as TbH1,
   IconH2 as TbH2,
   IconH3 as TbH3,
@@ -93,6 +99,7 @@ import {
   IconStrikethrough as TbStrikethrough,
   IconSun as TbSun,
   IconTarget as TbTarget,
+  IconTerminal2 as TbTerminal2,
   IconThumbDown as TbThumbDown,
   IconThumbUp as TbThumbUp,
   IconTool as TbTool,
@@ -265,6 +272,18 @@ export const IconPanel = wrap(TbLayoutSidebar);
 export const IconMenu = wrap(TbMenu2);
 /** Right files / context pane (Codex-style top bar). */
 export const IconPanelRight = wrap(TbLayoutSidebarRight);
+/** Environment info menu (env ··|· knobs). */
+export const IconEnv = wrap(TbAdjustmentsHorizontal);
+export const IconBrandGithub = wrap(TbBrandGithub);
+export const IconGitCommit = wrap(TbGitCommit);
+/** Expand side workbench into chat area (四角外扩). */
+export const IconSideExpand = wrap(TbArrowsMaximize);
+/** Floating composer toggle when side is expanded. */
+export const IconFloatComposer = wrap(TbMessage);
+/** Drag handle for the floating composer card. */
+export const IconDragHandle = wrap(TbGripVertical);
+/** Terminal tab. */
+export const IconTerminal = wrap(TbTerminal2);
 /** Open project in Finder / external app. */
 export const IconExternalLink = wrap(TbExternalLink);
 export const IconList = wrap(TbList);
@@ -297,6 +316,8 @@ export const IconThumbsUp = wrap(TbThumbUp);
 export const IconThumbsDown = wrap(TbThumbDown);
 export const IconRefresh = wrap(TbRefresh);
 export const IconCopy = wrap(TbCopy);
+/** View / preview (review tree row). */
+export const IconEye = wrap(TbEye);
 /** Connect phone / remote mirror. */
 export const IconDeviceMobile = wrap(TbDeviceMobile);
 export const IconExportMd = wrap(TbMarkdown);

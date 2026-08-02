@@ -238,6 +238,72 @@ fn git_probe_work_tree(project: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// `git -C <project> -c core.quotepath=false …` — keeps UTF-8 paths unescaped so
+/// Chinese / non-ASCII names don't arrive as `"\346\211…"`.
+fn git_in_project(project: &str) -> std::process::Command {
+    let mut cmd = crate::process_util::command("git");
+    cmd.args(["-C", project, "-c", "core.quotepath=false"]);
+    cmd
+}
+
+/// Decode git C-style quoted path (`"foo\346\211…"`) → UTF-8; strip stray quotes.
+fn decode_git_path(raw: &str) -> String {
+    let mut s = raw.trim().to_string();
+    if s.len() >= 2 {
+        let b = s.as_bytes();
+        if (b[0] == b'"' && b[b.len() - 1] == b'"')
+            || (b[0] == b'\'' && b[b.len() - 1] == b'\'')
+        {
+            s = s[1..s.len() - 1].to_string();
+        }
+    }
+    // Strip leftover edge quotes (partial corruption).
+    while s.starts_with('"') {
+        s = s[1..].to_string();
+    }
+    while s.ends_with('"') {
+        s.pop();
+    }
+    // C-style unescape: \nnn octal, \\, \", \n, \t, \r
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 1 < bytes.len() {
+            let n = bytes[i + 1];
+            if (b'0'..=b'7').contains(&n) {
+                let mut val: u32 = 0;
+                let mut j = i + 1;
+                let mut count = 0;
+                while j < bytes.len() && count < 3 && (b'0'..=b'7').contains(&bytes[j]) {
+                    val = (val << 3) + (bytes[j] - b'0') as u32;
+                    j += 1;
+                    count += 1;
+                }
+                out.push(val as u8);
+                i = j;
+                continue;
+            }
+            match n {
+                b'n' => out.push(b'\n'),
+                b't' => out.push(b'\t'),
+                b'r' => out.push(b'\r'),
+                b'"' | b'\\' | b'\'' => out.push(n),
+                _ => {
+                    out.push(b'\\');
+                    out.push(n);
+                }
+            }
+            i += 2;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    let decoded = String::from_utf8_lossy(&out).into_owned();
+    decoded.replace('\\', "/")
+}
+
 /// One row from `git status --porcelain=v1` for the Workspace Changes section.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -521,6 +587,463 @@ pub async fn git_status(project_path: String) -> Result<GitStatusResult, String>
         available: true,
         files,
         branch,
+        reason: None,
+    })
+}
+
+// ── Review panel bulk bundle (one IPC for all workspace diffs) ──────────────
+
+/// One file in the review stack: stats + optional unified patch body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitReviewFile {
+    pub path: String,
+    pub absolute_path: String,
+    pub name: String,
+    pub kind: String,
+    pub status: String,
+    pub added: i32,
+    pub removed: i32,
+    /// Per-file unified diff (may be truncated). None for binary / empty.
+    pub diff: Option<String>,
+    pub binary: bool,
+}
+
+/// Bulk workspace review payload — avoids N× `git_file_diff` process spawns.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitReviewBundleResult {
+    pub available: bool,
+    pub branch: Option<String>,
+    /// Short upstream ref when set (e.g. `origin/main`).
+    pub upstream: Option<String>,
+    pub files: Vec<GitReviewFile>,
+    pub total_added: i32,
+    pub total_removed: i32,
+    pub reason: Option<String>,
+}
+
+/// Cap total unified patch text returned to the UI (chars).
+const REVIEW_DIFF_CHAR_CAP: usize = 1_500_000;
+/// Cap per-file patch text.
+const REVIEW_FILE_DIFF_CHAR_CAP: usize = 250_000;
+
+/// Split multi-file `git diff` output into (path, patch) pairs.
+fn split_unified_multi_diff(raw: &str) -> Vec<(String, String)> {
+    let text = raw.replace("\r\n", "\n").replace('\r', "\n");
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut cur_path: Option<String> = None;
+    let mut cur_buf = String::new();
+
+    let flush = |path: &mut Option<String>, buf: &mut String, acc: &mut Vec<(String, String)>| {
+        if let Some(p) = path.take() {
+            if !buf.is_empty() {
+                acc.push((p, std::mem::take(buf)));
+            } else {
+                buf.clear();
+            }
+        } else {
+            buf.clear();
+        }
+    };
+
+    for line in text.split('\n') {
+        if let Some(rest) = line.strip_prefix("diff --git ") {
+            flush(&mut cur_path, &mut cur_buf, &mut out);
+            // `a/foo b/foo` or with quotes — prefer b/ path.
+            let path = parse_diff_git_path(rest);
+            cur_path = path;
+            cur_buf.push_str(line);
+            cur_buf.push('\n');
+            continue;
+        }
+        if cur_path.is_none() {
+            // preamble without header — ignore
+            continue;
+        }
+        cur_buf.push_str(line);
+        cur_buf.push('\n');
+    }
+    flush(&mut cur_path, &mut cur_buf, &mut out);
+    out
+}
+
+fn parse_diff_git_path(rest: &str) -> Option<String> {
+    // Formats: `a/path b/path`, `"a/path with space" "b/path with space"`,
+    // and C-style quoted non-ASCII: `"a/docs/Agent\346\211…"`
+    let rest = rest.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    // Prefer the b/ side (second path). Parse quoted tokens so spaces inside
+    // paths don't split, then decode_git_path for octal escapes.
+    let parts: Vec<String> = if rest.contains('"') {
+        let mut v = Vec::new();
+        let mut cur = String::new();
+        let mut in_q = false;
+        for ch in rest.chars() {
+            if ch == '"' {
+                in_q = !in_q;
+                // Keep the quote chars out; decode_git_path handles unquoted body.
+                continue;
+            }
+            if ch == ' ' && !in_q {
+                if !cur.is_empty() {
+                    v.push(std::mem::take(&mut cur));
+                }
+                continue;
+            }
+            cur.push(ch);
+        }
+        if !cur.is_empty() {
+            v.push(cur);
+        }
+        v
+    } else {
+        // Unquoted — only safe when path has no spaces (git default).
+        rest.split_whitespace()
+            .map(|s| s.to_string())
+            .collect()
+    };
+    parts
+        .last()
+        .map(|s| strip_diff_ab_prefix(s))
+        .map(|s| decode_git_path(&s))
+        .filter(|s| !s.is_empty())
+}
+
+fn strip_diff_ab_prefix(s: &str) -> String {
+    let t = s.trim().trim_matches('"');
+    if let Some(r) = t.strip_prefix("a/").or_else(|| t.strip_prefix("b/")) {
+        r.to_string()
+    } else {
+        t.to_string()
+    }
+}
+
+fn count_diff_plus_minus(patch: &str) -> (i32, i32) {
+    let mut added = 0i32;
+    let mut removed = 0i32;
+    for line in patch.split('\n') {
+        if line.starts_with("+++") || line.starts_with("---") || line.starts_with("diff ") {
+            continue;
+        }
+        if line.starts_with('+') {
+            added += 1;
+        } else if line.starts_with('-') {
+            removed += 1;
+        }
+    }
+    (added, removed)
+}
+
+/// One soft-fail bulk load for Review tab: status + numstat + full HEAD diff.
+#[tauri::command]
+pub async fn git_review_bundle(project_path: String) -> Result<GitReviewBundleResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Ok(GitReviewBundleResult {
+            available: false,
+            branch: None,
+            upstream: None,
+            files: vec![],
+            total_added: 0,
+            total_removed: 0,
+            reason: Some("empty path".into()),
+        });
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Ok(GitReviewBundleResult {
+            available: false,
+            branch: None,
+            upstream: None,
+            files: vec![],
+            total_added: 0,
+            total_removed: 0,
+            reason: Some("project not a directory".into()),
+        });
+    }
+    if let Err(reason) = git_probe_work_tree(&project) {
+        return Ok(GitReviewBundleResult {
+            available: false,
+            branch: None,
+            upstream: None,
+            files: vec![],
+            total_added: 0,
+            total_removed: 0,
+            reason: Some(reason),
+        });
+    }
+
+    let branch = git_in_project(&project)
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                let b = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if b.is_empty() || b == "HEAD" {
+                    None
+                } else {
+                    Some(b)
+                }
+            } else {
+                None
+            }
+        });
+
+    let upstream = git_in_project(&project)
+        .args([
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                let u = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if u.is_empty() {
+                    None
+                } else {
+                    Some(u)
+                }
+            } else {
+                None
+            }
+        });
+
+    // Status for kinds / untracked list
+    let status_out = git_in_project(&project)
+        .args([
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=normal",
+            "-z",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let mut status_by_path: std::collections::HashMap<String, (String, String, char, char)> =
+        std::collections::HashMap::new();
+    // path -> (status XY, kind, x, y)
+    if status_out.status.success() {
+        let raw = status_out.stdout;
+        let mut i = 0;
+        while i < raw.len() {
+            let end = raw[i..]
+                .iter()
+                .position(|&b| b == 0)
+                .map(|p| i + p)
+                .unwrap_or(raw.len());
+            if end == i {
+                break;
+            }
+            let chunk = String::from_utf8_lossy(&raw[i..end]).into_owned();
+            i = end + 1;
+            if chunk.len() < 3 {
+                continue;
+            }
+            let x = chunk.as_bytes()[0] as char;
+            let y = chunk.as_bytes()[1] as char;
+            let rest = chunk[2..].trim_start();
+            let is_rename = x == 'R' || x == 'C' || y == 'R' || y == 'C';
+            let path = if is_rename && i < raw.len() {
+                let end2 = raw[i..]
+                    .iter()
+                    .position(|&b| b == 0)
+                    .map(|p| i + p)
+                    .unwrap_or(raw.len());
+                let newp = decode_git_path(&String::from_utf8_lossy(&raw[i..end2]));
+                i = end2 + 1;
+                newp
+            } else {
+                decode_git_path(rest)
+            };
+            if path.is_empty() {
+                continue;
+            }
+            let kind = git_status_kind(x, y).to_string();
+            status_by_path.insert(path, (format!("{x}{y}"), kind, x, y));
+        }
+    }
+
+    // Numstat for +/− (tracked vs HEAD)
+    let mut stats: std::collections::HashMap<String, (i32, i32, bool)> =
+        std::collections::HashMap::new();
+    if let Ok(ns) = git_in_project(&project)
+        .args(["diff", "--numstat", "HEAD"])
+        .output()
+    {
+        if ns.status.success() {
+            for line in String::from_utf8_lossy(&ns.stdout).split('\n') {
+                let line = line.trim_end();
+                if line.is_empty() {
+                    continue;
+                }
+                let mut parts = line.split('\t');
+                let a = parts.next().unwrap_or("");
+                let r = parts.next().unwrap_or("");
+                let p = decode_git_path(parts.next().unwrap_or(""));
+                if p.is_empty() {
+                    continue;
+                }
+                if a == "-" || r == "-" {
+                    stats.insert(p, (0, 0, true));
+                } else {
+                    let added = a.parse::<i32>().unwrap_or(0);
+                    let removed = r.parse::<i32>().unwrap_or(0);
+                    stats.insert(p, (added, removed, false));
+                }
+            }
+        }
+    }
+
+    // Full working tree + index vs HEAD patch (single process)
+    let mut patches: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    if let Ok(diff_out) = git_in_project(&project)
+        .args(["diff", "--no-color", "--no-ext-diff", "HEAD"])
+        .output()
+    {
+        if diff_out.status.success() {
+            let text = String::from_utf8_lossy(&diff_out.stdout);
+            let capped: String = text.chars().take(REVIEW_DIFF_CHAR_CAP).collect();
+            for (path, patch) in split_unified_multi_diff(&capped) {
+                let clean = decode_git_path(&path);
+                if clean.is_empty() {
+                    continue;
+                }
+                let body: String = patch.chars().take(REVIEW_FILE_DIFF_CHAR_CAP).collect();
+                patches.insert(clean, body);
+            }
+        }
+    }
+
+    // Build file list: union of status + patches + stats
+    let mut paths: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for p in status_by_path.keys() {
+        paths.insert(p.clone());
+    }
+    for p in patches.keys() {
+        paths.insert(p.clone());
+    }
+    for p in stats.keys() {
+        paths.insert(p.clone());
+    }
+
+    let mut files: Vec<GitReviewFile> = Vec::new();
+    let mut total_added = 0i32;
+    let mut total_removed = 0i32;
+
+    for path in paths {
+        if path.is_empty() {
+            continue;
+        }
+        let (status, kind, _x, _y) = status_by_path
+            .get(&path)
+            .cloned()
+            .unwrap_or_else(|| (" M".into(), "modified".into(), ' ', 'M'));
+        let (mut added, mut removed, binary_stat) =
+            stats.get(&path).copied().unwrap_or((0, 0, false));
+        let patch = patches.get(&path).cloned();
+        let binary = binary_stat
+            || patch
+                .as_ref()
+                .map(|p| p.contains("Binary files ") || p.contains("GIT binary patch"))
+                .unwrap_or(false);
+
+        if !binary {
+            if let Some(ref p) = patch {
+                if added == 0 && removed == 0 {
+                    let (a, r) = count_diff_plus_minus(p);
+                    added = a;
+                    removed = r;
+                }
+            }
+        }
+
+        // Untracked: no HEAD diff — synthesize add-only from working tree when small text
+        let mut final_patch = if binary { None } else { patch };
+        if kind == "untracked" && final_patch.is_none() && !binary {
+            let abs = join_project_rel(&project, &path);
+            if let Ok(meta) = std::fs::metadata(&abs) {
+                if meta.is_file() && meta.len() <= 128 * 1024 {
+                    if let Ok(bytes) = std::fs::read(&abs) {
+                        // Skip obvious binary
+                        let is_bin = bytes.iter().take(8000).any(|&b| b == 0);
+                        if !is_bin {
+                            if let Ok(content) = String::from_utf8(bytes) {
+                                let mut synth = format!("diff --git a/{path} b/{path}\n");
+                                synth.push_str("new file mode 100644\n");
+                                synth.push_str("--- /dev/null\n");
+                                synth.push_str(&format!("+++ b/{path}\n"));
+                                let lines: Vec<&str> = content.split('\n').collect();
+                                let n = lines.len() as i32;
+                                synth.push_str(&format!("@@ -0,0 +1,{n} @@\n"));
+                                for l in &lines {
+                                    synth.push('+');
+                                    synth.push_str(l);
+                                    synth.push('\n');
+                                }
+                                added = n;
+                                removed = 0;
+                                final_patch = Some(
+                                    synth.chars().take(REVIEW_FILE_DIFF_CHAR_CAP).collect(),
+                                );
+                            }
+                        } else {
+                            // binary untracked
+                            files.push(GitReviewFile {
+                                path: path.clone(),
+                                absolute_path: abs,
+                                name: git_entry_basename(&path),
+                                kind,
+                                status,
+                                added: 0,
+                                removed: 0,
+                                diff: None,
+                                binary: true,
+                            });
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        total_added += added;
+        total_removed += removed;
+        files.push(GitReviewFile {
+            path: path.clone(),
+            absolute_path: join_project_rel(&project, &path),
+            name: git_entry_basename(&path),
+            kind,
+            status,
+            added,
+            removed,
+            diff: final_patch,
+            binary,
+        });
+    }
+
+    // Cap file count for UI
+    if files.len() > 2000 {
+        files.truncate(2000);
+    }
+
+    Ok(GitReviewBundleResult {
+        available: true,
+        branch,
+        upstream,
+        files,
+        total_added,
+        total_removed,
         reason: None,
     })
 }

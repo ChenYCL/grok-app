@@ -89,6 +89,34 @@ export async function gitFileDiff(projectPath: string, path: string) {
   return invoke<GitFileDiffResult>("git_file_diff", { projectPath, path });
 }
 
+/** One file in the bulk review bundle (side Review tab). */
+export interface GitReviewFile {
+  path: string;
+  absolutePath: string;
+  name: string;
+  kind: string;
+  status: string;
+  added: number;
+  removed: number;
+  diff?: string | null;
+  binary: boolean;
+}
+
+/** Soft-fail bulk workspace diff for Review — one IPC instead of N× git_file_diff. */
+export interface GitReviewBundleResult {
+  available: boolean;
+  branch?: string | null;
+  upstream?: string | null;
+  files: GitReviewFile[];
+  totalAdded: number;
+  totalRemoved: number;
+  reason?: string | null;
+}
+
+export async function gitReviewBundle(projectPath: string) {
+  return invoke<GitReviewBundleResult>("git_review_bundle", { projectPath });
+}
+
 /** One workspace file from `git status --porcelain` (Changes → Workspace). */
 export interface GitStatusEntry {
   path: string;

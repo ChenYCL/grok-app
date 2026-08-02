@@ -90,6 +90,21 @@ describe("computeFloatingPos", () => {
     expect(pos.fitContent).toBe(true);
     expect(pos.width).toBe(0);
     expect(pos.maxWidth).toBeGreaterThan(100);
+    expect(pos.align).toBe("start");
+  });
+
+  it("align end hangs panel from trigger right edge", () => {
+    // Trigger near the trailing chrome edge; panel wider than trigger.
+    const r = rect({ top: 48, left: 960, width: 32, height: 28 });
+    const pos = computeFloatingPos(r, {
+      placement: "down",
+      fitContent: false,
+      width: 260,
+      align: "end",
+    });
+    expect(pos.align).toBe("end");
+    // Panel right ≈ trigger right (within viewport clamp).
+    expect(pos.left + pos.width).toBeCloseTo(r.right, 0);
   });
 });
 
@@ -103,6 +118,7 @@ describe("floatingStyle", () => {
       maxHeight: 200,
       maxWidth: 1000,
       fitContent: false,
+      align: "start",
     });
     expect(s?.transform).toContain("translateY(-100%)");
     expect(s?.position).toBe("fixed");
@@ -118,6 +134,7 @@ describe("floatingStyle", () => {
       maxHeight: 200,
       maxWidth: 1000,
       fitContent: false,
+      align: "start",
     });
     expect(s?.zIndex).toBe(FLOATING_MENU_Z_INDEX);
     expect(FLOATING_MENU_Z_INDEX).toBeGreaterThan(12000);
@@ -133,6 +150,7 @@ describe("floatingStyle", () => {
         maxHeight: 200,
         maxWidth: 1000,
         fitContent: true,
+        align: "start",
       },
       { settled: false },
     );
@@ -150,6 +168,7 @@ describe("floatingStyle", () => {
         maxHeight: 200,
         maxWidth: 800,
         fitContent: true,
+        align: "start",
       },
       { minWidth: 120 },
     );

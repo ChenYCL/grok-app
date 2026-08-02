@@ -18,8 +18,15 @@ import {
   type CSSProperties,
   type RefObject,
 } from "react";
+import {
+  acquireNativeWebviewCover,
+  rectOverlapsNativeWebviewHost,
+} from "@/lib/nativeWebviewCover";
 
 export type FloatingPlacement = "up" | "down" | "auto";
+
+/** Horizontal alignment of the panel relative to the trigger. */
+export type FloatingAlign = "start" | "end";
 
 export interface FloatingPos {
   left: number;
@@ -31,6 +38,8 @@ export interface FloatingPos {
   /** Viewport clamp for content-sized panels. */
   maxWidth: number;
   fitContent: boolean;
+  /** Horizontal align used when computing left. */
+  align: FloatingAlign;
 }
 
 export interface ComputeFloatingOptions {
@@ -51,6 +60,11 @@ export interface ComputeFloatingOptions {
   /** Estimated panel height for flip heuristics. */
   estHeight?: number;
   placement?: FloatingPlacement;
+  /**
+   * Horizontal align: `start` = panel left ↔ trigger left (default);
+   * `end` = panel right ↔ trigger right (chrome buttons on the trailing edge).
+   */
+  align?: FloatingAlign;
   gap?: number;
   margin?: number;
 }
@@ -64,6 +78,7 @@ export function computeFloatingPos(
   const estHeight = opts.estHeight ?? 240;
   const placement = opts.placement ?? "auto";
   const fitContent = opts.fitContent !== false;
+  const align: FloatingAlign = opts.align === "end" ? "end" : "start";
 
   const g = globalThis as { innerWidth?: number; innerHeight?: number };
   const vw = typeof g.innerWidth === "number" ? g.innerWidth : 1024;
@@ -102,8 +117,9 @@ export function computeFloatingPos(
     Math.min(estHeight + 80, placeAbove ? spaceAbove - gap : spaceBelow - gap),
   );
 
-  // Prefer trigger left edge; clamp so estimated panel stays in viewport.
-  let left = trigger.left;
+  // start: panel left ↔ trigger left; end: panel right ↔ trigger right.
+  let left =
+    align === "end" ? trigger.right - width : trigger.left;
   left = Math.max(margin, Math.min(left, vw - width - margin));
 
   if (placeAbove) {
@@ -115,6 +131,7 @@ export function computeFloatingPos(
       maxHeight,
       maxWidth,
       fitContent,
+      align,
     };
   }
   return {
@@ -125,6 +142,7 @@ export function computeFloatingPos(
     maxHeight,
     maxWidth,
     fitContent,
+    align,
   };
 }
 
@@ -136,7 +154,8 @@ function posEqual(a: FloatingPos, b: FloatingPos): boolean {
     a.placeAbove === b.placeAbove &&
     a.maxHeight === b.maxHeight &&
     a.maxWidth === b.maxWidth &&
-    a.fitContent === b.fitContent
+    a.fitContent === b.fitContent &&
+    a.align === b.align
   );
 }
 
@@ -191,6 +210,8 @@ export interface UseFloatingMenuOptions {
   roots?: Array<RefObject<HTMLElement | null>>;
   onClose: () => void;
   placement?: FloatingPlacement;
+  /** Horizontal align relative to trigger (default start). */
+  align?: FloatingAlign;
   width?: number;
   minWidth?: number;
   matchTriggerWidth?: boolean;
@@ -212,6 +233,7 @@ export function useFloatingMenu({
   roots = [],
   onClose,
   placement = "auto",
+  align = "start",
   width,
   minWidth,
   matchTriggerWidth,
@@ -236,6 +258,7 @@ export function useFloatingMenu({
     fitContent,
     estHeight,
     placement,
+    align,
     gap,
   });
   optsRef.current = {
@@ -245,6 +268,7 @@ export function useFloatingMenu({
     fitContent,
     estHeight,
     placement,
+    align,
     gap,
   };
 
@@ -267,6 +291,7 @@ export function useFloatingMenu({
       fitContent: o.fitContent,
       estHeight: o.estHeight,
       placement: o.placement,
+      align: o.align,
       gap,
     });
 
@@ -309,7 +334,13 @@ export function useFloatingMenu({
         }
       }
 
-      if (next.left + pw > vw - margin) {
+      if (o.align === "end") {
+        // Keep panel right edge flush with trigger right (then clamp to viewport).
+        next = {
+          ...next,
+          left: Math.max(margin, Math.min(r.right - pw, vw - margin - pw)),
+        };
+      } else if (next.left + pw > vw - margin) {
         next = {
           ...next,
           left: Math.max(margin, vw - margin - pw),
@@ -363,6 +394,7 @@ export function useFloatingMenu({
   }, [
     open,
     placement,
+    align,
     width,
     minWidth,
     matchTriggerWidth,
@@ -412,6 +444,68 @@ export function useFloatingMenu({
       document.removeEventListener("keydown", onKey);
     };
   }, [open, onClose, triggerRef, panelRef, roots]);
+
+  /**
+   * Tauri native Webviews paint above HTML. If this panel overlaps a browser
+   * host, temporarily hide those webviews so the menu stays clickable/visible.
+   * Does not destroy webview instances — only hide/show.
+   *
+   * Runs as soon as `pos` exists (before settle visibility flip) so the first
+   * painted menu frame is not covered by a native child webview.
+   */
+  useEffect(() => {
+    if (!open || !pos) return;
+
+    let release: (() => void) | null = null;
+    const syncCover = () => {
+      const panel = panelRef.current;
+      // Prefer real panel box; fall back to estimated floating pos.
+      const r = panel
+        ? panel.getBoundingClientRect()
+        : {
+            left: pos.left,
+            top: pos.placeAbove ? pos.top - pos.maxHeight : pos.top,
+            width: pos.fitContent ? Math.min(pos.maxWidth, 260) : pos.width,
+            height: Math.min(pos.maxHeight, estHeight),
+            right: 0,
+            bottom: 0,
+          };
+      if (!panel) {
+        (r as { right: number }).right = r.left + r.width;
+        (r as { bottom: number }).bottom = r.top + r.height;
+      }
+      const overlaps = rectOverlapsNativeWebviewHost({
+        left: r.left,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+        width: r.width,
+        height: r.height,
+      });
+      if (overlaps && !release) {
+        release = acquireNativeWebviewCover();
+      } else if (!overlaps && release) {
+        release();
+        release = null;
+      }
+    };
+
+    syncCover();
+    // Panel mounts one tick after open — recheck once settled / on size change.
+    const t = window.setTimeout(syncCover, 0);
+    let ro: ResizeObserver | null = null;
+    const panel = panelRef.current;
+    if (typeof ResizeObserver !== "undefined" && panel) {
+      ro = new ResizeObserver(() => syncCover());
+      ro.observe(panel);
+    }
+    return () => {
+      window.clearTimeout(t);
+      ro?.disconnect();
+      release?.();
+      release = null;
+    };
+  }, [open, settled, pos, panelRef, estHeight]);
 
   const styleMin =
     matchTriggerWidth && triggerW > 0

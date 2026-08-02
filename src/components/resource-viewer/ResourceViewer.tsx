@@ -114,6 +114,10 @@ export function ResourceViewer({
   onShip,
   onDiffCommentToChat,
   onAsideLayoutHint,
+  embeddedChrome = false,
+  embeddedFilesToolbar = false,
+  treeVisible: treeVisibleProp,
+  onTreeVisibleChange,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [root, setRoot] = useState<TreeNode[]>([]);
@@ -123,8 +127,28 @@ export function ResourceViewer({
   const [loadingTree, setLoadingTree] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  // Default closed; session-only — not persisted; reset when pane hides.
-  const [treeVisible, setTreeVisible] = useState(false);
+  // Default closed standalone; embedded workbench defaults open (Codex files).
+  // Session-only — not persisted; reset when pane hides (standalone).
+  const [treeVisibleLocal, setTreeVisibleLocal] = useState(
+    () => !!embeddedChrome,
+  );
+  const treeVisible =
+    typeof treeVisibleProp === "boolean" ? treeVisibleProp : treeVisibleLocal;
+  const setTreeVisible = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      const next =
+        typeof v === "function"
+          ? v(
+              typeof treeVisibleProp === "boolean"
+                ? treeVisibleProp
+                : treeVisibleLocal,
+            )
+          : v;
+      if (onTreeVisibleChange) onTreeVisibleChange(next);
+      else setTreeVisibleLocal(next);
+    },
+    [onTreeVisibleChange, treeVisibleProp, treeVisibleLocal],
+  );
   const [sideMode, setSideMode] = useState<SideMode>("files");
   const lastPlanFocusKey = useRef<number | null>(null);
   /** User opened Plan via open-in-resources / planFocus — keep empty states. */
@@ -708,21 +732,26 @@ export function ResourceViewer({
   // No project and no open tabs → empty; allow absolute/url tabs without a project.
   if (!projectPath && tabs.length === 0) {
     return (
-      <div className="rp" data-testid="resource-viewer">
-        <div className="rp__chrome">
-          <div className="rp__chrome-title">{tr("resources.title")}</div>
-          {onClose && (
-            <Tip label={tr("common.close")}>
-              <button
-                type="button"
-                className="chrome-btn"
-                onClick={onClose}
-              >
-                <IconClose size={14} />
-              </button>
-            </Tip>
-          )}
-        </div>
+      <div
+        className={"rp" + (embeddedChrome ? " rp--embedded" : "")}
+        data-testid="resource-viewer"
+      >
+        {!embeddedChrome ? (
+          <div className="rp__chrome">
+            <div className="rp__chrome-title">{tr("resources.title")}</div>
+            {onClose && (
+              <Tip label={tr("common.close")}>
+                <button
+                  type="button"
+                  className="chrome-btn"
+                  onClick={onClose}
+                >
+                  <IconClose size={14} />
+                </button>
+              </Tip>
+            )}
+          </div>
+        ) : null}
         <div className="rp__empty-state">
           <div className="rp__empty-title">{tr("main.noProject")}</div>
           <div className="rp__empty-desc">{tr("resources.needProject")}</div>
@@ -736,13 +765,24 @@ export function ResourceViewer({
    *   [ file tabs … ] [ 打开位置 ] [ tree ] [ close ]
    * No breadcrumb title row — basename lives only in the tab.
    * Nested path is available via tab title attribute.
+   *
+   * When `embeddedChrome`, parent SideWorkbench owns the shared tab strip;
+   * optional `embeddedFilesToolbar` is the dual-row breadcrumb + tree + open.
    */
+  const crumbs = absPath
+    ? (activeTab?.relativePath || "")
+        .replace(/\\/g, "/")
+        .split("/")
+        .filter(Boolean)
+    : [];
+
   return (
     <div
-      className="rp"
+      className={"rp" + (embeddedChrome ? " rp--embedded" : "")}
       data-testid="resource-viewer"
       aria-label={projectName ?? tr("resources.title")}
     >
+      {!embeddedChrome ? (
       <div className="rp-chrome">
         <div className="rp-tabs" role="tablist" aria-label={tr("resources.files")}>
           <div className="rp-tabs__scroll">
@@ -987,6 +1027,99 @@ export function ResourceViewer({
           )}
         </div>
       </div>
+      ) : null}
+
+      {/* Dual-row files toolbar under shared Side Workbench tab strip (image-5/6) */}
+      {embeddedChrome && embeddedFilesToolbar ? (
+        <div className="rp-files-toolbar" data-testid="files-toolbar">
+          <div
+            className="rp-files-toolbar__crumbs"
+            title={activeTab?.relativePath || projectName || ""}
+          >
+            {crumbs.length === 0 ? (
+              <span className="rp-files-toolbar__muted">
+                {projectName || tr("resources.files")}
+              </span>
+            ) : (
+              crumbs.map((c, i) => (
+                <span key={`${c}-${i}`} className="rp-files-toolbar__crumb-wrap">
+                  {i > 0 ? (
+                    <span className="rp-files-toolbar__sep" aria-hidden>
+                      ›
+                    </span>
+                  ) : null}
+                  <span
+                    className={
+                      "rp-files-toolbar__crumb" +
+                      (i === crumbs.length - 1 ? " is-current" : "")
+                    }
+                  >
+                    {c}
+                  </span>
+                </span>
+              ))
+            )}
+          </div>
+          <div className="rp-files-toolbar__actions">
+            <Tip
+              label={
+                treeVisible
+                  ? tr("resources.collapseTree")
+                  : tr("resources.expandTree")
+              }
+            >
+              <button
+                type="button"
+                className={
+                  "chrome-btn main__pane-toggle" +
+                  (treeVisible && sideMode === "files" ? " is-on" : "")
+                }
+                aria-label={
+                  treeVisible
+                    ? tr("resources.collapseTree")
+                    : tr("resources.expandTree")
+                }
+                data-testid="files-tree-toggle"
+                onClick={() => {
+                  if (sideMode !== "files") setSideMode("files");
+                  setTreeVisible(!treeVisible);
+                }}
+              >
+                <IconListTree size={16} />
+              </button>
+            </Tip>
+            {absPath ? (
+              <OpenLocationButton
+                path={absPath}
+                target={openWithTarget}
+                onTargetChange={(t) => {
+                  setOpenWithTarget(t);
+                  try {
+                    localStorage.setItem("grok-app.openTarget", t);
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+                onOpenError={(e) => {
+                  const resolved = resolveOpenEditorError(e);
+                  if (resolved.silent) return;
+                  setError(formatOpenEditorErrorMessage(resolved, tr));
+                }}
+                compact
+                platform={detectAppPlatform()}
+                labels={{
+                  openLocation: tr("resources.open"),
+                  openHint: tr("main.openLocationHint"),
+                  openMenu: tr("main.openLocationMenu"),
+                  finder: revealInOsLabel(tr),
+                  systemDefault: tr("resources.openDefault"),
+                  copyPath: tr("attach.copyPath"),
+                }}
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {error && (
         <div className="rp__error" role="alert">

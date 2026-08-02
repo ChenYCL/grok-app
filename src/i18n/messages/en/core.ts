@@ -109,6 +109,7 @@ export const enCore = {
   "shortcuts.copyLastReply": "Copy last assistant reply",
   "shortcuts.settings": "Settings",
   "shortcuts.toggleSidebar": "Toggle sidebar",
+  "shortcuts.toggleRightPane": "Show/hide sidebar",
   "shortcuts.sidebarSessionNav": "Next / previous chat in sidebar (focus in list)",
   "shortcuts.doctor": "Doctor",
   "shortcuts.liveVoice": "Start Live Voice",

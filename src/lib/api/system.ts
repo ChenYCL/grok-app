@@ -6,6 +6,97 @@ import {
   isDesktopHost,
 } from "./host";
 
+/** Paths that exist among candidates (desktop host path probe). */
+export type PathExistsResult = {
+  existing: string[];
+};
+
+export async function pathExistsMany(paths: string[]) {
+  return invoke<PathExistsResult>("path_exists_many", { paths });
+}
+
+/** Interactive PTY terminal (VS Code-style). Desktop-only. */
+export type TerminalPtySpawnResult = {
+  sessionId: string;
+  shell: string;
+  cwd: string;
+  cols: number;
+  rows: number;
+};
+
+export type TerminalPtyDataEvent = {
+  sessionId: string;
+  data: string;
+};
+
+export type TerminalPtyExitEvent = {
+  sessionId: string;
+  code: number | null;
+};
+
+export async function terminalPtySpawn(opts: {
+  sessionId?: string | null;
+  projectPath?: string | null;
+  cols?: number;
+  rows?: number;
+}) {
+  return invoke<TerminalPtySpawnResult>("terminal_pty_spawn", {
+    sessionId: opts.sessionId ?? null,
+    projectPath: opts.projectPath ?? null,
+    cols: opts.cols ?? 80,
+    rows: opts.rows ?? 24,
+  });
+}
+
+export async function terminalPtyWrite(sessionId: string, data: string) {
+  return invoke<void>("terminal_pty_write", { sessionId, data });
+}
+
+export async function terminalPtyResize(
+  sessionId: string,
+  cols: number,
+  rows: number,
+) {
+  return invoke<void>("terminal_pty_resize", { sessionId, cols, rows });
+}
+
+export async function terminalPtyKill(sessionId: string) {
+  return invoke<void>("terminal_pty_kill", { sessionId });
+}
+
+/**
+ * Embedded side-browser automation (in-app Tauri Webview only).
+ * Label scheme: `resource-browser` or `resource-browser-<tabId>`.
+ */
+export type SideBrowserInfo = {
+  label: string;
+  url?: string | null;
+};
+
+export async function sideBrowserList() {
+  return invoke<SideBrowserInfo[]>("side_browser_list");
+}
+
+export async function sideBrowserNavigate(label: string, url: string) {
+  return invoke<void>("side_browser_navigate", { label, url });
+}
+
+export async function sideBrowserReload(label: string) {
+  return invoke<void>("side_browser_reload", { label });
+}
+
+export async function sideBrowserUrl(label: string) {
+  return invoke<string>("side_browser_url", { label });
+}
+
+export async function sideBrowserEval(label: string, script: string) {
+  return invoke<string>("side_browser_eval", { label, script });
+}
+
+export async function sideBrowserSnapshot(label: string) {
+  return invoke<string>("side_browser_snapshot", { label });
+}
+
 export interface NetworkProbeTarget {
   key: string;
   url: string;

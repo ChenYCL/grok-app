@@ -39,6 +39,7 @@ export type ShortcutId =
   | "stop"
   | "copyLastReply"
   | "toggleSidebar"
+  | "toggleRightPane"
   | "sidebarSessionNav"
   | "settings"
   | "help"
@@ -72,6 +73,7 @@ export const SHORTCUT_IDS: readonly ShortcutId[] = [
   "stop",
   "copyLastReply",
   "toggleSidebar",
+  "toggleRightPane",
   "sidebarSessionNav",
   "settings",
   "help",
@@ -143,6 +145,14 @@ export const SHORTCUTS: ShortcutRow[] = [
     scope: "global",
     mac: "⌘ B",
     win: "Ctrl B",
+  },
+  {
+    id: "toggleRightPane",
+    labelKey: "shortcuts.toggleRightPane",
+    group: "navigation",
+    scope: "global",
+    mac: "⌥ ⌘ B",
+    win: "Alt Ctrl B",
   },
   {
     // Sidebar-local j/k (not global mod). App handles when focus is in the
@@ -220,6 +230,7 @@ export const GLOBAL_MOD_SHORTCUT_IDS = [
   "liveVoice",
   "copyLastReply",
   "toggleSidebar",
+  "toggleRightPane",
 ] as const satisfies readonly ShortcutId[];
 
 export type GlobalModShortcutId = (typeof GLOBAL_MOD_SHORTCUT_IDS)[number];

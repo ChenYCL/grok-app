@@ -14,7 +14,6 @@ import {
   mergeAsideWidth,
   requiredWorkbenchInnerWidth,
   ASIDE_WIDTH_MIN,
-  ASIDE_WIDTH_MAX,
   MAIN_CHAT_MIN_WIDTH,
   SIDEBAR_COLLAPSE_THRESHOLD,
   SIDEBAR_DEFAULT_WIDTH,
@@ -61,10 +60,19 @@ describe("layout prefs", () => {
     expect(parseLayout(null).sidebarCollapsed).toBe(false);
   });
 
-  it("clamps aside width to chrome-safe min / max", () => {
+  it("clamps aside min only; no hard 720 max (chat floor via viewport)", () => {
     expect(clampAsideWidth(100)).toBe(ASIDE_WIDTH_MIN);
-    expect(clampAsideWidth(9999)).toBe(ASIDE_WIDTH_MAX);
+    // No viewport → no artificial ceiling
+    expect(clampAsideWidth(9999)).toBe(9999);
     expect(clampAsideWidth(400)).toBe(400);
+    // Wide viewport allows aside > historical ASIDE_WIDTH_MAX (720)
+    expect(
+      clampAsideWidth(900, { viewportWidth: 2000, sidebarOccupiedWidth: 0 }),
+    ).toBe(900);
+    // Still leaves ≥ MAIN_CHAT_MIN_WIDTH for chat
+    expect(
+      clampAsideWidth(9999, { viewportWidth: 1000, sidebarOccupiedWidth: 0 }),
+    ).toBe(1000 - MAIN_CHAT_MIN_WIDTH);
   });
 
   it("clamps sidebar width to min / max and viewport room", () => {
@@ -73,12 +81,19 @@ describe("layout prefs", () => {
     expect(clampSidebarWidth(100)).toBe(SIDEBAR_WIDTH_MIN);
     expect(clampSidebarWidth(9999)).toBe(SIDEBAR_WIDTH_MAX);
     expect(clampSidebarWidth(280)).toBe(280);
-    // 900 viewport, 400 chat, 320 aside → sidebar max 180 → raised to MIN
+    // 900 viewport, 360 chat, 320 aside → sidebar room 220 (above open min)
     const capped = clampSidebarWidth(400, {
       viewportWidth: 900,
       asideOccupiedWidth: 320,
     });
-    expect(capped).toBe(SIDEBAR_WIDTH_MIN);
+    expect(capped).toBe(900 - MAIN_CHAT_MIN_WIDTH - 320);
+    // Tight frame: room below open min → floor at SIDEBAR_WIDTH_MIN
+    expect(
+      clampSidebarWidth(400, {
+        viewportWidth: 800,
+        asideOccupiedWidth: 320,
+      }),
+    ).toBe(SIDEBAR_WIDTH_MIN);
     // 1400 viewport, no aside → room plenty, still cap at SIDEBAR_WIDTH_MAX
     expect(
       clampSidebarWidth(500, { viewportWidth: 1400, asideOccupiedWidth: 0 }),
@@ -127,27 +142,30 @@ describe("layout prefs", () => {
       windowControlsInset: WINDOW_CONTROLS_INSET,
     });
     expect(withWin).toBeGreaterThan(plain);
-    expect(withWin).toBeGreaterThanOrEqual(ASIDE_WIDTH_MIN + WINDOW_CONTROLS_INSET * 0.5);
+    // Floor is ASIDE_WIDTH_MIN (400); chrome-safe can be higher with window inset.
+    expect(withWin).toBeGreaterThanOrEqual(ASIDE_WIDTH_MIN);
+    expect(plain).toBe(ASIDE_WIDTH_MIN);
     expect(
       clampAsideWidth(300, { windowControlsInset: WINDOW_CONTROLS_INSET }),
     ).toBe(withWin);
   });
 
-  it("caps max by viewport so main chat keeps ≥400px", () => {
+  it("caps max by viewport so main chat keeps ≥ MAIN_CHAT_MIN_WIDTH", () => {
     const w = clampAsideWidth(700, { viewportWidth: 900 });
-    // 900 - 400 chat min = 500
-    expect(w).toBeLessThanOrEqual(500);
+    // 900 - 360 chat min = 540
+    expect(w).toBeLessThanOrEqual(900 - MAIN_CHAT_MIN_WIDTH);
+    expect(w).toBe(900 - MAIN_CHAT_MIN_WIDTH);
     expect(w).toBeGreaterThanOrEqual(ASIDE_WIDTH_MIN);
   });
 
-  it("subtracts open sidebar when capping aside so chat stays ≥400px", () => {
-    // 1200 viewport, 268 sidebar, 400 chat → aside max 532
+  it("subtracts open sidebar when capping aside so chat stays ≥ min", () => {
+    // 1200 viewport, 268 sidebar, 360 chat → aside max 572
     const w = clampAsideWidth(700, {
       viewportWidth: 1200,
       sidebarOccupiedWidth: 268,
     });
-    expect(w).toBeLessThanOrEqual(1200 - 268 - 400);
-    expect(w).toBe(532);
+    expect(w).toBeLessThanOrEqual(1200 - 268 - MAIN_CHAT_MIN_WIDTH);
+    expect(w).toBe(1200 - 268 - MAIN_CHAT_MIN_WIDTH);
   });
 
   it("requiredWorkbenchInnerWidth sums open panes + chat floor", () => {

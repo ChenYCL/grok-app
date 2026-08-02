@@ -1,9 +1,12 @@
 /**
- * Built-in browser for the resource pane.
+ * Built-in **in-app** browser for the resource pane / side workbench.
  *
- * Plain <iframe> is blocked by X-Frame-Options / CSP on many sites (GitHub, etc.)
- * → blank preview. In Tauri we attach a child native Webview over this host
- * element so the page loads as a top-level document.
+ * Always uses a Tauri child Webview painted over this host element
+ * (WKWebView / WebView2 / webkit2gtk). External Chrome processes are
+ * intentionally not used — automation must target the same embedded surface.
+ *
+ * Stable label: `resource-browser` or `resource-browser-<instanceId>`
+ * so host commands (`side_browser_*`) can drive navigate / eval / snapshot.
  *
  * Non-Tauri (dev UI only): falls back to iframe + open-external affordance.
  */
@@ -12,8 +15,15 @@ import { useEffect, useRef, useState } from "react";
 import { isTauri } from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { IconExternalLink, IconRefresh } from "@/components/icons";
+import {
+  applyFloatExcludeToBounds,
+  getNativeWebviewFloatExclude,
+  isNativeWebviewCovered,
+  subscribeNativeWebviewCover,
+  subscribeNativeWebviewFloatExclude,
+} from "@/lib/nativeWebviewCover";
 
-const WEBVIEW_LABEL = "resource-browser";
+const WEBVIEW_LABEL_DEFAULT = "resource-browser";
 
 export interface EmbeddedBrowserProps {
   url: string;
@@ -22,6 +32,17 @@ export interface EmbeddedBrowserProps {
   /** When false, native webview is hidden (inactive tab / collapsed pane). */
   active?: boolean;
   className?: string;
+  /**
+   * Unique webview label suffix per browser tab (multi-instance).
+   * Full label = `resource-browser-${instanceId}`.
+   */
+  instanceId?: string;
+}
+
+/** Public label scheme for automation / host commands. */
+export function sideBrowserWebviewLabel(instanceId?: string | null): string {
+  if (!instanceId) return WEBVIEW_LABEL_DEFAULT;
+  return sanitizeLabel(`resource-browser-${instanceId}`);
 }
 
 function sanitizeLabel(s: string): string {
@@ -47,6 +68,7 @@ export function EmbeddedBrowser({
   locale = "en",
   active = true,
   className = "",
+  instanceId,
 }: EmbeddedBrowserProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   // Dynamic import type — keep loose to avoid hard coupling on Tauri version.
@@ -55,9 +77,15 @@ export function EmbeddedBrowser({
   const currentUrlRef = useRef<string>("");
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  /** DOM overlays (floating menus) that must paint above native Webviews. */
+  const [covered, setCovered] = useState(() => isNativeWebviewCovered());
   const tr = createT(locale);
+  const webviewLabel = sideBrowserWebviewLabel(instanceId);
+  const activeRef = useRef(active);
+  const coveredRef = useRef(covered);
+  activeRef.current = active;
+  coveredRef.current = covered;
 
-  // Layout → native webview bounds
   const syncBounds = async () => {
     const el = hostRef.current;
     const wv = webviewRef.current;
@@ -71,26 +99,61 @@ export function EmbeddedBrowser({
       }
       return;
     }
+    // Shrink away from long-lived float UI (composer) so the page stays visible.
+    const clipped = applyFloatExcludeToBounds(
+      {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      },
+      getNativeWebviewFloatExclude(),
+      10,
+    );
+    if (clipped.width < 2 || clipped.height < 2) {
+      try {
+        await wv.hide();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     try {
       const { LogicalPosition, LogicalSize } = await import("@tauri-apps/api/dpi");
-      await wv.setPosition(new LogicalPosition(rect.left, rect.top));
-      await wv.setSize(new LogicalSize(rect.width, rect.height));
-      if (active) await wv.show();
+      await wv.setPosition(new LogicalPosition(clipped.left, clipped.top));
+      await wv.setSize(new LogicalSize(clipped.width, clipped.height));
+      if (activeRef.current && !coveredRef.current) await wv.show();
       else await wv.hide();
     } catch (e) {
       console.error("[EmbeddedBrowser] syncBounds", e);
     }
   };
 
-  // Create / recreate native webview when URL changes (Tauri only)
   useEffect(() => {
-    if (!isTauri() || !active) return;
+    return subscribeNativeWebviewCover(setCovered);
+  }, []);
+
+  // Floating composer moved / sized — re-clip native webview without full hide.
+  useEffect(() => {
+    return subscribeNativeWebviewFloatExclude(() => {
+      void syncBounds();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Create / recreate native webview when URL or label changes.
+  // Inactive tabs stay mounted (persist host) — hide only via active/covered.
+  useEffect(() => {
+    if (!isTauri()) return;
     const target = url.trim();
     if (!target) return;
 
     let cancelled = false;
     let resizeObs: ResizeObserver | null = null;
     let roFrame = 0;
+    let io: IntersectionObserver | null = null;
 
     const boot = async () => {
       setError(null);
@@ -98,11 +161,12 @@ export function EmbeddedBrowser({
       try {
         const { Webview } = await import("@tauri-apps/api/webview");
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const { LogicalPosition, LogicalSize } = await import("@tauri-apps/api/dpi");
+        const { LogicalPosition, LogicalSize } = await import(
+          "@tauri-apps/api/dpi"
+        );
         const win = getCurrentWindow();
 
-        // Tear down previous instance (URL change or remount)
-        const existing = await Webview.getByLabel(WEBVIEW_LABEL);
+        const existing = await Webview.getByLabel(webviewLabel);
         if (existing) {
           try {
             await existing.close();
@@ -112,7 +176,6 @@ export function EmbeddedBrowser({
         }
         webviewRef.current = null;
         currentUrlRef.current = "";
-
         if (cancelled) return;
 
         const el = hostRef.current;
@@ -122,14 +185,13 @@ export function EmbeddedBrowser({
         const w = Math.max(rect?.width ?? 320, 40);
         const h = Math.max(rect?.height ?? 240, 40);
 
-        const webview = new Webview(win, sanitizeLabel(WEBVIEW_LABEL), {
+        const webview = new Webview(win, webviewLabel, {
           url: target,
           x,
           y,
           width: w,
           height: h,
           focus: true,
-          // Accept any remote page; child is a real top-level document
           acceptFirstMouse: true,
         });
 
@@ -161,11 +223,10 @@ export function EmbeddedBrowser({
         currentUrlRef.current = target;
         await webview.setPosition(new LogicalPosition(x, y));
         await webview.setSize(new LogicalSize(w, h));
-        await webview.show();
+        if (activeRef.current && !coveredRef.current) await webview.show();
+        else await webview.hide();
         setReady(true);
 
-        // Keep bounds aligned with the host pane; hide when host not visible
-        // (aside collapsed, zero-size, covered).
         if (hostRef.current && typeof ResizeObserver !== "undefined") {
           resizeObs = new ResizeObserver(() => {
             cancelAnimationFrame(roFrame);
@@ -176,21 +237,21 @@ export function EmbeddedBrowser({
           resizeObs.observe(hostRef.current);
         }
         if (hostRef.current && typeof IntersectionObserver !== "undefined") {
-          const io = new IntersectionObserver(
+          io = new IntersectionObserver(
             (entries) => {
-              const vis = entries.some((e) => e.isIntersecting && e.intersectionRatio > 0.05);
+              const vis = entries.some(
+                (e) => e.isIntersecting && e.intersectionRatio > 0.05,
+              );
               const wv = webviewRef.current;
               if (!wv) return;
-              if (!vis || !active) void wv.hide().catch(() => undefined);
+              if (!vis || !activeRef.current) void wv.hide().catch(() => undefined);
               else void syncBounds();
             },
             { threshold: [0, 0.05, 0.5, 1] },
           );
           io.observe(hostRef.current);
-          // stash on resizeObs cleanup via disconnect of both
-          (resizeObs as unknown as { _io?: IntersectionObserver })._io = io;
         }
-        window.addEventListener("resize", syncBounds);
+        window.addEventListener("resize", onResize);
       } catch (e) {
         if (!cancelled) {
           console.error("[EmbeddedBrowser] create failed", e);
@@ -200,15 +261,18 @@ export function EmbeddedBrowser({
       }
     };
 
+    const onResize = () => {
+      void syncBounds();
+    };
+
     void boot();
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(roFrame);
       resizeObs?.disconnect();
-      const io = (resizeObs as unknown as { _io?: IntersectionObserver } | null)?._io;
       io?.disconnect();
-      window.removeEventListener("resize", syncBounds);
+      window.removeEventListener("resize", onResize);
       const wv = webviewRef.current;
       webviewRef.current = null;
       currentUrlRef.current = "";
@@ -216,58 +280,54 @@ export function EmbeddedBrowser({
         void wv.close().catch(() => undefined);
       } else if (isTauri()) {
         void import("@tauri-apps/api/webview")
-          .then(({ Webview }) => Webview.getByLabel(WEBVIEW_LABEL))
+          .then(({ Webview }) => Webview.getByLabel(webviewLabel))
           .then((w) => w?.close())
           .catch(() => undefined);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, active]);
+  }, [url, webviewLabel]);
 
-  // Hide/show when active toggles without URL change
   useEffect(() => {
     const wv = webviewRef.current;
     if (!wv || !isTauri()) return;
-    if (active) {
+    if (active && !covered) {
       void syncBounds().then(() => wv.show()).catch(() => undefined);
     } else {
       void wv.hide().catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  }, [active, covered]);
 
   const openExternal = () => {
     void openExternalUrl(url);
   };
 
   const reload = () => {
-    // Force recreate by remounting effect: clear then set same url via key is parent job.
-    // Local: close + recreate
     if (!isTauri()) return;
     const u = url;
     void (async () => {
       try {
         const { Webview } = await import("@tauri-apps/api/webview");
-        const w = await Webview.getByLabel(WEBVIEW_LABEL);
+        const w = await Webview.getByLabel(webviewLabel);
         if (w) await w.close();
       } catch {
         /* ignore */
       }
       webviewRef.current = null;
       currentUrlRef.current = "";
-      // Trigger effect by bumping a dummy state through recreating with same url —
-      // parent should change key; as fallback re-run boot by toggling ready
       setReady(false);
       setError(null);
-      // Manual recreate
       const el = hostRef.current;
       if (!el) return;
       try {
         const { Webview } = await import("@tauri-apps/api/webview");
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const { LogicalPosition, LogicalSize } = await import("@tauri-apps/api/dpi");
+        const { LogicalPosition, LogicalSize } = await import(
+          "@tauri-apps/api/dpi"
+        );
         const rect = el.getBoundingClientRect();
-        const webview = new Webview(getCurrentWindow(), WEBVIEW_LABEL, {
+        const webview = new Webview(getCurrentWindow(), webviewLabel, {
           url: u,
           x: rect.left,
           y: rect.top,
@@ -284,7 +344,8 @@ export function EmbeddedBrowser({
         await webview.setSize(
           new LogicalSize(Math.max(rect.width, 40), Math.max(rect.height, 40)),
         );
-        await webview.show();
+        if (activeRef.current && !coveredRef.current) await webview.show();
+        else await webview.hide();
         setReady(true);
       } catch (e) {
         setError(String(e));
@@ -292,7 +353,6 @@ export function EmbeddedBrowser({
     })();
   };
 
-  // Non-Tauri: iframe (many sites blank — surface open external)
   if (!isTauri()) {
     return (
       <div className={"embedded-browser " + className}>
@@ -324,7 +384,10 @@ export function EmbeddedBrowser({
   }
 
   return (
-    <div className={"embedded-browser embedded-browser--native " + className}>
+    <div
+      className={"embedded-browser embedded-browser--native " + className}
+      data-webview-label={webviewLabel}
+    >
       <div className="embedded-browser__bar">
         <span className="embedded-browser__url" title={url}>
           {url}
@@ -346,18 +409,24 @@ export function EmbeddedBrowser({
           <IconExternalLink size={14} />
         </button>
       </div>
-      {/* Host rectangle — native webview is painted on top of this area */}
       <div
         ref={hostRef}
         className="embedded-browser__host"
+        data-native-webview-host=""
+        data-webview-label={webviewLabel}
         data-ready={ready ? "1" : "0"}
+        data-webview-covered={covered ? "1" : "0"}
         aria-label={title || url}
       >
         {error ? (
           <div className="rp-preview__msg" role="alert">
             <p>{tr("resources.browserFailed")}</p>
             <p className="embedded-browser__err">{error}</p>
-            <button type="button" className="btn btn--primary" onClick={openExternal}>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={openExternal}
+            >
               {tr("resources.openExternal")}
             </button>
           </div>

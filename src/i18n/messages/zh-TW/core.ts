@@ -109,6 +109,7 @@ export const zhTWCore = {
   "shortcuts.copyLastReply": "複製上一條助手回覆",
   "shortcuts.settings": "設定",
   "shortcuts.toggleSidebar": "切換側欄",
+  "shortcuts.toggleRightPane": "顯示/隱藏側邊欄",
   "shortcuts.sidebarSessionNav": "側欄上下切換對話（焦點在列表內）",
   "shortcuts.doctor": "Doctor",
   "shortcuts.liveVoice": "開始即時語音",

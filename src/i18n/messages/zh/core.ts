@@ -109,6 +109,7 @@ export const zhCore = {
   "shortcuts.copyLastReply": "复制上一条助手回复",
   "shortcuts.settings": "设置",
   "shortcuts.toggleSidebar": "切换侧栏",
+  "shortcuts.toggleRightPane": "显示/隐藏侧边栏",
   "shortcuts.sidebarSessionNav": "侧栏上下切换会话（焦点在列表内）",
   "shortcuts.doctor": "Doctor",
   "shortcuts.liveVoice": "开始实时语音",

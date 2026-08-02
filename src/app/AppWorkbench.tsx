@@ -8,7 +8,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useThemeShell } from "@/providers/ThemeProvider";
 import { createPortal } from "react-dom";
@@ -101,11 +101,8 @@ import {
   SIDEBAR_WIDTH_MIN,
   isMirrorPhoneLayout,
   loadLayout,
-  mergeAsideWidth,
   saveLayout,
-  suggestAsideWidth,
   withMirrorPhoneDrawerDefault,
-  type AsideLayoutHint
 } from "@/lib/layout";
 import {
   ZEN_MODE_CHANGE_EVENT,
@@ -209,8 +206,7 @@ import {
 } from "@/lib/trayBusyBadgePref";
 import { resolveTrayBusyBadgeCount } from "@/lib/trayNotifyPro";
 import {
-  collectAgentDashboardRows,
-  countBusyDashboardRows
+  collectAgentDashboardRows
 } from "@/lib/agentDashboard";
 import {
   BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
@@ -268,10 +264,6 @@ import {
   pruneSelectedIds,
   toggleIdInSet
 } from "@/lib/sessionSelect";
-import {
-  collectSessionTasks,
-  countRunningTasks
-} from "@/lib/sessionTasks";
 import {
   armStopLatch,
   createStopLatchState,
@@ -774,7 +766,6 @@ import {
   IconArrowsVerticalCollapse,
   IconArrowsMinimize,
   IconChat,
-  IconZen,
   IconClock,
   IconClose,
   IconCode,
@@ -809,7 +800,6 @@ import {
   IconListNumbers,
   IconRobot,
   IconPlan,
-  IconActivity,
   IconFileDiff,
   IconGitBranch,
   IconUpload,
@@ -847,6 +837,17 @@ import {
   providerAvatarLetter
 } from "@/components/ProviderBrandIcon";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
+import { EnvInfoButton } from "@/components/side-workbench/EnvInfoButton";
+import {
+  emptySideWorkbenchState,
+  openSideTab,
+  type SideWorkbenchState,
+} from "@/lib/sideWorkbench";
+import {
+  isSideDockComposerActive,
+  shouldHideChatForSideExpand,
+} from "@/lib/sideFloatComposer";
+import { applySideContextOpen } from "@/lib/sideContextOpen";
 import { ProjectRulesModal } from "@/components/ProjectRulesModal";
 import {
   mergeSessionChange,
@@ -869,9 +870,9 @@ const AutomationsPage = lazy(async () => {
   const m = await import("@/components/AutomationsPage");
   return { default: m.AutomationsPage };
 });
-const ResourceViewer = lazy(async () => {
-  const m = await import("@/components/ResourceViewer");
-  return { default: m.ResourceViewer };
+const SideWorkbench = lazy(async () => {
+  const m = await import("@/components/side-workbench/SideWorkbench");
+  return { default: m.SideWorkbench };
 });
 const AgentDashboardModal = lazy(async () => {
   const m = await import("@/components/AgentDashboardModal");
@@ -1168,6 +1169,22 @@ export function AppWorkbench() {
   /** Hide left + right chrome to maximize chat (localStorage `grok.zenMode`). */
   const [zenMode, setZenModeState] = useState(() => loadZenMode(localStorage));
   const zenModeRef = useRef(zenMode);
+  /** Side Workbench multi-kind tabs (session-local; Phase 0+). */
+  const [sideWorkbench, setSideWorkbench] = useState<SideWorkbenchState>(
+    emptySideWorkbenchState,
+  );
+  /**
+   * When side is expanded: optional bottom-docked compressed composer (icon toggle).
+   * Resets whenever expand ends.
+   */
+  const [sideDockComposer, setSideDockComposer] = useState(false);
+  /**
+   * Measured height of the docked composer strip.
+   * Drives --sw-dock-composer-h so the side pane ends above it.
+   */
+  const [sideDockComposerH, setSideDockComposerH] = useState(0);
+  /** Git work tree gate for Review picker entry. */
+  const [sideIsGitProject, setSideIsGitProject] = useState(false);
   zenModeRef.current = zenMode;
   /** Transcript filter: all activity vs conversation-only (hide tool steps). */
   const [transcriptFilter, setTranscriptFilter] =
@@ -1408,6 +1425,26 @@ export function AppWorkbench() {
   /** Effective agent / resource root: bound project, else general workspace dir. */
   const effectiveProjectPath =
     activeProject?.path?.trim() || generalWorkspacePath || null;
+  /** Probe git so Side Workbench Review entry is gated. */
+  useEffect(() => {
+    const path = effectiveProjectPath?.trim();
+    if (!path) {
+      setSideIsGitProject(false);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .gitStatus(path)
+      .then((r) => {
+        if (!cancelled) setSideIsGitProject(!!r?.available);
+      })
+      .catch(() => {
+        if (!cancelled) setSideIsGitProject(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveProjectPath]);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   /** Avoid writing collapse prefs before settings hydrate on launch. */
   const expandedProjectsHydratedRef = useRef(false);
@@ -1632,6 +1669,8 @@ export function AppWorkbench() {
     openChatFind: () => {},
     copyLastReply: () => {},
     toggleSidebar: () => {},
+    /** Right Side Workbench (⌥⌘B). */
+    toggleRightPane: () => {},
     toggleVoice: () => {},
     cancelVoice: () => {},
     startLiveVoice: () => {},
@@ -1803,6 +1842,9 @@ export function AppWorkbench() {
         case "toggleSidebar":
           shortcutHandlersRef.current.toggleSidebar();
           return;
+        case "toggleRightPane":
+          shortcutHandlersRef.current.toggleRightPane();
+          return;
         case "liveVoice":
           // Defense in depth: Settings can disable only this hotkey.
           if (!shouldFireLiveVoiceHotkey(voiceHotkeyEnabledRef.current)) {
@@ -1865,7 +1907,7 @@ export function AppWorkbench() {
   const [planHistoryPreview, setPlanHistoryPreview] =
     useState<PlanHistoryEntry | null>(null);
   /** Non-empty archive — drives Plan empty-state history CTA. */
-  const [planHistoryNonEmpty, setPlanHistoryNonEmpty] = useState(
+  const [, setPlanHistoryNonEmpty] = useState(
     () => loadPlanHistory().length > 0,
   );
   /** Request-changes note modal (optional free-form feedback). */
@@ -2034,7 +2076,7 @@ export function AppWorkbench() {
     return () => window.removeEventListener(SIDEBAR_DENSITY_EVENT, reload);
   }, []);
   const sidebarRowMetrics = sidebarSessionRowMetrics(sidebarDensity);
-  /** Chat file/url card → open in right resource pane. */
+  /** Chat file/url card → open in right resource pane / Side Workbench. */
   const [resourceOpenTarget, setResourceOpenTarget] =
     useState<ResourceOpenTarget | null>(null);
   /** Bump to force ResourceViewer into Plan review mode (详情 / auto-open). */
@@ -2268,7 +2310,7 @@ export function AppWorkbench() {
       windowControlsInset,
       viewportWidth:
         typeof window !== "undefined" ? window.innerWidth : undefined,
-      // Match open `.sidebar` width so aside max leaves chat ≥ 400px.
+      // Match open `.sidebar` width so aside max leaves chat ≥ MAIN_CHAT_MIN_WIDTH.
       sidebarOccupiedWidth: sidebarOpen
         ? layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH
         : 0,
@@ -2324,30 +2366,6 @@ export function AppWorkbench() {
     [asideClampOpts, phoneLayout],
   );
 
-  const applyAsideLayoutHint = useCallback(
-    (hint: AsideLayoutHint) => {
-      if (phoneLayout || isWindowFitSuppressed()) return;
-      const cur = layoutRef.current;
-      if (cur.asideCollapsed) return;
-      const opts = asideClampOpts();
-      const suggested = suggestAsideWidth(
-        { ...hint, windowControlsInset: opts.windowControlsInset },
-        opts,
-      );
-      // Soft-grow only; do not auto-expand the OS window on every content hint
-      // (that stacked with open-pane fit and flickered).
-      const nextW = mergeAsideWidth(cur.asideWidth, suggested, opts);
-      if (nextW === cur.asideWidth) return;
-      setLayout((l) => {
-        if (l.asideCollapsed || l.asideWidth === nextW) return l;
-        const n = { ...l, asideWidth: nextW };
-        saveLayout(localStorage, n);
-        return n;
-      });
-    },
-    [asideClampOpts, phoneLayout],
-  );
-
   /** Open the right pane: open first, then one window fit + clamp. */
   const openAsidePane = useCallback(() => {
     if (phoneLayout) {
@@ -2382,6 +2400,20 @@ export function AppWorkbench() {
       });
     });
   }, [fitWindowThenClampAside, phoneLayout]);
+
+  /** Route chat context opens into Side Workbench tabs (Phase 6). */
+  useEffect(() => {
+    if (!resourceOpenTarget) return;
+    const result = applySideContextOpen(sideWorkbench, resourceOpenTarget, {
+      isGitProject: sideIsGitProject,
+    });
+    if (result.needAsideOpen) {
+      setSideWorkbench(result.state);
+      openAsidePane();
+    }
+    setResourceOpenTarget(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- consume once per target
+  }, [resourceOpenTarget]);
 
   /** Open the left project rail; one window fit (+ reclamp open files pane). */
   const openSidebarPane = useCallback(() => {
@@ -6311,11 +6343,6 @@ export function AppWorkbench() {
       generalWorkspacePath,
     ],
   );
-  const agentDashboardBusyCount = useMemo(
-    () => countBusyDashboardRows(agentDashboardRows),
-    [agentDashboardRows],
-  );
-
   const connPill = useMemo(
     () => connPillForState(session.state, connecting),
     [session.state, connecting],
@@ -7530,16 +7557,19 @@ export function AppWorkbench() {
     hitDragZone,
   ]);
 
-  // Drag-resize right resource pane (clamp only while dragging — grow once on up).
+  // Drag-resize right resource pane.
+  // Live clamp only — do NOT fitWindowThenClampAside on pointer-up (that
+  // re-applied preferred min / window grow and bounced the divider back).
   useEffect(() => {
     if (!resizingAside) return;
+    const clampOpts = () => ({
+      ...asideClampOpts(),
+      viewportWidth: window.innerWidth,
+    });
     const onMove = (e: PointerEvent) => {
       if (isWindowFitSuppressed()) return;
       const desired = Math.round(window.innerWidth - e.clientX);
-      const next = clampAsideWidth(desired, {
-        ...asideClampOpts(),
-        viewportWidth: window.innerWidth,
-      });
+      const next = clampAsideWidth(desired, clampOpts());
       setLayout((l) => {
         if (l.asideWidth === next && !l.asideCollapsed) return l;
         return { ...l, asideWidth: next, asideCollapsed: false };
@@ -7547,22 +7577,18 @@ export function AppWorkbench() {
     };
     const onUp = () => {
       setResizingAside(false);
+      // Persist the last live width (same clamp as drag). No window grow /
+      // preferredAside bump — those caused a visible spring-back at chat min.
       const cur = layoutRef.current;
-      void fitWindowThenClampAside({
-        sidebarCollapsed: cur.sidebarCollapsed,
-        sidebarWidth: cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
-        asideCollapsed: false,
-        asideWidth: cur.asideWidth,
-      }).then((width) => {
-        setLayout((l) => {
-          const n = {
-            ...l,
-            asideCollapsed: false,
-            asideWidth: width,
-          };
-          saveLayout(localStorage, n);
-          return n;
-        });
+      const width = clampAsideWidth(cur.asideWidth, clampOpts());
+      setLayout((l) => {
+        const n = {
+          ...l,
+          asideCollapsed: false,
+          asideWidth: width,
+        };
+        saveLayout(localStorage, n);
+        return n;
       });
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
@@ -7575,7 +7601,7 @@ export function AppWorkbench() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [asideClampOpts, fitWindowThenClampAside, resizingAside]);
+  }, [asideClampOpts, resizingAside]);
 
   // Drag-resize left session rail.
   // Collapse as soon as desired width crosses below the open min — never paint
@@ -10225,15 +10251,6 @@ export function AppWorkbench() {
     return summarizeSessionChanges(list);
   }, [session.sessionId, sessionChangesById]);
 
-  const sessionTasks = useMemo(
-    () => collectSessionTasks(messages),
-    [messages],
-  );
-  const runningTaskCount = useMemo(
-    () => countRunningTasks(sessionTasks),
-    [sessionTasks],
-  );
-
   /**
    * In-chat find matches — user + assistant bodies only.
    * Historical tool_step rows are not rendered in the transcript, so matching
@@ -10633,6 +10650,67 @@ export function AppWorkbench() {
     welcomeSession,
     welcomeBrandKind,
   ]);
+
+  const hideChatForSideExpand = shouldHideChatForSideExpand({
+    expanded: sideWorkbench.expanded,
+    phoneLayout,
+  });
+  const sideDockActive = isSideDockComposerActive({
+    expanded: sideWorkbench.expanded,
+    dockComposer: sideDockComposer,
+    phoneLayout,
+  });
+  const dockSidebarOccupied =
+    phoneLayout || layout.sidebarCollapsed ? 0 : layout.sidebarWidth;
+
+  // Expand ends → close dock toggle.
+  useEffect(() => {
+    if (sideWorkbench.expanded) return;
+    setSideDockComposer(false);
+    setSideDockComposerH(0);
+  }, [sideWorkbench.expanded]);
+
+  // Dock on: measure composer height → shrink side pane bottom.
+  // Webview host follows aside height (no native hole-punch).
+  useEffect(() => {
+    if (!sideDockActive) {
+      setSideDockComposerH(0);
+      return;
+    }
+    const el = composerWrapRef.current;
+    if (!el) {
+      setSideDockComposerH(0);
+      return;
+    }
+    const measure = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      if (h <= 0) return;
+      setSideDockComposerH((prev) => (Math.abs(prev - h) <= 1 ? prev : h));
+    };
+    measure();
+    // Double rAF: portal + dock CSS settle before first measure.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(measure);
+    });
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      ro.disconnect();
+    };
+  }, [
+    sideDockActive,
+    mainPane,
+    attachments.length,
+    showComposerPlus,
+    welcomeSession,
+  ]);
+
+  const onToggleSideDockComposer = useCallback(() => {
+    setSideDockComposer((on) => !on);
+  }, []);
 
   const stop = async () => {
     const now = Date.now();
@@ -12221,6 +12299,21 @@ export function AppWorkbench() {
         saveLayout(localStorage, n);
         return n;
       });
+    },
+    toggleRightPane: () => {
+      if (layoutRef.current.asideCollapsed) {
+        openAsidePane();
+        return;
+      }
+      setLayout((l) => {
+        if (l.asideCollapsed) return l;
+        const n = { ...l, asideCollapsed: true };
+        saveLayout(localStorage, n);
+        return n;
+      });
+      setSideWorkbench((s) =>
+        s.expanded ? { ...s, expanded: false } : s,
+      );
     },
     toggleVoice: () => {
       toggleVoice();
@@ -15797,7 +15890,28 @@ export function AppWorkbench() {
           }}
           />        </Suspense>
       ) : (
-      <div className={"workbench" + (phoneLayout ? " workbench--phone" : "")}>
+      <div
+        className={
+          "workbench" +
+          (phoneLayout ? " workbench--phone" : "") +
+          (hideChatForSideExpand ? " workbench--side-expanded" : "") +
+          (sideDockActive ? " workbench--side-dock" : "")
+        }
+        style={
+          {
+            // Free-area left edge for expanded side overlay (px).
+            ["--sw-sidebar-occupied"]:
+              phoneLayout || layout.sidebarCollapsed
+                ? "0px"
+                : `${layout.sidebarWidth}px`,
+            // Bottom strip reserved only while dock toggle is on.
+            // Floor avoids first-frame cover before ResizeObserver measures.
+            ["--sw-dock-composer-h"]: sideDockActive
+              ? `${Math.max(sideDockComposerH, 96)}px`
+              : "0px",
+          } as CSSProperties
+        }
+      >
         {/* Phone drawer scrim — tap closes without resizing the conversation */}
         {phoneLayout && !layout.sidebarCollapsed ? (
           <button
@@ -16505,8 +16619,12 @@ export function AppWorkbench() {
             "main" +
             (layout.sidebarCollapsed ? " main--sidebar-hidden" : "") +
             (dragZone === "main" ? " is-drop-target" : "") +
-            (dragZone === "sidebar" ? " is-drop-idle" : "")
+            (dragZone === "sidebar" ? " is-drop-idle" : "") +
+            (hideChatForSideExpand ? " main--side-covered" : "")
           }
+          aria-hidden={hideChatForSideExpand ? true : undefined}
+          // Keep chat DOM mounted under the side overlay; block interaction.
+          inert={hideChatForSideExpand ? true : undefined}
         >
           {dragZone === "main" && (
             <div className="drop-overlay drop-overlay--attach" aria-hidden>
@@ -16693,175 +16811,106 @@ export function AppWorkbench() {
                       </span>
                     </Tip>
                   )}
-                  {activeProject && mainPane === "chat" && !isMirrorClient() && (
-                    <OpenLocationButton
-                      path={activeProject.path}
-                      target={defaultOpenTarget || "finder"}
-                      onTargetChange={persistOpenTarget}
-                      onOpenError={(e) => setLocalError(e)}
-                      onCopied={() => {
-                        setToast(tr("attach.copyPath") + " ✓");
-                        window.setTimeout(() => setToast(null), 1600);
-                      }}
-                      platform={platform}
-                      labels={{
-                        openLocation: tr("main.openLocation"),
-                        openHint: tr("main.openLocationHint"),
-                        openMenu: tr("main.openLocationMenu"),
-                        finder: revealInOsLabel(tr, platform),
-                        systemDefault: tr("main.openSystemDefault"),
-                        copyPath: tr("attach.copyPath"),
+                  {/* Codex Side Workbench chrome:
+                      collapsed → open-with · env · side
+                      open      → open-with · env  (side/expand on side bar) */}
+                  {mainPane === "chat" &&
+                    activeProject &&
+                    !isMirrorClient() && (
+                      <OpenLocationButton
+                        path={activeProject.path}
+                        target={defaultOpenTarget || "finder"}
+                        onTargetChange={persistOpenTarget}
+                        onOpenError={(e) => setLocalError(e)}
+                        onCopied={() => {
+                          setToast(tr("attach.copyPath") + " ✓");
+                          window.setTimeout(() => setToast(null), 1600);
+                        }}
+                        platform={platform}
+                        labels={{
+                          openLocation: tr("main.openLocation"),
+                          openHint: tr("main.openLocationHint"),
+                          openMenu: tr("main.openLocationMenu"),
+                          finder: revealInOsLabel(tr, platform),
+                          systemDefault: tr("main.openSystemDefault"),
+                          copyPath: tr("attach.copyPath"),
+                        }}
+                      />
+                    )}
+                  {mainPane === "chat" ? (
+                    <EnvInfoButton
+                      locale={locale}
+                      projectPath={effectiveProjectPath}
+                      projectName={
+                        activeProject
+                          ? projectDisplayName(activeProject, tr)
+                          : null
+                      }
+                      isGitProject={sideIsGitProject}
+                      changeSummary={
+                        sessionChangesSummary?.mode === "diff"
+                          ? {
+                              add: sessionChangesSummary.addedLines ?? 0,
+                              del: sessionChangesSummary.removedLines ?? 0,
+                              fileCount: sessionChangesSummary.fileCount,
+                            }
+                          : sessionChangesSummary
+                            ? {
+                                add: 0,
+                                del: 0,
+                                fileCount: sessionChangesSummary.fileCount,
+                              }
+                            : gitDirtySummary
+                              ? {
+                                  add: 0,
+                                  del: 0,
+                                  fileCount: gitDirtySummary.count,
+                                }
+                              : null
+                      }
+                      onJump={(jump) => {
+                        if (jump.type === "review") {
+                          // Phase 3: env review jump only for git projects.
+                          if (!sideIsGitProject) return;
+                          const result = applySideContextOpen(
+                            sideWorkbench,
+                            { type: "changes" },
+                            { isGitProject: true },
+                          );
+                          if (!result.needAsideOpen) return;
+                          setSideWorkbench(result.state);
+                          openAsidePane();
+                          return;
+                        }
+                        if (jump.type === "local") {
+                          // Open / focus files workbench for the bound project.
+                          const next = openSideTab(sideWorkbench, "file", {
+                            path: effectiveProjectPath || undefined,
+                            name: activeProject
+                              ? projectDisplayName(activeProject, tr)
+                              : undefined,
+                          });
+                          setSideWorkbench(next);
+                          openAsidePane();
+                        }
+                        // branch / push / pr: display-only in Phase 3 (no write ops).
                       }}
                     />
-                  )}
-                  {mainPane === "chat" ? (
-                    <Tip
-                      label={
-                        zenMode
-                          ? tr("main.zenModeExit")
-                          : tr("main.zenModeEnter")
-                      }
-                    >
-                      <button
-                        type="button"
-                        className={
-                          "chrome-btn main__pane-toggle" +
-                          (zenMode ? " is-on" : "")
-                        }
-                        onClick={() => setZenModeEnabled(!zenMode)}
-                        aria-pressed={zenMode}
-                        aria-label={
-                          zenMode
-                            ? tr("main.zenModeExit")
-                            : tr("main.zenModeEnter")
-                        }
-                        data-testid="zen-mode-toggle"
-                      >
-                        <IconZen size={16} />
-                      </button>
-                    </Tip>
                   ) : null}
-                  {mainPane === "chat" && session.sessionId ? (
-                    <Tip label={tr("session.collapseAllActivityHint")}>
+                  {layout.asideCollapsed ? (
+                    <Tip label={tr("main.rightPaneShow")}>
                       <button
                         type="button"
                         className="chrome-btn main__pane-toggle"
-                        onClick={() => dispatchCollapseAllActivity()}
-                        aria-label={tr("session.collapseAllActivity")}
-                        data-testid="collapse-all-activity"
+                        aria-label={tr("main.rightPaneShow")}
+                        aria-pressed={false}
+                        data-testid="main-side-toggle"
+                        onClick={() => openAsidePane()}
                       >
-                        <IconArrowsMinimize size={16} />
+                        <IconPanelRight size={16} />
                       </button>
                     </Tip>
                   ) : null}
-                  {mainPane === "chat" && session.sessionId ? (
-                    <Tip label={tr("session.transcriptFilter.hint")}>
-                      <button
-                        type="button"
-                        className={
-                          "chrome-btn main__pane-toggle" +
-                          (transcriptFilter === "conversation" ? " is-on" : "")
-                        }
-                        onClick={() => toggleTranscriptFilter()}
-                        aria-pressed={transcriptFilter === "conversation"}
-                        aria-label={
-                          transcriptFilter === "conversation"
-                            ? tr("session.transcriptFilter.showTools")
-                            : tr("session.transcriptFilter.hideTools")
-                        }
-                        data-testid="transcript-filter-toggle"
-                      >
-                        <IconChat size={16} />
-                      </button>
-                    </Tip>
-                  ) : null}
-                  {mainPane === "chat" && session.sessionId ? (
-                    <Tip
-                      label={
-                        tasksPanelOpen
-                          ? tr("tasks.hidePanel")
-                          : tr("tasks.showPanel")
-                      }
-                    >
-                      <button
-                        type="button"
-                        className={
-                          "chrome-btn main__pane-toggle" +
-                          (tasksPanelOpen ? " is-on" : "")
-                        }
-                        onClick={() => setTasksPanelOpen((v) => !v)}
-                        aria-pressed={tasksPanelOpen}
-                        aria-label={
-                          tasksPanelOpen
-                            ? tr("tasks.hidePanel")
-                            : tr("tasks.showPanel")
-                        }
-                      >
-                        <IconList size={16} />
-                        {runningTaskCount > 0 ? (
-                          <span className="rp-chrome__badge" aria-hidden>
-                            {Math.min(99, runningTaskCount)}
-                          </span>
-                        ) : null}
-                      </button>
-                    </Tip>
-                  ) : null}
-                  {mainPane === "chat" ? (
-                    <Tip label={tr("dashboard.open")}>
-                      <button
-                        type="button"
-                        className={
-                          "chrome-btn main__pane-toggle" +
-                          (agentDashboardOpen ? " is-on" : "")
-                        }
-                        onClick={() => setAgentDashboardOpen(true)}
-                        aria-pressed={agentDashboardOpen}
-                        aria-label={tr("dashboard.open")}
-                        data-testid="agent-dashboard-open"
-                      >
-                        <IconActivity size={16} />
-                        {agentDashboardBusyCount > 0 ? (
-                          <span className="rp-chrome__badge" aria-hidden>
-                            {Math.min(99, agentDashboardBusyCount)}
-                          </span>
-                        ) : null}
-                      </button>
-                    </Tip>
-                  ) : null}
-                  <Tip
-                    label={
-                      layout.asideCollapsed
-                        ? tr("main.rightPaneShow")
-                        : tr("main.rightPaneHide")
-                    }
-                  >
-                    <button
-                      type="button"
-                      className={
-                        "chrome-btn main__pane-toggle" +
-                        (!layout.asideCollapsed ? " is-on" : "")
-                      }
-                      aria-label={
-                        layout.asideCollapsed
-                          ? tr("main.rightPaneShow")
-                          : tr("main.rightPaneHide")
-                      }
-                      aria-pressed={!layout.asideCollapsed}
-                      onClick={() => {
-                        if (layout.asideCollapsed) {
-                          openAsidePane();
-                        } else {
-                          setLayout((l) => {
-                            const n = { ...l, asideCollapsed: true };
-                            saveLayout(localStorage, n);
-                            return n;
-                          });
-                        }
-                      }}
-                    >
-                      <IconPanelRight size={16} />
-                    </button>
-                  </Tip>
                 </>
               )}
             </div>
@@ -17517,14 +17566,27 @@ export function AppWorkbench() {
           />
           </UiErrorBoundary>
 
+          {(() => {
+            const composerNode = (
           <div
             ref={composerWrapRef}
             className={
               "composer-wrap composer-wrap--float" +
-              (welcomeSession ? " composer-wrap--welcome" : "")
+              (welcomeSession && !sideDockActive
+                ? " composer-wrap--welcome"
+                : "") +
+              (sideDockActive ? " composer-wrap--side-dock" : "")
             }
+            style={
+              sideDockActive
+                ? ({
+                    ["--sw-sidebar-occupied"]: `${dockSidebarOccupied}px`,
+                  } as CSSProperties)
+                : undefined
+            }
+            data-side-dock={sideDockActive ? "true" : undefined}
           >
-            {welcomeSession && welcomeBrandKind ? (
+            {welcomeSession && welcomeBrandKind && !sideDockActive ? (
               <div className="composer-welcome-mark">
                 <SuperGrokMark
                   kind={welcomeBrandKind}
@@ -17613,8 +17675,13 @@ export function AppWorkbench() {
             {(() => {
               const showWelcomeProjectRow =
                 welcomeSession && !phoneLayout && !!activeProject;
+              // Env menu (chat chrome) already shows change stats — hide
+              // the duplicate composer context chips to avoid two "N 变更".
+              const envOwnsChangeSummary =
+                mainPane === "chat" && !phoneLayout;
               const showChangesChips =
                 !phoneLayout &&
+                !envOwnsChangeSummary &&
                 (!!sessionChangesSummary || !!gitDirtySummary);
               const showContextBar =
                 showWelcomeProjectRow || showChangesChips;
@@ -18502,6 +18569,13 @@ export function AppWorkbench() {
               );
             })()}
           </div>
+            );
+            // Portal out of .main so main[inert] cannot block focus/clicks.
+            // Fixed bottom strip; aside bottom = --sw-dock-composer-h.
+            return sideDockActive && typeof document !== "undefined"
+              ? createPortal(composerNode, document.body)
+              : composerNode;
+          })()}
           </div>
           </>
           )}
@@ -18512,12 +18586,13 @@ export function AppWorkbench() {
           className={
             (layout.asideCollapsed ? "aside aside--hidden" : "aside") +
             (resizingAside ? " is-resizing" : "") +
-            (phoneLayout ? " aside--phone-overlay" : "")
+            (phoneLayout ? " aside--phone-overlay" : "") +
+            (hideChatForSideExpand ? " aside--side-expanded" : "")
           }
           aria-label={tr("a11y.resourcesPane")}
           aria-hidden={layout.asideCollapsed}
           style={
-            !layout.asideCollapsed && !phoneLayout
+            !layout.asideCollapsed && !phoneLayout && !hideChatForSideExpand
               ? {
                   width: layout.asideWidth,
                   minWidth: layout.asideWidth,
@@ -18526,7 +18601,7 @@ export function AppWorkbench() {
               : undefined
           }
         >
-          {!layout.asideCollapsed && (
+          {!layout.asideCollapsed && !hideChatForSideExpand && (
             <div
               className="aside-resizer"
               role="separator"
@@ -18539,46 +18614,51 @@ export function AppWorkbench() {
             />
           )}
           <div className="aside__inner">
-                        <Suspense fallback={null}>
-              <ResourceViewer
-              projectPath={effectiveProjectPath}
-              projectName={
-              activeProject
-              ? projectDisplayName(activeProject, tr)
-              : tr("composer.noProject")
-              }
-              locale={locale}
-              paneActive={!layout.asideCollapsed}
-              openRequest={resourceOpenTarget}
-              onOpenRequestConsumed={() => setResourceOpenTarget(null)}
-              sessionChanges={
-              sessionChangesById[session.sessionId || ""] ?? []
-              }
-              sessionMessages={messages}
-              plan={plan}
-              planFocusKey={planFocusKey}
-              planChrome={{
-              composerMode: mode,
-              planEnabled,
-              userClosed: plan.userClosed,
-              hasHistory: planHistoryNonEmpty,
-              }}
-              onApprovePlan={() => void approvePlan()}
-              onRequestPlanChanges={() => openRequestPlanChanges()}
-              onDismissPlan={() => void dismissPlan()}
-              onOpenPlanHistory={() => setShowPlanHistory(true)}
-              onShip={openShipFlow}
-              onAsideLayoutHint={applyAsideLayoutHint}
-              onClose={() => {
-              // Manual close — do not treat as plan-owned pane on later dismiss.
-              planOpenedAsideRef.current = false;
-              setLayout((l) => {
-              const n = { ...l, asideCollapsed: true };
-              saveLayout(localStorage, n);
-              return n;
-              });
-              }}
-              />            </Suspense>
+            <Suspense fallback={null}>
+              <SideWorkbench
+                locale={locale}
+                projectPath={effectiveProjectPath}
+                projectName={
+                  activeProject
+                    ? projectDisplayName(activeProject, tr)
+                    : tr("composer.noProject")
+                }
+                isGitProject={sideIsGitProject}
+                state={sideWorkbench}
+                onStateChange={setSideWorkbench}
+                dockComposer={sideDockComposer}
+                onToggleDockComposer={
+                  phoneLayout ? undefined : onToggleSideDockComposer
+                }
+                paneActive={!layout.asideCollapsed}
+                sessionChanges={
+                  sessionChangesById[session.sessionId || ""] ?? []
+                }
+                plan={plan}
+                planFocusKey={planFocusKey}
+                onApprovePlan={() => void approvePlan()}
+                onRequestPlanChanges={() => openRequestPlanChanges()}
+                onDismissPlan={() => void dismissPlan()}
+                openRequest={resourceOpenTarget}
+                onOpenRequestConsumed={() => setResourceOpenTarget(null)}
+                onCloseSide={() => {
+                  planOpenedAsideRef.current = false;
+                  setSideWorkbench((s) =>
+                    s.expanded ? { ...s, expanded: false } : s,
+                  );
+                  setSideDockComposer(false);
+                  setLayout((l) => {
+                    const n = { ...l, asideCollapsed: true };
+                    saveLayout(localStorage, n);
+                    return n;
+                  });
+                }}
+                onExpandedChange={(expanded) => {
+                  if (phoneLayout) return;
+                  if (!expanded) setSideDockComposer(false);
+                }}
+              />
+            </Suspense>
           </div>
         </aside>
       </div>

@@ -59,6 +59,8 @@ mod cli_update;
 
 mod cli_worktrees;
 
+mod side_browser_host;
+
 mod commands;
 
 mod editors;
@@ -123,6 +125,8 @@ mod providers;
 mod proxy;
 
 mod relay_stream_proxy;
+
+mod pty_host;
 
 mod remote_im;
 
@@ -548,11 +552,11 @@ pub fn run() {
             }
 
             // Remote IM: restore Feishu/Weixin connectors after App restart so
-
             // already-bound channels keep receiving messages without a manual Start.
-
+            // Defer a short beat so the main window can paint / frontend hydrate first
+            // (Weixin long-poll + Feishu WS connect can log for a long time otherwise
+            // and looks like a hang on the last "ilink long-poll starting" line).
             {
-
                 use tauri::Manager;
 
                 remote_im::set_app_handle(app.handle().clone());
@@ -562,15 +566,14 @@ pub fn run() {
                 let rim_watch = rim.clone();
 
                 tauri::async_runtime::spawn(async move {
-
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    tracing::info!("remote_im: deferred autostart begin");
                     remote_im::try_autostart(&rim).await;
-
+                    tracing::info!("remote_im: deferred autostart finished");
                 });
 
                 // Crash / exit recovery while bridge stays enabled.
-
                 remote_im::start_health_watchdog(rim_watch);
-
             }
 
             // Headless mirror auto-start (GROK_MIRROR_HEADLESS=1) — off by default.
@@ -1011,6 +1014,8 @@ pub fn run() {
 
             commands::git_status,
 
+            commands::git_review_bundle,
+
             commands::git_worktrees_list,
 
             commands::git_worktree_add,
@@ -1238,6 +1243,28 @@ pub fn run() {
             commands::x_evidence_stats,
 
             commands::x_quote_pack,
+
+            commands::path_exists_many,
+
+            commands::terminal_pty_spawn,
+
+            commands::terminal_pty_write,
+
+            commands::terminal_pty_resize,
+
+            commands::terminal_pty_kill,
+
+            commands::side_browser_list,
+
+            commands::side_browser_navigate,
+
+            commands::side_browser_reload,
+
+            commands::side_browser_url,
+
+            commands::side_browser_eval,
+
+            commands::side_browser_snapshot,
 
         ])
 

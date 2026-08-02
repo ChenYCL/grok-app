@@ -366,8 +366,9 @@
 /* ===== Main — solid content surface (not glass) ===== */
 .main {
   flex: 1;
-  /* Floor so open aside / narrow windows cannot crush the conversation. */
-  min-width: 400px;
+  /* Floor so open aside / narrow windows cannot crush the conversation.
+   * Keep in sync with MAIN_CHAT_MIN_WIDTH in layout.ts (360). */
+  min-width: 360px;
   display: flex;
   flex-direction: column;
   background: var(--bg-main);

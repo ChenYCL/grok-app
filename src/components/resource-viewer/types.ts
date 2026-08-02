@@ -95,6 +95,19 @@ export interface ResourceViewerProps {
    * App soft-grows aside width so chrome icons never collide with window controls.
    */
   onAsideLayoutHint?: (hint: AsideLayoutHint) => void;
+  /**
+   * Side Workbench embeds this viewer: hide the top .rp-chrome strip
+   * (parent owns shared tabs + expand/side). Keeps split/tree/preview styles.
+   */
+  embeddedChrome?: boolean;
+  /**
+   * When embedded, show a second-row files toolbar (breadcrumb + tree + open)
+   * matching Codex dual-row chrome under the shared tab strip.
+   */
+  embeddedFilesToolbar?: boolean;
+  /** Controlled tree visibility when embedded (Side Workbench state). */
+  treeVisible?: boolean;
+  onTreeVisibleChange?: (visible: boolean) => void;
 }
 
 export type SideMode = "files" | "changes" | "plan" | typeof AGENTS_RAIL_SIDE_MODE;
