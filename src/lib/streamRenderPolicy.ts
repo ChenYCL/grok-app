@@ -29,6 +29,20 @@ export const STREAM_MARKDOWN_PARSE_MS = 160;
 export const TRANSCRIPT_CONTENT_NOTIFY_MS = 100;
 
 /**
+ * Adaptive content-notify interval: longer on thermally limited laptops so
+ * ConversationThread / live panels don't thrash every stream coalesce tick.
+ */
+export function resolveTranscriptContentNotifyMs(
+  hardwareConcurrency: number = typeof navigator !== "undefined"
+    ? navigator.hardwareConcurrency || 8
+    : 8,
+): number {
+  if (hardwareConcurrency <= 8) return 130;
+  if (hardwareConcurrency <= 12) return TRANSCRIPT_CONTENT_NOTIFY_MS;
+  return 72;
+}
+
+/**
  * Past this many characters while streaming, skip live markdown and show
  * plain pre-wrap until the turn settles (one full parse on done).
  */

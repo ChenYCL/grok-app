@@ -191,10 +191,6 @@ import {
   emptySessionPlan,
   type SessionPlanState
 } from "@/lib/planSession";
-import { AgentTasksPanel } from "@/components/AgentTasksPanel";
-import { AgentDashboardModal } from "@/components/AgentDashboardModal";
-import { BatchAgentsModal } from "@/components/BatchAgentsModal";
-import { ReliabilityCenterModal } from "@/components/ReliabilityCenterModal";
 import {
   collectActivitySessions,
   countBusyLiveMapSessions,
@@ -341,11 +337,9 @@ import {
   mapPermissionButtons
 } from "@/lib/permissionOptions";
 import { AskUserModal } from "@/components/AskUserModal";
-import { DoctorModal } from "@/components/DoctorModal";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { PlanHistoryList } from "@/components/PlanHistoryList";
 import { MarkdownBody } from "@/components/MarkdownBody";
-import { VoiceOverlay } from "@/components/VoiceOverlay";
 import {
   clearSessionSearchFilters,
   filterSessionSearch,
@@ -514,7 +508,6 @@ import {
 } from "@/lib/cliUpdateNotice";
 import { GlassModal } from "@/components/GlassModal";
 import { Select } from "@/components/Select";
-import { ProductTutorial } from "@/components/ProductTutorial";
 import {
   loadDone as loadProductTutorialDone,
   markDone as markProductTutorialDone,
@@ -656,7 +649,7 @@ import {
 } from "@/lib/sidebarDensity";
 import { sortSessionsForSidebar } from "@/lib/sidebarDateGroups";
 import { GrokLogo } from "@/components/GrokLogo";
-import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
+import type { SetupCliInfo } from "@/components/SetupWizard";
 import {
   buildAuthDeferredFlags,
   formatCliTooOldDetail,
@@ -754,7 +747,6 @@ import {
   uploadMatchesQuery
 } from "@/components/ComposerPlusPanel";
 import { StatusModal } from "@/components/StatusModal";
-import { McpStatusModal } from "@/components/McpStatusModal";
 import {
   IconChevronDown,
   IconChevronUp,
@@ -858,6 +850,7 @@ import {
   type GitDirtySummary
 } from "@/lib/workspaceGit";
 import { ConversationThreadLive } from "@/components/lobe-chat";
+import { AgentTasksPanelLive } from "@/components/AgentTasksPanelLive";
 import { SidebarSessionBusySpinner } from "@/components/SidebarSessionBusy";
 
 const SettingsPage = lazy(async () => {
@@ -871,6 +864,38 @@ const AutomationsPage = lazy(async () => {
 const ResourceViewer = lazy(async () => {
   const m = await import("@/components/ResourceViewer");
   return { default: m.ResourceViewer };
+});
+const AgentDashboardModal = lazy(async () => {
+  const m = await import("@/components/AgentDashboardModal");
+  return { default: m.AgentDashboardModal };
+});
+const BatchAgentsModal = lazy(async () => {
+  const m = await import("@/components/BatchAgentsModal");
+  return { default: m.BatchAgentsModal };
+});
+const ReliabilityCenterModal = lazy(async () => {
+  const m = await import("@/components/ReliabilityCenterModal");
+  return { default: m.ReliabilityCenterModal };
+});
+const DoctorModal = lazy(async () => {
+  const m = await import("@/components/DoctorModal");
+  return { default: m.DoctorModal };
+});
+const VoiceOverlay = lazy(async () => {
+  const m = await import("@/components/VoiceOverlay");
+  return { default: m.VoiceOverlay };
+});
+const ProductTutorial = lazy(async () => {
+  const m = await import("@/components/ProductTutorial");
+  return { default: m.ProductTutorial };
+});
+const McpStatusModal = lazy(async () => {
+  const m = await import("@/components/McpStatusModal");
+  return { default: m.McpStatusModal };
+});
+const SetupWizard = lazy(async () => {
+  const m = await import("@/components/SetupWizard");
+  return { default: m.SetupWizard };
 });
 import { dispatchCollapseAllActivity } from "@/lib/collapseAllActivity";
 import {
@@ -14732,6 +14757,7 @@ export function AppWorkbench() {
       )}
 
       {appGate === "setup" && (
+        <Suspense fallback={null}>
         <SetupWizard
           tr={tr}
           platform={platform}
@@ -14765,6 +14791,7 @@ export function AppWorkbench() {
             void refreshAccount({ refreshBilling: false });
           }}
         />
+        </Suspense>
       )}
 
       {appGate === "ready" && (appView === "settings" ? (
@@ -17232,8 +17259,7 @@ export function AppWorkbench() {
             />
           )}
           {mainPane === "chat" && tasksPanelOpen && session.sessionId ? (
-            <AgentTasksPanel
-              messages={messages}
+            <AgentTasksPanelLive
               t={(k, vars) => tr(k, vars)}
               onClose={() => setTasksPanelOpen(false)}
               subagentWorktreeSnapshotEnabled={
@@ -19002,6 +19028,8 @@ export function AppWorkbench() {
         </>
       ) : null}
 
+      {(showDoctor) ? (
+      <Suspense fallback={null}>
       <DoctorModal
         open={showDoctor}
         onClose={() => setShowDoctor(false)}
@@ -19021,6 +19049,10 @@ export function AppWorkbench() {
         }}
         onOpenReliability={() => openReliability()}
       />
+      </Suspense>
+      ) : null}
+      {(showReliability) ? (
+      <Suspense fallback={null}>
       <ReliabilityCenterModal
         open={showReliability}
         onClose={() => setShowReliability(false)}
@@ -19036,6 +19068,8 @@ export function AppWorkbench() {
           trayHandlersRef.current.openSessionById(id);
         }}
       />
+      </Suspense>
+      ) : null}
       <ProjectRulesModal
         open={!!projectRulesTarget}
         onClose={() => setProjectRulesTarget(null)}
@@ -19599,6 +19633,8 @@ export function AppWorkbench() {
           ))}
         </ul>
       </GlassModal>
+      {(showProductTutorial) ? (
+      <Suspense fallback={null}>
       <ProductTutorial
         open={showProductTutorial}
         locale={locale}
@@ -19615,6 +19651,10 @@ export function AppWorkbench() {
           setShowProductTutorial(false);
         }}
       />
+      </Suspense>
+      ) : null}
+      {(liveVoiceOpen) ? (
+      <Suspense fallback={null}>
       <VoiceOverlay
         locale={resolveLocale(locale)}
         open={liveVoiceOpen}
@@ -19673,6 +19713,8 @@ export function AppWorkbench() {
           })();
         }}
       />
+      </Suspense>
+      ) : null}
       <AskUserModal
         payload={askUser}
         timeoutSec={askUserTimeoutSec}
@@ -19729,6 +19771,8 @@ export function AppWorkbench() {
         messageCount={messages.length}
         onClose={() => setShowStatusModal(false)}
       />
+      {(agentDashboardOpen) ? (
+      <Suspense fallback={null}>
       <AgentDashboardModal
         open={agentDashboardOpen}
         locale={locale}
@@ -19754,6 +19798,10 @@ export function AppWorkbench() {
           openBatchAgents();
         }}
       />
+      </Suspense>
+      ) : null}
+      {(batchAgentsOpen) ? (
+      <Suspense fallback={null}>
       <BatchAgentsModal
         open={batchAgentsOpen}
         locale={locale}
@@ -19770,6 +19818,10 @@ export function AppWorkbench() {
         onClose={() => setBatchAgentsOpen(false)}
         onDispatch={runBatchAgentsDispatch}
       />
+      </Suspense>
+      ) : null}
+      {(showMcpModal) ? (
+      <Suspense fallback={null}>
       <McpStatusModal
         open={showMcpModal}
         locale={locale}
@@ -19786,6 +19838,8 @@ export function AppWorkbench() {
         onRunDoctor={(name) => void runMcpDoctor(name)}
         onRefreshDoctor={(name) => runMcpDoctor(name)}
       />
+      </Suspense>
+      ) : null}
       {rewindTimeline && (
         <div
           className="overlay"

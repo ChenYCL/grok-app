@@ -3,9 +3,11 @@ import {
   CHAT_VIRTUALIZE_THRESHOLD_PERF,
   resolveStreamFlushMs,
   resolveStreamOverscanScale,
+  resolveTranscriptContentNotifyMs,
   shouldUsePlainStreamBody,
   STREAM_COALESCE_FLUSH_MS,
   STREAM_PLAIN_TEXT_CHAR_THRESHOLD,
+  TRANSCRIPT_CONTENT_NOTIFY_MS,
 } from "./streamRenderPolicy";
 
 describe("streamRenderPolicy", () => {
@@ -36,6 +38,18 @@ describe("streamRenderPolicy", () => {
     expect(resolveStreamOverscanScale(true, 16)).toBeLessThan(1);
     expect(resolveStreamOverscanScale(true, 12)).toBeLessThan(
       resolveStreamOverscanScale(true, 16),
+    );
+  });
+
+  it("content notify ms scales with hardware concurrency", () => {
+    expect(resolveTranscriptContentNotifyMs(4)).toBeGreaterThanOrEqual(
+      TRANSCRIPT_CONTENT_NOTIFY_MS,
+    );
+    expect(resolveTranscriptContentNotifyMs(12)).toBe(
+      TRANSCRIPT_CONTENT_NOTIFY_MS,
+    );
+    expect(resolveTranscriptContentNotifyMs(16)).toBeLessThan(
+      TRANSCRIPT_CONTENT_NOTIFY_MS,
     );
   });
 });

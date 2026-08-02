@@ -7,7 +7,7 @@
  */
 
 import type { ChatMessage } from "@/lib/session";
-import { TRANSCRIPT_CONTENT_NOTIFY_MS } from "@/lib/streamRenderPolicy";
+import { resolveTranscriptContentNotifyMs } from "@/lib/streamRenderPolicy";
 
 export type TranscriptMeta = {
   /** Message count in the viewing transcript. */
@@ -166,7 +166,7 @@ class SessionTranscriptStore {
           this.contentNotifyQueued = false;
           this.flushContentListeners();
         }
-      }, TRANSCRIPT_CONTENT_NOTIFY_MS);
+      }, resolveTranscriptContentNotifyMs());
       return;
     }
     this.contentNotifyQueued = true;

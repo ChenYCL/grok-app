@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { sessionTranscriptStore } from "./sessionTranscriptStore";
 import type { ChatMessage } from "./session";
-import { TRANSCRIPT_CONTENT_NOTIFY_MS } from "./streamRenderPolicy";
+import { resolveTranscriptContentNotifyMs } from "./streamRenderPolicy";
 
 const msg = (
   partial: Partial<ChatMessage> & Pick<ChatMessage, "id" | "role">,
@@ -124,7 +124,7 @@ describe("sessionTranscriptStore", () => {
     expect(contentTicks).toBe(1);
     expect(sessionTranscriptStore.getMessages()[0]!.content).toBe("abc");
 
-    vi.advanceTimersByTime(TRANSCRIPT_CONTENT_NOTIFY_MS);
+    vi.advanceTimersByTime(resolveTranscriptContentNotifyMs());
     expect(contentTicks).toBe(2);
 
     unsubC();

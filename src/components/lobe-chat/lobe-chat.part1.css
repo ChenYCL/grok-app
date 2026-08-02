@@ -148,6 +148,10 @@
   max-width: 100%;
   padding-block: var(--chat-item-pad-block, 10px);
   gap: var(--chat-item-gap, 8px);
+  /* Isolate layout so stream growth on the tail row dirties less of the
+   * surrounding tree during markdown reflow (Intel Retina). Avoid
+   * content-visibility here — the list is already virtualized. */
+  contain: layout style;
 }
 
 .lobe-chat-item--user {
