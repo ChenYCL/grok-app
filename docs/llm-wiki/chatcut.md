@@ -45,6 +45,39 @@ Locale path rule (same as Codex skills): zh → `/zh/…`, es → `/es/…`, els
 
 ## Install / enable
 
+### Independent session mode (App default)
+
+App settings often use `sessionDataMode: independent` → agent / doctor use:
+
+`~/Library/Application Support/com.grokapp.grok-app/agent-home`
+
+while bare terminal `grok mcp …` writes **`~/.grok`**.  
+If MCP only exists under `~/.grok`, the App list may still show it (merged), but **doctor reports `MCP server 'chatcut' not found`** and **no 授权 button** until the server is present in agent-home.
+
+**Fix:** re-run MCP 诊断 in App (auto-mirrors user HTTP MCP into agent-home), or add:
+
+```toml
+# agent-home/config.toml
+[mcp_servers.chatcut]
+url = "https://api.chatcut.io/api/external-mcp/mcp"
+enabled = true
+
+[mcp_servers.chatcut.headers]
+x-chatcut-mcp-surface = "codex"
+```
+
+### Where is 授权?
+
+**设置 → 扩展 → MCP → `chatcut` 行**
+
+1. 点该行的 **诊断**
+2. 失败为 OAuth 后出现 **授权…**（远程 HTTP 服务器也会直接显示授权入口）
+3. 按向导：Grok Build TUI `/mcps` → 对 chatcut 按 `i` 做交互式 OAuth；或打开诊断给出的浏览器 URL
+4. 完成后点「我已授权 — 刷新诊断」
+5. **新开对话** 再试 ChatCut 工具
+
+CLI 没有 `grok mcp login`（skill 里的 Codex 命令在 Grok 无效）。
+
 ```bash
 # 1) Adapt + validate (no ChatCut account required)
 node scripts/chatcut-plugin-start.mjs --fetch
@@ -53,10 +86,10 @@ node scripts/chatcut-plugin-start.mjs --fetch
 grok plugin install --trust "$(pwd)/vendor/chatcut-grok-adapted"
 grok plugin enable chatcut   # name from plugin.json
 
-# 3) Or register MCP only (headers required)
-grok mcp add chatcut https://api.chatcut.io/api/external-mcp/mcp -t http \
+# 3) Or register MCP only (headers required) — prefer under agent GROK_HOME when independent:
+GROK_HOME="$HOME/Library/Application Support/com.grokapp.grok-app/agent-home" \
+  grok mcp add chatcut https://api.chatcut.io/api/external-mcp/mcp -t http \
   -H 'x-chatcut-mcp-surface: codex'
-# Then complete OAuth when prompted (account required for live tools).
 ```
 
 > Adapter **copies** skills into the adapted tree (CLI install does not follow symlinks). Do not hand-edit those copies — re-pull + re-adapt overwrites them.
