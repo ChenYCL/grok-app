@@ -7,8 +7,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::session_fsm::SessionState;
 use crate::stream_stall::{
-    hard_stall_seconds, is_hard_stalled, is_stream_stalled, should_auto_end_maybe_done,
-    should_emit_soft_stall, stall_tier_from_evidence,
+    is_stream_stalled, is_maybe_done_candidate, should_emit_soft_stall, stall_tier_from_evidence,
 };
 
 use super::*;
@@ -54,21 +53,13 @@ impl SessionManager {
         };
         self.apply_stall_tick_action(app, live_action);
 
-        // Heal background busy turns (no soft UI — only silent/hard end).
+        // Background busy turns: silent heal only. Soft banners still emit so
+        // the user sees Keep waiting / End turn when they view that chat — we
+        // never force-end a user task just because it is not focused.
         let bg_actions: Vec<StallTickAction> = {
             let mut bg = self.background.lock();
             bg.values_mut()
-                .filter_map(|s| {
-                    Self::tick_stream_stall_on_session(s, Some(app), stall_secs, now).and_then(
-                        |a| {
-                            // Background: heal/hard only — do not steal focus with soft banner.
-                            match a {
-                                StallTickAction::SoftStall { .. } => None,
-                                other => Some(other),
-                            }
-                        },
-                    )
-                })
+                .filter_map(|s| Self::tick_stream_stall_on_session(s, Some(app), stall_secs, now))
                 .collect()
         };
         for a in bg_actions {
@@ -114,7 +105,7 @@ impl SessionManager {
         }
 
         // This-turn body only (do not use prior-turn journal — that false-triggers
-        // maybe_done auto-end on a new turn that has not produced text yet).
+        // maybe_done tier on a new turn that has not produced text yet).
         let saw_model_this_turn = s.saw_model_output || !s.stream_buf.trim().is_empty();
         if saw_model_this_turn {
             s.saw_model_output = true;
@@ -124,39 +115,17 @@ impl SessionManager {
         // after a full earlier answer in the same chat.
         let saw_model_for_tier =
             saw_model_this_turn || Self::journal_has_assistant_body(&s.app_session_id);
-        // Terminal candidate: **this turn** already has body and tools are idle.
-        let terminal_candidate = should_auto_end_maybe_done(
+        // Maybe-done = this turn has body + tools idle. Used for UI copy only —
+        // never force-ends; user chooses Keep waiting / End turn.
+        let terminal_candidate = is_maybe_done_candidate(
             saw_model_this_turn,
             s.open_tool_ids.len(),
             s.deferred_prompt_complete.is_some(),
         );
 
-        // 2) Maybe-done auto-end at soft silence.
-        // Repro: tools finished + partial assistant text, model stream dies mid-loop;
-        // `prompt_in_flight` stays true so ready-eligible heal never fires, and the
-        // UI spins until the 10min hard window. Cancel the hung prompt and Ready.
-        if terminal_candidate {
-            let sid = s.app_session_id.clone();
-            Self::force_end_streaming_turn(s, app, "maybe_done_stall_heal");
-            return Some(StallTickAction::HardEnded {
-                session_id: sid,
-                stall_seconds: stall_secs,
-                reason: "maybe_done_stall_heal",
-            });
-        }
-
-        // 3) Hard silence → force end, keep journal.
-        if is_hard_stalled(s.last_stream_progress, stall_secs, now) {
-            let sid = s.app_session_id.clone();
-            Self::force_end_streaming_turn(s, app, "hard_stall_timeout");
-            return Some(StallTickAction::HardEnded {
-                session_id: sid,
-                stall_seconds: hard_stall_seconds(stall_secs),
-                reason: "hard_stall_timeout",
-            });
-        }
-
-        // 4) Soft banner (capped once per turn) — still less interruptive.
+        // 2) Soft banner only — never auto-cancel a user-initiated turn.
+        // Re-prompt every full soft window while silence continues. Silent heal
+        // above already covered truly finished FSM (RPC done, no open tools).
         if !should_emit_soft_stall(
             s.last_stream_progress,
             s.last_stall_emit,
@@ -168,8 +137,7 @@ impl SessionManager {
         }
         s.last_stall_emit = Some(now);
         s.stall_soft_emits = s.stall_soft_emits.saturating_add(1);
-        // Soft UI never auto-ends; terminal_candidate is false here.
-        let tier = stall_tier_from_evidence(saw_model_for_tier, saw_tools, false);
+        let tier = stall_tier_from_evidence(saw_model_for_tier, saw_tools, terminal_candidate);
         Some(StallTickAction::SoftStall {
             session_id: s.app_session_id.clone(),
             stall_seconds: stall_secs,

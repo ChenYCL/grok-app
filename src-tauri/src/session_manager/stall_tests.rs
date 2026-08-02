@@ -112,9 +112,9 @@ fn streaming_session(now: Instant, mut patch: impl FnMut(&mut LiveSession)) -> L
 }
 
 #[test]
-fn maybe_done_soft_silence_force_ends_even_when_prompt_in_flight() {
-    // Repro: X search tools finished + partial assistant text; model hung
-    // on final loop with prompt_in_flight=true. Soft silence must Ready.
+fn maybe_done_soft_silence_prompts_never_auto_ends() {
+    // Tools finished + partial assistant text; model may still be hung with
+    // prompt_in_flight=true. Soft silence must only banner — never force-end.
     with_temp_app_home(|| {
         let t0 = Instant::now();
         let mut s = streaming_session(t0, |s| {
@@ -127,16 +127,17 @@ fn maybe_done_soft_silence_force_ends_even_when_prompt_in_flight() {
         let now = t0 + Duration::from_secs(180);
         let action = SessionManager::tick_stream_stall_on_session(&mut s, None, 180, now);
         match action {
-            Some(StallTickAction::HardEnded {
-                reason: "maybe_done_stall_heal",
+            Some(StallTickAction::SoftStall {
+                tier: crate::stream_stall::StallTier::MaybeDone,
                 stall_seconds: 180,
+                saw_model_output: true,
                 ..
             }) => {}
-            other => panic!("expected maybe_done hard end, got {other:?}"),
+            other => panic!("expected maybe_done soft stall, got {other:?}"),
         }
-        assert_eq!(s.fsm.state(), SessionState::Ready);
-        assert!(!s.prompt_in_flight);
-        assert!(s.streaming_message_id.is_none());
+        assert_eq!(s.fsm.state(), SessionState::Streaming);
+        assert!(s.prompt_in_flight);
+        assert!(s.streaming_message_id.is_some());
     });
 }
 
@@ -162,9 +163,9 @@ fn no_auto_end_without_this_turn_body() {
 }
 
 #[test]
-fn orphan_open_tools_pruned_then_maybe_done_auto_end() {
-    // Leaked open tool ids age out (TOOL_ORPHAN_SECONDS); then maybe-done
-    // heal can fire. Matches hung model after tools that never closed cleanly.
+fn orphan_open_tools_pruned_then_maybe_done_soft_only() {
+    // Leaked open tool ids age out (TOOL_ORPHAN_SECONDS); then soft maybe-done
+    // banner — still never auto-cancel while prompt_in_flight.
     with_temp_app_home(|| {
         let t0 = Instant::now();
         let mut s = streaming_session(t0, |s| {
@@ -178,14 +179,37 @@ fn orphan_open_tools_pruned_then_maybe_done_auto_end() {
         let now = t0 + Duration::from_secs(180);
         let action = SessionManager::tick_stream_stall_on_session(&mut s, None, 180, now);
         match action {
-            Some(StallTickAction::HardEnded {
-                reason: "maybe_done_stall_heal",
+            Some(StallTickAction::SoftStall {
+                tier: crate::stream_stall::StallTier::MaybeDone,
                 ..
             }) => {}
-            other => panic!("expected maybe_done after orphan prune, got {other:?}"),
+            other => panic!("expected maybe_done soft after orphan prune, got {other:?}"),
         }
         assert!(s.open_tool_ids.is_empty());
-        assert_eq!(s.fsm.state(), SessionState::Ready);
+        assert_eq!(s.fsm.state(), SessionState::Streaming);
+        assert!(s.prompt_in_flight);
+    });
+}
+
+#[test]
+fn hard_silence_never_force_ends_user_turn() {
+    // 10+ minutes of pure silence used to force-end; must only soft-prompt.
+    with_temp_app_home(|| {
+        let t0 = Instant::now();
+        let mut s = streaming_session(t0, |s| {
+            s.prompt_in_flight = true;
+            s.tools_this_turn = 1;
+            s.last_stream_progress = t0;
+        });
+        let now = t0 + Duration::from_secs(600);
+        let action = SessionManager::tick_stream_stall_on_session(&mut s, None, 180, now);
+        match action {
+            Some(StallTickAction::SoftStall { .. }) => {}
+            other => panic!("expected soft stall at hard silence, got {other:?}"),
+        }
+        assert_eq!(s.fsm.state(), SessionState::Streaming);
+        assert!(s.prompt_in_flight);
+        assert!(s.streaming_message_id.is_some());
     });
 }
 

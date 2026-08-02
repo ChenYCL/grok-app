@@ -1,15 +1,15 @@
 //! Stream stall watchdog policy (I06).
 //!
 //! While a turn is streaming, pure silence (no stream chunks / tool activity)
-//! past a configurable timeout first **heals** stuck Host state, then may surface
-//! a soft cancel/keep-waiting prompt. Long-running tools that still emit tool
-//! events must not count as stalled. Hard silence ends the turn while keeping
-//! journal content (less interruption, fewer false positives).
+//! past a configurable timeout first **heals** stuck Host state (RPC already
+//! finished, orphan open tools, deferred prompt_complete), then may surface a
+//! Keep waiting / End turn prompt. Long-running tools that still emit tool
+//! events must not count as stalled.
 //!
-//! **Maybe-done recovery:** when the Host already has assistant body (or tools
-//! finished and body is present) and no open tools, soft silence is treated as
-//! terminal — cancel the hung `session/prompt` and Ready the UI instead of
-//! waiting the full hard window (model streams that die mid-answer after tools).
+//! **Never auto-cancel a user-initiated turn.** Hard silence and “maybe-done”
+//! (body present, tools idle) only re-prompt — only the user may End turn.
+//! Silent heal still applies when the agent RPC already completed and Host is
+//! merely stuck in Streaming with nothing left to wait on.
 
 #![allow(dead_code)] // residual-clippy: legacy stall emit helper
 use std::time::{Duration, Instant};
@@ -26,8 +26,9 @@ pub const MAX_STREAM_STALL_SECONDS: u32 = 15 * 60;
 /// has a terminal `tool_step` (or after hard orphan alone for leak recovery).
 pub const TOOL_ORPHAN_SECONDS: u32 = 90;
 
-/// Max soft STREAM_STALL banners per turn (then rely on hard end only).
-pub const MAX_SOFT_STALL_EMITS_PER_TURN: u32 = 1;
+/// Soft STREAM_STALL re-prompt interval uses the soft window; no hard auto-end.
+/// Cap is intentionally high so long silences keep reminding without stopping.
+pub const MAX_SOFT_STALL_EMITS_PER_TURN: u32 = 64;
 
 /// Normalize user/settings value for stream stall timeout (seconds).
 pub fn normalize_stream_stall_seconds(raw: u32) -> u32 {
@@ -76,7 +77,10 @@ pub fn should_emit_stall(
     should_emit_soft_stall(last_progress, last_emit, stall_seconds, 0, now)
 }
 
-/// Soft emit gate with per-turn cap (prefer this from the watchdog).
+/// Soft emit gate with per-turn safety cap (prefer this from the watchdog).
+///
+/// First emit when silence crosses the soft window; then re-prompt every full
+/// soft window of continued silence. Never used to force-end a turn.
 pub fn should_emit_soft_stall(
     last_progress: Instant,
     last_emit: Option<Instant>,
@@ -92,11 +96,8 @@ pub fn should_emit_soft_stall(
     }
     match last_emit {
         None => true,
-        // Re-prompt only if we still allow another soft emit this turn.
-        Some(t) => {
-            soft_emits_this_turn + 1 < MAX_SOFT_STALL_EMITS_PER_TURN
-                && is_stream_stalled(t, stall_seconds, now)
-        }
+        // Re-prompt after another full soft window of silence.
+        Some(t) => is_stream_stalled(t, stall_seconds, now),
     }
 }
 
@@ -148,16 +149,27 @@ pub fn stall_tier_from_evidence(
     StallTier::PreFirstToken
 }
 
-/// Whether soft silence should auto-end the turn (heal) instead of only banner.
+/// Whether soft silence looks “maybe done” for stall **UI tier** only.
 ///
-/// True when tools are idle and the journal/stream already shows assistant body —
-/// hanging further usually means the model stream died after work completed.
-pub fn should_auto_end_maybe_done(
+/// True when tools are idle and this turn already has assistant body.
+/// Callers must **not** force-end the turn from this alone — only the user
+/// may End turn; Host may still silent-heal when the RPC already finished.
+pub fn is_maybe_done_candidate(
     saw_model_output: bool,
     open_tool_count: usize,
     deferred_prompt_complete: bool,
 ) -> bool {
     saw_model_output && open_tool_count == 0 && !deferred_prompt_complete
+}
+
+/// Deprecated name — use [`is_maybe_done_candidate`]. Kept for call-site greps.
+#[inline]
+pub fn should_auto_end_maybe_done(
+    saw_model_output: bool,
+    open_tool_count: usize,
+    deferred_prompt_complete: bool,
+) -> bool {
+    is_maybe_done_candidate(saw_model_output, open_tool_count, deferred_prompt_complete)
 }
 
 /// Whether an open tool id should be pruned as orphaned.
@@ -243,12 +255,14 @@ mod tests {
     }
 
     #[test]
-    fn soft_emit_capped_once_per_turn() {
+    fn soft_emit_reprompts_each_soft_window() {
         let t0 = Instant::now();
         let stall_at = t0 + Duration::from_secs(180);
         assert!(should_emit_soft_stall(t0, None, 180, 0, stall_at));
-        // Already emitted once this turn — no re-spam even after full window.
-        assert!(!should_emit_soft_stall(
+        // Same moment as last emit — do not re-spam.
+        assert!(!should_emit_soft_stall(t0, Some(stall_at), 180, 1, stall_at));
+        // Another full soft window of silence → re-prompt (never auto-end).
+        assert!(should_emit_soft_stall(
             t0,
             Some(stall_at),
             180,
@@ -306,14 +320,16 @@ mod tests {
     fn defaults_match_spec() {
         assert_eq!(DEFAULT_STREAM_STALL_SECONDS, 180);
         assert_eq!(MIN_STREAM_STALL_SECONDS, 15);
-        assert_eq!(MAX_SOFT_STALL_EMITS_PER_TURN, 1);
+        assert!(MAX_SOFT_STALL_EMITS_PER_TURN >= 8);
     }
 
     #[test]
-    fn maybe_done_auto_end_requires_body_and_idle_tools() {
+    fn maybe_done_candidate_requires_body_and_idle_tools() {
+        assert!(is_maybe_done_candidate(true, 0, false));
+        assert!(!is_maybe_done_candidate(false, 0, false));
+        assert!(!is_maybe_done_candidate(true, 1, false));
+        assert!(!is_maybe_done_candidate(true, 0, true));
+        // Alias kept for older call sites — same predicate, never force-ends.
         assert!(should_auto_end_maybe_done(true, 0, false));
-        assert!(!should_auto_end_maybe_done(false, 0, false));
-        assert!(!should_auto_end_maybe_done(true, 1, false));
-        assert!(!should_auto_end_maybe_done(true, 0, true));
     }
 }
