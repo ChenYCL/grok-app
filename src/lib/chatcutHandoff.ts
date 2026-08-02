@@ -419,15 +419,14 @@ export function resolveChatcutHandoff(
     }
   }
 
-  const source: ChatcutHandoffAction extends { source: infer S }
-    ? S
-    : never = fields.browserHandoffUrl
-    ? "browserHandoff"
-    : fields.editorUrl
-      ? "editorUrl"
-      : fields.anyEditorLikeUrl
-        ? "url"
-        : "liveProject";
+  const source: "browserHandoff" | "editorUrl" | "liveProject" | "url" =
+    fields.browserHandoffUrl
+      ? "browserHandoff"
+      : fields.editorUrl
+        ? "editorUrl"
+        : fields.anyEditorLikeUrl
+          ? "url"
+          : "liveProject";
 
   // Internal open: preserve query params, apply locale.
   let openUrl = rawInternal.trim();

@@ -22,7 +22,6 @@ import {
   type McpOauthAction,
 } from "@/lib/mcpOauth";
 import {
-  createMcpOauthWizardState,
   emptyMcpOauthWizardState,
   evaluateMcpOauthDoctorRefresh,
   mcpOauthWizardCanConfirmAuthorized,
