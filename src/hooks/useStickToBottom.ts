@@ -509,33 +509,34 @@ export function useStickToBottom(
       return el.scrollHeight;
     };
 
+    /** Extra throttle while stream-perf mode is on (token growth is dense). */
     let throttleTimer = 0;
-    const ro = new ResizeObserver(() => {
-      // Coalesce multi-node notifications to one frame. Always read the
-      // content column height from the DOM — viewport RO entries report
-      // client box size, which is not what we want for grow/shrink.
-      // During stream-perf mode (Intel Retina), also time-throttle RO storms
-      // from markdown reflow so stick-to-bottom is not a second render tax.
-      const streamPerf =
-        typeof document !== "undefined" &&
-        document.documentElement.dataset.streamPerf === "1";
-      if (streamPerf) {
-        if (throttleTimer) return;
-        throttleTimer = window.setTimeout(() => {
-          throttleTimer = 0;
-          if (raf) return;
-          raf = requestAnimationFrame(() => {
-            raf = 0;
-            onHeightChange(measureContentHeight());
-          });
-        }, 80);
-        return;
-      }
+
+    const scheduleMeasure = () => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
         onHeightChange(measureContentHeight());
       });
+    };
+
+    const ro = new ResizeObserver(() => {
+      // Coalesce multi-node notifications to one frame. Always read the
+      // content column height from the DOM — viewport RO entries report
+      // client box size, which is not what we want for grow/shrink.
+      // During stream-perf, further throttle to ~100ms to cut layout thrash
+      // without dropping pin-to-bottom (follow still runs on each fire).
+      if (
+        document.documentElement.getAttribute("data-stream-perf") === "1"
+      ) {
+        if (throttleTimer || raf) return;
+        throttleTimer = window.setTimeout(() => {
+          throttleTimer = 0;
+          scheduleMeasure();
+        }, 100);
+        return;
+      }
+      scheduleMeasure();
     });
 
     const content = contentRef.current ?? el.firstElementChild;
