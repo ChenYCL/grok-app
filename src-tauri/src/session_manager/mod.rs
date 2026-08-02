@@ -14,10 +14,10 @@
 //!
 //! Streaming performance (I04 / I06):
 //! - Mid-stream journal upserts are throttled (≥500ms or paragraph / force).
-//! - Pure stream silence: silent heal (orphan tools / ready-eligible end) first,
-//!   then **maybe-done auto-end** (body present + no open tools → cancel hung
-//!   prompt + Ready), then at most one soft `session://stream_stall` per turn;
-//!   hard silence force-ends the turn while keeping the journal.
+//! - Pure stream silence: silent heal first (orphan tools / ready-eligible when
+//!   the agent RPC already finished), then soft `session://stream_stall`
+//!   (Keep waiting / End turn). **Never auto-cancel a user-initiated turn** —
+//!   long silence re-prompts only; only the user may End turn.
 
 mod connect;
 mod control;

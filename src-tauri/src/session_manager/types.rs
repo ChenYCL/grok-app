@@ -21,7 +21,10 @@ pub(super) enum StallTickAction {
     Healed {
         session_id: String,
     },
-    /// Force-ended streaming turn; always cancel/abort the hung ACP prompt.
+    /// Force-ended streaming turn (cancel hung ACP prompt). Not produced by the
+    /// stall watchdog anymore — user tasks only end via explicit stop. Kept so
+    /// `apply_stall_tick_action` can still handle recovery events if reintroduced.
+    #[allow(dead_code)]
     HardEnded {
         session_id: String,
         stall_seconds: u32,

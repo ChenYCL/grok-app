@@ -71,7 +71,7 @@ export const zhTWCore = {
   "agent.streamStallCancel": "結束本輪",
   "agent.streamStallEndTurn": "結束本輪",
   "agent.streamStallKeepWaiting": "繼續等待",
-  "agent.streamStallHardEndToast": "本輪因長時間無進度已結束，內容已保留。",
+  "agent.streamStallHardEndToast": "Host 已恢復收尾，本輪內容已保留。",
   "app.quitBusy.title": "仍有 Agent 忙碌，確定結束？",
   "app.quitBusy.message": "還有 {n} 個對話在執行。結束會中斷進行中的 Agent 工作。",
   "app.quitBusy.confirm": "結束",
