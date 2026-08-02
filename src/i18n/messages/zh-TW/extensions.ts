@@ -65,7 +65,7 @@ export const zhTWExtensions = {
   "mcpModal.oauth.stepTui": "在 Grok Build TUI 中開啟 `/mcps`，對該伺服器按 `i` 執行互動式 OAuth（權杖保存在 ~/.grok/mcp_credentials.json）。",
   "mcpModal.oauth.stepBrowser": "若上方顯示授權 URL，請在瀏覽器中開啟並完成提供方同意頁。",
   "mcpModal.oauth.stepDoctor": "完成後回到此處，對該伺服器重新執行 MCP 診斷以確認健康狀態。",
-  "mcpModal.oauth.noCliHelper": "沒有無頭的 `grok mcp oauth` 命令 — 授權需互動（TUI）或透過診斷提供的瀏覽器 URL。應用不會將用戶端密鑰寫入日誌。",
+  "mcpModal.oauth.noCliHelper": "透過 App 內建 OAuth（PKCE + 本機回環）完成授權，無需 grok mcp oauth 命令。",
   "mcpModal.oauth.unknownServer": "伺服器",
   "mcpOauth.wizard.progress": "第 {n} / {total} 步",
   "mcpOauth.wizard.next": "繼續",

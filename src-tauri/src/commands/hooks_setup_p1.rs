@@ -259,6 +259,31 @@ pub async fn mcp_add(
 
 // from PR #68
 
+/// Start interactive MCP OAuth (PKCE + loopback). Returns authorize URL for
+/// the UI to open; host waits for callback and persists Bearer token.
+#[tauri::command]
+pub async fn mcp_oauth_start(name: String) -> Result<crate::mcp_oauth::McpOauthStartResult, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("MCP server name required".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || crate::mcp_oauth::mcp_oauth_start(&name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Poll in-flight MCP OAuth (pending | success | error | idle).
+#[tauri::command]
+pub async fn mcp_oauth_status(
+    name: String,
+) -> Result<crate::mcp_oauth::McpOauthStatusResult, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("MCP server name required".into());
+    }
+    Ok(crate::mcp_oauth::mcp_oauth_status(&name))
+}
+
 /// Run `grok mcp doctor --json` (optional server name) under the active GROK_HOME.
 #[tauri::command]
 pub async fn mcp_doctor(

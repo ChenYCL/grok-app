@@ -66,6 +66,7 @@ mod editors;
 mod error;
 
 mod extensions;
+mod mcp_oauth;
 
 mod fs_browser;
 
@@ -915,6 +916,8 @@ pub fn run() {
             commands::extensions_enable_all_skills,
 
             commands::mcp_add,
+            commands::mcp_oauth_start,
+            commands::mcp_oauth_status,
 
             commands::mcp_remove,
 

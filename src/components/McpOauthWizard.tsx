@@ -93,45 +93,6 @@ export function McpOauthWizard({
   );
   const [busy, setBusy] = useState(false);
 
-  // Seed when opened / target changes; reset when closed.
-  useEffect(() => {
-    if (!open || !action) {
-      if (!open) {
-        dispatch({ type: "reset" });
-        setBusy(false);
-      }
-      return;
-    }
-    const next = createMcpOauthWizardState({
-      action,
-      reason: statusReason ?? null,
-    });
-    dispatch({
-      type: "init",
-      input: {
-        action,
-        reason: statusReason ?? null,
-      },
-    });
-    setBusy(false);
-    // Safe snapshot only — no secrets / raw tokens.
-    try {
-      console.info(
-        "[mcp-oauth-wizard] open",
-        sanitizeMcpOauthWizardLog(next),
-      );
-    } catch {
-      /* ignore log failures */
-    }
-  }, [
-    open,
-    action?.server,
-    action?.kind,
-    action?.preferredUrl,
-    action?.isRetry,
-    statusReason,
-  ]);
-
   const openExternal = useCallback(
     async (url: string) => {
       if (onOpenExternalUrl) {
@@ -146,6 +107,113 @@ export function McpOauthWizard({
     },
     [onOpenExternalUrl],
   );
+
+  // Seed when opened / target changes; reset when closed.
+  // Prefer host `mcp_oauth_start` (PKCE + loopback) so we auto-open a real
+  // authorize URL instead of only showing TUI instructions.
+  useEffect(() => {
+    if (!open || !action) {
+      if (!open) {
+        dispatch({ type: "reset" });
+        setBusy(false);
+      }
+      return;
+    }
+    let cancelled = false;
+    const seed = async () => {
+      let preferUrl = action.preferredUrl ?? null;
+      let hostStarted = false;
+      if (api.isTauri() && action.server?.trim()) {
+        setBusy(true);
+        try {
+          const started = await api.mcpOauthStart(action.server.trim());
+          if (!cancelled && started?.authUrl) {
+            preferUrl = started.authUrl;
+            hostStarted = true;
+          }
+        } catch (e) {
+          try {
+            console.warn(
+              "[mcp-oauth-wizard] host oauth start failed",
+              String(e).slice(0, 200),
+            );
+          } catch {
+            /* ignore */
+          }
+        } finally {
+          if (!cancelled) setBusy(false);
+        }
+      }
+      if (cancelled) return;
+      const next = createMcpOauthWizardState({
+        action: {
+          ...action,
+          preferredUrl: preferUrl,
+          authUrls:
+            preferUrl && !action.authUrls?.includes(preferUrl)
+              ? [preferUrl, ...(action.authUrls ?? [])]
+              : action.authUrls,
+        },
+        reason: statusReason ?? null,
+        preferUrl,
+      });
+      dispatch({
+        type: "init",
+        input: {
+          action: {
+            ...action,
+            preferredUrl: preferUrl,
+            authUrls:
+              preferUrl && !action.authUrls?.includes(preferUrl)
+                ? [preferUrl, ...(action.authUrls ?? [])]
+                : action.authUrls,
+          },
+          reason: statusReason ?? null,
+          preferUrl,
+        },
+      });
+      try {
+        console.info(
+          "[mcp-oauth-wizard] open",
+          sanitizeMcpOauthWizardLog(next),
+        );
+      } catch {
+        /* ignore */
+      }
+      // Auto-open browser when host produced a real authorize URL.
+      if (hostStarted && preferUrl && !cancelled) {
+        // intro → auth first (open_url_ok only accepted on auth/waiting).
+        dispatch({ type: "continue" });
+        try {
+          await openExternal(preferUrl);
+          if (!cancelled) {
+            dispatch({ type: "open_url_ok" });
+            // auth → waiting while host loopback waits for provider callback.
+            dispatch({ type: "continue" });
+          }
+        } catch (e) {
+          if (!cancelled) {
+            dispatch({
+              type: "open_url_error",
+              error: redactMcpOauthText(String(e)).slice(0, 240),
+            });
+          }
+        }
+      }
+    };
+    void seed();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    open,
+    action?.server,
+    action?.kind,
+    action?.preferredUrl,
+    action?.isRetry,
+    statusReason,
+    openExternal,
+  ]);
 
   const handleOpenUrl = useCallback(async () => {
     const url = state.authUrl;
@@ -230,6 +298,38 @@ export function McpOauthWizard({
     if (!mcpOauthWizardCanConfirmAuthorized(state)) return;
     void runDoctorRefresh();
   }, [runDoctorRefresh, state]);
+
+  // Poll host OAuth callback status while wizard is open on waiting/auth.
+  useEffect(() => {
+    if (!open || !action?.server?.trim() || !api.isTauri()) return;
+    if (state.step !== "waiting" && state.step !== "auth") return;
+    let cancelled = false;
+    const server = action.server.trim();
+    const tick = async () => {
+      try {
+        const st = await api.mcpOauthStatus(server);
+        if (cancelled) return;
+        if (st.phase === "success") {
+          void runDoctorRefresh();
+        } else if (st.phase === "error") {
+          dispatch({
+            type: "doctor_result",
+            stillNeedsAuth: true,
+            reason: st.message || st.error || "OAuth failed",
+            doctorError: null,
+          });
+        }
+      } catch {
+        /* soft-fail poll */
+      }
+    };
+    const id = window.setInterval(() => void tick(), 1500);
+    void tick();
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [open, action?.server, state.step, runDoctorRefresh]);
 
   const handleClose = useCallback(() => {
     if (busy && state.step === "refreshing") return;
