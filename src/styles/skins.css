@@ -35,6 +35,28 @@ html[data-wallpaper="1"] .app-shell::after {
 }
 
 /* React media layer — behind the scrim, behind chrome. */
+/*
+ * Streaming perf mode (set by App when a turn is live):
+ * Integrated-GPU Retina (e.g. 2019 Intel MBP) pays heavily for wallpaper
+ * video + backdrop-filter while ReactMarkdown reflows every stream tick.
+ */
+html[data-stream-perf="1"] .app-wallpaper-media {
+  opacity: 0.25;
+  filter: none;
+  pointer-events: none;
+  /* Pause animated wallpapers when possible */
+}
+html[data-stream-perf="1"] .app-wallpaper-media video {
+  /* free decode/composite budget during stream */
+  visibility: hidden;
+}
+html[data-stream-perf="1"] .glass-surface,
+html[data-stream-perf="1"] .sidebar,
+html[data-stream-perf="1"] .composer-wrap--float {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 .app-wallpaper-media {
   position: absolute;
   inset: 0;

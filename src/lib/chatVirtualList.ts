@@ -13,8 +13,14 @@
  *   not mount the entire remainder of a long chat (history-browse jank).
  */
 
-/** Only virtualize long threads — short chats keep full DOM (identical UX). */
-export const CHAT_VIRTUALIZE_THRESHOLD = 48;
+import { CHAT_VIRTUALIZE_THRESHOLD_PERF } from "@/lib/streamRenderPolicy";
+
+/**
+ * Virtualize once the transcript has this many rows (tool steps count).
+ * Kept low so multi-turn agent chats window the DOM before the UI freezes
+ * on integrated-GPU / Retina laptops (see streamRenderPolicy).
+ */
+export const CHAT_VIRTUALIZE_THRESHOLD = CHAT_VIRTUALIZE_THRESHOLD_PERF;
 
 /** Fallback height before a row is measured (px). */
 export const CHAT_DEFAULT_ROW_ESTIMATE_PX = 120;
@@ -128,29 +134,41 @@ export function resolveChatOverscanPx(input: {
   pinToBottom?: boolean;
   /** Explicit override (tests / callers). */
   overscanPx?: number;
+  /**
+   * 0–1 scale applied after clamp (stream-perf on low-power clients mounts
+   * fewer offscreen markdown rows).
+   */
+  scale?: number;
 }): number {
   if (input.overscanPx != null && Number.isFinite(input.overscanPx)) {
     return Math.max(0, input.overscanPx);
   }
   const vh = Math.max(0, input.viewportHeight);
+  let px: number;
   if (input.pinToBottom) {
     // ~1.5 viewports above the tail + small baseline, clamped.
     const raw = vh * 1.5 + 200;
-    return Math.round(
+    px = Math.round(
       Math.min(
         CHAT_PIN_OVERSCAN_MAX_PX,
         Math.max(CHAT_PIN_OVERSCAN_MIN_PX, raw, CHAT_PIN_OVERSCAN_PX * 0.75),
       ),
     );
+  } else {
+    // History browse: ~1 viewport of runway.
+    const raw = vh * 1.1 + 100;
+    px = Math.round(
+      Math.min(
+        CHAT_OVERSCAN_MAX_PX,
+        Math.max(CHAT_OVERSCAN_MIN_PX, raw, CHAT_OVERSCAN_PX * 0.6),
+      ),
+    );
   }
-  // History browse: ~1 viewport of runway.
-  const raw = vh * 1.1 + 100;
-  return Math.round(
-    Math.min(
-      CHAT_OVERSCAN_MAX_PX,
-      Math.max(CHAT_OVERSCAN_MIN_PX, raw, CHAT_OVERSCAN_PX * 0.6),
-    ),
-  );
+  const scale =
+    input.scale != null && Number.isFinite(input.scale)
+      ? Math.min(1, Math.max(0.35, input.scale))
+      : 1;
+  return Math.round(px * scale);
 }
 
 /**

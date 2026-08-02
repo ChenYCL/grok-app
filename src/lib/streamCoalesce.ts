@@ -56,7 +56,7 @@ export function mergeStreamChunks(
 }
 
 export type StreamCoalescerOptions = {
-  /** Max hold time before a non-terminal batch is flushed (default 48ms). */
+  /** Max hold time before a non-terminal batch is flushed (default 96ms). */
   flushMs?: number;
   /** Deliver one (possibly merged) chunk to the UI reducer. */
   onFlush: (chunk: CoalesceStreamChunk) => void;
@@ -74,7 +74,9 @@ export class StreamCoalescer {
   private disposed = false;
 
   constructor(opts: StreamCoalescerOptions) {
-    this.flushMs = Math.max(8, opts.flushMs ?? 48);
+    // Default ~10 UI flushes/sec — half of the old 48ms path, far fewer
+    // full App re-renders during long tool+markdown turns.
+    this.flushMs = Math.max(8, opts.flushMs ?? 110);
     this.onFlush = opts.onFlush;
   }
 

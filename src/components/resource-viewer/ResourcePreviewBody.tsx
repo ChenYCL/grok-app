@@ -3,7 +3,7 @@
  * Presentational: all actions/state come from props (behavior freeze).
  */
 
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import * as api from "@/lib/api";
 import type { Locale, MessageKey } from "@/i18n";
 import {
@@ -13,9 +13,7 @@ import {
 } from "@/lib/mediaLoadPro";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
 import { MarkdownBody } from "@/components/MarkdownBody";
-import { MarkdownTiptapEditor } from "@/components/MarkdownTiptapEditor";
 import { OverlayScroll } from "@/components/OverlayScroll";
-import { FileMediaPlayer } from "@/components/FileMediaPlayer";
 import { ImageUi } from "@/components/ImageUi";
 import { revealInOsLabel } from "@/lib/appPlatform";
 import {
@@ -29,8 +27,6 @@ import {
   IconChat,
   IconRewind,
 } from "@/components/icons";
-import { OfficeDocumentPreview } from "@/components/OfficeDocumentPreview";
-import { CodePreview } from "@/components/CodePreview";
 import { isOfficeKind } from "@/lib/filePreviewSrc";
 import { Tip } from "@/components/ui/tooltip";
 import { normalizePath } from "@/lib/sessionChanges";
@@ -42,6 +38,23 @@ import {
 } from "@/lib/resourceEdit";
 import type { DiffLayout, DiffViewState, FileTab, SideMode } from "./types";
 import { formatSize, guessOfficeKind } from "./helpers";
+
+const MarkdownTiptapEditor = lazy(async () => {
+  const m = await import("@/components/MarkdownTiptapEditor");
+  return { default: m.MarkdownTiptapEditor };
+});
+const FileMediaPlayer = lazy(async () => {
+  const m = await import("@/components/FileMediaPlayer");
+  return { default: m.FileMediaPlayer };
+});
+const OfficeDocumentPreview = lazy(async () => {
+  const m = await import("@/components/OfficeDocumentPreview");
+  return { default: m.OfficeDocumentPreview };
+});
+const CodePreview = lazy(async () => {
+  const m = await import("@/components/CodePreview");
+  return { default: m.CodePreview };
+});
 
 export type ResourcePreviewBodyProps = {
   tr: (key: MessageKey, vars?: Record<string, string>) => string;
@@ -386,21 +399,23 @@ export function ResourcePreviewBody({
               <div className="rp-diff-split__label">
                 {tr("changes.split.before")}
               </div>
-              <CodePreview
+                            <Suspense fallback={null}>
+                <CodePreview
                 code={diffView.beforeText ?? ""}
                 fileName={diffView.name}
                 className="rp-diff-split__code"
-              />
+                />              </Suspense>
             </div>
             <div className="rp-diff-split__pane">
               <div className="rp-diff-split__label">
                 {tr("changes.split.after")}
               </div>
-              <CodePreview
+                            <Suspense fallback={null}>
+                <CodePreview
                 code={diffView.afterText ?? ""}
                 fileName={diffView.name}
                 className="rp-diff-split__code"
-              />
+                />              </Suspense>
             </div>
           </div>
         </div>
@@ -412,12 +427,13 @@ export function ResourcePreviewBody({
         <div className="rp-diff-host">
           {toolbar}
           {hunkBar}
-          <CodePreview
+                    <Suspense fallback={null}>
+            <CodePreview
             code={diffView.unified}
             fileName={`${diffView.name}.diff`}
             language="diff"
             footer={srcLabel}
-          />
+            />          </Suspense>
         </div>
       );
     }
@@ -425,11 +441,12 @@ export function ResourcePreviewBody({
       return (
         <div className="rp-diff-host">
           {toolbar}
-          <CodePreview
+                    <Suspense fallback={null}>
+            <CodePreview
             code={diffView.afterOnly}
             fileName={diffView.name}
             footer={tr("changes.afterOnly")}
-          />
+            />          </Suspense>
         </div>
       );
     }
@@ -604,33 +621,34 @@ export function ResourcePreviewBody({
         ) : null}
         {showEditor ? (
           isMarkdown ? (
-            <MarkdownTiptapEditor
+                        <Suspense fallback={null}>
+              <MarkdownTiptapEditor
               key={activeTab.id}
               value={draftText}
               onChange={updateActiveDraft}
               onSave={() => void saveActiveFile()}
               disabled={!!activeTab.saving}
               labels={{
-                bold: tr("resources.mdFmt.bold"),
-                italic: tr("resources.mdFmt.italic"),
-                strike: tr("resources.mdFmt.strike"),
-                code: tr("resources.mdFmt.code"),
-                h1: tr("resources.mdFmt.h1"),
-                h2: tr("resources.mdFmt.h2"),
-                h3: tr("resources.mdFmt.h3"),
-                bulletList: tr("resources.mdFmt.bulletList"),
-                orderedList: tr("resources.mdFmt.orderedList"),
-                blockquote: tr("resources.mdFmt.blockquote"),
-                link: tr("resources.mdFmt.link"),
-                hr: tr("resources.mdFmt.hr"),
-                linkPlaceholder: tr("resources.mdFmt.linkPlaceholder"),
-                linkApply: tr("resources.mdFmt.linkApply"),
-                placeholder: tr("resources.mdFmt.placeholder"),
-                editorAria: tr("resources.editorAria", {
-                  name: preview.name,
-                }),
+              bold: tr("resources.mdFmt.bold"),
+              italic: tr("resources.mdFmt.italic"),
+              strike: tr("resources.mdFmt.strike"),
+              code: tr("resources.mdFmt.code"),
+              h1: tr("resources.mdFmt.h1"),
+              h2: tr("resources.mdFmt.h2"),
+              h3: tr("resources.mdFmt.h3"),
+              bulletList: tr("resources.mdFmt.bulletList"),
+              orderedList: tr("resources.mdFmt.orderedList"),
+              blockquote: tr("resources.mdFmt.blockquote"),
+              link: tr("resources.mdFmt.link"),
+              hr: tr("resources.mdFmt.hr"),
+              linkPlaceholder: tr("resources.mdFmt.linkPlaceholder"),
+              linkApply: tr("resources.mdFmt.linkApply"),
+              placeholder: tr("resources.mdFmt.placeholder"),
+              editorAria: tr("resources.editorAria", {
+              name: preview.name,
+              }),
               }}
-            />
+              />            </Suspense>
           ) : (
             <textarea
               className="rp-editor__textarea"
@@ -687,7 +705,8 @@ export function ResourcePreviewBody({
     preview.kind !== "image"
   ) {
     return (
-      <OfficeDocumentPreview
+            <Suspense fallback={null}>
+        <OfficeDocumentPreview
         kind={preview.kind === "office" ? guessOfficeKind(preview.name) : preview.kind}
         absolutePath={preview.absolutePath}
         name={preview.name}
@@ -695,7 +714,7 @@ export function ResourcePreviewBody({
         textFallback={preview.text}
         errorFromHost={preview.error}
         embedded
-      />
+        />      </Suspense>
     );
   }
 
@@ -742,19 +761,20 @@ export function ResourcePreviewBody({
     case "audio":
     case "video":
       return src ? (
-        <FileMediaPlayer
+                <Suspense fallback={null}>
+          <FileMediaPlayer
           kind={preview.kind}
           src={src}
           mime={preview.mime}
           title={preview.name}
           absolutePath={preview.absolutePath || undefined}
           labels={{
-            loadError: tr("media.loadError"),
-            openExternal: tr("media.openExternal"),
-            loading: tr("resources.loading"),
-            t: tr,
+          loadError: tr("media.loadError"),
+          openExternal: tr("media.openExternal"),
+          loading: tr("resources.loading"),
+          t: tr,
           }}
-        />
+          />        </Suspense>
       ) : (
         <div className="rp-preview__msg">{tr("resources.binary")}</div>
       );
@@ -784,26 +804,28 @@ export function ResourcePreviewBody({
         /* keep raw */
       }
       return (
-        <CodePreview
+                <Suspense fallback={null}>
+          <CodePreview
           code={body}
           fileName={preview.name.endsWith(".json") ? preview.name : "data.json"}
           language="json"
           footer={
-            preview.truncated ? tr("resources.truncated") : null
+          preview.truncated ? tr("resources.truncated") : null
           }
-        />
+          />        </Suspense>
       );
     }
     default:
       if (preview.text) {
         return (
-          <CodePreview
+                    <Suspense fallback={null}>
+            <CodePreview
             code={preview.text}
             fileName={preview.name}
             footer={
-              preview.truncated ? tr("resources.truncated") : null
+            preview.truncated ? tr("resources.truncated") : null
             }
-          />
+            />          </Suspense>
         );
       }
       return (

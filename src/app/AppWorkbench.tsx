@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -193,10 +195,6 @@ import {
   emptySessionPlan,
   type SessionPlanState
 } from "@/lib/planSession";
-import { AgentTasksPanel } from "@/components/AgentTasksPanel";
-import { AgentDashboardModal } from "@/components/AgentDashboardModal";
-import { BatchAgentsModal } from "@/components/BatchAgentsModal";
-import { ReliabilityCenterModal } from "@/components/ReliabilityCenterModal";
 import {
   collectActivitySessions,
   countBusyLiveMapSessions,
@@ -343,11 +341,9 @@ import {
   mapPermissionButtons
 } from "@/lib/permissionOptions";
 import { AskUserModal } from "@/components/AskUserModal";
-import { DoctorModal } from "@/components/DoctorModal";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { PlanHistoryList } from "@/components/PlanHistoryList";
 import { MarkdownBody } from "@/components/MarkdownBody";
-import { VoiceOverlay } from "@/components/VoiceOverlay";
 import {
   clearSessionSearchFilters,
   filterSessionSearch,
@@ -516,7 +512,6 @@ import {
 } from "@/lib/cliUpdateNotice";
 import { GlassModal } from "@/components/GlassModal";
 import { Select } from "@/components/Select";
-import { ProductTutorial } from "@/components/ProductTutorial";
 import {
   loadDone as loadProductTutorialDone,
   markDone as markProductTutorialDone,
@@ -658,7 +653,7 @@ import {
 } from "@/lib/sidebarDensity";
 import { sortSessionsForSidebar } from "@/lib/sidebarDateGroups";
 import { GrokLogo } from "@/components/GrokLogo";
-import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
+import type { SetupCliInfo } from "@/components/SetupWizard";
 import {
   buildAuthDeferredFlags,
   formatCliTooOldDetail,
@@ -756,7 +751,6 @@ import {
   uploadMatchesQuery
 } from "@/components/ComposerPlusPanel";
 import { StatusModal } from "@/components/StatusModal";
-import { McpStatusModal } from "@/components/McpStatusModal";
 import {
   IconChevronDown,
   IconChevronUp,
@@ -821,7 +815,6 @@ import {
 } from "@/components/icons";
 import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
 import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
-import { AutomationsPage } from "@/components/AutomationsPage";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import {
@@ -848,10 +841,7 @@ import {
   ProviderBrandIcon,
   providerAvatarLetter
 } from "@/components/ProviderBrandIcon";
-import {
-  ResourceViewer,
-  type ResourceOpenTarget
-} from "@/components/ResourceViewer";
+import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import { ProjectRulesModal } from "@/components/ProjectRulesModal";
 import {
   mergeSessionChange,
@@ -863,7 +853,54 @@ import {
   summarizeGitDirty,
   type GitDirtySummary
 } from "@/lib/workspaceGit";
-import { ConversationThread } from "@/components/lobe-chat";
+import { ConversationThreadLive } from "@/components/lobe-chat";
+import { AgentTasksPanelLive } from "@/components/AgentTasksPanelLive";
+import { SidebarSessionBusySpinner } from "@/components/SidebarSessionBusy";
+
+const SettingsPage = lazy(async () => {
+  const m = await import("@/components/SettingsPage");
+  return { default: m.SettingsPage };
+});
+const AutomationsPage = lazy(async () => {
+  const m = await import("@/components/AutomationsPage");
+  return { default: m.AutomationsPage };
+});
+const ResourceViewer = lazy(async () => {
+  const m = await import("@/components/ResourceViewer");
+  return { default: m.ResourceViewer };
+});
+const AgentDashboardModal = lazy(async () => {
+  const m = await import("@/components/AgentDashboardModal");
+  return { default: m.AgentDashboardModal };
+});
+const BatchAgentsModal = lazy(async () => {
+  const m = await import("@/components/BatchAgentsModal");
+  return { default: m.BatchAgentsModal };
+});
+const ReliabilityCenterModal = lazy(async () => {
+  const m = await import("@/components/ReliabilityCenterModal");
+  return { default: m.ReliabilityCenterModal };
+});
+const DoctorModal = lazy(async () => {
+  const m = await import("@/components/DoctorModal");
+  return { default: m.DoctorModal };
+});
+const VoiceOverlay = lazy(async () => {
+  const m = await import("@/components/VoiceOverlay");
+  return { default: m.VoiceOverlay };
+});
+const ProductTutorial = lazy(async () => {
+  const m = await import("@/components/ProductTutorial");
+  return { default: m.ProductTutorial };
+});
+const McpStatusModal = lazy(async () => {
+  const m = await import("@/components/McpStatusModal");
+  return { default: m.McpStatusModal };
+});
+const SetupWizard = lazy(async () => {
+  const m = await import("@/components/SetupWizard");
+  return { default: m.SetupWizard };
+});
 import { dispatchCollapseAllActivity } from "@/lib/collapseAllActivity";
 import {
   installDialogFocus,
@@ -871,12 +908,8 @@ import {
   preferPermissionFocus,
   trapTabKey
 } from "@/lib/a11yFocus";
-import { Spinner } from "@/components/ui/spinner";
 import { UserMenu, remainingPercent } from "@/components/UserMenu";
-import {
-  SettingsPage,
-  type SettingsSectionId
-} from "@/components/SettingsPage";
+import type { SettingsSectionId } from "@/components/SettingsPage";
 import {
   buildSettingsHash,
   isSettingsSectionId,
@@ -921,6 +954,8 @@ import {
 } from "@/lib/app/sidebarModels";
 import type { ContextMenuState } from "@/lib/app/appDialogTypes";
 import { useSessionRuntime } from "@/hooks/useSessionRuntime";
+import { sessionTranscriptStore } from "@/lib/sessionTranscriptStore";
+import { useLiveMapWhen } from "@/hooks/useSessionLiveMap";
 import { useComposerController } from "@/hooks/useComposerController";
 import { useAppDialogs } from "@/hooks/useAppDialogs";
 import { useSessionHostEvents } from "@/hooks/useSessionHostEvents";
@@ -1176,9 +1211,10 @@ export function AppWorkbench() {
     liveHost,
     setLiveHost,
     liveHostRef,
-    liveMap,
     setLiveMap,
     liveMapRef,
+    liveMapBusyCount,
+    getLiveMap,
     stopLatch,
     setStopLatch,
     stopLatchRef,
@@ -1195,6 +1231,7 @@ export function AppWorkbench() {
     stopGate,
     effectiveCanSend,
     effectiveCanStop,
+    transcriptMeta,
   } = useSessionRuntime({ isSecondaryWindow });
 
   /** Context usage chip — known tokens from compact events + estimate fallback. */
@@ -2176,6 +2213,14 @@ export function AppWorkbench() {
     sawModelOutput?: boolean;
     sawToolActivity?: boolean;
   } | null>(null);
+
+  // Full multi-session liveMap only while chrome that needs every row is open.
+  const liveMap = useLiveMapWhen(
+    showReliability ||
+      agentDashboardOpen ||
+      tasksPanelOpen ||
+      streamStall != null,
+  );
   /** Queue item currently being steered into the live turn. */
   const [guidingQueueItemId, setGuidingQueueItemId] = useState<string | null>(null);
   /** Queue item open in the edit dialog (`null` when closed). */
@@ -2602,12 +2647,12 @@ export function AppWorkbench() {
   useEffect(() => {
     const resolved = resolveTrayBusyBadgeCount({
       enabled: trayBusyBadge,
-      busyCount: countBusyLiveMapSessions(liveMap),
+      busyCount: liveMapBusyCount,
       isSecondaryWindow,
     });
     if (!resolved.apply) return;
     void api.traySetBusyCount(resolved.count);
-  }, [liveMap, trayBusyBadge, isSecondaryWindow]);
+  }, [liveMapBusyCount, trayBusyBadge, isSecondaryWindow]);
 
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
@@ -3921,7 +3966,7 @@ export function AppWorkbench() {
       return;
     }
     const foreignBusy =
-      Object.entries(liveMap).some(
+      Object.entries(getLiveMap()).some(
         ([id, snap]) =>
           id !== s.id &&
           (snap.state === "streaming" || snap.state === "awaiting_permission"),
@@ -6513,12 +6558,19 @@ export function AppWorkbench() {
     [tr, platform],
   );
 
-  const lastUserMessageId = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role === "user") return messages[i]!.id;
-    }
-    return null;
-  }, [messages]);
+  const lastUserMessageId = transcriptMeta.lastUserId;
+
+  // Streaming perf mode — cheapen wallpaper/glass on integrated GPU Retina.
+  useEffect(() => {
+    const on =
+      session.state === "streaming" ||
+      session.state === "awaiting_permission" ||
+      transcriptMeta.hasStreamingAssistant;
+    document.documentElement.dataset.streamPerf = on ? "1" : "0";
+    return () => {
+      document.documentElement.dataset.streamPerf = "0";
+    };
+  }, [session.state, transcriptMeta.hasStreamingAssistant]);
 
   const canEditLastUser =
     !!lastUserMessageId &&
@@ -10125,11 +10177,27 @@ export function AppWorkbench() {
    * Historical tool_step rows are not rendered in the transcript, so matching
    * them would land on invisible hits.
    */
+  const [chatFindLiveTick, setChatFindLiveTick] = useState(0);
+  useEffect(() => {
+    if (!showChatFind) return;
+    let raf = 0;
+    const unsub = sessionTranscriptStore.subscribeContent(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setChatFindLiveTick((n) => n + 1));
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      unsub();
+    };
+  }, [showChatFind]);
+
   const chatFindMatches = useMemo((): ChatFindMatch[] => {
     if (!showChatFind) return [];
+    void chatFindLiveTick;
+    const live = sessionTranscriptStore.getMessages();
     return findChatMatches(
       chatFindQuery,
-      messages
+      live
         .filter((m) => m.role === "user" || m.role === "assistant")
         .map((m) => ({
           id: m.id,
@@ -10138,7 +10206,7 @@ export function AppWorkbench() {
           marker: m.marker,
         })),
     );
-  }, [showChatFind, chatFindQuery, messages]);
+  }, [showChatFind, chatFindQuery, chatFindLiveTick, messages]);
 
   const chatFindHitIds = useMemo(() => {
     const s = new Set<string>();
@@ -10250,12 +10318,12 @@ export function AppWorkbench() {
   const welcomeSession =
     mainPane === "chat" &&
     !session.sessionId &&
-    messages.length === 0 &&
+    transcriptMeta.length === 0 &&
     session.state !== "streaming";
   const emptyExistingSession =
     mainPane === "chat" &&
     !!session.sessionId &&
-    messages.length === 0 &&
+    transcriptMeta.length === 0 &&
     session.state !== "streaming" &&
     session.state !== "connecting";
   // Live billing can take seconds (quota network). Cache last mark so the
@@ -14710,6 +14778,7 @@ export function AppWorkbench() {
       )}
 
       {appGate === "setup" && (
+        <Suspense fallback={null}>
         <SetupWizard
           tr={tr}
           platform={platform}
@@ -14743,14 +14812,16 @@ export function AppWorkbench() {
             void refreshAccount({ refreshBilling: false });
           }}
         />
+        </Suspense>
       )}
 
       {appGate === "ready" && (appView === "settings" ? (
-        <SettingsPage
+                <Suspense fallback={null}>
+          <SettingsPage
           section={settingsSection}
           tab={settingsTab}
           onSection={(id, nextTab) => {
-            navigateSettings(id, nextTab);
+          navigateSettings(id, nextTab);
           }}
           onBack={navigateWorkbench}
           phoneLayout={phoneLayout}
@@ -14761,16 +14832,16 @@ export function AppWorkbench() {
           locale={locale}
           localePreference={localePreference}
           onLocale={(v) => {
-            const pref = parseLocalePreference(v);
-            setLocalePreference(pref);
-            const next = resolveLocalePreference(pref);
-            setLocale(next);
-            void api.settingsGet().then(async (s) => {
-              // Persist preference including "system" (not the resolved catalog id).
-              await api.settingsSet({ ...s, locale: pref });
-              // settings_set also refreshes tray; call again so UI stays in sync if invoke fails mid-way.
-              void api.trayRefresh();
-            });
+          const pref = parseLocalePreference(v);
+          setLocalePreference(pref);
+          const next = resolveLocalePreference(pref);
+          setLocale(next);
+          void api.settingsGet().then(async (s) => {
+          // Persist preference including "system" (not the resolved catalog id).
+          await api.settingsSet({ ...s, locale: pref });
+          // settings_set also refreshes tray; call again so UI stays in sync if invoke fails mid-way.
+          void api.trayRefresh();
+          });
           }}
           theme={theme}
           themePreference={themePreference}
@@ -14779,33 +14850,33 @@ export function AppWorkbench() {
           onThemeSchedule={applyThemeScheduleChoice}
           showMessageTimestamps={showMessageTimestamps}
           onShowMessageTimestamps={(v) => {
-            saveMessageTimestampsPref(v, localStorage);
-            setShowMessageTimestamps(v);
+          saveMessageTimestampsPref(v, localStorage);
+          setShowMessageTimestamps(v);
           }}
           showReplyLength={showReplyLength}
           onShowReplyLength={(v) => {
-            saveShowReplyLengthPref(v, localStorage);
-            setShowReplyLength(v);
+          saveShowReplyLengthPref(v, localStorage);
+          setShowReplyLength(v);
           }}
           showUsageEstimates={showUsageEstimates}
           onShowUsageEstimates={(v) => {
-            saveShowUsageEstimatesPref(v, localStorage);
-            setShowUsageEstimates(v);
+          saveShowUsageEstimatesPref(v, localStorage);
+          setShowUsageEstimates(v);
           }}
           goalOrchUiEnabled={goalOrchUiEnabled}
           onGoalOrchUiEnabled={(v) => {
-            saveGoalOrchUiEnabled(v, localStorage);
-            setGoalOrchUiEnabled(v);
+          saveGoalOrchUiEnabled(v, localStorage);
+          setGoalOrchUiEnabled(v);
           }}
           messageTimeFormat={messageTimeFormat}
           onMessageTimeFormat={(v) => {
-            saveMessageTimeFormatPref(v, localStorage);
-            setMessageTimeFormat(v);
+          saveMessageTimeFormatPref(v, localStorage);
+          setMessageTimeFormat(v);
           }}
           sidebarShowRelativeTime={sidebarShowRelativeTime}
           onSidebarShowRelativeTime={(v) => {
-            saveSidebarShowRelativeTimePref(v, localStorage);
-            setSidebarShowRelativeTime(v);
+          saveSidebarShowRelativeTimePref(v, localStorage);
+          setSidebarShowRelativeTime(v);
           }}
           mutedSessionCount={mutedSessionIds.size}
           onClearAllSessionMutes={handleClearAllSessionMutes}
@@ -14820,9 +14891,9 @@ export function AppWorkbench() {
           wallpaperFocus={wallpaperRecord?.focus ?? null}
           wallpaperClip={wallpaperRecord?.clip ?? null}
           wallpaperMediaSize={
-            wallpaperRecord?.width && wallpaperRecord?.height
-              ? { w: wallpaperRecord.width, h: wallpaperRecord.height }
-              : null
+          wallpaperRecord?.width && wallpaperRecord?.height
+          ? { w: wallpaperRecord.width, h: wallpaperRecord.height }
+          : null
           }
           onWallpaper={applyWallpaperChoice}
           onWallpaperAdjust={applyWallpaperAdjustChoice}
@@ -14831,451 +14902,451 @@ export function AppWorkbench() {
           onWallpaperScrim={applyWallpaperScrimChoice}
           sessionDataMode={sessionDataMode}
           onCliSessionsImported={() => {
-            void refreshSessions();
+          void refreshSessions();
           }}
           onOpenCliSession={(appSessionId) => {
-            void (async () => {
-              await refreshSessions();
-              trayHandlersRef.current.openSessionById(appSessionId);
-            })();
+          void (async () => {
+          await refreshSessions();
+          trayHandlersRef.current.openSessionById(appSessionId);
+          })();
           }}
           onSessionDataMode={(v) => {
-            const commit = () => {
-              setSessionDataMode(v);
-              void api.settingsGet().then((s) =>
-                api.settingsSet({ ...s, sessionDataMode: v }),
-              );
-            };
-            // Tauri WebView: window.confirm is unreliable (often always false).
-            if (v === "shared") {
-              setAppDialog({
-                kind: "confirm",
-                title: tr("settings.sessionDataMode"),
-                message: tr("settings.sharedConfirm"),
-                confirmLabel: tr("common.confirm"),
-                onConfirm: commit,
-              });
-              return;
-            }
-            commit();
+          const commit = () => {
+          setSessionDataMode(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, sessionDataMode: v }),
+          );
+          };
+          // Tauri WebView: window.confirm is unreliable (often always false).
+          if (v === "shared") {
+          setAppDialog({
+          kind: "confirm",
+          title: tr("settings.sessionDataMode"),
+          message: tr("settings.sharedConfirm"),
+          confirmLabel: tr("common.confirm"),
+          onConfirm: commit,
+          });
+          return;
+          }
+          commit();
           }}
           policy={policy}
           onPolicy={(v) => {
-            if (!isValidPolicy(v)) return;
-            applyPermissionPolicy(v);
+          if (!isValidPolicy(v)) return;
+          applyPermissionPolicy(v);
           }}
           prefsScope={prefsScope}
           onPrefsScope={(v) => {
-            if (!isValidPrefsScope(v)) return;
-            setPrefsScope(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, composerPrefsScope: v }),
-            );
-            void api
-              .composerPrefsResolve({
-                projectId: activeProject?.id ?? null,
-                sessionId: session.sessionId ?? null,
-              })
-              .then((prefs) => applyComposerPrefs(prefs, availableModels))
-              .catch(() => {});
+          if (!isValidPrefsScope(v)) return;
+          setPrefsScope(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, composerPrefsScope: v }),
+          );
+          void api
+          .composerPrefsResolve({
+          projectId: activeProject?.id ?? null,
+          sessionId: session.sessionId ?? null,
+          })
+          .then((prefs) => applyComposerPrefs(prefs, availableModels))
+          .catch(() => {});
           }}
           availableModels={availableModels}
           manualCliPath={manualCliPath}
           onManualCliPath={setManualCliPath}
           onCliBlur={(v) => {
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, manualCliPath: v || null }),
-            );
-            void api.probeCli(v || undefined).then((cli) => {
-              setCliInfo({
-                found: cli.found,
-                path: cli.path,
-                version: cli.version,
-                source: cli.source || "",
-                cliAuthPresent: !!cli.cliAuthPresent,
-              });
-              setSetup((prev) => ({
-                ...prev,
-                cli: cli.found,
-                auth: prev.auth || !!cli.cliAuthPresent,
-              }));
-            });
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, manualCliPath: v || null }),
+          );
+          void api.probeCli(v || undefined).then((cli) => {
+          setCliInfo({
+          found: cli.found,
+          path: cli.path,
+          version: cli.version,
+          source: cli.source || "",
+          cliAuthPresent: !!cli.cliAuthPresent,
+          });
+          setSetup((prev) => ({
+          ...prev,
+          cli: cli.found,
+          auth: prev.auth || !!cli.cliAuthPresent,
+          }));
+          });
           }}
           allowUnverifiedCliInstall={allowUnverifiedCliInstall}
           lastCliChecksumVerified={lastCliChecksumVerified}
           onAllowUnverifiedCliInstall={(v) => {
-            setAllowUnverifiedCliInstall(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, allowUnverifiedCliInstall: v }),
-            );
+          setAllowUnverifiedCliInstall(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, allowUnverifiedCliInstall: v }),
+          );
           }}
           acpServerAddr={acpServerAddr}
           onAcpServerAddr={setAcpServerAddr}
           onAcpServerBlur={(v) => {
-            setAcpServerAddr(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, acpServerAddr: v.trim() || null }),
-            );
+          setAcpServerAddr(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, acpServerAddr: v.trim() || null }),
+          );
           }}
           proxyMode={proxyMode}
           onProxyMode={(v) => {
-            setProxyMode(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, proxyMode: v }),
-            );
+          setProxyMode(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, proxyMode: v }),
+          );
           }}
           proxyUrl={proxyUrl}
           onProxyUrl={(v) => {
-            setProxyUrl(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, proxyUrl: v.trim() || null }),
-            );
+          setProxyUrl(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, proxyUrl: v.trim() || null }),
+          );
           }}
           proxyNoProxy={proxyNoProxy}
           onProxyNoProxy={(v) => {
-            setProxyNoProxy(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, proxyNoProxy: v.trim() || null }),
-            );
+          setProxyNoProxy(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, proxyNoProxy: v.trim() || null }),
+          );
           }}
           maxConcurrentAgents={maxConcurrentAgents}
           onMaxConcurrentAgents={(v) => {
-            setMaxConcurrentAgents(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, maxConcurrentAgents: v }),
-            );
+          setMaxConcurrentAgents(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, maxConcurrentAgents: v }),
+          );
           }}
           lastProcessLimit={lastProcessLimit}
           agentIdleMinutes={agentIdleMinutes}
           onAgentIdleMinutes={(v) => {
-            setAgentIdleMinutes(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, agentIdleMinutes: v }),
-            );
+          setAgentIdleMinutes(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, agentIdleMinutes: v }),
+          );
           }}
           streamStallSeconds={streamStallSeconds}
           onStreamStallSeconds={(v) => {
-            setStreamStallSeconds(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, streamStallSeconds: v }),
-            );
+          setStreamStallSeconds(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, streamStallSeconds: v }),
+          );
           }}
           auditLedgerRetentionDays={auditLedgerRetentionDays}
           onAuditLedgerRetentionDays={(v) => {
-            const n = v === 7 || v === 30 || v === 90 ? v : 0;
-            setAuditLedgerRetentionDays(n);
-            void api
-              .settingsGet()
-              .then((s) =>
-                api.settingsSet({ ...s, auditLedgerRetentionDays: n }),
-              );
+          const n = v === 7 || v === 30 || v === 90 ? v : 0;
+          setAuditLedgerRetentionDays(n);
+          void api
+          .settingsGet()
+          .then((s) =>
+          api.settingsSet({ ...s, auditLedgerRetentionDays: n }),
+          );
           }}
           includePartialMessages={includePartialMessages}
           onIncludePartialMessages={(v) => {
-            setIncludePartialMessages(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, includePartialMessages: v }),
-            );
+          setIncludePartialMessages(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, includePartialMessages: v }),
+          );
           }}
           maxAgentTurns={maxAgentTurns}
           onMaxAgentTurns={(v) => {
-            const n = v > 0 ? Math.min(200, Math.round(v)) : 0;
-            setMaxAgentTurns(n);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({
-                ...s,
-                // null clears the optional field; 0 would also omit on spawn.
-                maxAgentTurns: n > 0 ? n : null,
-              }),
-            );
+          const n = v > 0 ? Math.min(200, Math.round(v)) : 0;
+          setMaxAgentTurns(n);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({
+          ...s,
+          // null clears the optional field; 0 would also omit on spawn.
+          maxAgentTurns: n > 0 ? n : null,
+          }),
+          );
           }}
           backgroundWaitPolicy={backgroundWaitPolicy}
           onBackgroundWaitPolicy={(v) => {
-            const next =
-              v === "no_wait" || v === "timeout" ? v : "wait";
-            setBackgroundWaitPolicy(next);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, backgroundWaitPolicy: next }),
-            );
+          const next =
+          v === "no_wait" || v === "timeout" ? v : "wait";
+          setBackgroundWaitPolicy(next);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, backgroundWaitPolicy: next }),
+          );
           }}
           backgroundWaitTimeoutSec={backgroundWaitTimeoutSec}
           onBackgroundWaitTimeoutSec={(v) => {
-            const n = Math.min(3600, Math.max(1, Math.round(v)));
-            setBackgroundWaitTimeoutSec(n);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, backgroundWaitTimeoutSec: n }),
-            );
+          const n = Math.min(3600, Math.max(1, Math.round(v)));
+          setBackgroundWaitTimeoutSec(n);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, backgroundWaitTimeoutSec: n }),
+          );
           }}
           storeApiKeysInKeychain={storeApiKeysInKeychain}
           onStoreApiKeysInKeychain={(v) => {
-            const prev = storeApiKeysInKeychain;
-            setStoreApiKeysInKeychain(v);
-            void api
-              .settingsGet()
-              .then((s) =>
-                api.settingsSet({ ...s, storeApiKeysInKeychain: v }),
-              )
-              .catch((e) => {
-                setStoreApiKeysInKeychain(prev);
-                showToast(String(e), 4500);
-              });
+          const prev = storeApiKeysInKeychain;
+          setStoreApiKeysInKeychain(v);
+          void api
+          .settingsGet()
+          .then((s) =>
+          api.settingsSet({ ...s, storeApiKeysInKeychain: v }),
+          )
+          .catch((e) => {
+          setStoreApiKeysInKeychain(prev);
+          showToast(String(e), 4500);
+          });
           }}
           sandboxProfile={sandboxProfile}
           onSandboxProfile={(v) => {
-            applyGlobalSandboxProfile(v);
+          applyGlobalSandboxProfile(v);
           }}
           preferredAgent={preferredAgent}
           onPreferredAgent={(v) => {
-            setPreferredAgent(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, preferredAgent: v }),
-            );
+          setPreferredAgent(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, preferredAgent: v }),
+          );
           }}
           agentProfilePath={agentProfilePath}
           onAgentProfilePath={setAgentProfilePath}
           onAgentProfilePathCommit={(v) => {
-            const next = (v || "").trim();
-            setAgentProfilePath(next);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, agentProfilePath: next }),
-            );
+          const next = (v || "").trim();
+          setAgentProfilePath(next);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, agentProfilePath: next }),
+          );
           }}
           agentsJson={agentsJson}
           onAgentsJson={setAgentsJson}
           onAgentsJsonCommit={async (v) => {
-            const next = (v || "").trim();
-            setAgentsJson(next);
-            const s = await api.settingsGet();
-            await api.settingsSet({ ...s, agentsJson: next });
+          const next = (v || "").trim();
+          setAgentsJson(next);
+          const s = await api.settingsGet();
+          await api.settingsSet({ ...s, agentsJson: next });
           }}
           agentCatalog={agentCatalog}
           experimentalMemory={experimentalMemory}
           onExperimentalMemory={(v) => {
-            setExperimentalMemory(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, experimentalMemory: v }),
-            );
+          setExperimentalMemory(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, experimentalMemory: v }),
+          );
           }}
           compactionMode={compactionMode}
           onCompactionMode={(v) => {
-            const next = normalizeCompactionMode(v);
-            setCompactionMode(next);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, compactionMode: next }),
-            );
+          const next = normalizeCompactionMode(v);
+          setCompactionMode(next);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, compactionMode: next }),
+          );
           }}
           compactionDetail={compactionDetail}
           onCompactionDetail={(v) => {
-            const next = normalizeCompactionDetail(v);
-            setCompactionDetail(next);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, compactionDetail: next }),
-            );
+          const next = normalizeCompactionDetail(v);
+          setCompactionDetail(next);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, compactionDetail: next }),
+          );
           }}
           twoPassCompactionEnabled={twoPassCompactionEnabled}
           onTwoPassCompactionEnabled={(v) => {
-            setTwoPassCompactionEnabled(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, twoPassCompactionEnabled: v }),
-            );
+          setTwoPassCompactionEnabled(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, twoPassCompactionEnabled: v }),
+          );
           }}
           voiceId={voiceId}
           onVoiceId={(v) => {
-            const next = (v || "eve").trim() || "eve";
-            setVoiceId(next);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, voiceId: next }),
-            );
+          const next = (v || "eve").trim() || "eve";
+          setVoiceId(next);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, voiceId: next }),
+          );
           }}
           voiceDictationAutoSend={voiceDictationAutoSend}
           onVoiceDictationAutoSend={(v) => {
-            setVoiceDictationAutoSend(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, voiceDictationAutoSend: v }),
-            );
+          setVoiceDictationAutoSend(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, voiceDictationAutoSend: v }),
+          );
           }}
           voiceKeepAgentsOnEnd={voiceKeepAgentsOnEnd}
           onVoiceKeepAgentsOnEnd={(v) => {
-            setVoiceKeepAgentsOnEnd(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, voiceKeepAgentsOnEnd: v }),
-            );
+          setVoiceKeepAgentsOnEnd(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, voiceKeepAgentsOnEnd: v }),
+          );
           }}
           subagentsEnabled={subagentsEnabled}
           onSubagentsEnabled={(v) => {
-            setSubagentsEnabled(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, subagentsEnabled: v }),
-            );
+          setSubagentsEnabled(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, subagentsEnabled: v }),
+          );
           }}
           subagentWorktreeSnapshotEnabled={subagentWorktreeSnapshotEnabled}
           onSubagentWorktreeSnapshotEnabled={(v) => {
-            setSubagentWorktreeSnapshotEnabled(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, subagentWorktreeSnapshotEnabled: v }),
-            );
+          setSubagentWorktreeSnapshotEnabled(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, subagentWorktreeSnapshotEnabled: v }),
+          );
           }}
           autoWakeEnabled={autoWakeEnabled}
           onAutoWakeEnabled={(v) => {
-            setAutoWakeEnabled(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, autoWakeEnabled: v }),
-            );
+          setAutoWakeEnabled(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, autoWakeEnabled: v }),
+          );
           }}
           workflowsEnabled={workflowsEnabled}
           onWorkflowsEnabled={(v) => {
-            setWorkflowsEnabled(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, workflowsEnabled: v }),
-            );
+          setWorkflowsEnabled(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, workflowsEnabled: v }),
+          );
           }}
           planEnabled={planEnabled}
           onPlanEnabled={(v) => {
-            setPlanEnabled(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, planEnabled: v }),
-            );
+          setPlanEnabled(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, planEnabled: v }),
+          );
           }}
           todoGateEnabled={todoGateEnabled}
           onTodoGateEnabled={(v) => {
-            setTodoGateEnabled(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, todoGateEnabled: v }),
-            );
+          setTodoGateEnabled(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, todoGateEnabled: v }),
+          );
           }}
           todoGateMaxFiresPerPrompt={todoGateMaxFiresPerPrompt}
           // Host has no fire-activity channel yet — Settings shows honest N/A.
           todoGateFireSignal={null}
           onTodoGateMaxFiresPerPrompt={(v) => {
-            const n =
-              typeof v === "number" && Number.isFinite(v) && v > 0
-                ? Math.min(20, Math.max(1, Math.round(v)))
-                : 3;
-            setTodoGateMaxFiresPerPrompt(n);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, todoGateMaxFiresPerPrompt: n }),
-            );
+          const n =
+          typeof v === "number" && Number.isFinite(v) && v > 0
+          ? Math.min(20, Math.max(1, Math.round(v)))
+          : 3;
+          setTodoGateMaxFiresPerPrompt(n);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, todoGateMaxFiresPerPrompt: n }),
+          );
           }}
           disableWebSearch={disableWebSearch}
           onDisableWebSearch={(v) => {
-            setDisableWebSearch(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, disableWebSearch: v }),
-            );
+          setDisableWebSearch(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, disableWebSearch: v }),
+          );
           }}
           noAskUser={noAskUser}
           onNoAskUser={(v) => {
-            setNoAskUser(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, noAskUser: v }),
-            );
+          setNoAskUser(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, noAskUser: v }),
+          );
           }}
           disallowedTools={disallowedTools}
           onDisallowedTools={(v) => {
-            setDisallowedTools(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, disallowedTools: v }),
-            );
+          setDisallowedTools(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, disallowedTools: v }),
+          );
           }}
           allowedTools={allowedTools}
           onAllowedTools={(v) => {
-            setAllowedTools(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, allowedTools: v }),
-            );
+          setAllowedTools(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, allowedTools: v }),
+          );
           }}
           useLeader={useLeader}
           onUseLeader={(v) => {
-            setUseLeader(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, useLeader: v }),
-            );
+          setUseLeader(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, useLeader: v }),
+          );
           }}
           reopenLastSession={reopenLastSession}
           onReopenLastSession={(v) => {
-            setReopenLastSession(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, reopenLastSession: v }),
-            );
+          setReopenLastSession(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, reopenLastSession: v }),
+          );
           }}
           closeToTray={closeToTray}
           onCloseToTray={(v) => {
-            setCloseToTray(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, closeToTray: v }),
-            );
+          setCloseToTray(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, closeToTray: v }),
+          );
           }}
           keepTrayForSchedules={keepTrayForSchedules}
           onKeepTrayForSchedules={(v) => {
-            setKeepTrayForSchedules(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, keepTrayForSchedules: v }),
-            );
+          setKeepTrayForSchedules(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, keepTrayForSchedules: v }),
+          );
           }}
           trayBusyBadge={trayBusyBadge}
-          trayBusyCount={countBusyLiveMapSessions(liveMap)}
+          trayBusyCount={liveMapBusyCount}
           onTrayBusyBadge={(v) => {
-            saveTrayBusyBadgePref(v, localStorage);
-            setTrayBusyBadge(v);
+          saveTrayBusyBadgePref(v, localStorage);
+          setTrayBusyBadge(v);
           }}
           launchAtLogin={launchAtLogin}
           onLaunchAtLogin={(v) => {
-            setLaunchAtLogin(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, launchAtLogin: v }).catch(() => {
-                // Host rolls back AppSettings when OS login-item update fails.
-                setLaunchAtLogin(!v);
-              }),
-            );
+          setLaunchAtLogin(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, launchAtLogin: v }).catch(() => {
+          // Host rolls back AppSettings when OS login-item update fails.
+          setLaunchAtLogin(!v);
+          }),
+          );
           }}
           windowAlwaysOnTop={windowAlwaysOnTop}
           onWindowAlwaysOnTop={(v) => {
-            saveWindowAlwaysOnTopPref(v, localStorage);
-            setWindowAlwaysOnTop(v);
+          saveWindowAlwaysOnTopPref(v, localStorage);
+          setWindowAlwaysOnTop(v);
           }}
           notifyOnTurnDone={notifyOnTurnDone}
           onNotifyOnTurnDone={(v) => {
-            setNotifyOnTurnDone(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, notifyOnTurnDone: v }),
-            );
+          setNotifyOnTurnDone(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, notifyOnTurnDone: v }),
+          );
           }}
           notifyOnPermission={notifyOnPermission}
           onNotifyOnPermission={(v) => {
-            setNotifyOnPermission(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, notifyOnPermission: v }),
-            );
+          setNotifyOnPermission(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, notifyOnPermission: v }),
+          );
           }}
           notifySound={notifySound}
           onNotifySound={(v) => {
-            saveNotifySoundPref(v, localStorage);
-            setNotifySound(v);
+          saveNotifySoundPref(v, localStorage);
+          setNotifySound(v);
           }}
           permissionTimeoutSec={permissionTimeoutSec}
           onPermissionTimeoutSec={(v) => {
-            savePermissionTimeoutSec(v, localStorage);
-            setPermissionTimeoutSec(v);
+          savePermissionTimeoutSec(v, localStorage);
+          setPermissionTimeoutSec(v);
           }}
           askUserTimeoutSec={askUserTimeoutSec}
           onAskUserTimeoutSec={(v) => {
-            saveAskUserTimeoutSec(v, localStorage);
-            setAskUserTimeoutSec(v);
+          saveAskUserTimeoutSec(v, localStorage);
+          setAskUserTimeoutSec(v);
           }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           onOpenReliability={() => openReliability()}
           onOpenBatchAgents={() => openBatchAgents()}
           costRollupSessions={sessions.map((s) => ({
-            id: s.id,
-            projectId: s.projectId,
-            title: s.title,
-            modelId: s.modelId,
-            updatedAt: s.updatedAt,
+          id: s.id,
+          projectId: s.projectId,
+          title: s.title,
+          modelId: s.modelId,
+          updatedAt: s.updatedAt,
           }))}
           costRollupProjects={projects.map((p) => ({
-            id: p.id,
-            name: p.name,
+          id: p.id,
+          name: p.name,
           }))}
           onOpenShortcutsHelp={() => setShowShortcuts(true)}
           onOpenProductTutorial={() => setShowProductTutorial(true)}
@@ -15302,78 +15373,78 @@ export function AppWorkbench() {
           onImportChat={() => void importChatTranscript()}
           defaultOpenTarget={defaultOpenTarget}
           onDefaultOpenTarget={(v) => {
-            setDefaultOpenTarget(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, defaultOpenTarget: v }),
-            );
+          setDefaultOpenTarget(v);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, defaultOpenTarget: v }),
+          );
           }}
           archivedGroups={archivedGroups}
           onRestoreArchivedSessions={(ids) => {
-            const rows = ids
-              .map((id) => sessions.find((x) => x.id === id))
-              .filter((s): s is SessionRow => !!s);
-            void restoreSessions(rows);
+          const rows = ids
+          .map((id) => sessions.find((x) => x.id === id))
+          .filter((s): s is SessionRow => !!s);
+          void restoreSessions(rows);
           }}
           onDeleteArchivedSessions={(ids) => {
-            const rows = ids
-              .map((id) => sessions.find((x) => x.id === id))
-              .filter((s): s is SessionRow => !!s);
-            deleteSessionsConfirm(rows);
+          const rows = ids
+          .map((id) => sessions.find((x) => x.id === id))
+          .filter((s): s is SessionRow => !!s);
+          deleteSessionsConfirm(rows);
           }}
           onArchiveOlderThan={(days) => {
-            confirmArchiveOlderThan(days);
+          confirmArchiveOlderThan(days);
           }}
           archiveAgeSessions={sessions}
           projectPath={effectiveProjectPath}
           onOpenProjectFileInResources={({ path, relativePath }) => {
-            const targetPath = (path || relativePath || "").trim();
-            if (!targetPath) return;
-            navigateWorkbench();
-            openAsidePane();
-            setResourceOpenTarget({
-              type: "file",
-              path: targetPath,
-              title: relativePath || targetPath,
-            });
+          const targetPath = (path || relativePath || "").trim();
+          if (!targetPath) return;
+          navigateWorkbench();
+          openAsidePane();
+          setResourceOpenTarget({
+          type: "file",
+          path: targetPath,
+          title: relativePath || targetPath,
+          });
           }}
           onSkillsPrefsChanged={() =>
-            setSkillsReloadToken((n) => n + 1)
+          setSkillsReloadToken((n) => n + 1)
           }
           trustedProjects={projects
-            .filter((p) => p.trusted)
-            .map((p) => ({ id: p.id, name: p.name, path: p.path }))}
+          .filter((p) => p.trusted)
+          .map((p) => ({ id: p.id, name: p.name, path: p.path }))}
           onProvidersChanged={() => {
-            // CRUD on provider list / models / efforts — keep composer menu in sync.
-            void refreshProviderRoute();
+          // CRUD on provider list / models / efforts — keep composer menu in sync.
+          void refreshProviderRoute();
           }}
           onProviderActivated={() => {
-            // Host already recycled warm agents on upsert/activate. Refresh UI
-            // chrome only — never park (sessionDisconnect) a live process: that
-            // kept stale OIDC/config in memory and required a full app restart
-            // (issue #376). Soft-fail so save UI never sticks on “Saving…”.
-            void (async () => {
-              try {
-                if (api.isTauri()) {
-                  setSession({ ...IDLE_SNAPSHOT });
-                }
-                await refreshProviderRoute();
-                await refreshAccount({ refreshBilling: false }).catch(() => {
-                  /* soft-fail billing refresh */
-                });
-                await refreshVoiceGate().catch(() => {
-                  /* soft-fail voice gate */
-                });
-                setToast(tr("prov.switchedHotReload"));
-                window.setTimeout(() => setToast(null), 3200);
-              } catch (e) {
-                setToast(
-                  tr("prov.savedApplyFailed", { detail: String(e) }),
-                );
-                window.setTimeout(() => setToast(null), 4800);
-              }
-            })();
+          // Host already recycled warm agents on upsert/activate. Refresh UI
+          // chrome only — never park (sessionDisconnect) a live process: that
+          // kept stale OIDC/config in memory and required a full app restart
+          // (issue #376). Soft-fail so save UI never sticks on “Saving…”.
+          void (async () => {
+          try {
+          if (api.isTauri()) {
+          setSession({ ...IDLE_SNAPSHOT });
+          }
+          await refreshProviderRoute();
+          await refreshAccount({ refreshBilling: false }).catch(() => {
+          /* soft-fail billing refresh */
+          });
+          await refreshVoiceGate().catch(() => {
+          /* soft-fail voice gate */
+          });
+          setToast(tr("prov.switchedHotReload"));
+          window.setTimeout(() => setToast(null), 3200);
+          } catch (e) {
+          setToast(
+          tr("prov.savedApplyFailed", { detail: String(e) }),
+          );
+          window.setTimeout(() => setToast(null), 4800);
+          }
+          })();
           }}
-        />
+          />        </Suspense>
       ) : (
       <div className={"workbench" + (phoneLayout ? " workbench--phone" : "")}>
         {/* Phone drawer scrim — tap closes without resizing the conversation */}
@@ -15977,21 +16048,10 @@ export function AppWorkbench() {
                                         </span>
                                         {renderSessionRelativeTime(s.updatedAt)}
                                         {sessionSelectMode ? null : working ? (
-                                          <Tip
+                                          <SidebarSessionBusySpinner
+                                            sessionId={s.id}
                                             label={tr("sidebar.sessionWorking")}
-                                          >
-                                            <span
-                                              className="tree-l3__status"
-                                              aria-label={tr(
-                                                "sidebar.sessionWorking",
-                                              )}
-                                            >
-                                              <Spinner
-                                                size={14}
-                                                className="tree-l3__spinner"
-                                              />
-                                            </span>
-                                          </Tip>
+                                          />
                                         ) : (
                                           <span className="tree-l3__actions tree-l3__actions--triple">
                                             <Tip
@@ -16259,17 +16319,10 @@ export function AppWorkbench() {
                               </span>
                               {renderSessionRelativeTime(s.updatedAt)}
                               {sessionSelectMode ? null : working ? (
-                                <Tip label={tr("sidebar.sessionWorking")}>
-                                  <span
-                                    className="tree-l3__status"
-                                    aria-label={tr("sidebar.sessionWorking")}
-                                  >
-                                    <Spinner
-                                      size={14}
-                                      className="tree-l3__spinner"
-                                    />
-                                  </span>
-                                </Tip>
+                                <SidebarSessionBusySpinner
+                                  sessionId={s.id}
+                                  label={tr("sidebar.sessionWorking")}
+                                />
                               ) : (
                                 <span className="tree-l3__actions tree-l3__actions--triple">
                                   <Tip
@@ -16840,9 +16893,10 @@ export function AppWorkbench() {
           </div>
 
           {mainPane === "automations" ? (
-            <AutomationsPage
+                        <Suspense fallback={null}>
+              <AutomationsPage
               t={(k, vars) =>
-                tr(k as Parameters<typeof tr>[0], vars as Record<string, string | number>)
+              tr(k as Parameters<typeof tr>[0], vars as Record<string, string | number>)
               }
               projects={projects.map((p) => ({ id: p.id, name: p.name }))}
               defaultModelId={modelId}
@@ -16850,57 +16904,57 @@ export function AppWorkbench() {
               models={availableModels}
               openAtLogin={launchAtLogin}
               onOpenLaunchAtLogin={() => {
-                navigateSettings("general", "app");
-                // Scroll/highlight Launch at login after Settings mounts.
-                window.setTimeout(() => {
-                  const el = document.getElementById(
-                    "settings-anchor-launchAtLogin",
-                  );
-                  if (el) {
-                    el.scrollIntoView({ block: "center", behavior: "smooth" });
-                    el.classList.add("is-search-hit");
-                    window.setTimeout(
-                      () => el.classList.remove("is-search-hit"),
-                      1600,
-                    );
-                  }
-                }, 120);
+              navigateSettings("general", "app");
+              // Scroll/highlight Launch at login after Settings mounts.
+              window.setTimeout(() => {
+              const el = document.getElementById(
+              "settings-anchor-launchAtLogin",
+              );
+              if (el) {
+              el.scrollIntoView({ block: "center", behavior: "smooth" });
+              el.classList.add("is-search-hit");
+              window.setTimeout(
+              () => el.classList.remove("is-search-hit"),
+              1600,
+              );
+              }
+              }, 120);
               }}
               closeToTray={closeToTray}
               keepTrayForSchedules={keepTrayForSchedules}
               onKeepTrayForSchedules={(v) => {
-                setKeepTrayForSchedules(v);
-                void api.settingsGet().then((s) =>
-                  api.settingsSet({ ...s, keepTrayForSchedules: v }),
-                );
+              setKeepTrayForSchedules(v);
+              void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, keepTrayForSchedules: v }),
+              );
               }}
               onOpenKeepTraySetting={() => {
-                navigateSettings("general", "app");
-                window.setTimeout(() => {
-                  const el = document.getElementById(
-                    "settings-anchor-keepTrayForSchedules",
-                  );
-                  if (el) {
-                    el.scrollIntoView({ block: "center", behavior: "smooth" });
-                    el.classList.add("is-search-hit");
-                    window.setTimeout(
-                      () => el.classList.remove("is-search-hit"),
-                      1600,
-                    );
-                  }
-                }, 120);
+              navigateSettings("general", "app");
+              window.setTimeout(() => {
+              const el = document.getElementById(
+              "settings-anchor-keepTrayForSchedules",
+              );
+              if (el) {
+              el.scrollIntoView({ block: "center", behavior: "smooth" });
+              el.classList.add("is-search-hit");
+              window.setTimeout(
+              () => el.classList.remove("is-search-hit"),
+              1600,
+              );
+              }
+              }, 120);
               }}
               onAiCreate={() => {
-                void newChat(null, {
-                  seedDraft: aiCreateSeedPrompt("Grok"),
-                  switchToChat: true,
-                  automationSetup: true,
-                });
-                setToast(tr("automations.aiComposerHint"));
-                window.setTimeout(() => setToast(null), 4200);
+              void newChat(null, {
+              seedDraft: aiCreateSeedPrompt("Grok"),
+              switchToChat: true,
+              automationSetup: true,
+              });
+              setToast(tr("automations.aiComposerHint"));
+              window.setTimeout(() => setToast(null), 4200);
               }}
               onRunNow={(auto) => void runAutomation(auto)}
-            />
+              />            </Suspense>
           ) : (
           <>
           {activeProject && isProjectPathMissing(activeProject.pathOk) && (
@@ -17226,8 +17280,7 @@ export function AppWorkbench() {
             />
           )}
           {mainPane === "chat" && tasksPanelOpen && session.sessionId ? (
-            <AgentTasksPanel
-              messages={messages}
+            <AgentTasksPanelLive
               t={(k, vars) => tr(k, vars)}
               onClose={() => setTasksPanelOpen(false)}
               subagentWorktreeSnapshotEnabled={
@@ -17398,9 +17451,8 @@ export function AppWorkbench() {
               retry: tr("ui.errorBoundary.retry"),
             }}
           >
-          <ConversationThread
+          <ConversationThreadLive
             locale={locale}
-            messages={messages}
             sessionState={
               stopLatch.phase === "force_idle" || stopGate.forceIdle
                 ? "ready"
@@ -18804,28 +18856,29 @@ export function AppWorkbench() {
             />
           )}
           <div className="aside__inner">
-            <ResourceViewer
+                        <Suspense fallback={null}>
+              <ResourceViewer
               projectPath={effectiveProjectPath}
               projectName={
-                activeProject
-                  ? projectDisplayName(activeProject, tr)
-                  : tr("composer.noProject")
+              activeProject
+              ? projectDisplayName(activeProject, tr)
+              : tr("composer.noProject")
               }
               locale={locale}
               paneActive={!layout.asideCollapsed}
               openRequest={resourceOpenTarget}
               onOpenRequestConsumed={() => setResourceOpenTarget(null)}
               sessionChanges={
-                sessionChangesById[session.sessionId || ""] ?? []
+              sessionChangesById[session.sessionId || ""] ?? []
               }
               sessionMessages={messages}
               plan={plan}
               planFocusKey={planFocusKey}
               planChrome={{
-                composerMode: mode,
-                planEnabled,
-                userClosed: plan.userClosed,
-                hasHistory: planHistoryNonEmpty,
+              composerMode: mode,
+              planEnabled,
+              userClosed: plan.userClosed,
+              hasHistory: planHistoryNonEmpty,
               }}
               onApprovePlan={() => void approvePlan()}
               onRequestPlanChanges={() => openRequestPlanChanges()}
@@ -18834,15 +18887,15 @@ export function AppWorkbench() {
               onShip={openShipFlow}
               onAsideLayoutHint={applyAsideLayoutHint}
               onClose={() => {
-                // Manual close — do not treat as plan-owned pane on later dismiss.
-                planOpenedAsideRef.current = false;
-                setLayout((l) => {
-                  const n = { ...l, asideCollapsed: true };
-                  saveLayout(localStorage, n);
-                  return n;
-                });
+              // Manual close — do not treat as plan-owned pane on later dismiss.
+              planOpenedAsideRef.current = false;
+              setLayout((l) => {
+              const n = { ...l, asideCollapsed: true };
+              saveLayout(localStorage, n);
+              return n;
+              });
               }}
-            />
+              />            </Suspense>
           </div>
         </aside>
       </div>
@@ -18996,6 +19049,8 @@ export function AppWorkbench() {
         </>
       ) : null}
 
+      {(showDoctor) ? (
+      <Suspense fallback={null}>
       <DoctorModal
         open={showDoctor}
         onClose={() => setShowDoctor(false)}
@@ -19015,6 +19070,10 @@ export function AppWorkbench() {
         }}
         onOpenReliability={() => openReliability()}
       />
+      </Suspense>
+      ) : null}
+      {(showReliability) ? (
+      <Suspense fallback={null}>
       <ReliabilityCenterModal
         open={showReliability}
         onClose={() => setShowReliability(false)}
@@ -19030,6 +19089,8 @@ export function AppWorkbench() {
           trayHandlersRef.current.openSessionById(id);
         }}
       />
+      </Suspense>
+      ) : null}
       <ProjectRulesModal
         open={!!projectRulesTarget}
         onClose={() => setProjectRulesTarget(null)}
@@ -19593,6 +19654,8 @@ export function AppWorkbench() {
           ))}
         </ul>
       </GlassModal>
+      {(showProductTutorial) ? (
+      <Suspense fallback={null}>
       <ProductTutorial
         open={showProductTutorial}
         locale={locale}
@@ -19609,6 +19672,10 @@ export function AppWorkbench() {
           setShowProductTutorial(false);
         }}
       />
+      </Suspense>
+      ) : null}
+      {(liveVoiceOpen) ? (
+      <Suspense fallback={null}>
       <VoiceOverlay
         locale={resolveLocale(locale)}
         open={liveVoiceOpen}
@@ -19667,6 +19734,8 @@ export function AppWorkbench() {
           })();
         }}
       />
+      </Suspense>
+      ) : null}
       <AskUserModal
         payload={askUser}
         timeoutSec={askUserTimeoutSec}
@@ -19723,6 +19792,8 @@ export function AppWorkbench() {
         messageCount={messages.length}
         onClose={() => setShowStatusModal(false)}
       />
+      {(agentDashboardOpen) ? (
+      <Suspense fallback={null}>
       <AgentDashboardModal
         open={agentDashboardOpen}
         locale={locale}
@@ -19748,6 +19819,10 @@ export function AppWorkbench() {
           openBatchAgents();
         }}
       />
+      </Suspense>
+      ) : null}
+      {(batchAgentsOpen) ? (
+      <Suspense fallback={null}>
       <BatchAgentsModal
         open={batchAgentsOpen}
         locale={locale}
@@ -19764,6 +19839,10 @@ export function AppWorkbench() {
         onClose={() => setBatchAgentsOpen(false)}
         onDispatch={runBatchAgentsDispatch}
       />
+      </Suspense>
+      ) : null}
+      {(showMcpModal) ? (
+      <Suspense fallback={null}>
       <McpStatusModal
         open={showMcpModal}
         locale={locale}
@@ -19780,6 +19859,8 @@ export function AppWorkbench() {
         onRunDoctor={(name) => void runMcpDoctor(name)}
         onRefreshDoctor={(name) => runMcpDoctor(name)}
       />
+      </Suspense>
+      ) : null}
       {rewindTimeline && (
         <div
           className="overlay"

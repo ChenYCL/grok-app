@@ -2,3 +2,19 @@
 @import "./lobe-chat.part1.css";
 @import "./lobe-chat.part2.css";
 @import "./lobe-chat.part3.css";
+
+/* Long-stream plain body: cheap pre-wrap until turn settles (markdown on done). */
+.chat-md--plain-stream {
+  white-space: normal;
+}
+.chat-md__plain-stream {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}

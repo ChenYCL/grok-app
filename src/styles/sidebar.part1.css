@@ -583,6 +583,9 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 
 .sidebar__scroll .tree-l2,
 .sidebar__scroll .tree-l3 {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
+  contain: layout style;
   border-radius: 8px;
 }
 

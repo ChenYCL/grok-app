@@ -88,6 +88,7 @@ import {
 import { recordCostUsageSample, sampleFromUsageEvent } from "@/lib/costRollup";
 import { mapSessionListRow } from "@/lib/app/sidebarModels";
 import { StreamCoalescer } from "@/lib/streamCoalesce";
+import { resolveStreamFlushMs } from "@/lib/streamRenderPolicy";
 import {
   chatcutHandoffToResourceOpenTarget,
   resolveChatcutHandoffFromToolEvent,
@@ -581,7 +582,8 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
           }
         };
         const streamCoalescer = new StreamCoalescer({
-          flushMs: 48,
+          // Adaptive batching: longer hold on low core / dual-GPU Retina laptops.
+          flushMs: resolveStreamFlushMs(),
           onFlush: (raw) => {
             applyStreamToUi({
               sessionId: raw.sessionId ?? "",

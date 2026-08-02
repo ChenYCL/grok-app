@@ -117,8 +117,10 @@ describe("computeChatVirtualWindow", () => {
     expect(w.start).toBe(0);
   });
 
-  it("threshold constant is high enough to skip short chats", () => {
-    expect(CHAT_VIRTUALIZE_THRESHOLD).toBeGreaterThanOrEqual(40);
+  it("threshold virtualizes multi-turn agent chats without waiting for 50 rows", () => {
+    // Short welcome/1-turn chats stay fully mounted; 3–4 tool-heavy turns should window.
+    expect(CHAT_VIRTUALIZE_THRESHOLD).toBeGreaterThanOrEqual(12);
+    expect(CHAT_VIRTUALIZE_THRESHOLD).toBeLessThanOrEqual(28);
   });
 
   it("accepts precomputed offsets (scroll-path cache)", () => {

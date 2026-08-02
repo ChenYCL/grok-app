@@ -32,12 +32,12 @@ describe("transcriptFilterPref", () => {
     vi.restoreAllMocks();
   });
 
-  it("defaults to all", () => {
-    expect(DEFAULT_TRANSCRIPT_FILTER).toBe("all");
-    expect(parseTranscriptFilterPref(null)).toBe("all");
-    expect(parseTranscriptFilterPref("")).toBe("all");
-    expect(parseTranscriptFilterPref("maybe")).toBe("all");
-    expect(loadTranscriptFilterPref(memoryStorage())).toBe("all");
+  it("defaults to conversation (fewer tool rows while streaming)", () => {
+    expect(DEFAULT_TRANSCRIPT_FILTER).toBe("conversation");
+    expect(parseTranscriptFilterPref(null)).toBe("conversation");
+    expect(parseTranscriptFilterPref("")).toBe("conversation");
+    expect(parseTranscriptFilterPref("maybe")).toBe("conversation");
+    expect(loadTranscriptFilterPref(memoryStorage())).toBe("conversation");
   });
 
   it("parses known modes", () => {
@@ -167,11 +167,10 @@ describe("filterMessagesForTranscript", () => {
     expect(out.every((m) => m.marker !== "tool_step")).toBe(true);
   });
 
-  it("defaults to all when mode omitted", () => {
+  it("defaults to conversation when mode omitted", () => {
     const rows = [user, tool1];
     expect(filterMessagesForTranscript(rows).map((m) => m.id)).toEqual([
       "u1",
-      "tool-call-1",
     ]);
   });
 });

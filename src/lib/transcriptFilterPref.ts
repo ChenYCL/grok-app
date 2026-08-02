@@ -18,7 +18,8 @@ export const TRANSCRIPT_FILTER_CHANGE_EVENT = "grok-transcript-filter-change";
 
 export type TranscriptFilterMode = "all" | "conversation";
 
-export const DEFAULT_TRANSCRIPT_FILTER: TranscriptFilterMode = "all";
+/** Prefer conversation-only by default — fewer tool rows = less DOM thrash mid-stream. */
+export const DEFAULT_TRANSCRIPT_FILTER: TranscriptFilterMode = "conversation";
 
 /** Minimal storage surface so unit tests need no jsdom. */
 export interface TranscriptFilterStorage {
@@ -31,7 +32,7 @@ function defaultStorage(): TranscriptFilterStorage {
   return { getItem: () => null, setItem: () => {} };
 }
 
-/** Parse stored value; invalid / empty → default `all`. */
+/** Parse stored value; invalid / empty → default (conversation). */
 export function parseTranscriptFilterPref(raw: unknown): TranscriptFilterMode {
   if (raw === "conversation" || raw === "conversation_only") {
     return "conversation";

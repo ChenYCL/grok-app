@@ -509,10 +509,28 @@ export function useStickToBottom(
       return el.scrollHeight;
     };
 
+    let throttleTimer = 0;
     const ro = new ResizeObserver(() => {
       // Coalesce multi-node notifications to one frame. Always read the
       // content column height from the DOM — viewport RO entries report
       // client box size, which is not what we want for grow/shrink.
+      // During stream-perf mode (Intel Retina), also time-throttle RO storms
+      // from markdown reflow so stick-to-bottom is not a second render tax.
+      const streamPerf =
+        typeof document !== "undefined" &&
+        document.documentElement.dataset.streamPerf === "1";
+      if (streamPerf) {
+        if (throttleTimer) return;
+        throttleTimer = window.setTimeout(() => {
+          throttleTimer = 0;
+          if (raf) return;
+          raf = requestAnimationFrame(() => {
+            raf = 0;
+            onHeightChange(measureContentHeight());
+          });
+        }, 80);
+        return;
+      }
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
@@ -527,6 +545,7 @@ export function useStickToBottom(
 
     return () => {
       if (raf) cancelAnimationFrame(raf);
+      if (throttleTimer) window.clearTimeout(throttleTimer);
       ro.disconnect();
     };
   }, [enabled, conversationKey, applyScrollTop, followIfPinned]);
