@@ -1,0 +1,315 @@
+/**
+ * Settings → Extensions reference list language (plugins / MCP / skills).
+ * Independent of legacy `.ext-item` multi-button action walls.
+ */
+
+/* ── Tab strip + co-located search ── */
+.ext-ref-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 16px;
+}
+
+.ext-ref-tabs__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ext-ref-tabs__tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.ext-ref-tabs__tab:hover {
+  color: var(--text-primary, #fff);
+  background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
+}
+
+.ext-ref-tabs__tab.is-on {
+  background: var(--text-primary, #fff);
+  color: var(--bg-elevated, #111);
+}
+
+:root[data-theme="light"] .ext-ref-tabs__tab.is-on,
+html[data-theme="light"] .ext-ref-tabs__tab.is-on {
+  background: var(--text-primary, #111);
+  color: var(--bg-elevated, #fff);
+}
+
+.ext-ref-tabs__count {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.ext-ref-tabs__tab.is-on .ext-ref-tabs__count {
+  opacity: 0.85;
+}
+
+.ext-ref-tabs__search {
+  flex: 0 1 220px;
+  min-width: 140px;
+  max-width: 280px;
+  margin-left: auto;
+}
+
+.ext-ref-tabs__search .settings-input,
+.ext-ref-tabs__search input {
+  width: 100%;
+  font-size: 13px;
+  height: 32px;
+}
+
+/* ── Section blocks on plugins tab ── */
+.ext-ref-section {
+  margin: 0 0 20px;
+}
+
+.ext-ref-section__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  min-height: 28px;
+}
+
+.ext-ref-section__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  text-transform: none;
+}
+
+.ext-ref-section__actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ext-ref-section__lead {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+}
+
+/* ── Flat rows: icon + name + desc + primary toggle ── */
+.ext-ref-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
+}
+
+.ext-ref-row {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.ext-ref-row:last-child {
+  border-bottom: 0;
+}
+
+.ext-ref-row__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  min-height: 56px;
+}
+
+.ext-ref-row__icon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
+  color: var(--text-primary, #fff);
+}
+
+.ext-ref-row__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ext-ref-row__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-ref-row__desc {
+  font-size: 12px;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-ref-row__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ext-ref-row__end {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ext-ref-row__chev {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.ext-ref-row__chev:hover {
+  background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
+  color: var(--text-primary, #fff);
+}
+
+.ext-ref-row__chev.is-open {
+  transform: rotate(180deg);
+}
+
+.ext-ref-row__expand {
+  padding: 0 14px 12px 62px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ext-ref-row--off .ext-ref-row__title {
+  opacity: 0.72;
+}
+
+.ext-ref-row--dense .ext-ref-row__main {
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.ext-ref-row--dense .ext-ref-row__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.ext-ref-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary, #fff) 10%, transparent);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.75));
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-ref-gear {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.ext-ref-gear:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
+  color: var(--text-primary, #fff);
+}
+
+.ext-ref-gear:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Installable block embeds BuildExtras market without second page chrome */
+.ext-ref-catalog.ext-ref-catalog--embedded .settings-page__h2 {
+  display: none;
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .settings-card.ext-card {
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
+  box-shadow: none;
+}
+
+/* Agents / Hooks share density */
+.ext-ref-shell .settings-page__h2 {
+  margin-top: 4px;
+}
+
+.ext-ref-shell .ext-list {
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.ext-ref-shell .ext-item {
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  margin: 0;
+  padding: 12px 14px;
+}
+
+.ext-ref-shell .ext-item:last-child {
+  border-bottom: 0;
+}

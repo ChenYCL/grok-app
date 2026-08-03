@@ -53,15 +53,18 @@ import {
   marketplaceRemoveTarget,
   marketplaceSourceLabel,
   normalizeMarketplaceAddSource,
-  pickDefaultMarketplaceFilter,
   sortAvailablePluginsByName,
   sortMarketplaceSourcesByName,
-  XAI_OFFICIAL_MARKETPLACE,
   type AvailablePluginDetailModel,
   type AvailablePluginLike,
   type MarketplaceSourceLike,
   type PluginComponentBadgeKind,
 } from "@/lib/pluginMarketplace";
+import {
+  ensureOpenaiPluginsMarketplace,
+  findOpenaiPluginsSource,
+  pickDefaultInstallableFilter,
+} from "@/lib/pluginRecommended";
 import {
   buildPluginMarketErrorView,
   clearPluginMarketRowError,
@@ -80,8 +83,15 @@ export type ExtensionsBuildExtrasProps = {
   locale: Locale;
   projectPath?: string | null;
   cliFound?: boolean;
-  /** Which block(s) to render — settings page tabs use hooks | market | agents. */
+  /** Which block(s) to render — settings page tabs use market | agents. */
   mode?: "hooks" | "market" | "agents" | "all";
+  /**
+   * When true (plugins tab installable section), hide page-level market H2
+   * and rely on parent section chrome.
+   */
+  embedded?: boolean;
+  /** Soft-fail ensure openai/plugins error bubble (optional parent display). */
+  onEnsureOpenaiError?: (message: string | null) => void;
   /** After plugin install — parent can refresh plugins list. */
   onPluginsChanged?: () => void;
   /** Navigate to Settings → Runtime when CLI is missing / too old. */
@@ -154,6 +164,8 @@ export function ExtensionsBuildExtras({
   projectPath = null,
   cliFound = true,
   mode = "all",
+  embedded = false,
+  onEnsureOpenaiError,
   onPluginsChanged,
   onOpenRuntime,
   installedPlugins = [],
@@ -197,7 +209,11 @@ export function ExtensionsBuildExtras({
   const [marketBusy, setMarketBusy] = useState<string | null>(null);
   const [addSource, setAddSource] = useState("");
   const [availQuery, setAvailQuery] = useState("");
-  const [marketFilter, setMarketFilter] = useState<string>(XAI_OFFICIAL_MARKETPLACE);
+  /** Default prefers openai/plugins when present (D8-A); set after load. */
+  const [marketFilter, setMarketFilter] = useState<string>("__all__");
+  const [ensureOpenaiError, setEnsureOpenaiError] = useState<string | null>(
+    null,
+  );
   const [pageLimit, setPageLimit] = useState(PAGE_SIZE);
   const [fromCache, setFromCache] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
@@ -422,6 +438,30 @@ export function ExtensionsBuildExtras({
     setMarketLoading(true);
     setMarketError(null);
     try {
+      // Ensure openai/plugins source (idempotent; never remove other sources).
+      const ensure = await ensureOpenaiPluginsMarketplace({
+        list: async () => {
+          const r = await api.marketplaceList();
+          return {
+            sources: (r.sources ?? [])
+              .map((row) => asSource(row as Record<string, unknown>))
+              .filter((x): x is MarketplaceSourceLike => !!x),
+          };
+        },
+        add: async (url) => {
+          await api.marketplaceAdd(url);
+        },
+        update: async (name) => {
+          await api.marketplaceUpdate(name);
+        },
+      });
+      const ensureErr = ensure.error?.trim() || null;
+      setEnsureOpenaiError(ensureErr);
+      onEnsureOpenaiError?.(ensureErr);
+      if (ensure.added || force) {
+        invalidateMarketplaceCatalogCache();
+      }
+
       const result = await loadMarketplaceCatalog(async () => {
         const [srcRes, availRes] = await Promise.all([
           api.marketplaceList(),
@@ -442,7 +482,7 @@ export function ExtensionsBuildExtras({
           ),
         );
         return { sources: src, available: avail, error: err };
-      }, { force });
+      }, { force: force || ensure.added });
 
       setSources(result.sources);
       setAvailable(result.available);
@@ -450,15 +490,12 @@ export function ExtensionsBuildExtras({
       // Soft-fail capability gaps are presented via empty-state, not only a banner.
       if (result.error) setMarketError(result.error);
 
-      // Keep official default when that source exists; otherwise stay on filter chip.
+      // Prefer openai/plugins when present; keep user chip if still valid.
       setMarketFilter((prev) => {
-        if (prev === "__all__") return prev;
-        if (result.sources.some((s) => s.name === prev)) return prev;
-        if (isXaiOfficialMarketplace(prev)) {
-          return pickDefaultMarketplaceFilter(result.sources);
+        if (prev && prev !== "__all__" && result.sources.some((s) => s.name === prev)) {
+          return prev;
         }
-        // If previous source was removed, fall back to official / all.
-        return pickDefaultMarketplaceFilter(result.sources);
+        return pickDefaultInstallableFilter(result.sources);
       });
     } catch (e) {
       setSources([]);
@@ -467,7 +504,7 @@ export function ExtensionsBuildExtras({
     } finally {
       setMarketLoading(false);
     }
-  }, [cliMissing]);
+  }, [cliMissing, onEnsureOpenaiError]);
 
   useEffect(() => {
     if (showHooks) void loadHooks();
@@ -482,20 +519,27 @@ export function ExtensionsBuildExtras({
   }, [loadAgents, showAgents]);
 
   const marketChips = useMemo(() => {
-    const chips: { id: string; label: string }[] = [
-      {
-        id: pickDefaultMarketplaceFilter(sources),
-        label: tr("ext.market.filterOfficial"),
-      },
-      { id: "__all__", label: tr("ext.market.filterAll") },
-    ];
-    // Deduplicate official id if name differs
-    const officialId = chips[0].id;
+    const chips: { id: string; label: string }[] = [];
+    const openai = findOpenaiPluginsSource(sources);
+    if (openai?.name) {
+      chips.push({
+        id: openai.name,
+        label: openai.name,
+      });
+    }
+    chips.push({ id: "__all__", label: tr("ext.market.filterAll") });
+    const seen = new Set(chips.map((c) => c.id));
     for (const s of sources) {
-      if (s.name === officialId || isXaiOfficialMarketplace(s.name)) continue;
+      if (!s.name || seen.has(s.name)) continue;
+      seen.add(s.name);
       chips.push({ id: s.name, label: s.name });
     }
-    return chips;
+    // Prefer xAI chip label when it is the official catalog
+    return chips.map((c) =>
+      isXaiOfficialMarketplace(c.id)
+        ? { ...c, label: tr("ext.market.filterOfficial") }
+        : c,
+    );
   }, [sources, tr]);
 
   const filteredByMarket = useMemo(
@@ -1259,31 +1303,79 @@ export function ExtensionsBuildExtras({
         </>
       ) : null}
 
-      {/* ── Marketplace ── */}
+      {/* ── Marketplace / installable catalog ── */}
       {showMarket ? (
-        <>
-          <h2 className="settings-page__h2" id="settings-anchor-ext-market">
-            <IconPuzzle size={15} />
-            {tr("ext.market.title")}
-            {!marketLoading ? (
-              <span className="ext-count">{filteredByMarket.length}</span>
-            ) : null}
-            <button
-              type="button"
-              className="btn btn--ghost ext-bulk-btn"
-              disabled={marketLoading || !!marketBusy || cliMissing}
-              onClick={() => void loadMarket(true)}
-              title={fromCache ? tr("ext.market.cachedHint") : undefined}
-            >
-              <IconRefresh size={14} />
-              <span>
-                {marketBusy === "up:all" || marketLoading
-                  ? tr("ext.market.updating")
-                  : tr("ext.market.refreshCatalog")}
-              </span>
-            </button>
-          </h2>
+        <div
+          className={
+            "ext-ref-catalog" + (embedded ? " ext-ref-catalog--embedded" : "")
+          }
+          id={
+            embedded
+              ? "settings-anchor-ext-plugins-catalog"
+              : "settings-anchor-ext-market"
+          }
+        >
+          {!embedded ? (
+            <h2 className="settings-page__h2" id="settings-anchor-ext-market">
+              <IconPuzzle size={15} />
+              {tr("ext.market.title")}
+              {!marketLoading ? (
+                <span className="ext-count">{filteredByMarket.length}</span>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn--ghost ext-bulk-btn"
+                disabled={marketLoading || !!marketBusy || cliMissing}
+                onClick={() => void loadMarket(true)}
+                title={fromCache ? tr("ext.market.cachedHint") : undefined}
+              >
+                <IconRefresh size={14} />
+                <span>
+                  {marketBusy === "up:all" || marketLoading
+                    ? tr("ext.market.updating")
+                    : tr("ext.market.refreshCatalog")}
+                </span>
+              </button>
+            </h2>
+          ) : null}
           <div className="settings-card ext-card">
+            {embedded ? (
+              <div className="ext-ref-section__head" style={{ marginBottom: 10 }}>
+                <span className="ext-ref-section__title">
+                  {tr("ext.plugins.installableTitle")}
+                </span>
+                {!marketLoading ? (
+                  <span className="ext-count">{filteredByMarket.length}</span>
+                ) : null}
+                <span className="ext-ref-section__actions">
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={marketLoading || !!marketBusy || cliMissing}
+                    onClick={() => void loadMarket(true)}
+                    title={fromCache ? tr("ext.market.cachedHint") : undefined}
+                  >
+                    <IconRefresh size={13} />
+                    <span>
+                      {marketBusy === "up:all" || marketLoading
+                        ? tr("ext.market.updating")
+                        : tr("ext.market.refreshCatalog")}
+                    </span>
+                  </button>
+                </span>
+              </div>
+            ) : null}
+            {ensureOpenaiError ? (
+              <div className="ext-alert ext-alert--warn" role="status">
+                <div className="ext-alert__title">
+                  {tr("ext.plugins.ensureOpenaiFailed")}
+                </div>
+                <p className="ext-alert__body">
+                  {tr("ext.plugins.ensureOpenaiFailedHint")}
+                </p>
+                <p className="ext-alert__detail">{ensureOpenaiError}</p>
+              </div>
+            ) : null}
             {showMarketErrorBanner && marketLoadView ? (
               <div
                 className={
@@ -1922,7 +2014,7 @@ export function ExtensionsBuildExtras({
                   })}
             </p>
           </GlassModal>
-        </>
+        </div>
       ) : null}
     </>
   );

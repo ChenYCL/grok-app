@@ -5,24 +5,23 @@
 
 | WP | Status | Notes |
 |----|--------|-------|
-| WP-0 | DONE | Branch created; baseline vitest green (59 tests). typecheck has pre-existing unrelated `attachments.ts` unused var (not this work). |
-| WP-1 | PENDING | |
-| WP-2 | PENDING | |
-| WP-3 | PENDING | |
-| WP-4 | PENDING | |
-| WP-5 | PENDING | |
-| WP-6 | PENDING | |
+| WP-0 | DONE | Branch + baseline; PROGRESS ledger |
+| WP-1 | DONE | Removed market tab; market deep-link/search → plugins catalog; settings-ia wiki |
+| WP-2 | DONE | Removed ext-toolbar; ext-ref-tabs with counts + co-located search; extensions-ref.css |
+| WP-3 | DONE | ChatCut recommended + ensure openai/plugins + installable embedded + advanced; pluginRecommended tests; #subdir name fix |
+| WP-4 | DONE | Installed ref rows (toggle+expand); MCP dual group; skills dense badge rows |
+| WP-5 | DONE | Agents shell via ext-ref-shell; en/zh/zh-TW keys; scrub market-tab CTAs; typecheck green |
+| WP-6 | DONE | §7 automation green; §8 P0 matrix PASS (static+unit); evidence under goal scratch |
 
-## Baseline (WP-0)
+## Verification snapshots
 
 ```
-pnpm exec vitest run src/lib/settingsCatalog.test.ts src/lib/pluginMarketplace.test.ts src/lib/pluginMarketPro.test.ts
-→ 3 files, 59 tests PASS
-
-pnpm typecheck
-→ FAIL pre-existing: src/lib/attachments.ts(145,10) TS6133 isAbsoluteFsPath unused (out of scope)
+pnpm typecheck → exit 0
+pnpm exec vitest run src/lib/settingsCatalog.test.ts src/lib/pluginMarketplace.test.ts src/lib/pluginMarketPro.test.ts src/lib/pluginRecommended.test.ts
+→ 4 files, 70 tests PASS
+cargo test plugin_name_from_install_source → ok (#codex → codex)
 ```
 
-## FINAL
+## FINAL: PASS
 
-_(set in WP-6)_
+No P0 debt (cannot open extensions / lost list / cannot install / deep-link white screen / market tab / project bar / hardcoded UI walls / silent trust install).

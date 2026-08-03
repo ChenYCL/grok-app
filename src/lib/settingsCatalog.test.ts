@@ -93,6 +93,46 @@ describe("settingsCatalog", () => {
     expect(resolveTab("about", "x")).toBeNull();
   });
 
+  it("extensions has no market tab; market deep-link → plugins catalog", () => {
+    const extNav = SETTINGS_NAV.find((n) => n.id === "extensions");
+    expect(extNav?.tabs.map((t) => t.id)).toEqual([
+      "plugins",
+      "mcp",
+      "skills",
+      "agents",
+      "hooks",
+    ]);
+    expect(extNav?.tabs.some((t) => t.id === "market")).toBe(false);
+    expect(resolveTab("extensions", "market")).toBe("plugins");
+    expect(parseSettingsHash("#/settings/extensions/market")).toEqual({
+      section: "extensions",
+      tab: "plugins",
+    });
+    expect(parseSettingsHash("settings/extensions/market")).toEqual({
+      section: "extensions",
+      tab: "plugins",
+    });
+    const marketEntry = SETTINGS_ENTRIES.find((e) => e.id === "ext.market");
+    expect(marketEntry?.tab).toBe("plugins");
+    expect(marketEntry?.anchorId).toBe("settings-anchor-ext-plugins-catalog");
+    const tZh = createT("zh");
+    const tEn = createT("en");
+    const hits = searchSettingsEntries("marketplace", tZh, tEn);
+    expect(hits.some((h) => h.entry.id === "ext.market")).toBe(true);
+    expect(hits.every((h) => h.entry.tab === "plugins" || h.entry.tab == null)).toBe(
+      true,
+    );
+    const marketZh = searchSettingsEntries("市场", tZh, tEn);
+    expect(
+      marketZh.some(
+        (h) =>
+          h.entry.id === "ext.market" &&
+          h.entry.tab === "plugins" &&
+          h.entry.anchorId === "settings-anchor-ext-plugins-catalog",
+      ),
+    ).toBe(true);
+  });
+
   it("isSettingsSectionId", () => {
     expect(isSettingsSectionId("runtime")).toBe(true);
     expect(isSettingsSectionId("nope")).toBe(false);

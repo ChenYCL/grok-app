@@ -39,6 +39,10 @@ export function resolveTab(
   section: SettingsSectionId,
   tab?: string | null,
 ): SettingsTabId | null {
+  // Legacy deep-link: market tab merged into plugins (no top-level Market tab).
+  if (section === "extensions" && tab === "market") {
+    return "plugins";
+  }
   if (isValidTab(section, tab)) return tab;
   return defaultTabFor(section);
 }

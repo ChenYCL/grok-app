@@ -45,6 +45,18 @@ Locale path rule (same as Codex skills): zh → `/zh/…`, es → `/es/…`, els
 
 ## Install / enable
 
+### Settings → Extensions (recommended)
+
+App **Settings → Extensions → Plugins → 推荐** offers ChatCut as an optional install:
+
+| Field | Value |
+|-------|--------|
+| Install source | `https://github.com/ChatCut-Inc/agent-plugin#codex` |
+| Match installed | name `codex` / `chatcut` (case-insensitive) **or** path/source containing `ChatCut-Inc/agent-plugin` |
+| Confirm | GlassModal only — never auto-install, never silent trust without confirm |
+
+After install, enable/disable from the recommended or installed row; MCP OAuth still under **扩展 → MCP**.
+
 ### Independent session mode (App default)
 
 App settings often use `sessionDataMode: independent` → agent / doctor use:

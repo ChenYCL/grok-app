@@ -24,7 +24,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 | general | `composer` · `permissions` · `agent`（含 experimental memory、memory browser、**memory embedding 0.2.117**） · `app` |
 | appearance | `theme`（主题：浅深色 / 皮肤 / 背景）· `interface`（界面：聊天展示） |
 | account | `official` · `providers` · `extras`（「拓展」：官方工具注入开关） |
-| extensions | `plugins` · `skills` · `mcp` · `hooks` · `market` |
+| extensions | `plugins` · `mcp` · `skills` · `agents` · `hooks`（**无** `market` / `apps`；`#/settings/extensions/market` → `plugins` 可安装目录锚点） |
 | runtime | `cli` · `connection` · `network` · `pool` · `tools` · `privacy` |
 | remote_im（远程控制） | `im`（IM 通信）· `mirror`（手机镜像） |
 | 其余 | 无 tab（单页） |
@@ -61,7 +61,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 
 | 面 | 放哪 | 说明 |
 |----|------|------|
-| 管理 Skills/MCP/Plugins/Hooks/Market | **扩展** | 可写开关、安装、移除 |
+| 管理 Skills/MCP/Plugins/Hooks/Agents + 插件页内目录 | **扩展** | 可写开关、安装、移除；无独立市场 Tab |
 | 只读 project inspect 摘要 | **运行时 · 诊断** | 保留；文案链到扩展 |
 | CLI 路径 / ACP / 进程池 / Doctor / Managed setup / Privacy center | **运行时** | 不进扩展 |
 

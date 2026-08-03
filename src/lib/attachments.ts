@@ -142,11 +142,6 @@ export function isMediaPath(path: string): boolean {
   return isImagePath(path) || isVideoPath(path);
 }
 
-function isAbsoluteFsPath(path: string): boolean {
-  // Real local only — site roots like `/images/x.png` must not become attachments.
-  return isRealLocalAbsolutePath(path);
-}
-
 /**
  * Known relative media roots (agent session + project cwd skill outputs).
  * Prefer longest match when building path-map tails.
