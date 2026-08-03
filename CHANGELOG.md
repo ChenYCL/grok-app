@@ -11,6 +11,49 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-08-04
+
+> **Highlight:** Codex-style **side workbench** + redesigned **Settings → Extensions** (plugin cards, ChatCut recommend, market merge), multi-module **stream/perf isolation**, ChatCut Codex adapter + in-app MCP OAuth, and Docker mirror **QUIC → HTTP/2** fallback (#517).
+>
+> **中文 · 亮点：** Codex 式**右侧 Side Workbench** + **设置 → 扩展** 重设计（插件卡片 / ChatCut 推荐 / 市场并入）；多模块**流式与性能隔离**；ChatCut Codex 适配与应用内 MCP OAuth；手机镜像 Docker 隧道 **QUIC 失败自动改 HTTP/2**（#517）。
+
+### Added
+- **Side workbench** (Codex-style right pane): multi-tab shell for Files / Review (multi-file diff) / Terminal / Browser / Plan with picker shortcuts, env info, and glass empty states — pure `sideWorkbench` helpers + host terminal/browser seams; en/zh/zh-TW.
+- **Settings → Extensions redesign**: remove top-level Market tab; tabs **Plugins · MCP · Skills · Agents · Hooks** with co-located search. Plugins page: **Recommended (ChatCut `#codex`)** → Installed → Installable (ensure `openai/plugins`) → Advanced; card grid, logo cache + media HTTP, infinite scroll, detail modal; GlassModal install confirms only.
+- **ChatCut Codex plugin adapter**: surface header + Resources browser handoff / start simulation path; independent-mode MCP mirror honesty for Doctor; en/zh/zh-TW wiki (`docs/llm-wiki/chatcut.md`).
+- **MCP in-app OAuth browser flow** for ChatCut and remote HTTP MCP (force browser authorize, surface host start errors, i18n for browser-flow copy).
+- **Webview zoom hotkeys**: `Cmd/Ctrl +` / `-` / `0` for desktop zoom (#506).
+
+### Changed
+- **Stream / perf isolation batch**: adaptive host stream coalesce + tool batch queue (#516); virtualize long Grok activity step lists (#515); external composer draft store + memo editor (#510); memo session rows + isolate relative time (#509); stream-perf mode cuts wallpaper/backdrop thrash (#513); lazy heavy modals / live tasks panel / adaptive notify; subscribe full `liveMap` only when panels need it; live chat-find against transcript store.
+- **Composer / stream hardening** alongside extensions UI: stick-follow, soft stall policy, path/media helpers shared with side workbench.
+
+### Fixed
+- **#517 Docker mirror tunnel**: detect repeated pre-registration QUIC connectivity failures in the managed cloudflared Docker adapter, clean up the failed attempt, and retry with `--protocol http2` (host-binary path unchanged; unit tests for protocol flag + failure heuristics).
+- **Chat stick-to-bottom**: stream follow while pinned; user attachment strip layout; never auto-end turns on soft stall alone.
+- **Media**: normalize local media paths and soft-fail missing files; render ChatCut S3 protocol-relative thumbs and skip placeholders.
+- **Embedded browser**: stabilize native webview bounds; clean settings spacing CSS.
+- **Extensions polish**: dedupe plugin / ChatCut·codex cards; flush logo tiles without padding; serve plugin logos via media HTTP with `~/.grok` allowlist.
+- **CI baselines**: restore `cargo fmt` + file-size gates (worktree path tests extract; Project Inspect normalizer move) so quality checks stay green with the tunnel fix.
+
+**中文 · 新增**
+- **右侧 Side Workbench**（Codex 式）：文件 / 多文件 Review / 终端 / 浏览器 / Plan 分栏与快捷选择
+- **设置 → 扩展重设计**：插件卡片与推荐位、ChatCut `#codex`、市场并入可安装列表；安装仅 GlassModal 确认
+- **ChatCut Codex 适配** + Resources 浏览器交接；Doctor 诚实展示独立模式 MCP 镜像
+- **应用内 MCP OAuth 浏览器流**（ChatCut / 远程 HTTP MCP）
+- **网页缩放快捷键** `Cmd/Ctrl +` / `-` / `0`（#506）
+
+**中文 · 变更**
+- **流式与性能隔离批次**：Host 自适应合并与工具批队列、活动步骤虚拟列表、Composer 草稿外置、侧栏行 memo、stream-perf 壁纸减负、重型 Modal 懒加载等
+- 侧栏与扩展 UI 同期加固 composer/stream 行为
+
+**中文 · 修复**
+- **#517 镜像 Docker 隧道**：QUIC 注册前连续失败时清理并改用 HTTP/2 重试
+- 流式置底跟随、用户附件条、软 stall 不自动结束回合
+- 本地媒体路径规范化 / 缺失软失败；ChatCut S3 协议相对缩略图
+- 内嵌浏览器 bounds 稳定；插件卡片去重与 logo 媒体 HTTP
+- CI fmt / 大文件闸门基线恢复
+
 ## [0.2.4] - 2026-08-01
 
 > **Highlight:** Architecture-level code-quality remediation (App shell, CSS domains, Host modules, CI gates) plus sticky **Streaming busy** fix after long background-tool turns (#453). Ships the large pro-honesty batch already on main since 0.2.3.
