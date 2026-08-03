@@ -77,6 +77,27 @@ pub async fn terminal_pty_kill(session_id: String) -> Result<(), String> {
 
 // ── Embedded side browser automation (in-app Webview only) ──────────────
 
+/// Create/replace a side-browser child webview with download save-dialog wiring.
+/// Prefer this over frontend `new Webview()` so WKWebView downloads can prompt.
+#[tauri::command]
+pub fn side_browser_create(
+    app: AppHandle,
+    label: String,
+    url: String,
+    window_label: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    side_browser_host::create(&app, label, url, window_label, x, y, width, height)
+}
+
+#[tauri::command]
+pub fn side_browser_close(app: AppHandle, label: String) -> Result<(), String> {
+    side_browser_host::close(&app, label)
+}
+
 #[tauri::command]
 pub fn side_browser_list(app: AppHandle) -> Result<Vec<SideBrowserInfo>, String> {
     side_browser_host::list(&app)

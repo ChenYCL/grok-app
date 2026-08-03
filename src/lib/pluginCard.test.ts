@@ -48,6 +48,26 @@ describe("pluginCard", () => {
     expect(groups.map((g) => g.category)).toEqual(["video", "mcp", "other"]);
   });
 
+  it("normalizes openai marketplace categories", () => {
+    expect(normalizePluginCategory("Developer Tools")).toBe("devtools");
+    expect(normalizePluginCategory("Finance")).toBe("productivity");
+    expect(normalizePluginCategory("Creativity")).toBe("design");
+    expect(normalizePluginCategory("Data & Analytics")).toBe("devtools");
+  });
+
+  it("prefers categoryHint on available cards", () => {
+    const card = buildAvailableCard(
+      {
+        name: "taxdown",
+        description: "tax helper",
+        marketplace: "plugins",
+      },
+      { categoryHint: "Finance" },
+    );
+    expect(card.category).toBe("productivity");
+  });
+
+
   it("builds icon/manifest candidates under root", () => {
     const icons = pluginIconPathCandidates("/root/plugin");
     expect(icons.some((p) => p.endsWith("assets/logo-light.png"))).toBe(true);

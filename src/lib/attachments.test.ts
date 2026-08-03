@@ -247,4 +247,18 @@ also /tmp/other.png and /tmp/clip.mp4 and not a file.`;
     expect(out).toHaveLength(1);
     expect(out![0]!.name).toBe("notes.txt");
   });
+
+  it("filterAttachmentsNotInlined drops false-extract single-segment abs media", () => {
+    const atts: Attachment[] = [
+      { path: "/img_001.png", name: "img_001.png", isDir: false },
+      {
+        path: "/Users/me/chat/media/img_001.png",
+        name: "img_001.png",
+        isDir: false,
+      },
+    ];
+    const out = filterAttachmentsNotInlined("done", atts);
+    expect(out).toHaveLength(1);
+    expect(out![0]!.path).toBe("/Users/me/chat/media/img_001.png");
+  });
 });

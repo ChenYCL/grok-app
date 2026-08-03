@@ -6,7 +6,7 @@
    - [media-delivery.md](docs/llm-wiki/media-delivery.md) — local file previews: loopback HTTP + path resolve (not raw `media://` in product paths)  
    - [i18n.md](docs/llm-wiki/i18n.md) — all UI strings via `src/i18n/`  
    - [settings-ia.md](docs/llm-wiki/settings-ia.md) — **settings IA**: tabs, search registry (`settingsCatalog`), deep links; every new setting must be registered  
-   - [dialogs.md](docs/llm-wiki/dialogs.md) — **no `window.confirm` / `prompt` / `alert`**; use in-app dialogs  
+   - [dialogs.md](docs/llm-wiki/dialogs.md) — **no `window.confirm` / `prompt` / `alert`**; **no OS-default controls**; reuse `Select` / `ContextMenu` / panel CSS; **no transparent menus**; **no stacking bugs**
    - [catalog.md](docs/llm-wiki/catalog.md) — models / effort / YOLO  
    - [automations.md](docs/llm-wiki/automations.md) — automation design (Build `/loop` / scheduler; non-blocking)  
    - [account.md](docs/llm-wiki/account.md) — official login, membership, quota, heatmap  
@@ -29,7 +29,9 @@
 
 2. Do **not** hardcode user-facing English/Chinese. Use `createT(locale)` / `t()`.
 
-2b. **Dialogs** — never use `window.confirm` / `window.prompt` / `window.alert` in Tauri UI. Use App `setAppDialog`, `GlassModal`, or the same in-app portal + modal/menu CSS. Prefer existing panel styles (`.cmm__pop`, solid `.menu-panel`, `.modal`); frosted glass is **not** required. Details: [docs/llm-wiki/dialogs.md](docs/llm-wiki/dialogs.md).
+2b. **Dialogs & overlays** — never use `window.confirm` / `window.prompt` / `window.alert` in Tauri UI. Use App `setAppDialog`, `GlassModal`, or the same in-app portal + modal/menu CSS. Prefer existing panel styles (`.cmm__pop`, solid context `.menu-panel`, `.modal`); frosted glass is **not** required. Details: [docs/llm-wiki/dialogs.md](docs/llm-wiki/dialogs.md).
+
+2c. **No system-default UI chrome** — do **not** ship native `<select>`, OS-default dropdowns, or browser context menus for product actions. Reuse project components: `Select`, `ContextMenu`, `Composer*Menu`, `OpenLocationButton`, existing `.cmm__pop` / glass / context surfaces. Bare `.menu-panel` has **layout only and no background** — always attach a solid context class, a glass-listed class, or an already-styled panel variant. **Forbidden**: fully transparent dropdown/context panels; content stacking bugs (missing portal, wrong z-index, click-through, clipped menus). See [docs/llm-wiki/dialogs.md](docs/llm-wiki/dialogs.md).
 
 3. When adding models or permission modes, update `src/lib/grokCatalog.ts` **and** `docs/llm-wiki/catalog.md`.
 

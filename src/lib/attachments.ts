@@ -551,6 +551,32 @@ export function resolveInlineImageToken(
 }
 
 /**
+ * Whether an attachment path is safe to show as an openable card.
+ * Drops:
+ * - false extracts like `/img_001.png` (single-segment abs media)
+ * - site-root CMS paths (`/images/...`)
+ * which otherwise render as dead paperclip thumbs that cannot preview.
+ */
+export function isDisplayableAttachmentPath(path: string): boolean {
+  const t = (path || "").trim();
+  if (!t) return false;
+  if (/^https?:\/\//i.test(t)) return true;
+  if (isSiteRootAbsolutePath(t)) return false;
+  // Single-segment absolute (`/dbs`, `/img_001.png`) — not a real workspace path.
+  if (t.startsWith("/") && !t.startsWith("//")) {
+    const segs = t.split("/").filter(Boolean);
+    if (segs.length < 2) return false;
+  }
+  // Prefer real local abs / home / windows; relative multi-seg kept for host resolve.
+  if (isRealLocalAbsolutePath(t)) return true;
+  if (t.startsWith("~/")) return true;
+  if (/^[A-Za-z]:[\\/]/.test(t)) return true;
+  // Relative project tokens with a directory prefix.
+  if ((t.includes("/") || t.includes("\\")) && !t.startsWith("/")) return true;
+  return false;
+}
+
+/**
  * Attachments still shown below the message: non-media, or media that is
  * not already referenced (and thus inlined) in the message body.
  */
@@ -566,6 +592,8 @@ export function filterAttachmentsNotInlined(
     extractMediaPathsFromContent(content).map((a) => a.path),
   );
   const out = attachments.filter((a) => {
+    // Hide unopenable false extracts (paperclip that cannot preview).
+    if (!isDisplayableAttachmentPath(a.path)) return false;
     if (a.isDir || !isMediaPath(a.path)) return true;
     const name = pathBasename(a.path);
     const norm = a.path.replace(/\\/g, "/");

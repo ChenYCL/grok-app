@@ -1256,6 +1256,10 @@ pub fn run() {
 
             commands::terminal_pty_kill,
 
+            commands::side_browser_create,
+
+            commands::side_browser_close,
+
             commands::side_browser_list,
 
             commands::side_browser_navigate,

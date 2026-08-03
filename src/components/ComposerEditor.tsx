@@ -197,6 +197,176 @@ function isCaretAtEditorStart(el: HTMLElement): boolean {
   return head.length === 0;
 }
 
+const COMPOSER_LINE_PX = 22;
+const COMPOSER_MAX_LINES = 10;
+
+/**
+ * Resolve a screen rect for the current caret.
+ * Collapsed carets on a bare `<br>` / empty block often report an empty
+ * Range rect — fall back to nearby nodes so scroll math still works.
+ */
+export function getComposerCaretRect(el: HTMLElement): DOMRect | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  if (!el.contains(range.startContainer)) return null;
+
+  const rects = range.getClientRects();
+  if (rects.length > 0) {
+    return rects[rects.length - 1]!;
+  }
+  const br = range.getBoundingClientRect();
+  if (br.height > 0 || br.width > 0) return br;
+
+  const node = range.startContainer;
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.parentElement?.getBoundingClientRect() ?? null;
+  }
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const parent = node as Element;
+    const child =
+      parent.childNodes[range.startOffset] ??
+      parent.childNodes[range.startOffset - 1] ??
+      null;
+    if (child) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        return child.parentElement?.getBoundingClientRect() ?? null;
+      }
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        return (child as Element).getBoundingClientRect();
+      }
+    }
+    return parent.getBoundingClientRect();
+  }
+  return null;
+}
+
+/**
+ * How much to add to `scrollTop` so `caret` stays inside `box` (viewport).
+ * Positive = scroll down; negative = scroll up; 0 = already visible.
+ */
+export function composerCaretScrollDelta(
+  caret: { top: number; bottom: number },
+  box: { top: number; bottom: number },
+  margin = 4,
+): number {
+  if (caret.bottom > box.bottom - margin) {
+    return caret.bottom - box.bottom + margin;
+  }
+  if (caret.top < box.top + margin) {
+    return -(box.top - caret.top + margin);
+  }
+  return 0;
+}
+
+/** True when the collapsed selection is at the end of `el`. */
+function isCollapsedCaretAtEnd(el: HTMLElement): boolean {
+  try {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+    const caret = sel.getRangeAt(0);
+    if (!el.contains(caret.endContainer)) return false;
+    const end = document.createRange();
+    end.selectNodeContents(el);
+    end.collapse(false);
+    return caret.compareBoundaryPoints(Range.START_TO_END, end) >= 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Re-apply the current selection so WebKit/Chromium redraws the caret layer.
+ * Rapid scrollTop changes during key-repeat otherwise leave ghost carets.
+ */
+export function repaintComposerCaret(el: HTMLElement): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  if (!el.contains(sel.anchorNode)) return;
+  try {
+    const range = sel.getRangeAt(0).cloneRange();
+    sel.removeAllRanges();
+    // Force a layout pass so the old caret paint is discarded.
+    void el.offsetHeight;
+    sel.addRange(range);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Keep the contenteditable caret inside the editor scrollport.
+ * Browsers do not reliably scroll after `insertLineBreak` + height clamp.
+ *
+ * Prefer an atomic `scrollTop = max` pin when the caret is at the end —
+ * incremental `scrollTop += delta` during Shift+Enter key-repeat leaves
+ * sticky ghost carets in WebKit (Tauri WebView).
+ */
+export function scrollComposerCaretIntoView(el: HTMLElement): void {
+  if (el.scrollHeight <= el.clientHeight + 1) return;
+  const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+
+  if (isCollapsedCaretAtEnd(el)) {
+    if (el.scrollTop !== maxScroll) el.scrollTop = maxScroll;
+    return;
+  }
+
+  const rect = getComposerCaretRect(el);
+  if (!rect) {
+    // Unknown caret geometry — pin bottom as a safe default for newlines.
+    el.scrollTop = maxScroll;
+    return;
+  }
+
+  const box = el.getBoundingClientRect();
+  const delta = composerCaretScrollDelta(rect, box);
+  if (delta === 0) return;
+  el.scrollTop = Math.max(0, Math.min(maxScroll, el.scrollTop + delta));
+}
+
+/**
+ * Auto-grow the composer input up to max lines.
+ *
+ * Prefer measuring via `scrollHeight` while constrained (grow / maxed paths)
+ * so we never set `height:auto` during Shift+Enter key-repeat — that expand
+ * → clamp cycle wipes scrollTop, reflows the chat shell, and leaves ghost carets.
+ * `height:auto` is only used when we may need to shrink.
+ */
+export function resizeComposerInput(el: HTMLElement): void {
+  const min = COMPOSER_LINE_PX;
+  const max = COMPOSER_LINE_PX * COMPOSER_MAX_LINES;
+  const prevScrollTop = el.scrollTop;
+  const clientH = el.clientHeight;
+  const scrollH = el.scrollHeight;
+
+  // Grow while under max: constrained scrollHeight already reflects content.
+  if (scrollH > clientH + 1 && clientH < max - 1) {
+    const nextH = Math.min(Math.max(scrollH, min), max);
+    el.style.height = `${nextH}px`;
+    if (scrollH > nextH) scrollComposerCaretIntoView(el);
+    return;
+  }
+
+  // Already maxed and still overflowing — pin caret only.
+  if (clientH >= max - 1 && scrollH > clientH + 1) {
+    el.style.height = `${max}px`;
+    scrollComposerCaretIntoView(el);
+    return;
+  }
+
+  // Shrink / initial measure (content may be shorter than the fixed box).
+  el.style.height = "auto";
+  const contentH = el.scrollHeight;
+  const nextH = Math.min(Math.max(contentH, min), max);
+  el.style.height = `${nextH}px`;
+
+  if (contentH > nextH) {
+    // height:auto cleared scrollTop — restore then pin caret.
+    el.scrollTop = prevScrollTop;
+    scrollComposerCaretIntoView(el);
+  }
+}
+
 /**
  * Paste as plain text only — strip HTML / rich styles from clipboard.
  * Uses insertText when available (keeps undo); falls back to Range insert.
@@ -281,6 +451,10 @@ export const ComposerEditor = memo(function ComposerEditor({
   const focused = useRef(false);
   /** Guard against double paste events (some WebViews fire paste twice). */
   const pasteInFlight = useRef(false);
+  /** Coalesced rAF for post-newline caret pin (key-repeat must not stack). */
+  const newlinePaintRaf = useRef(0);
+  /** Debounced draft commit while Enter is auto-repeating. */
+  const newlineCommitTimer = useRef(0);
   /**
    * DOM may show typed / IME glyphs before React `value` commits.
    * Track live emptiness so the overlay placeholder never paints over ink.
@@ -301,11 +475,22 @@ export const ComposerEditor = memo(function ComposerEditor({
   const resize = useCallback(() => {
     const el = elRef.current;
     if (!el) return;
-    const line = 22;
-    const min = line;
-    const max = line * 10;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`;
+    resizeComposerInput(el);
+  }, []);
+
+  /**
+   * One layout pass per frame after newlines.
+   * Do NOT repaint the caret here during key-repeat — removeAllRanges every
+   * frame leaves sticky residue. Repaint only when Enter is released.
+   */
+  const scheduleNewlinePaint = useCallback((el: HTMLElement) => {
+    if (newlinePaintRaf.current) cancelAnimationFrame(newlinePaintRaf.current);
+    newlinePaintRaf.current = requestAnimationFrame(() => {
+      newlinePaintRaf.current = 0;
+      if (elRef.current !== el) return;
+      resizeComposerInput(el);
+      scrollComposerCaretIntoView(el);
+    });
   }, []);
 
   const emitSlash = useCallback(() => {
@@ -360,6 +545,44 @@ export const ComposerEditor = memo(function ComposerEditor({
     },
     [onChange, emitSlash, resize, syncDomEmpty],
   );
+
+  /** Debounce draft commit under Enter key-repeat (DOM already has the breaks). */
+  const scheduleNewlineCommit = useCallback(
+    (el: HTMLElement) => {
+      if (newlineCommitTimer.current) {
+        window.clearTimeout(newlineCommitTimer.current);
+      }
+      newlineCommitTimer.current = window.setTimeout(() => {
+        newlineCommitTimer.current = 0;
+        if (elRef.current === el) commitFromDom(el);
+      }, 32);
+    },
+    [commitFromDom],
+  );
+
+  /** Flush debounced newline commit + clear ghost caret after key-repeat. */
+  const flushNewlineAfterKeyUp = useCallback(() => {
+    const el = elRef.current;
+    if (newlineCommitTimer.current) {
+      window.clearTimeout(newlineCommitTimer.current);
+      newlineCommitTimer.current = 0;
+      if (el) commitFromDom(el);
+    }
+    if (el) {
+      scrollComposerCaretIntoView(el);
+      repaintComposerCaret(el);
+    }
+  }, [commitFromDom]);
+
+  // Drop pending newline paint/commit on unmount.
+  useEffect(() => {
+    return () => {
+      if (newlinePaintRaf.current) cancelAnimationFrame(newlinePaintRaf.current);
+      if (newlineCommitTimer.current) {
+        window.clearTimeout(newlineCommitTimer.current);
+      }
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const el = elRef.current;
@@ -563,8 +786,12 @@ export const ComposerEditor = memo(function ComposerEditor({
         }}
         onInput={onInput}
         onPaste={onPaste}
-        onKeyUp={() => {
+        onKeyUp={(e) => {
           if (!composing.current) emitSlash();
+          // After Shift+Enter key-repeat: flush draft + erase caret ghosts.
+          if (e.key === "Enter" && !e.altKey && !e.metaKey && !e.ctrlKey) {
+            flushNewlineAfterKeyUp();
+          }
         }}
         onClick={() => emitSlash()}
         onCompositionStart={() => {
@@ -611,13 +838,33 @@ export const ComposerEditor = memo(function ComposerEditor({
           // Parent handles send / menus (may preventDefault).
           onKeyDown?.(e);
           if (e.defaultPrevented) return;
-          // Newline path (Shift+Enter, or plain Enter when send-key is mod-enter):
-          // force insertLineBreak so empty lines stay real breaks, not empty DIVs.
+          // Newline path (Shift+Enter, or plain Enter when send-key is mod-enter).
+          // Prefer insertText("\n") with pre-wrap — keeps real newlines without
+          // WebKit empty-DIV blocks, and avoids insertLineBreak <br> caret ghosts
+          // under Shift+Enter key-repeat.
           if (e.key === "Enter" && !e.altKey && !e.metaKey && !e.ctrlKey) {
             try {
               e.preventDefault();
-              document.execCommand("insertLineBreak");
-              if (el) commitFromDom(el);
+              let inserted = false;
+              try {
+                inserted = document.execCommand("insertText", false, "\n");
+              } catch {
+                inserted = false;
+              }
+              if (!inserted) {
+                document.execCommand("insertLineBreak");
+              }
+              if (el) {
+                // Visual first. Key-repeat must not thrash serialize or stack
+                // rAFs — that leaves sticky ghost carets in WebKit.
+                resizeComposerInput(el);
+                if (e.repeat) {
+                  scheduleNewlineCommit(el);
+                } else {
+                  commitFromDom(el);
+                }
+                scheduleNewlinePaint(el);
+              }
             } catch {
               /* browser default */
             }

@@ -67,11 +67,48 @@ export async function terminalPtyKill(sessionId: string) {
 /**
  * Embedded side-browser automation (in-app Tauri Webview only).
  * Label scheme: `resource-browser` or `resource-browser-<tabId>`.
+ *
+ * Create via `sideBrowserCreate` (not frontend `new Webview`) so downloads
+ * get a native save dialog through host `on_download`.
  */
 export type SideBrowserInfo = {
   label: string;
   url?: string | null;
 };
+
+/** Host event `side-browser://download` payload. */
+export type SideBrowserDownloadEvent = {
+  phase: "requested" | "finished" | "cancelled" | string;
+  label: string;
+  url: string;
+  path?: string | null;
+  success?: boolean | null;
+  fileName?: string | null;
+};
+
+export async function sideBrowserCreate(opts: {
+  label: string;
+  url: string;
+  windowLabel: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}) {
+  return invoke<void>("side_browser_create", {
+    label: opts.label,
+    url: opts.url,
+    windowLabel: opts.windowLabel,
+    x: opts.x,
+    y: opts.y,
+    width: opts.width,
+    height: opts.height,
+  });
+}
+
+export async function sideBrowserClose(label: string) {
+  return invoke<void>("side_browser_close", { label });
+}
 
 export async function sideBrowserList() {
   return invoke<SideBrowserInfo[]>("side_browser_list");

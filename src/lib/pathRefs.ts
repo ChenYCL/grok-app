@@ -87,9 +87,19 @@ export function looksLikeFilePath(s: string): boolean {
   if (t.startsWith("...") || t.startsWith("…")) return false;
   // CMS/site root (`/images/...`) — leave as plain code, not a path card.
   if (isSiteRootAbsolutePath(t)) return false;
+  // Slash-command / skill tokens (`/dbs`, `/goal`) — single segment, no ext.
+  // Must not become FilePathCard (click does nothing; confuses skill cites).
+  if (/^\/[A-Za-z0-9_.:-]+$/.test(t) && !FILE_EXT_RE.test(t)) {
+    return false;
+  }
   // Absolute (real local or home)
   if (isRealLocalAbsolutePath(t) || isHomeRelativePath(t)) {
-    return FILE_EXT_RE.test(t) || /\/[^/]+$/.test(t);
+    // Prefer extension, or multi-segment paths (`/Users/me/foo`).
+    // Single-segment abs with ext (`/a.png`) stays a path only when real local
+    // (agent-home short roots); slash commands without ext already rejected.
+    if (FILE_EXT_RE.test(t)) return true;
+    const segs = t.replace(/^~\/?/, "").split("/").filter(Boolean);
+    return segs.length >= 2;
   }
   // Other absolute-looking tokens without a known FS root: not a file card.
   if (t.startsWith("/") && !isWindowsStylePath(t)) {

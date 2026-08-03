@@ -62,6 +62,23 @@ export function normalizePluginCategory(
 ): PluginCardKind {
   const s = (raw ?? "").trim().toLowerCase();
   if (!s) return "other";
+  // Exact / known marketplace labels first (openai/plugins interface.category)
+  if (
+    s === "developer tools" ||
+    s === "devtools" ||
+    s === "developer tools & sdks"
+  ) {
+    return "devtools";
+  }
+  if (s === "productivity" || s === "business & operations") {
+    return "productivity";
+  }
+  if (s === "creativity" || s === "design") return "design";
+  if (s === "data & analytics" || s === "data") return "devtools";
+  if (s === "finance" || s === "communication" || s === "travel") {
+    return "productivity";
+  }
+  if (s === "education & research" || s === "security") return "other";
   if (
     s.includes("video") ||
     s.includes("media") ||
@@ -70,10 +87,10 @@ export function normalizePluginCategory(
   ) {
     return "video";
   }
-  if (s.includes("design") || s.includes("ui") || s.includes("visual")) {
+  if (s.includes("design") || s.includes("ui") || s.includes("visual") || s.includes("creativ")) {
     return "design";
   }
-  if (s.includes("mcp") || s.includes("server") || s.includes("protocol")) {
+  if (s.includes("mcp") || s.includes("protocol")) {
     return "mcp";
   }
   if (s.includes("skill")) return "skills";
@@ -83,7 +100,9 @@ export function normalizePluginCategory(
     s.includes("dev") ||
     s.includes("git") ||
     s.includes("debug") ||
-    s.includes("cli")
+    s.includes("cli") ||
+    s.includes("analytics") ||
+    s.includes("security")
   ) {
     return "devtools";
   }
@@ -91,11 +110,129 @@ export function normalizePluginCategory(
     s.includes("product") ||
     s.includes("office") ||
     s.includes("doc") ||
-    s.includes("note")
+    s.includes("note") ||
+    s.includes("finance") ||
+    s.includes("business") ||
+    s.includes("communication") ||
+    s.includes("travel")
   ) {
     return "productivity";
   }
   return "other";
+}
+
+/**
+ * Stable section order for Discover grouping.
+ * Marketplace labels (English from plugin.json) come first; kind keys after.
+ */
+export const MARKETPLACE_CATEGORY_LABEL_ORDER: readonly string[] = [
+  "Developer Tools",
+  "Productivity",
+  "Finance",
+  "Business & Operations",
+  "Data & Analytics",
+  "Communication",
+  "Education & Research",
+  "Creativity",
+  "Security",
+  "Travel",
+  "Design",
+  "Video",
+  "MCP",
+  "Skills",
+  "Agents",
+  "Hooks",
+  "Other",
+];
+
+/**
+ * Map marketplace `interface.category` (or kind labels) to i18n message keys.
+ * Unknown labels fall through to the raw string at the call site.
+ */
+export function marketplaceCategoryMessageKey(
+  raw: string | null | undefined,
+):
+  | "ext.plugins.category.video"
+  | "ext.plugins.category.design"
+  | "ext.plugins.category.mcp"
+  | "ext.plugins.category.skills"
+  | "ext.plugins.category.agents"
+  | "ext.plugins.category.hooks"
+  | "ext.plugins.category.devtools"
+  | "ext.plugins.category.productivity"
+  | "ext.plugins.category.finance"
+  | "ext.plugins.category.business"
+  | "ext.plugins.category.data"
+  | "ext.plugins.category.communication"
+  | "ext.plugins.category.education"
+  | "ext.plugins.category.creativity"
+  | "ext.plugins.category.security"
+  | "ext.plugins.category.travel"
+  | "ext.plugins.category.other"
+  | null {
+  const s = (raw ?? "").trim().toLowerCase();
+  if (!s) return null;
+  if (s === "developer tools" || s === "devtools" || s === "developer tools & sdks") {
+    return "ext.plugins.category.devtools";
+  }
+  if (s === "productivity") return "ext.plugins.category.productivity";
+  if (s === "finance") return "ext.plugins.category.finance";
+  if (s === "business & operations" || s === "business") {
+    return "ext.plugins.category.business";
+  }
+  if (s === "data & analytics" || s === "data") {
+    return "ext.plugins.category.data";
+  }
+  if (s === "communication") return "ext.plugins.category.communication";
+  if (s === "education & research" || s === "education") {
+    return "ext.plugins.category.education";
+  }
+  if (s === "creativity") return "ext.plugins.category.creativity";
+  if (s === "security") return "ext.plugins.category.security";
+  if (s === "travel") return "ext.plugins.category.travel";
+  if (s === "design") return "ext.plugins.category.design";
+  if (s === "video") return "ext.plugins.category.video";
+  if (s === "mcp") return "ext.plugins.category.mcp";
+  if (s === "skills") return "ext.plugins.category.skills";
+  if (s === "agents") return "ext.plugins.category.agents";
+  if (s === "hooks") return "ext.plugins.category.hooks";
+  if (s === "other") return "ext.plugins.category.other";
+  return null;
+}
+
+/**
+ * Group cards by display categoryLabel (meta-driven), with stable section order.
+ */
+export function groupPluginCardsByLabel<
+  T extends { categoryLabel: string; category?: PluginCardKind },
+>(cards: readonly T[]): Array<{ key: string; label: string; items: T[] }> {
+  const map = new Map<string, T[]>();
+  for (const c of cards) {
+    const label = (c.categoryLabel ?? "").trim() || "Other";
+    const list = map.get(label) ?? [];
+    list.push(c);
+    map.set(label, list);
+  }
+  const orderIndex = new Map(
+    MARKETPLACE_CATEGORY_LABEL_ORDER.map((l, i) => [l.toLowerCase(), i]),
+  );
+  const keys = [...map.keys()];
+  keys.sort((a, b) => {
+    const ia = orderIndex.get(a.toLowerCase());
+    const ib = orderIndex.get(b.toLowerCase());
+    if (ia != null && ib != null) return ia - ib;
+    if (ia != null) return -1;
+    if (ib != null) return 1;
+    // Other always last among unknowns
+    if (a.toLowerCase() === "other") return 1;
+    if (b.toLowerCase() === "other") return -1;
+    return a.localeCompare(b);
+  });
+  return keys.map((label) => ({
+    key: label.toLowerCase(),
+    label,
+    items: map.get(label) ?? [],
+  }));
 }
 
 export function categoryFromProvides(provides?: {
@@ -279,12 +416,17 @@ export function buildAvailableCard(
     installed?: boolean;
     installSource?: string | null;
     categoryLabel?: (k: PluginCardKind) => string;
+    /** Prefer plugin.json / meta `interface.category` when known. */
+    categoryHint?: string | null;
   },
 ): PluginCardModel {
   const description = (plugin.description ?? "").trim();
-  let category = normalizePluginCategory(
-    [plugin.marketplace, description, plugin.name].filter(Boolean).join(" "),
-  );
+  let category = normalizePluginCategory(opts?.categoryHint);
+  if (category === "other") {
+    category = normalizePluginCategory(
+      [plugin.marketplace, description, plugin.name].filter(Boolean).join(" "),
+    );
+  }
   if (category === "other") {
     category = categoryFromProvides({
       skills: plugin.skillCount,

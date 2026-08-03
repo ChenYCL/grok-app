@@ -109,6 +109,19 @@
   -webkit-user-select: text;
 }
 
+.embedded-browser__download-status {
+  flex-shrink: 1;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+}
+
 .embedded-browser__host {
   flex: 1;
   min-height: 0;

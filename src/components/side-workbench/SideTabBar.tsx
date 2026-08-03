@@ -346,6 +346,9 @@ export function SideTabBar({
         </Tip>
       </div>
 
+      {/* Empty strip between tabs/+ and right actions — window drag (titlebar). */}
+      <div className="sw-chrome__drag" data-tauri-drag-region aria-hidden />
+
       <div className="rp-chrome__actions">
         {/* Dock input: only when side is expanded (icon toggle, default off). */}
         {expanded ? (

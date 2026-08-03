@@ -74,6 +74,17 @@ Full management surface: **Settings → Extensions** (`#/settings/extensions`).
 | `/mcp` slash | Quick `McpStatusModal`; **Manage in Settings** opens Extensions |
 | Composer `+` / slash skills | Invocable **and enabled** skills only (chips); loaded via `skills_list` |
 
+### Auto-refresh after conversation install
+
+App slash / + palette is a **snapshot** from `skills_list` (`grok inspect`). Grok Build itself reloads skill files when they change on disk, but the App catalog does not until reloaded.
+
+| Trigger | Behavior |
+|---------|----------|
+| Settings → Extensions skill toggle / create | `onSkillsPrefsChanged` → bump reload token |
+| **Chat turn installs skills** (write `SKILL.md` under skill roots, `plugin install`, `npx skills`, `/create-skill`, …) | Host `session://tool` → `toolEventSuggestsSkillCatalogChange` → debounced `skills_list` (~900ms) |
+
+Helpers: `src/lib/skillCatalogRefresh.ts`. Wired in `useSessionHostEvents` (`onSkillCatalogMaybeStale`) + `AppWorkbench` reload token. No app restart / new session required for newly installed **user-invocable** skills to appear in the palette (agent-side discovery remains CLI disk reload).
+
 ### Enable + inject (L03)
 
 - **Prefs:** `{app_data}/extensions.json` — `mcp` / `skills` name → `bool`. Missing name = **enabled** (opt-out).
