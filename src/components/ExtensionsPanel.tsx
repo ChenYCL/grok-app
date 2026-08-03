@@ -87,11 +87,11 @@ import {
 import {
   CHATCUT_CODEX_INSTALL_SOURCE,
   isChatCutInstalled,
+  pluginDisplayName,
   resolveExtensionsTabId,
 } from "@/lib/pluginRecommended";
 import {
   buildInstalledCard,
-  groupPluginCards,
   parsePluginManifestJson,
   pluginIconPathCandidates,
   pluginInitials,
@@ -104,6 +104,28 @@ import {
   loadPluginsListCached,
   patchPluginsListEnabled,
 } from "@/lib/pluginsListCache";
+import {
+  loadMarketplaceCatalog,
+  invalidateMarketplaceCatalogCache,
+} from "@/lib/marketplaceCatalogCache";
+import {
+  enrichAvailableFromComponents,
+  filterAvailablePlugins,
+  marketplaceQualifiedInstallSource,
+  sortAvailablePluginsByName,
+  type AvailablePluginLike,
+  type MarketplaceSourceLike,
+} from "@/lib/pluginMarketplace";
+import {
+  ensureDefaultMarketplaces,
+  filterCatalogToDefaultSources,
+} from "@/lib/marketplaceDefaults";
+import {
+  availableToCards,
+  filterPluginCardsByQuery,
+  PLUGIN_CATALOG_PAGE_SIZE,
+  sliceCatalogPage,
+} from "@/lib/pluginCatalogUi";
 
 type SkillEditorState = {
   skill: api.SkillDto;
@@ -281,6 +303,17 @@ export function ExtensionsPanel({
   const [pluginsFromCache, setPluginsFromCache] = useState(false);
   /** Enriched cards (manifest + logo) for installed plugins. */
   const [pluginCards, setPluginCards] = useState<PluginCardModel[]>([]);
+  /** Discover catalog (available plugins) — own state so we render Featured 2-col. */
+  const [catalogPlugins, setCatalogPlugins] = useState<AvailablePluginLike[]>(
+    [],
+  );
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogFromCache, setCatalogFromCache] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [installTarget, setInstallTarget] =
+    useState<AvailablePluginLike | null>(null);
+  const [menuPlugin, setMenuPlugin] = useState<api.PluginDto | null>(null);
 
   const categoryLabel = useCallback(
     (k: PluginCardKind): string => {
@@ -304,6 +337,15 @@ export function ExtensionsPanel({
     async (list: api.PluginDto[]) => {
       const chatcutLabel = tr("ext.plugins.recommended.chatcutName");
       const cards: PluginCardModel[] = [];
+      let convertFileSrc: ((p: string) => string) | null = null;
+      if (api.isTauri()) {
+        try {
+          const core = await import("@tauri-apps/api/core");
+          convertFileSrc = core.convertFileSrc;
+        } catch {
+          convertFileSrc = null;
+        }
+      }
       for (const p of list) {
         let manifest = null as ReturnType<typeof parsePluginManifestJson>;
         let iconUrl: string | null = null;
@@ -322,21 +364,33 @@ export function ExtensionsPanel({
               /* try next */
             }
           }
-          // Prefer codex / common logo paths; convertFileSrc does not verify existence
+          const logoField =
+            (manifest as { logo?: string } | null)?.logo ||
+            (manifest as { interface?: { logo?: string; composerIcon?: string } } | null)
+              ?.interface?.logo ||
+            (manifest as { interface?: { composerIcon?: string } } | null)
+              ?.interface?.composerIcon ||
+            null;
           const iconTry = [
+            logoField
+              ? logoField.startsWith("/")
+                ? logoField
+                : `${root}/${logoField.replace(/^\.\//, "")}`
+              : null,
             `${root}/codex/assets/logo-light.png`,
+            `${root}/codex/assets/logo.png`,
             `${root}/assets/logo-light.png`,
+            `${root}/assets/logo.png`,
+            `${root}/assets/logo.svg`,
+            `${root}/assets/icon.png`,
             ...pluginIconPathCandidates(root),
-          ];
-          try {
-            const { convertFileSrc } = await import("@tauri-apps/api/core");
+          ].filter(Boolean) as string[];
+          if (convertFileSrc) {
             for (const ip of iconTry) {
               iconUrl = convertFileSrc(ip);
               iconPath = ip;
               break;
             }
-          } catch {
-            /* no tauri asset protocol */
           }
         }
         cards.push(
@@ -352,6 +406,125 @@ export function ExtensionsPanel({
       setPluginCards(cards);
     },
     [categoryLabel, tr],
+  );
+
+  const loadCatalog = useCallback(
+    async (force = false) => {
+      if (!api.isTauri() || !cliFound) {
+        setCatalogPlugins([]);
+        setCatalogLoading(false);
+        return;
+      }
+      setCatalogLoading(true);
+      setCatalogError(null);
+      try {
+        await ensureDefaultMarketplaces({
+          list: async () => {
+            const r = await api.marketplaceList();
+            return (r.sources ?? []).map((s: Record<string, unknown>) => ({
+              name: String(s.name ?? ""),
+              url:
+                typeof (s as { url?: string }).url === "string"
+                  ? (s as { url: string }).url
+                  : typeof (s as { source?: { url?: string } }).source?.url ===
+                      "string"
+                    ? (s as { source: { url: string } }).source.url
+                    : null,
+              path: null,
+              kind: String((s as { kind?: string }).kind ?? "git"),
+            }));
+          },
+          add: async (url) => {
+            await api.marketplaceAdd(url);
+          },
+          remove: async (nameOrUrl) => {
+            await api.marketplaceRemove(nameOrUrl);
+          },
+          removeClaude: true,
+        });
+        if (force) invalidateMarketplaceCatalogCache();
+
+        const result = await loadMarketplaceCatalog(async () => {
+          const [srcRes, availRes] = await Promise.all([
+            api.marketplaceList(),
+            api.marketplaceAvailable(),
+          ]);
+          const sources = (srcRes.sources ?? []).map((row) => {
+            const o = row as Record<string, unknown>;
+            const sourceObj =
+              o.source && typeof o.source === "object"
+                ? (o.source as Record<string, unknown>)
+                : null;
+            return {
+              name: String(o.name ?? ""),
+              kind: String(o.kind ?? "git"),
+              url:
+                (typeof o.url === "string" && o.url) ||
+                (typeof sourceObj?.url === "string" && sourceObj.url) ||
+                null,
+              path:
+                (typeof o.path === "string" && o.path) ||
+                (typeof sourceObj?.path === "string" && sourceObj.path) ||
+                null,
+            } as MarketplaceSourceLike;
+          });
+          const mapped: AvailablePluginLike[] = [];
+          for (const row of availRes.plugins ?? []) {
+            const raw = row as Record<string, unknown>;
+            const name = String(raw.name ?? "").trim();
+            if (!name) continue;
+            const skillCountRaw =
+              typeof raw.skillCount === "number"
+                ? raw.skillCount
+                : typeof raw.skill_count === "number"
+                  ? raw.skill_count
+                  : null;
+            const enriched = enrichAvailableFromComponents(raw, {
+              skillCount: skillCountRaw,
+              hasHooks: !!(raw.hasHooks ?? raw.has_hooks),
+              hasAgents: !!(raw.hasAgents ?? raw.has_agents),
+              hasMcp: !!(raw.hasMcp ?? raw.has_mcp),
+            });
+            mapped.push({
+              name,
+              status: String(raw.status ?? "available").trim() || "available",
+              marketplace:
+                (typeof raw.marketplace === "string" && raw.marketplace) ||
+                null,
+              description:
+                (typeof raw.description === "string" && raw.description) ||
+                null,
+              version:
+                (typeof raw.version === "string" && raw.version) || null,
+              skillCount: enriched.skillCount,
+              hasHooks: enriched.hasHooks,
+              hasAgents: enriched.hasAgents,
+              hasMcp: enriched.hasMcp,
+            });
+          }
+          let available = sortAvailablePluginsByName(
+            filterAvailablePlugins(mapped),
+          );
+          available = filterCatalogToDefaultSources(available, sources);
+          return {
+            sources,
+            available,
+            error: srcRes.error?.trim() || availRes.error?.trim() || null,
+          };
+        }, { force });
+
+        setCatalogPlugins(result.available);
+        setCatalogFromCache(result.fromCache);
+        setCatalogError(result.error);
+        if (!force) setCatalogPage(1);
+      } catch (e) {
+        setCatalogPlugins([]);
+        setCatalogError(String(e));
+      } finally {
+        setCatalogLoading(false);
+      }
+    },
+    [cliFound],
   );
 
   const refresh = useCallback(async (opts?: { forcePlugins?: boolean }) => {
@@ -420,6 +593,16 @@ export function ExtensionsPanel({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Load discover catalog when plugins tab is shown (cached when possible).
+  useEffect(() => {
+    if (resolveExtensionsTabId(activeTab) !== "plugins") return;
+    void loadCatalog(false);
+  }, [activeTab, loadCatalog]);
+
+  useEffect(() => {
+    setCatalogPage(1);
+  }, [extQuery]);
 
   const bannerError = useMemo(
     () => mergeInspectErrors(skillsError, mcpError, pluginsError),
@@ -1229,6 +1412,43 @@ export function ExtensionsPanel({
     });
   };
 
+  const confirmCatalogInstall = async () => {
+    if (!installTarget || !api.isTauri() || actionBusy || cliMissing) return;
+    const source = marketplaceQualifiedInstallSource(
+      installTarget.name,
+      installTarget.marketplace,
+    );
+    const target = installTarget;
+    setInstallTarget(null);
+    await runPluginAction(`inst:${target.name}`, async () => {
+      await api.pluginInstall(source);
+      invalidateMarketplaceCatalogCache();
+      void loadCatalog(true);
+    });
+  };
+
+  const installedNameSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of plugins) {
+      const n = (p.name ?? "").trim().toLowerCase();
+      if (n) s.add(n);
+    }
+    return s;
+  }, [plugins]);
+
+  const discoverCards = useMemo(() => {
+    const cards = availableToCards(catalogPlugins, {
+      installedNames: installedNameSet,
+      categoryLabel,
+    });
+    return filterPluginCardsByQuery(cards, extQuery);
+  }, [catalogPlugins, installedNameSet, categoryLabel, extQuery]);
+
+  const discoverPage = useMemo(
+    () => sliceCatalogPage(discoverCards, catalogPage, PLUGIN_CATALOG_PAGE_SIZE),
+    [discoverCards, catalogPage],
+  );
+
   return (
     <div className="ext-panel ext-ref-shell" data-testid="extensions-panel">
       <p className="settings-page__lead">{tr("ext.lead")}</p>
@@ -1346,58 +1566,136 @@ export function ExtensionsPanel({
         </div>
       )}
 
-      {/* Plugins — card grid by type; sources/git in modal */}
+      {/* Plugins — reference layout: installed strip + 2-col featured catalog */}
       {tab === "plugins" && (
-      <div className="ext-ref-stack">
+      <div className="ext-ref-stack ext-ref-plugins-scroll">
         <div className="ext-ref-block__head ext-ref-toolbar">
           <span className="ext-ref-block__meta">
-            {pluginsFromCache ? tr("ext.plugins.cachedHint") : null}
+            {pluginsFromCache || catalogFromCache
+              ? tr("ext.plugins.cachedHint")
+              : null}
           </span>
           <span className="ext-ref-block__actions">
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              disabled={loading || !!actionBusy || cliMissing}
-              onClick={() => void refresh({ forcePlugins: true })}
+              disabled={loading || catalogLoading || !!actionBusy || cliMissing}
+              onClick={() => {
+                void refresh({ forcePlugins: true });
+                void loadCatalog(true);
+              }}
             >
               <IconRefresh size={13} />
-              <span>{loading ? tr("ext.refreshing") : tr("ext.refresh")}</span>
+              <span>
+                {loading || catalogLoading
+                  ? tr("ext.refreshing")
+                  : tr("ext.refresh")}
+              </span>
             </button>
             <button
               type="button"
               className="btn btn--ghost btn--sm"
               disabled={cliMissing}
               onClick={() => setSourcesModalOpen(true)}
+              title={tr("ext.plugins.sourcesAndInstall")}
+              aria-label={tr("ext.plugins.sourcesAndInstall")}
             >
-              <span>{tr("ext.plugins.sourcesAndInstall")}</span>
+              ⚙
             </button>
           </span>
         </div>
 
+        {/* Installed strip */}
+        <section
+          className="ext-ref-block"
+          id="settings-anchor-ext-plugins"
+        >
+          <div className="ext-ref-section-label">
+            {tr("ext.plugins.installedTitle")}
+            {!loading ? ` · ${plugins.length}` : ""}
+          </div>
+          {loading && plugins.length === 0 ? (
+            <p className="ext-ref-empty">{tr("ext.plugins.loading")}</p>
+          ) : null}
+          {!loading && plugins.length === 0 ? (
+            <p className="ext-ref-empty">
+              {cliMissing ? tr("ext.plugins.emptyCli") : tr("ext.plugins.empty")}
+            </p>
+          ) : null}
+          {plugins.length > 0 ? (
+            <div className="ext-ref-installed-strip" role="list">
+              {(pluginCards.length > 0
+                ? pluginCards
+                : plugins.map((p) =>
+                    buildInstalledCard(p, {
+                      chatcutLabel: tr("ext.plugins.recommended.chatcutName"),
+                      categoryLabel,
+                    }),
+                  )
+              ).map((c) => {
+                const raw = plugins.find((p) => p.name === c.name);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="listitem"
+                    className={
+                      "ext-ref-installed-chip" + (c.enabled ? "" : " is-off")
+                    }
+                    title={c.displayName}
+                    aria-label={c.displayName}
+                    onClick={() => {
+                      if (raw) setMenuPlugin(raw);
+                    }}
+                  >
+                    {c.iconUrl ? (
+                      <img
+                        src={c.iconUrl}
+                        alt=""
+                        onError={(e) => {
+                          const el = e.target as HTMLImageElement;
+                          el.style.display = "none";
+                          const sib = el.nextElementSibling as HTMLElement | null;
+                          if (sib) sib.style.display = "grid";
+                        }}
+                      />
+                    ) : null}
+                    <span
+                      className="ext-ref-icon__glyph"
+                      style={c.iconUrl ? { display: "none" } : undefined}
+                    >
+                      {pluginInitials(c.displayName)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </section>
+
+        {/* Recommended ChatCut if missing */}
         {!chatcutInstalled ? (
           <section
             className="ext-ref-block"
             id="settings-anchor-ext-plugins-recommended"
           >
-            <div className="ext-ref-block__head">
-              <h2 className="ext-ref-block__title">
-                {tr("ext.plugins.recommendedTitle")}
-              </h2>
+            <div className="ext-ref-section-label">
+              {tr("ext.plugins.recommendedTitle")}
             </div>
-            <ul className="ext-ref-grid">
-              <li className="ext-ref-card">
-                <div className="ext-ref-card__icon" aria-hidden>
+            <ul className="ext-ref-featured">
+              <li className="ext-ref-featured__item">
+                <div className="ext-ref-featured__icon" aria-hidden>
                   <IconPuzzle size={18} />
                 </div>
-                <div className="ext-ref-card__body">
-                  <div className="ext-ref-card__title">
+                <div className="ext-ref-featured__body">
+                  <div className="ext-ref-featured__title">
                     {tr("ext.plugins.recommended.chatcutName")}
                   </div>
-                  <div className="ext-ref-card__desc">
+                  <div className="ext-ref-featured__desc">
                     {tr("ext.plugins.recommended.chatcutDesc")}
                   </div>
                 </div>
-                <div className="ext-ref-card__end">
+                <div className="ext-ref-featured__end">
                   <button
                     type="button"
                     className="btn btn--solid btn--sm"
@@ -1414,159 +1712,125 @@ export function ExtensionsPanel({
           </section>
         ) : null}
 
-        <section
-          className="ext-ref-block"
-          id="settings-anchor-ext-plugins"
-        >
-          <div className="ext-ref-block__head">
-            <h2 className="ext-ref-block__title">
-              {tr("ext.plugins.installedTitle")}
-            </h2>
-            {!loading ? (
-              <span className="ext-ref-block__meta">{plugins.length}</span>
-            ) : null}
-          </div>
-          {loading && plugins.length === 0 ? (
-            <p className="ext-ref-empty">{tr("ext.plugins.loading")}</p>
-          ) : null}
-          {!loading && plugins.length === 0 ? (
-            <p className="ext-ref-empty">
-              {cliMissing ? tr("ext.plugins.emptyCli") : tr("ext.plugins.empty")}
-            </p>
-          ) : null}
-          {(() => {
-            const qLower = extQuery.trim().toLowerCase();
-            const cards =
-              pluginCards.length > 0
-                ? pluginCards
-                : plugins.map((p) =>
-                    buildInstalledCard(p, {
-                      chatcutLabel: tr("ext.plugins.recommended.chatcutName"),
-                      categoryLabel,
-                    }),
-                  );
-            const filtered = !qLower
-              ? cards
-              : cards.filter((c) =>
-                  [c.displayName, c.name, c.description, c.categoryLabel]
-                    .join(" ")
-                    .toLowerCase()
-                    .includes(qLower),
-                );
-            const groups = groupPluginCards(filtered);
-            if (plugins.length > 0 && filtered.length === 0) {
-              return (
-                <p className="ext-ref-empty">{tr("ext.plugins.filterEmpty")}</p>
-              );
-            }
-            return groups.map((g) => (
-              <div key={g.category} className="ext-ref-group">
-                <div className="ext-ref-group__title">{g.items[0]?.categoryLabel ?? g.category}</div>
-                <ul className="ext-ref-grid">
-                  {g.items.map((c) => {
-                    const raw = plugins.find((p) => p.name === c.name);
-                    const busy =
-                      !!raw &&
-                      (actionBusy === pluginRowKey(raw) ||
-                        actionBusy === `update:${pluginRowKey(raw)}`);
-                    return (
-                      <li
-                        key={c.id}
-                        className={
-                          "ext-ref-card" + (c.enabled ? "" : " is-off")
-                        }
-                      >
-                        <div className="ext-ref-card__icon" aria-hidden>
-                          {c.iconUrl ? (
-                            <img
-                              src={c.iconUrl}
-                              alt=""
-                              className="ext-ref-card__logo"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display =
-                                  "none";
-                              }}
-                            />
-                          ) : (
-                            <span className="ext-ref-icon__glyph">
-                              {pluginInitials(c.displayName)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="ext-ref-card__body">
-                          <div className="ext-ref-card__title">
-                            {c.displayName}
-                          </div>
-                          <div className="ext-ref-card__desc">
-                            {c.description ||
-                              c.providesLine ||
-                              c.marketplace ||
-                              "—"}
-                          </div>
-                        </div>
-                        <div className="ext-ref-card__end">
-                          {raw ? (
-                            <>
-                              <ExtensionToggle
-                                checked={!!c.enabled}
-                                disabled={busy || !!actionBusy}
-                                label={
-                                  c.enabled
-                                    ? tr("ext.plugins.status.enabled")
-                                    : tr("ext.plugins.status.disabled")
-                                }
-                                onChange={() => togglePlugin(raw)}
-                              />
-                              <button
-                                type="button"
-                                className="ext-ref-gear"
-                                title={tr("ext.plugins.details")}
-                                aria-label={tr("ext.plugins.details")}
-                                disabled={busy || !!actionBusy}
-                                onClick={() => void showDetails(raw)}
-                              >
-                                ···
-                              </button>
-                            </>
-                          ) : null}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ));
-          })()}
-        </section>
-
+        {/* Discover / Featured catalog — 2 columns, paginated */}
         <section
           className="ext-ref-block"
           id="settings-anchor-ext-plugins-catalog"
         >
-          <div className="ext-ref-block__head">
-            <h2 className="ext-ref-block__title">
-              {tr("ext.plugins.discoverTitle")}
-            </h2>
+          <div className="ext-ref-section-label">
+            {tr("ext.plugins.discoverTitle")}
+            {!catalogLoading && discoverCards.length > 0
+              ? ` · ${discoverCards.length}`
+              : ""}
           </div>
-          <p className="ext-ref-block__lead">
-            {tr("ext.plugins.installableLead")}
-          </p>
-          <ExtensionsBuildExtras
-            locale={locale}
-            projectPath={projectPath}
-            cliFound={cliFound && !cliMissing}
-            mode="market"
-            embedded
-            installedPlugins={plugins.map((p) => ({
-              name: p.name,
-              marketplace: p.marketplace,
-            }))}
-            onOpenRuntime={onOpenRuntime}
-            onPluginsChanged={() => {
-              invalidatePluginsListCache();
-              void refresh({ forcePlugins: true });
-            }}
-          />
+          {catalogError ? (
+            <div className="ext-alert ext-alert--warn" role="status">
+              <p className="ext-alert__body">{catalogError}</p>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => void loadCatalog(true)}
+              >
+                {tr("ext.market.retry")}
+              </button>
+            </div>
+          ) : null}
+          {catalogLoading && catalogPlugins.length === 0 ? (
+            <p className="ext-ref-empty">{tr("ext.market.availableLoading")}</p>
+          ) : null}
+          {!catalogLoading && discoverCards.length === 0 && !catalogError ? (
+            <p className="ext-ref-empty">
+              {cliMissing
+                ? tr("ext.market.emptyCli")
+                : extQuery.trim()
+                  ? tr("ext.market.availableEmpty")
+                  : tr("ext.market.emptyCatalog")}
+            </p>
+          ) : null}
+          {discoverPage.visible.length > 0 ? (
+            <ul className="ext-ref-featured">
+              {discoverPage.visible.map((c) => {
+                const raw = catalogPlugins.find(
+                  (p) =>
+                    p.name === c.name &&
+                    (p.marketplace ?? "") === (c.marketplace ?? ""),
+                );
+                const busy =
+                  actionBusy === `inst:${c.name}` ||
+                  actionBusy === `install:chatcut`;
+                const installed = c.installed;
+                return (
+                  <li
+                    key={c.id}
+                    className={
+                      "ext-ref-featured__item" + (installed ? " is-off" : "")
+                    }
+                  >
+                    <div className="ext-ref-featured__icon" aria-hidden>
+                      {c.iconUrl ? (
+                        <img
+                          src={c.iconUrl}
+                          alt=""
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display =
+                              "none";
+                          }}
+                        />
+                      ) : (
+                        <span className="ext-ref-icon__glyph">
+                          {pluginInitials(c.displayName)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="ext-ref-featured__body">
+                      <div className="ext-ref-featured__title">
+                        {c.displayName}
+                      </div>
+                      <div className="ext-ref-featured__desc">
+                        {c.description ||
+                          c.providesLine ||
+                          c.marketplace ||
+                          "—"}
+                      </div>
+                    </div>
+                    <div className="ext-ref-featured__end">
+                      {installed ? (
+                        <span className="ext-ref-badge">
+                          {tr("ext.market.installedBadge")}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn--solid btn--sm"
+                          disabled={busy || !!actionBusy || cliMissing || !raw}
+                          onClick={() => {
+                            if (raw) setInstallTarget(raw);
+                          }}
+                        >
+                          {busy
+                            ? tr("ext.market.installing")
+                            : tr("ext.market.install")}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          {discoverPage.hasMore ? (
+            <div className="ext-ref-load-more">
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => setCatalogPage((p) => p + 1)}
+              >
+                {tr("ext.market.showMore", {
+                  n: String(discoverPage.total - discoverPage.visible.length),
+                })}
+              </button>
+            </div>
+          ) : null}
         </section>
       </div>
       )}
@@ -2009,6 +2273,110 @@ export function ExtensionsPanel({
           })}
         </p>
         <p className="ext-field-hint">{tr("ext.market.installTrustNote")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!installTarget}
+        onClose={() => {
+          if (!actionBusy?.startsWith("inst:")) setInstallTarget(null);
+        }}
+        title={tr("ext.market.installTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={!!actionBusy?.startsWith("inst:")}
+              onClick={() => setInstallTarget(null)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={!!actionBusy?.startsWith("inst:") || cliMissing}
+              onClick={() => void confirmCatalogInstall()}
+            >
+              {actionBusy?.startsWith("inst:")
+                ? tr("ext.market.installing")
+                : tr("ext.market.install")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">
+          {tr("ext.market.installConfirm", {
+            name: installTarget?.name ?? "",
+          })}
+        </p>
+        {installTarget?.description ? (
+          <p className="ext-field-hint">{installTarget.description}</p>
+        ) : null}
+        <p className="ext-field-hint">{tr("ext.market.installTrustNote")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!menuPlugin}
+        onClose={() => setMenuPlugin(null)}
+        title={
+          pluginDisplayName(
+            menuPlugin,
+            tr("ext.plugins.recommended.chatcutName"),
+          )
+        }
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setMenuPlugin(null)}
+          >
+            {tr("common.close")}
+          </button>
+        }
+      >
+        {menuPlugin ? (
+          <div className="ext-ref-stack" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              style={{ justifyContent: "flex-start" }}
+              onClick={() => {
+                togglePlugin(menuPlugin);
+                setMenuPlugin(null);
+              }}
+            >
+              {menuPlugin.enabled
+                ? tr("ext.plugins.disable")
+                : tr("ext.plugins.enable")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              style={{ justifyContent: "flex-start" }}
+              onClick={() => {
+                void showDetails(menuPlugin);
+                setMenuPlugin(null);
+              }}
+            >
+              {tr("ext.plugins.details")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost ext-item__danger"
+              style={{ justifyContent: "flex-start" }}
+              onClick={() => {
+                setUninstallTarget(menuPlugin);
+                setMenuPlugin(null);
+              }}
+            >
+              {tr("ext.plugins.uninstall")}
+            </button>
+          </div>
+        ) : null}
       </GlassModal>
 
       <GlassModal

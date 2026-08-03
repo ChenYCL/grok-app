@@ -189,37 +189,215 @@
   white-space: nowrap;
 }
 
-/* ── Feature / catalog 2-col cards (Image #1 Featured) ── */
+/* ── Plugins page (reference: ChatGPT Featured 2-col) ── */
 .ext-ref-toolbar {
   margin: 0 0 4px;
 }
 
-.ext-ref-group {
+.ext-ref-plugins-scroll {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 0 0 14px;
+  gap: 20px;
+  min-width: 0;
+  /* Allow settings main pane to scroll long catalogs */
+  max-height: none;
 }
 
-.ext-ref-group__title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  padding: 0 2px;
-  letter-spacing: 0.02em;
+/* Installed: horizontal icon strip */
+.ext-ref-installed-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px 8px;
+  min-height: 48px;
 }
 
-.ext-ref-grid {
+.ext-ref-installed-chip {
+  appearance: none;
+  border: 0;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  overflow: hidden;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.ext-ref-installed-chip:hover {
+  background: color-mix(in srgb, var(--text-primary) 11%, transparent);
+  transform: translateY(-1px);
+}
+
+.ext-ref-installed-chip.is-off {
+  opacity: 0.5;
+}
+
+.ext-ref-installed-chip img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  display: block;
+}
+
+/* Featured / Discover 2-column list */
+.ext-ref-featured {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
+  column-gap: 20px;
+  row-gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+@media (max-width: 720px) {
+  .ext-ref-featured {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ext-ref-featured__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  border: 0;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.ext-ref-featured__item:hover {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.ext-ref-featured__item.is-off {
+  opacity: 0.65;
+}
+
+.ext-ref-featured__icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.ext-ref-featured__icon img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
+}
+
+.ext-ref-featured__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ext-ref-featured__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-ref-featured__desc {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-ref-featured__end {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 36px;
+  justify-content: flex-end;
+}
+
+.ext-ref-featured__more {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
+
+.ext-ref-featured__more:hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+}
+
+.ext-ref-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 4px;
+}
+
+.ext-ref-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+  padding: 0 2px;
+}
+
+/* legacy aliases used by recommended ChatCut card */
+.ext-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ext-ref-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  border: 0;
+  background: transparent;
+}
+
+.ext-ref-card:hover {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
 .ext-ref-card.is-off {
-  opacity: 0.72;
+  opacity: 0.65;
 }
 
 .ext-ref-card__logo {
@@ -228,23 +406,6 @@
   object-fit: contain;
   border-radius: 6px;
   display: block;
-}
-
-@media (max-width: 720px) {
-  .ext-ref-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.ext-ref-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 12px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.14));
-  background: color-mix(in srgb, var(--text-primary) 3.5%, transparent);
 }
 
 .ext-ref-card__icon {
@@ -256,6 +417,7 @@
   place-items: center;
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   color: var(--text-primary);
+  overflow: hidden;
 }
 
 .ext-ref-card__body {
@@ -277,13 +439,12 @@
 }
 
 .ext-ref-card__desc {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--text-tertiary);
   line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ext-ref-card__end {
@@ -291,6 +452,21 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.ext-ref-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 12px;
+}
+
+.ext-ref-group__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  padding: 0 2px 4px;
+  letter-spacing: 0.02em;
 }
 
 /* ── Flat management list (09.40.15 language) ── */
