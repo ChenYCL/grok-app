@@ -805,6 +805,306 @@ pub async fn marketplace_update(name: Option<String>) -> Result<serde_json::Valu
     }))
 }
 
+/// Rich metadata for marketplace plugins (logo path, display name, etc.)
+/// scanned from on-disk `marketplace-cache` clones.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplacePluginMetaDto {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub homepage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logo_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root_path: Option<String>,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+}
+
+fn marketplace_cache_roots() -> Vec<std::path::PathBuf> {
+    use crate::paths::{agent_home_dir, resolve_agent_grok_home};
+    use crate::process_util::user_home;
+    use crate::store;
+    let mut roots = Vec::new();
+    let settings = store::load_settings();
+    let active = resolve_agent_grok_home(&settings.session_data_mode).join("marketplace-cache");
+    roots.push(active);
+    roots.push(user_home().join(".grok").join("marketplace-cache"));
+    roots.push(agent_home_dir().join("marketplace-cache"));
+    roots
+}
+
+fn join_logo(root: &std::path::Path, logo: &str) -> Option<std::path::PathBuf> {
+    let logo = logo.trim();
+    if logo.is_empty() {
+        return None;
+    }
+    if logo.starts_with("http://") || logo.starts_with("https://") || logo.starts_with("data:") {
+        return None; // remote — frontend may use URL later
+    }
+    let mut path = root.to_path_buf();
+    for seg in logo.replace('\\', "/").split('/') {
+        if seg.is_empty() || seg == "." {
+            continue;
+        }
+        if seg == ".." {
+            let _ = path.pop();
+            continue;
+        }
+        path.push(seg);
+    }
+    if path.is_file() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn pick_logo_file(plugin_root: &std::path::Path, manifest_dir: &std::path::Path, manifest: &serde_json::Value) -> Option<std::path::PathBuf> {
+    let iface = manifest.get("interface");
+    let candidates: Vec<Option<&str>> = vec![
+        iface.and_then(|i| i.get("logo")).and_then(|x| x.as_str()),
+        iface.and_then(|i| i.get("composerIcon")).and_then(|x| x.as_str()),
+        manifest.get("logo").and_then(|x| x.as_str()),
+        manifest.get("icon").and_then(|x| x.as_str()),
+    ];
+    for c in candidates.into_iter().flatten() {
+        if let Some(p) = join_logo(manifest_dir, c) {
+            return Some(p);
+        }
+        if let Some(p) = join_logo(plugin_root, c) {
+            return Some(p);
+        }
+    }
+    // Conventional asset names
+    for rel in [
+        "assets/logo-padded.png",
+        "assets/logo-light.png",
+        "assets/logo.png",
+        "assets/logo.svg",
+        "assets/icon.png",
+        "assets/app-icon.png",
+        "logo.png",
+        "icon.png",
+    ] {
+        let p = plugin_root.join(rel);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+fn parse_manifest_meta(plugin_root: &std::path::Path, manifest_path: &std::path::Path) -> Option<MarketplacePluginMetaDto> {
+    let raw = std::fs::read_to_string(manifest_path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let name = v
+        .get("name")
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            plugin_root
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+        })?;
+    let iface = v.get("interface");
+    let display_name = iface
+        .and_then(|i| i.get("displayName"))
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let description = iface
+        .and_then(|i| i.get("shortDescription"))
+        .and_then(|x| x.as_str())
+        .or_else(|| v.get("description").and_then(|x| x.as_str()))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let long_description = iface
+        .and_then(|i| i.get("longDescription"))
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let version = v
+        .get("version")
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let category = iface
+        .and_then(|i| i.get("category"))
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let author = v
+        .get("author")
+        .and_then(|a| {
+            if let Some(s) = a.as_str() {
+                Some(s.to_string())
+            } else {
+                a.get("name").and_then(|n| n.as_str()).map(|s| s.to_string())
+            }
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            iface
+                .and_then(|i| i.get("developerName"))
+                .and_then(|x| x.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
+    let homepage = v
+        .get("homepage")
+        .and_then(|x| x.as_str())
+        .or_else(|| iface.and_then(|i| i.get("websiteURL")).and_then(|x| x.as_str()))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let repository = v
+        .get("repository")
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let license = v
+        .get("license")
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let keywords = v
+        .get("keywords")
+        .and_then(|x| x.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let manifest_dir = manifest_path.parent().unwrap_or(plugin_root);
+    let logo_path = pick_logo_file(plugin_root, manifest_dir, &v)
+        .map(|p| p.to_string_lossy().to_string());
+    Some(MarketplacePluginMetaDto {
+        name,
+        display_name,
+        description,
+        long_description,
+        version,
+        category,
+        author,
+        homepage,
+        repository,
+        license,
+        logo_path,
+        root_path: Some(plugin_root.to_string_lossy().to_string()),
+        keywords,
+    })
+}
+
+fn scan_plugin_dir(plugin_root: &std::path::Path) -> Option<MarketplacePluginMetaDto> {
+    if !plugin_root.is_dir() {
+        return None;
+    }
+    let manifest_candidates = [
+        plugin_root.join(".grok-plugin").join("plugin.json"),
+        plugin_root.join(".codex-plugin").join("plugin.json"),
+        plugin_root.join(".claude-plugin").join("plugin.json"),
+        plugin_root.join("plugin.json"),
+        plugin_root.join("codex").join(".codex-plugin").join("plugin.json"),
+    ];
+    for m in &manifest_candidates {
+        if m.is_file() {
+            if let Some(meta) = parse_manifest_meta(plugin_root, m) {
+                return Some(meta);
+            }
+        }
+    }
+    // No manifest — still try conventional logo
+    let name = plugin_root.file_name()?.to_str()?.to_string();
+    let logo_path = pick_logo_file(plugin_root, plugin_root, &serde_json::json!({}))
+        .map(|p| p.to_string_lossy().to_string());
+    Some(MarketplacePluginMetaDto {
+        name,
+        logo_path,
+        root_path: Some(plugin_root.to_string_lossy().to_string()),
+        ..Default::default()
+    })
+}
+
+fn collect_marketplace_plugin_meta_index() -> std::collections::HashMap<String, MarketplacePluginMetaDto> {
+    let mut map = std::collections::HashMap::new();
+    for cache_root in marketplace_cache_roots() {
+        if !cache_root.is_dir() {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&cache_root) else {
+            continue;
+        };
+        for ent in entries.flatten() {
+            let hash_dir = ent.path();
+            if !hash_dir.is_dir() {
+                continue;
+            }
+            for sub in ["plugins", "external_plugins"] {
+                let plugins_dir = hash_dir.join(sub);
+                let Ok(plugin_ents) = std::fs::read_dir(&plugins_dir) else {
+                    continue;
+                };
+                for pe in plugin_ents.flatten() {
+                    let plugin_root = pe.path();
+                    if !plugin_root.is_dir() {
+                        continue;
+                    }
+                    if let Some(meta) = scan_plugin_dir(&plugin_root) {
+                        let key = meta.name.trim().to_ascii_lowercase();
+                        // Prefer entry that has a logo / richer description
+                        match map.get(&key) {
+                            None => {
+                                map.insert(key, meta);
+                            }
+                            Some(prev) => {
+                                let better = meta.logo_path.is_some() && prev.logo_path.is_none()
+                                    || (meta.description.as_ref().map(|s| s.len()).unwrap_or(0)
+                                        > prev.description.as_ref().map(|s| s.len()).unwrap_or(0));
+                                if better {
+                                    map.insert(key, meta);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
+/// Index plugin.json + logo paths from local marketplace-cache (for Settings UI cards).
+#[tauri::command]
+pub async fn marketplace_plugin_meta_index() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(collect_marketplace_plugin_meta_index)
+        .await
+        .map_err(|e| e.to_string())?;
+    // Serialize as array for stable JSON; frontend maps by name.
+    let plugins: Vec<MarketplacePluginMetaDto> = result.into_values().collect();
+    Ok(serde_json::json!({ "plugins": plugins }))
+}
+
 
 // ── Wallpaper sources (X search + Imagine) ──────────────────────────────────
 

@@ -391,6 +391,31 @@ export async function marketplaceAvailable() {
   return invoke<MarketplaceAvailableResult>("marketplace_available");
 }
 
+/** On-disk marketplace-cache plugin.json + logo paths (for Settings cards). */
+export type MarketplacePluginMeta = {
+  name: string;
+  displayName?: string | null;
+  description?: string | null;
+  longDescription?: string | null;
+  version?: string | null;
+  category?: string | null;
+  author?: string | null;
+  homepage?: string | null;
+  repository?: string | null;
+  license?: string | null;
+  logoPath?: string | null;
+  rootPath?: string | null;
+  keywords?: string[];
+};
+
+export type MarketplacePluginMetaIndexResult = {
+  plugins: MarketplacePluginMeta[];
+};
+
+export async function marketplacePluginMetaIndex() {
+  return invoke<MarketplacePluginMetaIndexResult>("marketplace_plugin_meta_index");
+}
+
 export async function marketplaceAdd(source: string) {
   return invoke<MarketplaceActionResult>("marketplace_add", { source });
 }

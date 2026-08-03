@@ -962,6 +962,8 @@ pub fn run() {
 
             commands::marketplace_available,
 
+            commands::marketplace_plugin_meta_index,
+
             commands::marketplace_add,
 
             commands::marketplace_remove,

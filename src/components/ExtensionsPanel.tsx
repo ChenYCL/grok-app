@@ -311,9 +311,33 @@ export function ExtensionsPanel({
   const [catalogFromCache, setCatalogFromCache] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogPage, setCatalogPage] = useState(1);
-  const [installTarget, setInstallTarget] =
+  /** Full meta for detail modal (installed or available). */
+  const [detailCard, setDetailCard] = useState<PluginCardModel | null>(null);
+  const [detailRawAvailable, setDetailRawAvailable] =
     useState<AvailablePluginLike | null>(null);
+  const [detailRawInstalled, setDetailRawInstalled] =
+    useState<api.PluginDto | null>(null);
   const [menuPlugin, setMenuPlugin] = useState<api.PluginDto | null>(null);
+  /** name(lower) → logo convertFileSrc URL + enriched fields */
+  const [metaByName, setMetaByName] = useState<
+    Map<
+      string,
+      {
+        displayName?: string | null;
+        description?: string | null;
+        longDescription?: string | null;
+        version?: string | null;
+        category?: string | null;
+        author?: string | null;
+        homepage?: string | null;
+        repository?: string | null;
+        license?: string | null;
+        logoUrl?: string | null;
+        keywords?: string[];
+      }
+    >
+  >(() => new Map());
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const categoryLabel = useCallback(
     (k: PluginCardKind): string => {
@@ -517,6 +541,56 @@ export function ExtensionsPanel({
         setCatalogFromCache(result.fromCache);
         setCatalogError(result.error);
         if (!force) setCatalogPage(1);
+
+        // Enrich logos / display names from marketplace-cache plugin.json
+        try {
+          const metaRes = await api.marketplacePluginMetaIndex();
+          let convertFileSrc: ((p: string) => string) | null = null;
+          try {
+            const core = await import("@tauri-apps/api/core");
+            convertFileSrc = core.convertFileSrc;
+          } catch {
+            convertFileSrc = null;
+          }
+          const map = new Map<
+            string,
+            {
+              displayName?: string | null;
+              description?: string | null;
+              longDescription?: string | null;
+              version?: string | null;
+              category?: string | null;
+              author?: string | null;
+              homepage?: string | null;
+              repository?: string | null;
+              license?: string | null;
+              logoUrl?: string | null;
+              keywords?: string[];
+            }
+          >();
+          for (const m of metaRes.plugins ?? []) {
+            const key = (m.name ?? "").trim().toLowerCase();
+            if (!key) continue;
+            const logoPath = (m.logoPath ?? "").trim();
+            map.set(key, {
+              displayName: m.displayName,
+              description: m.description,
+              longDescription: m.longDescription,
+              version: m.version,
+              category: m.category,
+              author: m.author,
+              homepage: m.homepage,
+              repository: m.repository,
+              license: m.license,
+              logoUrl:
+                logoPath && convertFileSrc ? convertFileSrc(logoPath) : null,
+              keywords: m.keywords ?? [],
+            });
+          }
+          setMetaByName(map);
+        } catch {
+          /* soft-fail: cards still show CLI description */
+        }
       } catch (e) {
         setCatalogPlugins([]);
         setCatalogError(String(e));
@@ -1412,14 +1486,12 @@ export function ExtensionsPanel({
     });
   };
 
-  const confirmCatalogInstall = async () => {
-    if (!installTarget || !api.isTauri() || actionBusy || cliMissing) return;
+  const installAvailableDirect = async (target: AvailablePluginLike) => {
+    if (!api.isTauri() || actionBusy || cliMissing) return;
     const source = marketplaceQualifiedInstallSource(
-      installTarget.name,
-      installTarget.marketplace,
+      target.name,
+      target.marketplace,
     );
-    const target = installTarget;
-    setInstallTarget(null);
     await runPluginAction(`inst:${target.name}`, async () => {
       await api.pluginInstall(source);
       invalidateMarketplaceCatalogCache();
@@ -1440,14 +1512,45 @@ export function ExtensionsPanel({
     const cards = availableToCards(catalogPlugins, {
       installedNames: installedNameSet,
       categoryLabel,
+    }).map((c) => {
+      const meta = metaByName.get(c.name.trim().toLowerCase());
+      if (!meta) return c;
+      return {
+        ...c,
+        displayName: meta.displayName?.trim() || c.displayName,
+        description:
+          meta.description?.trim() ||
+          c.description ||
+          meta.longDescription?.trim() ||
+          "",
+        iconUrl: meta.logoUrl || c.iconUrl,
+        version: meta.version || c.version,
+      };
     });
     return filterPluginCardsByQuery(cards, extQuery);
-  }, [catalogPlugins, installedNameSet, categoryLabel, extQuery]);
+  }, [catalogPlugins, installedNameSet, categoryLabel, extQuery, metaByName]);
 
   const discoverPage = useMemo(
     () => sliceCatalogPage(discoverCards, catalogPage, PLUGIN_CATALOG_PAGE_SIZE),
     [discoverCards, catalogPage],
   );
+
+  // Infinite scroll: load next page when sentinel enters view
+  useEffect(() => {
+    if (resolveExtensionsTabId(activeTab) !== "plugins") return;
+    const el = loadMoreSentinelRef.current;
+    if (!el || !discoverPage.hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setCatalogPage((p) => p + 1);
+        }
+      },
+      { root: null, rootMargin: "320px", threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [activeTab, discoverPage.hasMore, discoverPage.visible.length]);
 
   return (
     <div className="ext-panel ext-ref-shell" data-testid="extensions-panel">
@@ -1634,6 +1737,10 @@ export function ExtensionsPanel({
                   )
               ).map((c) => {
                 const raw = plugins.find((p) => p.name === c.name);
+                const meta = metaByName.get(c.name.trim().toLowerCase());
+                const logo = c.iconUrl || meta?.logoUrl || null;
+                const label =
+                  meta?.displayName?.trim() || c.displayName;
                 return (
                   <button
                     key={c.id}
@@ -1642,15 +1749,26 @@ export function ExtensionsPanel({
                     className={
                       "ext-ref-installed-chip" + (c.enabled ? "" : " is-off")
                     }
-                    title={c.displayName}
-                    aria-label={c.displayName}
+                    title={label}
+                    aria-label={label}
                     onClick={() => {
-                      if (raw) setMenuPlugin(raw);
+                      setDetailCard({
+                        ...c,
+                        displayName: label,
+                        description:
+                          meta?.description ||
+                          c.description ||
+                          meta?.longDescription ||
+                          c.description,
+                        iconUrl: logo,
+                      });
+                      setDetailRawInstalled(raw ?? null);
+                      setDetailRawAvailable(null);
                     }}
                   >
-                    {c.iconUrl ? (
+                    {logo ? (
                       <img
-                        src={c.iconUrl}
+                        src={logo}
                         alt=""
                         onError={(e) => {
                           const el = e.target as HTMLImageElement;
@@ -1662,9 +1780,9 @@ export function ExtensionsPanel({
                     ) : null}
                     <span
                       className="ext-ref-icon__glyph"
-                      style={c.iconUrl ? { display: "none" } : undefined}
+                      style={logo ? { display: "none" } : undefined}
                     >
-                      {pluginInitials(c.displayName)}
+                      {pluginInitials(label)}
                     </span>
                   </button>
                 );
@@ -1759,12 +1877,31 @@ export function ExtensionsPanel({
                   actionBusy === `inst:${c.name}` ||
                   actionBusy === `install:chatcut`;
                 const installed = c.installed;
+                const meta = metaByName.get(c.name.trim().toLowerCase());
                 return (
                   <li
                     key={c.id}
                     className={
                       "ext-ref-featured__item" + (installed ? " is-off" : "")
                     }
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setDetailCard(c);
+                      setDetailRawAvailable(raw ?? null);
+                      setDetailRawInstalled(
+                        plugins.find(
+                          (p) => p.name.trim().toLowerCase() === c.name.trim().toLowerCase(),
+                        ) ?? null,
+                      );
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setDetailCard(c);
+                        setDetailRawAvailable(raw ?? null);
+                      }
+                    }}
                   >
                     <div className="ext-ref-featured__icon" aria-hidden>
                       {c.iconUrl ? (
@@ -1772,15 +1909,21 @@ export function ExtensionsPanel({
                           src={c.iconUrl}
                           alt=""
                           onError={(e) => {
-                            (e.target as HTMLImageElement).style.display =
-                              "none";
+                            const img = e.target as HTMLImageElement;
+                            img.style.display = "none";
+                            const fall = img.parentElement?.querySelector(
+                              ".ext-ref-icon__glyph",
+                            ) as HTMLElement | null;
+                            if (fall) fall.style.display = "grid";
                           }}
                         />
-                      ) : (
-                        <span className="ext-ref-icon__glyph">
-                          {pluginInitials(c.displayName)}
-                        </span>
-                      )}
+                      ) : null}
+                      <span
+                        className="ext-ref-icon__glyph"
+                        style={c.iconUrl ? { display: "none" } : undefined}
+                      >
+                        {pluginInitials(c.displayName)}
+                      </span>
                     </div>
                     <div className="ext-ref-featured__body">
                       <div className="ext-ref-featured__title">
@@ -1788,12 +1931,16 @@ export function ExtensionsPanel({
                       </div>
                       <div className="ext-ref-featured__desc">
                         {c.description ||
+                          meta?.longDescription ||
                           c.providesLine ||
                           c.marketplace ||
                           "—"}
                       </div>
                     </div>
-                    <div className="ext-ref-featured__end">
+                    <div
+                      className="ext-ref-featured__end"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {installed ? (
                         <span className="ext-ref-badge">
                           {tr("ext.market.installedBadge")}
@@ -1804,7 +1951,7 @@ export function ExtensionsPanel({
                           className="btn btn--solid btn--sm"
                           disabled={busy || !!actionBusy || cliMissing || !raw}
                           onClick={() => {
-                            if (raw) setInstallTarget(raw);
+                            if (raw) void installAvailableDirect(raw);
                           }}
                         >
                           {busy
@@ -1818,17 +1965,22 @@ export function ExtensionsPanel({
               })}
             </ul>
           ) : null}
+          {/* Infinite-scroll sentinel (no button) */}
           {discoverPage.hasMore ? (
+            <div
+              ref={loadMoreSentinelRef}
+              className="ext-ref-load-more"
+              aria-hidden
+            >
+              <span className="ext-ref-block__meta">
+                {discoverPage.visible.length} / {discoverPage.total}
+              </span>
+            </div>
+          ) : discoverPage.total > 0 ? (
             <div className="ext-ref-load-more">
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                onClick={() => setCatalogPage((p) => p + 1)}
-              >
-                {tr("ext.market.showMore", {
-                  n: String(discoverPage.total - discoverPage.visible.length),
-                })}
-              </button>
+              <span className="ext-ref-block__meta">
+                {discoverPage.total}
+              </span>
             </div>
           ) : null}
         </section>
@@ -2276,45 +2428,170 @@ export function ExtensionsPanel({
       </GlassModal>
 
       <GlassModal
-        open={!!installTarget}
+        open={!!detailCard}
         onClose={() => {
-          if (!actionBusy?.startsWith("inst:")) setInstallTarget(null);
+          setDetailCard(null);
+          setDetailRawAvailable(null);
+          setDetailRawInstalled(null);
         }}
-        title={tr("ext.market.installTitle")}
-        size="sm"
+        title={detailCard?.displayName ?? tr("ext.market.detailTitle")}
+        size="md"
         closeLabel={tr("common.close")}
+        wrapBody
         footer={
           <>
             <button
               type="button"
               className="btn btn--ghost"
-              disabled={!!actionBusy?.startsWith("inst:")}
-              onClick={() => setInstallTarget(null)}
+              onClick={() => {
+                setDetailCard(null);
+                setDetailRawAvailable(null);
+                setDetailRawInstalled(null);
+              }}
             >
-              {tr("common.cancel")}
+              {tr("common.close")}
             </button>
-            <button
-              type="button"
-              className="btn btn--solid"
-              disabled={!!actionBusy?.startsWith("inst:") || cliMissing}
-              onClick={() => void confirmCatalogInstall()}
-            >
-              {actionBusy?.startsWith("inst:")
-                ? tr("ext.market.installing")
-                : tr("ext.market.install")}
-            </button>
+            {detailRawAvailable && !detailCard?.installed ? (
+              <button
+                type="button"
+                className="btn btn--solid"
+                disabled={
+                  !!actionBusy ||
+                  cliMissing ||
+                  actionBusy === `inst:${detailRawAvailable.name}`
+                }
+                onClick={() => {
+                  const t = detailRawAvailable;
+                  setDetailCard(null);
+                  setDetailRawAvailable(null);
+                  void installAvailableDirect(t);
+                }}
+              >
+                {actionBusy === `inst:${detailRawAvailable.name}`
+                  ? tr("ext.market.installing")
+                  : tr("ext.market.install")}
+              </button>
+            ) : null}
+            {detailRawInstalled ? (
+              <button
+                type="button"
+                className="btn btn--solid"
+                onClick={() => {
+                  togglePlugin(detailRawInstalled);
+                  setDetailCard(null);
+                  setDetailRawInstalled(null);
+                }}
+              >
+                {detailRawInstalled.enabled
+                  ? tr("ext.plugins.disable")
+                  : tr("ext.plugins.enable")}
+              </button>
+            ) : null}
           </>
         }
       >
-        <p className="app-dialog__msg">
-          {tr("ext.market.installConfirm", {
-            name: installTarget?.name ?? "",
-          })}
-        </p>
-        {installTarget?.description ? (
-          <p className="ext-field-hint">{installTarget.description}</p>
+        {detailCard ? (
+          <div className="ext-market-detail">
+            <div
+              style={{
+                display: "flex",
+                gap: 14,
+                alignItems: "flex-start",
+                marginBottom: 12,
+              }}
+            >
+              <div className="ext-ref-featured__icon" aria-hidden>
+                {detailCard.iconUrl ? (
+                  <img src={detailCard.iconUrl} alt="" />
+                ) : (
+                  <span className="ext-ref-icon__glyph">
+                    {pluginInitials(detailCard.displayName)}
+                  </span>
+                )}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="ext-ref-featured__title">
+                  {detailCard.displayName}
+                </div>
+                <div className="ext-ref-featured__desc">
+                  {detailCard.description || "—"}
+                </div>
+              </div>
+            </div>
+            {(() => {
+              const meta = metaByName.get(
+                detailCard.name.trim().toLowerCase(),
+              );
+              const clean: Array<[string, string]> = [];
+              clean.push([
+                tr("ext.market.field.marketplace"),
+                detailCard.marketplace?.trim() || "—",
+              ]);
+              clean.push([
+                tr("ext.market.field.version"),
+                String(detailCard.version || meta?.version || "—"),
+              ]);
+              if (meta?.category || detailCard.categoryLabel) {
+                clean.push([
+                  detailCard.categoryLabel || "Category",
+                  meta?.category || detailCard.categoryLabel || "—",
+                ]);
+              }
+              if (meta?.author) clean.push(["Author", meta.author]);
+              if (meta?.homepage) clean.push(["Homepage", meta.homepage]);
+              if (meta?.repository) clean.push(["Repository", meta.repository]);
+              if (meta?.license) clean.push(["License", meta.license]);
+              if (detailCard.providesLine) {
+                clean.push([
+                  tr("ext.market.componentsLabel"),
+                  detailCard.providesLine,
+                ]);
+              }
+              if (meta?.keywords && meta.keywords.length > 0) {
+                clean.push(["Keywords", meta.keywords.join(", ")]);
+              }
+              if (detailRawInstalled?.path) {
+                clean.push(["Path", detailRawInstalled.path]);
+              }
+              if (detailRawInstalled?.source) {
+                clean.push([
+                  tr("ext.market.field.source"),
+                  detailRawInstalled.source,
+                ]);
+              }
+              return (
+                <dl className="ext-market-detail__meta">
+                  {clean.map(([k, v]) => (
+                    <div key={k} className="ext-market-detail__row">
+                      <dt>{k}</dt>
+                      <dd title={v}>{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              );
+            })()}
+            {(() => {
+              const meta = metaByName.get(
+                detailCard.name.trim().toLowerCase(),
+              );
+              const long =
+                meta?.longDescription?.trim() ||
+                detailCard.description ||
+                "";
+              if (!long) return null;
+              return (
+                <p className="ext-field-hint" style={{ marginTop: 12 }}>
+                  {long}
+                </p>
+              );
+            })()}
+            {!detailCard.installed ? (
+              <p className="ext-field-hint" style={{ marginTop: 8 }}>
+                {tr("ext.market.installTrustNote")}
+              </p>
+            ) : null}
+          </div>
         ) : null}
-        <p className="ext-field-hint">{tr("ext.market.installTrustNote")}</p>
       </GlassModal>
 
       <GlassModal
