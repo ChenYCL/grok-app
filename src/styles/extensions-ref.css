@@ -190,13 +190,44 @@
 }
 
 /* ── Feature / catalog 2-col cards (Image #1 Featured) ── */
+.ext-ref-toolbar {
+  margin: 0 0 4px;
+}
+
+.ext-ref-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.ext-ref-group__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  padding: 0 2px;
+  letter-spacing: 0.02em;
+}
+
 .ext-ref-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 16px;
+  gap: 8px 12px;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.ext-ref-card.is-off {
+  opacity: 0.72;
+}
+
+.ext-ref-card__logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 6px;
+  display: block;
 }
 
 @media (max-width: 720px) {

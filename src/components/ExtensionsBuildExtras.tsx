@@ -61,10 +61,15 @@ import {
   type PluginComponentBadgeKind,
 } from "@/lib/pluginMarketplace";
 import {
-  ensureOpenaiPluginsMarketplace,
   findOpenaiPluginsSource,
   pickDefaultInstallableFilter,
 } from "@/lib/pluginRecommended";
+import {
+  ensureDefaultMarketplaces,
+  filterCatalogToDefaultSources,
+  isClaudeMarketplaceSource,
+  isDefaultAllowedMarketplaceSource,
+} from "@/lib/marketplaceDefaults";
 import {
   buildPluginMarketErrorView,
   clearPluginMarketRowError,
@@ -90,6 +95,8 @@ export type ExtensionsBuildExtrasProps = {
    * and rely on parent section chrome.
    */
   embedded?: boolean;
+  /** Sources management only (modal) — hide available catalog list. */
+  sourcesOnly?: boolean;
   /** Soft-fail ensure openai/plugins error bubble (optional parent display). */
   onEnsureOpenaiError?: (message: string | null) => void;
   /** After plugin install — parent can refresh plugins list. */
@@ -165,6 +172,7 @@ export function ExtensionsBuildExtras({
   cliFound = true,
   mode = "all",
   embedded = false,
+  sourcesOnly = false,
   onEnsureOpenaiError,
   onPluginsChanged,
   onOpenRuntime,
@@ -438,27 +446,33 @@ export function ExtensionsBuildExtras({
     setMarketLoading(true);
     setMarketError(null);
     try {
-      // Ensure openai/plugins source (idempotent; never remove other sources).
-      const ensure = await ensureOpenaiPluginsMarketplace({
+      // Default sources: xAI + openai; remove Claude sources (soft-fail).
+      const ensure = await ensureDefaultMarketplaces({
         list: async () => {
           const r = await api.marketplaceList();
-          return {
-            sources: (r.sources ?? [])
-              .map((row) => asSource(row as Record<string, unknown>))
-              .filter((x): x is MarketplaceSourceLike => !!x),
-          };
+          return (r.sources ?? [])
+            .map((row) => asSource(row as Record<string, unknown>))
+            .filter((x): x is MarketplaceSourceLike => !!x)
+            .map((s) => ({
+              name: s.name,
+              url: s.url,
+              path: s.path,
+              kind: s.kind,
+            }));
         },
         add: async (url) => {
           await api.marketplaceAdd(url);
         },
-        update: async (name) => {
-          await api.marketplaceUpdate(name);
+        remove: async (nameOrUrl) => {
+          await api.marketplaceRemove(nameOrUrl);
         },
+        removeClaude: true,
       });
-      const ensureErr = ensure.error?.trim() || null;
+      const ensureErr =
+        ensure.errors.length > 0 ? ensure.errors.join("; ") : null;
       setEnsureOpenaiError(ensureErr);
       onEnsureOpenaiError?.(ensureErr);
-      if (ensure.added || force) {
+      if (ensure.added.length || ensure.removed.length || force) {
         invalidateMarketplaceCatalogCache();
       }
 
@@ -472,20 +486,30 @@ export function ExtensionsBuildExtras({
         const src = sortMarketplaceSourcesByName(
           (srcRes.sources ?? [])
             .map((r) => asSource(r as Record<string, unknown>))
-            .filter((x): x is MarketplaceSourceLike => !!x),
+            .filter((x): x is MarketplaceSourceLike => !!x)
+            // Keep only default-allowed sources in the UI list.
+            .filter(
+              (s) =>
+                isDefaultAllowedMarketplaceSource(s) ||
+                !isClaudeMarketplaceSource(s),
+            )
+            .filter((s) => !isClaudeMarketplaceSource(s)),
         );
-        const avail = sortAvailablePluginsByName(
+        let avail = sortAvailablePluginsByName(
           filterAvailablePlugins(
             (availRes.plugins ?? [])
               .map((r) => asAvailable(r as Record<string, unknown>))
               .filter((x): x is AvailablePluginLike => !!x),
           ),
         );
+        avail = filterCatalogToDefaultSources(avail, src);
         return { sources: src, available: avail, error: err };
-      }, { force: force || ensure.added });
+      }, { force: force || ensure.added.length > 0 || ensure.removed.length > 0 });
 
-      setSources(result.sources);
-      setAvailable(result.available);
+      setSources(result.sources.filter((s) => !isClaudeMarketplaceSource(s)));
+      setAvailable(
+        filterCatalogToDefaultSources(result.available, result.sources),
+      );
       setFromCache(result.fromCache);
       // Soft-fail capability gaps are presented via empty-state, not only a banner.
       if (result.error) setMarketError(result.error);
@@ -1409,6 +1433,8 @@ export function ExtensionsBuildExtras({
               </div>
             ) : null}
 
+            {!sourcesOnly ? (
+            <>
             <div className="ext-market-browse">
               <div
                 className="ext-plugin-filters"
@@ -1639,10 +1665,14 @@ export function ExtensionsBuildExtras({
                 </button>
               </div>
             ) : null}
+            </>
+            ) : null}
 
+            {/* Sources + add URL: non-embedded page, or sources-only modal. */}
+            {!embedded || sourcesOnly ? (
             <details
               className="ext-market-sources"
-              open={sourcesOpen}
+              open={sourcesOnly ? true : sourcesOpen}
               onToggle={(e) =>
                 setSourcesOpen((e.target as HTMLDetailsElement).open)
               }
@@ -1751,6 +1781,7 @@ export function ExtensionsBuildExtras({
                 </ul>
               )}
             </details>
+            ) : null}
           </div>
 
           <GlassModal
