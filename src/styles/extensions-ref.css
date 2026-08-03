@@ -238,10 +238,13 @@
 }
 
 .ext-ref-installed-chip img {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   display: block;
+  padding: 0;
+  margin: 0;
+  border: 0;
 }
 
 /* Featured / Discover 2-column list */
@@ -282,22 +285,52 @@
   opacity: 0.65;
 }
 
+/* Logo tile: no padding — image fills rounded box */
 .ext-ref-featured__icon {
   flex: 0 0 auto;
   width: 40px;
   height: 40px;
   border-radius: 11px;
+  overflow: hidden;
+  color: var(--text-primary);
+  position: relative;
+}
+
+.ext-ref-featured__icon--logo {
+  padding: 0;
+  background: transparent;
+  display: block;
+}
+
+.ext-ref-featured__icon--logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+/* Letter fallback only when no logo */
+.ext-ref-featured__icon--fallback {
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-  color: var(--text-primary);
-  overflow: hidden;
+  padding: 0;
+}
+
+.ext-ref-featured__icon--fallback .ext-ref-icon__glyph {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
 }
 
 .ext-ref-featured__icon img {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   display: block;
 }
 

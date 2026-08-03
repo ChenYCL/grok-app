@@ -122,6 +122,7 @@ import {
 } from "@/lib/marketplaceDefaults";
 import {
   availableToCards,
+  dedupeAvailablePluginsByName,
   filterPluginCardsByQuery,
   PLUGIN_CATALOG_PAGE_SIZE,
   sliceCatalogPage,
@@ -528,6 +529,7 @@ export function ExtensionsPanel({
             filterAvailablePlugins(mapped),
           );
           available = filterCatalogToDefaultSources(available, sources);
+          available = dedupeAvailablePluginsByName(available);
           return {
             sources,
             available,
@@ -535,7 +537,7 @@ export function ExtensionsPanel({
           };
         }, { force });
 
-        setCatalogPlugins(result.available);
+        setCatalogPlugins(dedupeAvailablePluginsByName(result.available));
         setCatalogFromCache(result.fromCache);
         setCatalogError(result.error);
         if (!force) setCatalogPage(1);
@@ -1519,7 +1521,15 @@ export function ExtensionsPanel({
         version: meta.version || c.version,
       };
     });
-    return filterPluginCardsByQuery(cards, extQuery);
+    // Second pass: guard against any residual id/name dupes after enrich
+    const seen = new Set<string>();
+    const unique = cards.filter((c) => {
+      const k = c.name.trim().toLowerCase();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return filterPluginCardsByQuery(unique, extQuery);
   }, [catalogPlugins, installedNameSet, categoryLabel, extQuery, metaByName]);
 
   const discoverPage = useMemo(
@@ -1764,18 +1774,21 @@ export function ExtensionsPanel({
                         alt=""
                         onError={(e) => {
                           const el = e.target as HTMLImageElement;
-                          el.style.display = "none";
-                          const sib = el.nextElementSibling as HTMLElement | null;
-                          if (sib) sib.style.display = "grid";
+                          const btn = el.parentElement;
+                          el.remove();
+                          if (!btn) return;
+                          if (btn.querySelector(".ext-ref-icon__glyph")) return;
+                          const span = document.createElement("span");
+                          span.className = "ext-ref-icon__glyph";
+                          span.textContent = pluginInitials(label);
+                          btn.appendChild(span);
                         }}
                       />
-                    ) : null}
-                    <span
-                      className="ext-ref-icon__glyph"
-                      style={logo ? { display: "none" } : undefined}
-                    >
-                      {pluginInitials(label)}
-                    </span>
+                    ) : (
+                      <span className="ext-ref-icon__glyph">
+                        {pluginInitials(label)}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -1860,19 +1873,20 @@ export function ExtensionsPanel({
           {discoverPage.visible.length > 0 ? (
             <ul className="ext-ref-featured">
               {discoverPage.visible.map((c) => {
-                const raw = catalogPlugins.find(
-                  (p) =>
-                    p.name === c.name &&
-                    (p.marketplace ?? "") === (c.marketplace ?? ""),
-                );
+                const nameKey = c.name.trim().toLowerCase();
+                const raw =
+                  catalogPlugins.find(
+                    (p) => p.name.trim().toLowerCase() === nameKey,
+                  ) ?? null;
                 const busy =
                   actionBusy === `inst:${c.name}` ||
                   actionBusy === `install:chatcut`;
                 const installed = c.installed;
-                const meta = metaByName.get(c.name.trim().toLowerCase());
+                const meta = metaByName.get(nameKey);
+                const hasLogo = !!(c.iconUrl && c.iconUrl.trim());
                 return (
                   <li
-                    key={c.id}
+                    key={nameKey}
                     className={
                       "ext-ref-featured__item" + (installed ? " is-off" : "")
                     }
@@ -1880,10 +1894,10 @@ export function ExtensionsPanel({
                     tabIndex={0}
                     onClick={() => {
                       setDetailCard(c);
-                      setDetailRawAvailable(raw ?? null);
+                      setDetailRawAvailable(raw);
                       setDetailRawInstalled(
                         plugins.find(
-                          (p) => p.name.trim().toLowerCase() === c.name.trim().toLowerCase(),
+                          (p) => p.name.trim().toLowerCase() === nameKey,
                         ) ?? null,
                       );
                     }}
@@ -1891,32 +1905,47 @@ export function ExtensionsPanel({
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         setDetailCard(c);
-                        setDetailRawAvailable(raw ?? null);
+                        setDetailRawAvailable(raw);
                       }
                     }}
                   >
-                    <div className="ext-ref-featured__icon" aria-hidden>
-                      {c.iconUrl ? (
+                    {hasLogo ? (
+                      <div
+                        className="ext-ref-featured__icon ext-ref-featured__icon--logo"
+                        aria-hidden
+                      >
                         <img
-                          src={c.iconUrl}
+                          src={c.iconUrl!}
                           alt=""
                           onError={(e) => {
-                            const img = e.target as HTMLImageElement;
-                            img.style.display = "none";
-                            const fall = img.parentElement?.querySelector(
-                              ".ext-ref-icon__glyph",
-                            ) as HTMLElement | null;
-                            if (fall) fall.style.display = "grid";
+                            const wrap = (e.target as HTMLImageElement)
+                              .parentElement;
+                            if (wrap) {
+                              wrap.classList.remove(
+                                "ext-ref-featured__icon--logo",
+                              );
+                              wrap.classList.add(
+                                "ext-ref-featured__icon--fallback",
+                              );
+                              (e.target as HTMLImageElement).remove();
+                              const span = document.createElement("span");
+                              span.className = "ext-ref-icon__glyph";
+                              span.textContent = pluginInitials(c.displayName);
+                              wrap.appendChild(span);
+                            }
                           }}
                         />
-                      ) : null}
-                      <span
-                        className="ext-ref-icon__glyph"
-                        style={c.iconUrl ? { display: "none" } : undefined}
+                      </div>
+                    ) : (
+                      <div
+                        className="ext-ref-featured__icon ext-ref-featured__icon--fallback"
+                        aria-hidden
                       >
-                        {pluginInitials(c.displayName)}
-                      </span>
-                    </div>
+                        <span className="ext-ref-icon__glyph">
+                          {pluginInitials(c.displayName)}
+                        </span>
+                      </div>
+                    )}
                     <div className="ext-ref-featured__body">
                       <div className="ext-ref-featured__title">
                         {c.displayName}
