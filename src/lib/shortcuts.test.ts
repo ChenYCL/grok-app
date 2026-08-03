@@ -77,6 +77,9 @@ describe("shortcuts catalog", () => {
     expect(shortcutScope("settings")).toBe("global");
     expect(shortcutScope("toggleSidebar")).toBe("global");
     expect(shortcutScope("doctor")).toBe("global");
+    expect(shortcutScope("sideFiles")).toBe("global");
+    expect(shortcutScope("sideBrowser")).toBe("global");
+    expect(shortcutScope("sideTerminal")).toBe("global");
   });
 
   it("lists find-in-chat and toggle sidebar", () => {
@@ -139,6 +142,7 @@ describe("matchGlobalShortcut", () => {
       id: GlobalModShortcutId;
       key: string;
       shift?: boolean;
+      alt?: boolean;
     }> = [
       { id: "findInChat", key: "f" },
       { id: "search", key: "k" },
@@ -149,11 +153,18 @@ describe("matchGlobalShortcut", () => {
       { id: "copyLastReply", key: "c", shift: true },
       { id: "liveVoice", key: "v", shift: true },
       { id: "toggleSidebar", key: "b" },
+      { id: "sideFiles", key: "p" },
+      { id: "sideBrowser", key: "t" },
+      { id: "sideTerminal", key: "`" },
     ];
     for (const c of cases) {
       expect(
         matchGlobalShortcut(
-          chord({ key: c.key, shift: c.shift ?? false }),
+          chord({
+            key: c.key,
+            shift: c.shift ?? false,
+            alt: c.alt ?? false,
+          }),
           noRemaps,
         ),
       ).toBe(c.id);
@@ -190,7 +201,7 @@ describe("matchGlobalShortcut", () => {
     ).toBe("toggleSidebar");
   });
 
-  it("allows find/search/help/doctor/copy/live/sidebar while typing", () => {
+  it("allows find/search/help/doctor/copy/live/sidebar/side-pane while typing", () => {
     expect(
       matchGlobalShortcut(chord({ key: "f", typing: true }), noRemaps),
     ).toBe("findInChat");
@@ -221,6 +232,15 @@ describe("matchGlobalShortcut", () => {
     expect(
       matchGlobalShortcut(chord({ key: "b", typing: true }), noRemaps),
     ).toBe("toggleSidebar");
+    expect(
+      matchGlobalShortcut(chord({ key: "p", typing: true }), noRemaps),
+    ).toBe("sideFiles");
+    expect(
+      matchGlobalShortcut(chord({ key: "t", typing: true }), noRemaps),
+    ).toBe("sideBrowser");
+    expect(
+      matchGlobalShortcut(chord({ key: "`", typing: true }), noRemaps),
+    ).toBe("sideTerminal");
   });
 
   it("skips newChat and settings while typing", () => {

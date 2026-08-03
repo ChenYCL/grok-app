@@ -40,6 +40,9 @@ export type ShortcutId =
   | "copyLastReply"
   | "toggleSidebar"
   | "toggleRightPane"
+  | "sideFiles"
+  | "sideBrowser"
+  | "sideTerminal"
   | "sidebarSessionNav"
   | "settings"
   | "help"
@@ -74,6 +77,9 @@ export const SHORTCUT_IDS: readonly ShortcutId[] = [
   "copyLastReply",
   "toggleSidebar",
   "toggleRightPane",
+  "sideFiles",
+  "sideBrowser",
+  "sideTerminal",
   "sidebarSessionNav",
   "settings",
   "help",
@@ -155,6 +161,31 @@ export const SHORTCUTS: ShortcutRow[] = [
     win: "Alt Ctrl B",
   },
   {
+    id: "sideFiles",
+    labelKey: "shortcuts.sideFiles",
+    group: "navigation",
+    scope: "global",
+    mac: "⌘ P",
+    win: "Ctrl P",
+  },
+  {
+    id: "sideBrowser",
+    labelKey: "shortcuts.sideBrowser",
+    group: "navigation",
+    scope: "global",
+    mac: "⌘ T",
+    win: "Ctrl T",
+  },
+  {
+    /** Terminal tab in side workbench (VS Code / common ⌘`). */
+    id: "sideTerminal",
+    labelKey: "shortcuts.sideTerminal",
+    group: "navigation",
+    scope: "global",
+    mac: "⌘ `",
+    win: "Ctrl `",
+  },
+  {
     // Sidebar-local j/k (not global mod). App handles when focus is in the
     // session list / sidebar; never steals from inputs. Display-only here.
     id: "sidebarSessionNav",
@@ -231,6 +262,9 @@ export const GLOBAL_MOD_SHORTCUT_IDS = [
   "copyLastReply",
   "toggleSidebar",
   "toggleRightPane",
+  "sideFiles",
+  "sideBrowser",
+  "sideTerminal",
 ] as const satisfies readonly ShortcutId[];
 
 export type GlobalModShortcutId = (typeof GLOBAL_MOD_SHORTCUT_IDS)[number];
@@ -281,8 +315,9 @@ function resolveVoiceHotkeyEnabled(explicit?: boolean): boolean {
  * Behavior preserved from the previous inline App handler (with defaults):
  * - findInChat works while typing
  * - newChat / settings skip when typing
- * - search / help / doctor / copyLastReply / liveVoice / toggleSidebar work while typing
- *   (toggleSidebar works while typing so composers do not block layout chords)
+ * - search / help / doctor / copyLastReply / liveVoice / toggleSidebar /
+ *   sideFiles / sideBrowser / sideTerminal work while typing
+ *   (layout + side workbench chords are not blocked by composers)
  * - liveVoice is suppressed when {@link shouldFireLiveVoiceHotkey} is false
  */
 export function matchGlobalShortcut(

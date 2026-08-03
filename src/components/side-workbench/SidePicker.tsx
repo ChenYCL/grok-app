@@ -4,6 +4,9 @@
  * Two presentations share item markup only; width CSS is intentionally separate:
  * - empty (default): wider card in the side pane (`.sw-picker--empty`)
  * - compact: content-width dropdown inside `.sw-plus-menu` (global menu rule)
+ *
+ * Shortcut glyphs come from the global shortcut catalog (defaults + remaps),
+ * not hard-coded i18n, so Settings remaps stay honest in the picker.
  */
 
 import { useMemo } from "react";
@@ -15,9 +18,19 @@ import {
   IconWorld,
 } from "@/components/icons";
 import {
+  SIDE_PICKER_SHORTCUT_IDS,
   sidePickerOptions,
   type SidePickerKind,
 } from "@/lib/sideWorkbench";
+import {
+  detectShortcutPlatform,
+  type ShortcutId,
+} from "@/lib/shortcuts";
+import {
+  effectiveShortcutChord,
+  formatChordDisplay,
+  loadShortcutRemaps,
+} from "@/lib/shortcutRemap";
 
 export type SidePickerProps = {
   locale: Locale | string;
@@ -40,6 +53,11 @@ function kindIcon(kind: SidePickerKind) {
   }
 }
 
+function shortcutIdForKind(kind: SidePickerKind): ShortcutId | null {
+  const id = SIDE_PICKER_SHORTCUT_IDS[kind as keyof typeof SIDE_PICKER_SHORTCUT_IDS];
+  return id ?? null;
+}
+
 export function SidePicker({
   locale,
   isGitProject,
@@ -51,6 +69,16 @@ export function SidePicker({
   const options = useMemo(
     () => sidePickerOptions({ isGitProject }),
     [isGitProject],
+  );
+  const platform = useMemo(() => {
+    const p = detectShortcutPlatform();
+    return p === "mac" ? "mac" : "win";
+  }, []);
+  const remaps = useMemo(
+    () => (typeof localStorage !== "undefined" ? loadShortcutRemaps() : {}),
+    // Re-read when options list remounts; live Settings remaps fire
+    // SHORTCUT_REMAP_CHANGED_EVENT which remounts rare — acceptable for picker.
+    [],
   );
 
   return (
@@ -65,7 +93,14 @@ export function SidePicker({
       data-testid="side-picker"
     >
       {options.map((opt) => {
-        const shortcut = opt.shortcutKey ? tr(opt.shortcutKey as never) : "";
+        const sid = shortcutIdForKind(opt.kind);
+        const shortcut = sid
+          ? formatChordDisplay(effectiveShortcutChord(sid, remaps), platform)
+              // Compact picker: drop spaces between glyphs (⌘P not ⌘ P).
+              .replace(/\s+/g, "")
+          : opt.shortcutKey
+            ? tr(opt.shortcutKey as never)
+            : "";
         return (
           <button
             key={opt.kind}

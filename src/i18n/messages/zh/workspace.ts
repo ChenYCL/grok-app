@@ -375,6 +375,7 @@ export const zhWorkspace = {
   "side.picker.browser": "浏览器",
   "side.picker.browserShortcut": "⌘T",
   "side.picker.terminal": "终端",
+  "side.picker.terminalShortcut": "⌘`",
   "side.picker.review": "审阅",
   "side.tab.file": "文件",
   "side.tab.browser": "浏览器",

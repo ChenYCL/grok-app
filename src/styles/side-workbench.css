@@ -395,6 +395,7 @@ html[data-wallpaper="1"].platform-mac[data-theme="light"]
 
 /*
  * Empty-state card (center of side pane when no tabs).
+ * Soft frosted glass — translucent but not see-through (≈88% card + light blur).
  * Intentionally wider — not the dropdown content-width rule.
  */
 .sw-picker--empty {
@@ -403,9 +404,15 @@ html[data-wallpaper="1"].platform-mac[data-theme="light"]
   max-width: min(300px, calc(100% - 24px));
   padding: 8px;
   border-radius: 12px;
-  border: 1px solid var(--border-subtle);
-  background: color-mix(in srgb, var(--bg-hover) 35%, var(--bg-card));
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--glass-border, var(--border-subtle));
+  background: color-mix(
+    in srgb,
+    var(--bg-elevated, var(--bg-card)) 88%,
+    transparent
+  );
+  backdrop-filter: blur(20px) saturate(1.45);
+  -webkit-backdrop-filter: blur(20px) saturate(1.45);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
 .sw-picker--empty .sw-picker__item {

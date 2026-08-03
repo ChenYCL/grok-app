@@ -841,6 +841,9 @@ import { EnvInfoButton } from "@/components/side-workbench/EnvInfoButton";
 import {
   emptySideWorkbenchState,
   openSideTab,
+  openSideTabFromPicker,
+  setTreeVisible,
+  type SidePickerKind,
   type SideWorkbenchState,
 } from "@/lib/sideWorkbench";
 import {
@@ -1671,6 +1674,8 @@ export function AppWorkbench() {
     toggleSidebar: () => {},
     /** Right Side Workbench (⌥⌘B). */
     toggleRightPane: () => {},
+    /** Open / focus a Side Workbench tab from the empty-state picker chords. */
+    openSidePicker: (_kind: SidePickerKind) => {},
     toggleVoice: () => {},
     cancelVoice: () => {},
     startLiveVoice: () => {},
@@ -1844,6 +1849,15 @@ export function AppWorkbench() {
           return;
         case "toggleRightPane":
           shortcutHandlersRef.current.toggleRightPane();
+          return;
+        case "sideFiles":
+          shortcutHandlersRef.current.openSidePicker("file");
+          return;
+        case "sideBrowser":
+          shortcutHandlersRef.current.openSidePicker("browser");
+          return;
+        case "sideTerminal":
+          shortcutHandlersRef.current.openSidePicker("terminal");
           return;
         case "liveVoice":
           // Defense in depth: Settings can disable only this hotkey.
@@ -12314,6 +12328,16 @@ export function AppWorkbench() {
       setSideWorkbench((s) =>
         s.expanded ? { ...s, expanded: false } : s,
       );
+    },
+    openSidePicker: (kind: SidePickerKind) => {
+      setSideWorkbench((s) => {
+        const next = openSideTabFromPicker(s, kind, {
+          isGitProject: sideIsGitProject,
+        });
+        if (!("created" in next)) return s;
+        return kind === "file" ? setTreeVisible(next, true) : next;
+      });
+      openAsidePane();
     },
     toggleVoice: () => {
       toggleVoice();

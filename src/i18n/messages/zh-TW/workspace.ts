@@ -375,6 +375,7 @@ export const zhTWWorkspace = {
   "side.picker.browser": "瀏覽器",
   "side.picker.browserShortcut": "⌘T",
   "side.picker.terminal": "終端機",
+  "side.picker.terminalShortcut": "⌘`",
   "side.picker.review": "審閱",
   "side.tab.file": "檔案",
   "side.tab.browser": "瀏覽器",

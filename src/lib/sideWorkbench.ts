@@ -51,14 +51,32 @@ export type OpenSideTabResult = SideWorkbenchState & {
   droppedIds: string[];
 };
 
+/**
+ * Catalog shortcut id per picker kind (wired in App global keydown).
+ * Display chords come from the shortcut registry (defaults + remaps).
+ */
+export const SIDE_PICKER_SHORTCUT_IDS = {
+  file: "sideFiles",
+  browser: "sideBrowser",
+  terminal: "sideTerminal",
+} as const;
+
 const PICKER_BASE: SidePickerOption[] = [
-  { kind: "file", labelKey: "side.picker.file", shortcutKey: "side.picker.fileShortcut" },
+  {
+    kind: "file",
+    labelKey: "side.picker.file",
+    shortcutKey: "side.picker.fileShortcut",
+  },
   {
     kind: "browser",
     labelKey: "side.picker.browser",
     shortcutKey: "side.picker.browserShortcut",
   },
-  { kind: "terminal", labelKey: "side.picker.terminal" },
+  {
+    kind: "terminal",
+    labelKey: "side.picker.terminal",
+    shortcutKey: "side.picker.terminalShortcut",
+  },
   {
     kind: "review",
     labelKey: "side.picker.review",

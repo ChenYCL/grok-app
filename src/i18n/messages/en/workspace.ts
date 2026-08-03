@@ -375,6 +375,7 @@ export const enWorkspace = {
   "side.picker.browser": "Browser",
   "side.picker.browserShortcut": "⌘T",
   "side.picker.terminal": "Terminal",
+  "side.picker.terminalShortcut": "⌘`",
   "side.picker.review": "Review",
   "side.tab.file": "Files",
   "side.tab.browser": "Browser",

@@ -70,6 +70,11 @@ export const DEFAULT_SHORTCUT_CHORDS: Record<ShortcutId, ChordString> = {
   toggleSidebar: "mod+b",
   /** Right Side Workbench show/hide (Codex ⌥⌘B). */
   toggleRightPane: "mod+alt+b",
+  /** Side Workbench: Files / Browser / Terminal (picker chords). */
+  sideFiles: "mod+p",
+  sideBrowser: "mod+t",
+  /** Terminal — common editor binding (VS Code / Cursor). */
+  sideTerminal: "mod+`",
   // Display-only (j/k pair); App handles when focus is in the sidebar list.
   sidebarSessionNav: "j",
   settings: "mod+,",
@@ -94,6 +99,9 @@ export const REMAPPABLE_SHORTCUT_IDS = [
   "copyLastReply",
   "toggleSidebar",
   "toggleRightPane",
+  "sideFiles",
+  "sideBrowser",
+  "sideTerminal",
 ] as const satisfies readonly ShortcutId[];
 
 export type RemappableShortcutId = (typeof REMAPPABLE_SHORTCUT_IDS)[number];

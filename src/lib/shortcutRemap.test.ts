@@ -236,13 +236,16 @@ describe("findChordConflict", () => {
     expect(findChordConflict("search", "mod+k", effective)).toBeNull();
     // mod+k is search's default — assigning to newChat conflicts with search
     expect(findChordConflict("newChat", "mod+k", effective)).toBe("search");
-    expect(findChordConflict("search", "mod+p", effective)).toBeNull();
+    // mod+y is free (not a catalog default)
+    expect(findChordConflict("search", "mod+y", effective)).toBeNull();
+    // mod+p is sideFiles default
+    expect(findChordConflict("search", "mod+p", effective)).toBe("sideFiles");
   });
 
   it("ignores self when checking candidate against effective map with custom", () => {
-    const effective = buildEffectiveChordMap({ search: "mod+p" });
-    expect(findChordConflict("search", "mod+p", effective)).toBeNull();
-    expect(findChordConflict("help", "mod+p", effective)).toBe("search");
+    const effective = buildEffectiveChordMap({ search: "mod+y" });
+    expect(findChordConflict("search", "mod+y", effective)).toBeNull();
+    expect(findChordConflict("help", "mod+y", effective)).toBe("search");
   });
 
   it("skips display-only conflict-ignore ids", () => {
@@ -268,19 +271,19 @@ describe("findChordConflicts", () => {
 
   it("detects two remaps colliding on a free chord", () => {
     const groups = findChordConflicts({
-      search: "mod+p",
-      help: "mod+p",
+      search: "mod+y",
+      help: "mod+y",
     });
-    expect(groups).toEqual([{ chord: "mod+p", ids: ["help", "search"] }]);
+    expect(groups).toEqual([{ chord: "mod+y", ids: ["help", "search"] }]);
   });
 
   it("normalizes aliases before comparing", () => {
     const groups = findChordConflicts({
-      search: "Cmd+P",
-      settings: "mod+p",
+      search: "Cmd+Y",
+      settings: "mod+y",
     });
     expect(groups).toEqual([
-      { chord: "mod+p", ids: ["search", "settings"] },
+      { chord: "mod+y", ids: ["search", "settings"] },
     ]);
   });
 
@@ -414,8 +417,8 @@ describe("resetConflictingShortcutRemaps", () => {
   });
 
   it("clears remaps that participate in conflicts and leaves others", () => {
-    setShortcutRemap("search", "mod+p", storage);
-    setShortcutRemap("help", "mod+p", storage);
+    setShortcutRemap("search", "mod+y", storage);
+    setShortcutRemap("help", "mod+y", storage);
     setShortcutRemap("doctor", "mod+shift+x", storage);
 
     const next = resetConflictingShortcutRemaps(
@@ -434,12 +437,13 @@ describe("resetConflictingShortcutRemaps", () => {
   });
 
   it("is a no-op when there are no conflicts", () => {
-    setShortcutRemap("search", "mod+p", storage);
+    // mod+y is free — not a catalog default
+    setShortcutRemap("search", "mod+y", storage);
     const next = resetConflictingShortcutRemaps(
       loadShortcutRemaps(storage),
       storage,
     );
-    expect(next).toEqual({ search: "mod+p" });
+    expect(next).toEqual({ search: "mod+y" });
   });
 });
 
@@ -512,7 +516,7 @@ describe("planResetAllShortcutRemaps", () => {
   it("lists sorted remappable ids without writing storage", () => {
     const remaps = {
       doctor: "mod+shift+x",
-      search: "mod+p",
+      search: "mod+y",
     } as const;
     const plan = planResetAllShortcutRemaps(remaps);
     expect(plan).toEqual({
@@ -524,14 +528,14 @@ describe("planResetAllShortcutRemaps", () => {
     // Pure: original map unchanged
     expect(remaps).toEqual({
       doctor: "mod+shift+x",
-      search: "mod+p",
+      search: "mod+y",
     });
   });
 
   it("ignores non-remappable keys if present", () => {
     // `send` is a catalog id but not remappable — plan must not list it.
     const plan = planResetAllShortcutRemaps({
-      search: "mod+p",
+      search: "mod+y",
       send: "mod+enter",
     });
     expect(plan.ids).toEqual(["search"]);
@@ -549,13 +553,13 @@ describe("load / save remaps", () => {
   it("starts empty and falls back to defaults", () => {
     expect(loadShortcutRemaps(storage)).toEqual({});
     expect(effectiveShortcutChord("search", {})).toBe("mod+k");
-    expect(effectiveShortcutChord("search", { search: "mod+p" })).toBe(
-      "mod+p",
+    expect(effectiveShortcutChord("search", { search: "mod+y" })).toBe(
+      "mod+y",
     );
   });
 
   it("persists only remappable non-default chords", () => {
-    setShortcutRemap("search", "mod+p", storage);
+    setShortcutRemap("search", "mod+y", storage);
     setShortcutRemap("toggleSidebar", "mod+shift+b", storage);
     // send is not remappable
     setShortcutRemap("send", "mod+enter", storage);
@@ -564,10 +568,10 @@ describe("load / save remaps", () => {
 
     const loaded = loadShortcutRemaps(storage);
     expect(loaded).toEqual({
-      search: "mod+p",
+      search: "mod+y",
       toggleSidebar: "mod+shift+b",
     });
-    expect(storage.getItem(SHORTCUT_REMAP_STORAGE_KEY)).toContain("mod+p");
+    expect(storage.getItem(SHORTCUT_REMAP_STORAGE_KEY)).toContain("mod+y");
   });
 
   it("reset one and clear all", () => {
@@ -602,12 +606,15 @@ describe("load / save remaps", () => {
 });
 
 describe("REMAPPABLE_SHORTCUT_IDS", () => {
-  it("covers core global actions including palette/settings/new chat/sidebar", () => {
+  it("covers core global actions including palette/settings/new chat/sidebar/side pane", () => {
     for (const id of [
       "search",
       "settings",
       "newChat",
       "toggleSidebar",
+      "sideFiles",
+      "sideBrowser",
+      "sideTerminal",
     ] as const) {
       expect(REMAPPABLE_SHORTCUT_IDS).toContain(id);
     }
