@@ -126,6 +126,10 @@ import {
   PLUGIN_CATALOG_PAGE_SIZE,
   sliceCatalogPage,
 } from "@/lib/pluginCatalogUi";
+import {
+  ensureMediaEndpoint,
+  localPathToMediaHttpUrl,
+} from "@/lib/imageSrc";
 
 type SkillEditorState = {
   skill: api.SkillDto;
@@ -361,15 +365,8 @@ export function ExtensionsPanel({
     async (list: api.PluginDto[]) => {
       const chatcutLabel = tr("ext.plugins.recommended.chatcutName");
       const cards: PluginCardModel[] = [];
-      let convertFileSrc: ((p: string) => string) | null = null;
-      if (api.isTauri()) {
-        try {
-          const core = await import("@tauri-apps/api/core");
-          convertFileSrc = core.convertFileSrc;
-        } catch {
-          convertFileSrc = null;
-        }
-      }
+      // Prefer loopback media HTTP (path_scope) over convertFileSrc asset protocol.
+      await ensureMediaEndpoint();
       for (const p of list) {
         let manifest = null as ReturnType<typeof parsePluginManifestJson>;
         let iconUrl: string | null = null;
@@ -409,9 +406,10 @@ export function ExtensionsPanel({
             `${root}/assets/icon.png`,
             ...pluginIconPathCandidates(root),
           ].filter(Boolean) as string[];
-          if (convertFileSrc) {
-            for (const ip of iconTry) {
-              iconUrl = convertFileSrc(ip);
+          for (const ip of iconTry) {
+            const media = localPathToMediaHttpUrl(ip);
+            if (media) {
+              iconUrl = media;
               iconPath = ip;
               break;
             }
@@ -545,13 +543,8 @@ export function ExtensionsPanel({
         // Enrich logos / display names from marketplace-cache plugin.json
         try {
           const metaRes = await api.marketplacePluginMetaIndex();
-          let convertFileSrc: ((p: string) => string) | null = null;
-          try {
-            const core = await import("@tauri-apps/api/core");
-            convertFileSrc = core.convertFileSrc;
-          } catch {
-            convertFileSrc = null;
-          }
+          // Media HTTP is path_scope-gated (includes ~/.grok); do not use convertFileSrc.
+          await ensureMediaEndpoint();
           const map = new Map<
             string,
             {
@@ -582,8 +575,7 @@ export function ExtensionsPanel({
               homepage: m.homepage,
               repository: m.repository,
               license: m.license,
-              logoUrl:
-                logoPath && convertFileSrc ? convertFileSrc(logoPath) : null,
+              logoUrl: logoPath ? localPathToMediaHttpUrl(logoPath) : null,
               keywords: m.keywords ?? [],
             });
           }

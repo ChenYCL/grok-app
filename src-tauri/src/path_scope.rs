@@ -53,6 +53,15 @@ pub fn refresh_from_store() {
         next.push(agent_home);
     }
 
+    // CLI default home (`~/.grok`): marketplace-cache logos + installed-plugins
+    // assets for Settings → Extensions cards (may differ from independent agent-home).
+    let user_grok = crate::process_util::user_home().join(".grok");
+    if let Ok(c) = user_grok.canonicalize() {
+        next.push(c);
+    } else {
+        next.push(user_grok);
+    }
+
     // Dedup while preserving order.
     let mut seen = std::collections::HashSet::new();
     next.retain(|p| seen.insert(p.clone()));
