@@ -1,15 +1,35 @@
 /**
- * Settings → Extensions reference list language (plugins / MCP / skills).
- * Independent of legacy `.ext-item` multi-button action walls.
+ * Settings → Extensions — unified surface language.
+ * Single stack, flat sections, project tokens. No nested card-in-card walls.
  */
 
-/* ── Tab strip + co-located search ── */
+/* ── Shell ── */
+.ext-panel.ext-ref-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.ext-panel.ext-ref-shell > .settings-page__lead {
+  margin: 0 0 14px;
+}
+
+.ext-ref-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+}
+
+/* ── Tabs + search (one row) ── */
 .ext-ref-tabs {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  margin: 0 0 16px;
+  gap: 10px 12px;
+  margin: 0 0 18px;
+  padding: 0;
 }
 
 .ext-ref-tabs__list {
@@ -25,12 +45,12 @@
   appearance: none;
   border: 0;
   background: transparent;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  color: var(--text-secondary);
   font: inherit;
   font-size: 13px;
   font-weight: 500;
   line-height: 1.2;
-  padding: 6px 12px;
+  padding: 7px 12px;
   border-radius: 999px;
   cursor: pointer;
   display: inline-flex;
@@ -40,34 +60,25 @@
 }
 
 .ext-ref-tabs__tab:hover {
-  color: var(--text-primary, #fff);
-  background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
 
 .ext-ref-tabs__tab.is-on {
-  background: var(--text-primary, #fff);
-  color: var(--bg-elevated, #111);
-}
-
-:root[data-theme="light"] .ext-ref-tabs__tab.is-on,
-html[data-theme="light"] .ext-ref-tabs__tab.is-on {
-  background: var(--text-primary, #111);
-  color: var(--bg-elevated, #fff);
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .ext-ref-tabs__count {
   font-size: 12px;
   font-weight: 600;
-  opacity: 0.75;
+  opacity: 0.72;
   font-variant-numeric: tabular-nums;
 }
 
-.ext-ref-tabs__tab.is-on .ext-ref-tabs__count {
-  opacity: 0.85;
-}
-
 .ext-ref-tabs__search {
-  flex: 0 1 220px;
+  flex: 1 1 180px;
   min-width: 140px;
   max-width: 280px;
   margin-left: auto;
@@ -77,59 +88,200 @@ html[data-theme="light"] .ext-ref-tabs__tab.is-on {
 .ext-ref-tabs__search input {
   width: 100%;
   font-size: 13px;
-  height: 32px;
+  height: 34px;
+  border-radius: 999px;
 }
 
-/* ── Section blocks on plugins tab ── */
-.ext-ref-section {
-  margin: 0 0 20px;
+/* ── Section block (flat — no nested settings-card) ── */
+.ext-ref-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
-.ext-ref-section__head {
+.ext-ref-block__head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
   min-height: 28px;
+  margin: 0;
+  padding: 0 2px;
 }
 
-.ext-ref-section__title {
+.ext-ref-block__title {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
-  text-transform: none;
+  color: var(--text-secondary);
 }
 
-.ext-ref-section__actions {
+.ext-ref-block__meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ext-ref-block__actions {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
-.ext-ref-section__lead {
-  margin: 0 0 10px;
+.ext-ref-block__lead {
+  margin: 0;
+  padding: 0 2px;
   font-size: 12px;
-  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  line-height: 1.4;
+  color: var(--text-tertiary);
 }
 
-/* ── Flat rows: icon + name + desc + primary toggle ── */
+/* ── Installed icon strip (Image #1 language) ── */
+.ext-ref-icons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 2px;
+  min-height: 44px;
+}
+
+.ext-ref-icon {
+  appearance: none;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.18));
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: var(--text-primary);
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.ext-ref-icon:hover,
+.ext-ref-icon.is-on {
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-color: color-mix(in srgb, var(--text-primary) 22%, transparent);
+}
+
+.ext-ref-icon.is-off {
+  opacity: 0.55;
+}
+
+.ext-ref-icon__glyph {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  max-width: 34px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Feature / catalog 2-col cards (Image #1 Featured) ── */
+.ext-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 720px) {
+  .ext-ref-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ext-ref-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.14));
+  background: color-mix(in srgb, var(--text-primary) 3.5%, transparent);
+}
+
+.ext-ref-card__icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+}
+
+.ext-ref-card__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ext-ref-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-ref-card__desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ext-ref-card__end {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Flat management list (09.40.15 language) ── */
 .ext-ref-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.14));
   border-radius: 12px;
   overflow: hidden;
-  background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
+  background: color-mix(in srgb, var(--text-primary) 2.5%, transparent);
 }
 
 .ext-ref-row {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  margin: 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.1));
+  background: transparent;
 }
 
 .ext-ref-row:last-child {
@@ -142,6 +294,7 @@ html[data-theme="light"] .ext-ref-tabs__tab.is-on {
   gap: 12px;
   padding: 12px 14px;
   min-height: 56px;
+  min-width: 0;
 }
 
 .ext-ref-row__icon {
@@ -151,8 +304,8 @@ html[data-theme="light"] .ext-ref-tabs__tab.is-on {
   border-radius: 10px;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
-  color: var(--text-primary, #fff);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
 }
 
 .ext-ref-row__body {
@@ -166,7 +319,7 @@ html[data-theme="light"] .ext-ref-tabs__tab.is-on {
 .ext-ref-row__title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary, #fff);
+  color: var(--text-primary);
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -175,7 +328,7 @@ html[data-theme="light"] .ext-ref-tabs__tab.is-on {
 
 .ext-ref-row__desc {
   font-size: 12px;
-  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  color: var(--text-tertiary);
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -187,6 +340,7 @@ html[data-theme="light"] .ext-ref-tabs__tab.is-on {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  margin-top: 2px;
 }
 
 .ext-ref-row__end {
@@ -196,26 +350,34 @@ html[data-theme="light"] .ext-ref-tabs__tab.is-on {
   gap: 6px;
 }
 
-.ext-ref-row__chev {
+.ext-ref-row__chev,
+.ext-ref-gear {
   appearance: none;
   border: 0;
   background: transparent;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
-  width: 28px;
-  height: 28px;
+  color: var(--text-secondary);
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   cursor: pointer;
   display: grid;
   place-items: center;
+  padding: 0;
 }
 
-.ext-ref-row__chev:hover {
-  background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
-  color: var(--text-primary, #fff);
+.ext-ref-row__chev:hover,
+.ext-ref-gear:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
 }
 
 .ext-ref-row__chev.is-open {
   transform: rotate(180deg);
+}
+
+.ext-ref-gear:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .ext-ref-row__expand {
@@ -248,68 +410,200 @@ html[data-theme="light"] .ext-ref-tabs__tab.is-on {
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text-primary, #fff) 10%, transparent);
-  color: var(--text-secondary, rgba(255, 255, 255, 0.75));
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  color: var(--text-secondary);
   max-width: 12rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ext-ref-gear {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
+.ext-ref-empty {
+  margin: 0;
+  padding: 14px 4px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
 }
 
-.ext-ref-gear:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
-  color: var(--text-primary, #fff);
+/* Filters under installed */
+.ext-ref-block .ext-plugin-filters {
+  margin: 0;
+  padding: 0 2px;
 }
 
-.ext-ref-gear:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Installable block embeds BuildExtras market without second page chrome */
-.ext-ref-catalog.ext-ref-catalog--embedded .settings-page__h2 {
-  display: none;
-}
-
-.ext-ref-catalog.ext-ref-catalog--embedded .settings-card.ext-card {
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+/* Advanced install flat */
+.ext-ref-advanced {
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.14));
   border-radius: 12px;
-  background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
-  box-shadow: none;
-}
-
-/* Agents / Hooks share density */
-.ext-ref-shell .settings-page__h2 {
-  margin-top: 4px;
-}
-
-.ext-ref-shell .ext-list {
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 12px;
+  padding: 0;
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
   overflow: hidden;
 }
 
-.ext-ref-shell .ext-item {
+.ext-ref-advanced > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.ext-ref-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ext-ref-advanced[open] > summary {
+  border-bottom: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.1));
+  color: var(--text-primary);
+}
+
+.ext-ref-advanced .ext-plugin-install {
+  padding: 12px 14px 14px;
+  margin: 0;
+}
+
+/* ── Embedded installable catalog (kill second page chrome) ── */
+.ext-ref-catalog.ext-ref-catalog--embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .settings-page__h2 {
+  display: none !important;
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .settings-card.ext-card {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .ext-market-browse {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .ext-market-browse__search {
+  display: none; /* tab-level search covers plugins */
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .ext-list.ext-market-browse__list {
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.14));
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-primary) 2.5%, transparent);
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .ext-item {
+  margin: 0;
   border-radius: 0;
   border: 0;
-  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-  margin: 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.1));
   padding: 12px 14px;
+  background: transparent;
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .ext-item:last-child {
+  border-bottom: 0;
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .ext-item__actions {
+  flex-wrap: wrap;
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .ext-market-sources {
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.14));
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
+}
+
+.ext-ref-catalog.ext-ref-catalog--embedded .ext-market-sources__summary {
+  padding: 10px 14px;
+}
+
+
+
+/* ── Skills / MCP / Agents: flat under shell ── */
+.ext-ref-shell .settings-page__h2 {
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ext-ref-shell .settings-card.ext-card {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.14));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-primary) 2.5%, transparent);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+/* Prefer ext-ref-list over nested card list chrome when both present */
+.ext-ref-shell .settings-card.ext-card > .ext-ref-list,
+.ext-ref-shell .settings-card.ext-card > .ext-ref-block {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ext-ref-shell .settings-card.ext-card > .ext-empty,
+.ext-ref-shell .settings-card.ext-card > .ext-ref-empty {
+  padding: 16px 14px;
+}
+
+.ext-ref-shell .settings-card.ext-card > .ext-ref-section,
+.ext-ref-shell .settings-card.ext-card > .ext-ref-block {
+  padding: 12px 12px 14px;
+  gap: 8px;
+}
+
+.ext-ref-shell .settings-card.ext-card > .ext-ref-section + .ext-ref-section,
+.ext-ref-shell .settings-card.ext-card > .ext-ref-block + .ext-ref-block {
+  border-top: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.1));
+  padding-top: 14px;
+}
+
+/* Agents / Hooks lists inside shell */
+.ext-ref-shell .ext-list {
+  margin: 0;
+  padding: 0;
+}
+
+.ext-ref-shell .ext-item {
+  margin: 0;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.1));
+  padding: 12px 14px;
+  background: transparent;
 }
 
 .ext-ref-shell .ext-item:last-child {
   border-bottom: 0;
+}
+
+/* Alerts keep breathing room */
+.ext-ref-shell > .ext-alert {
+  margin: 0 0 14px;
+}
+
+/* Validate inline under row — no absolute weirdness */
+.ext-ref-row .ext-item__validate {
+  margin: 0 14px 12px 62px;
 }

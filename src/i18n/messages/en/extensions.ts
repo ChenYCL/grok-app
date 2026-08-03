@@ -132,7 +132,7 @@ export const enExtensions = {
   "ext.plugins.recommended.installConfirm": "Install ChatCut from “{source}”? Third-party plugin code runs with agent permissions after install.",
   "ext.plugins.installedTitle": "Installed",
   "ext.plugins.installableTitle": "Installable",
-  "ext.plugins.installableLead": "Catalog from configured marketplace sources (openai/plugins ensured when possible).",
+  "ext.plugins.installableLead": "Catalog from marketplace sources. The app ensures https://github.com/openai/plugins is configured (soft-fail if the network or CLI cannot add it).",
   "ext.plugins.ensureOpenaiFailed": "Could not add openai/plugins marketplace source",
   "ext.plugins.ensureOpenaiFailedHint": "Other sources still load. You can add the source manually under installable filters.",
   "ext.plugins.expandActions": "More actions",

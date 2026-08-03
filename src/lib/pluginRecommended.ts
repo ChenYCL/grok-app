@@ -115,6 +115,20 @@ export function findChatCutInstalledPlugin<T extends PluginLikeForMatch>(
 }
 
 /**
+ * UI display name: map installed `codex` / chatcut package to "ChatCut"
+ * so recommended + installed never look like two different products.
+ */
+export function pluginDisplayName(
+  plugin: PluginLikeForMatch | null | undefined,
+  chatcutLabel = "ChatCut",
+): string {
+  const name = (plugin?.name ?? "").trim();
+  if (!name) return chatcutLabel;
+  if (isChatCutInstalled([plugin!])) return chatcutLabel;
+  return name;
+}
+
+/**
  * Default filter for installable catalog chips.
  * Prefers openai/plugins actual source name when present; else __all__.
  */

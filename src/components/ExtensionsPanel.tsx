@@ -97,8 +97,8 @@ import {
 } from "@/lib/pluginMarketplace";
 import {
   CHATCUT_CODEX_INSTALL_SOURCE,
-  findChatCutInstalledPlugin,
   isChatCutInstalled,
+  pluginDisplayName,
   resolveExtensionsTabId,
 } from "@/lib/pluginRecommended";
 
@@ -1275,10 +1275,6 @@ export function ExtensionsPanel({
     () => isChatCutInstalled(plugins),
     [plugins],
   );
-  const chatcutPlugin = useMemo(
-    () => findChatCutInstalledPlugin(plugins),
-    [plugins],
-  );
 
   const q = extQuery.trim().toLowerCase();
   const filterText = useCallback(
@@ -1476,80 +1472,64 @@ export function ExtensionsPanel({
         </div>
       )}
 
-      {/* Plugins — recommended · installed · installable · advanced */}
+      {/* Plugins: installed strip + list · featured ChatCut only if missing · installable · advanced */}
       {tab === "plugins" && (
-      <>
+      <div className="ext-ref-stack">
+      {/* Recommended / Featured — only when ChatCut is NOT installed (avoid dual rows) */}
+      {!chatcutInstalled ? (
       <section
-        className="ext-ref-section"
+        className="ext-ref-block"
         id="settings-anchor-ext-plugins-recommended"
         aria-labelledby="ext-rec-title"
       >
-        <div className="ext-ref-section__head">
-          <h2 className="ext-ref-section__title" id="ext-rec-title">
+        <div className="ext-ref-block__head">
+          <h2 className="ext-ref-block__title" id="ext-rec-title">
             {tr("ext.plugins.recommendedTitle")}
           </h2>
         </div>
-        <ul className="ext-ref-list">
-          <li
-            className={
-              "ext-ref-row" + (chatcutInstalled ? "" : "")
-            }
-          >
-            <div className="ext-ref-row__main">
-              <div className="ext-ref-row__icon" aria-hidden>
-                <IconPuzzle size={18} />
+        <ul className="ext-ref-grid">
+          <li className="ext-ref-card">
+            <div className="ext-ref-card__icon" aria-hidden>
+              <IconPuzzle size={18} />
+            </div>
+            <div className="ext-ref-card__body">
+              <div className="ext-ref-card__title">
+                {tr("ext.plugins.recommended.chatcutName")}
               </div>
-              <div className="ext-ref-row__body">
-                <div className="ext-ref-row__title">
-                  {tr("ext.plugins.recommended.chatcutName")}
-                </div>
-                <div className="ext-ref-row__desc">
-                  {tr("ext.plugins.recommended.chatcutDesc")}
-                </div>
+              <div className="ext-ref-card__desc">
+                {tr("ext.plugins.recommended.chatcutDesc")}
               </div>
-              <div className="ext-ref-row__end">
-                {chatcutInstalled && chatcutPlugin ? (
-                  <ExtensionToggle
-                    checked={!!chatcutPlugin.enabled}
-                    disabled={!!actionBusy || !!busyKey || cliMissing}
-                    label={
-                      chatcutPlugin.enabled
-                        ? tr("ext.plugins.status.enabled")
-                        : tr("ext.plugins.status.disabled")
-                    }
-                    onChange={() => togglePlugin(chatcutPlugin)}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn--solid btn--sm"
-                    disabled={!!actionBusy || cliMissing}
-                    onClick={() => setChatcutInstallOpen(true)}
-                  >
-                    {actionBusy === "install:chatcut"
-                      ? tr("ext.plugins.installing")
-                      : tr("ext.plugins.recommended.install")}
-                  </button>
-                )}
-              </div>
+            </div>
+            <div className="ext-ref-card__end">
+              <button
+                type="button"
+                className="btn btn--solid btn--sm"
+                disabled={!!actionBusy || cliMissing}
+                onClick={() => setChatcutInstallOpen(true)}
+              >
+                {actionBusy === "install:chatcut"
+                  ? tr("ext.plugins.installing")
+                  : tr("ext.plugins.recommended.install")}
+              </button>
             </div>
           </li>
         </ul>
       </section>
+      ) : null}
 
       <section
-        className="ext-ref-section"
+        className="ext-ref-block"
         id="settings-anchor-ext-plugins"
         aria-labelledby="ext-installed-title"
       >
-        <div className="ext-ref-section__head">
-          <h2 className="ext-ref-section__title" id="ext-installed-title">
+        <div className="ext-ref-block__head">
+          <h2 className="ext-ref-block__title" id="ext-installed-title">
             {tr("ext.plugins.installedTitle")}
           </h2>
           {!loading ? (
-            <span className="ext-count">{plugins.length}</span>
+            <span className="ext-ref-block__meta">{plugins.length}</span>
           ) : null}
-          <span className="ext-ref-section__actions">
+          <span className="ext-ref-block__actions">
             {!loading && plugins.length > 0 ? (
               <button
                 type="button"
@@ -1564,246 +1544,297 @@ export function ExtensionsPanel({
             ) : null}
           </span>
         </div>
-        {!loading && plugins.length > 0 ? (
-          <div
-            className="ext-plugin-filters"
-            role="tablist"
-            aria-label={tr("ext.plugins.filterLabel")}
-          >
-            {(
-              [
-                ["all", "ext.plugins.filter.all"],
-                ["enabled", "ext.plugins.filter.enabled"],
-                ["disabled", "ext.plugins.filter.disabled"],
-              ] as const
-            ).map(([id, key]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={pluginFilter === id}
-                className={
-                  "ext-plugin-filter" + (pluginFilter === id ? " is-active" : "")
-                }
-                onClick={() => setPluginFilter(id)}
-              >
-                {tr(key)}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {loading && <p className="ext-empty">{tr("ext.plugins.loading")}</p>}
+        {loading && <p className="ext-ref-empty">{tr("ext.plugins.loading")}</p>}
         {!loading && plugins.length === 0 && (
-          <div className="ext-empty-cta">
-            <p className="ext-empty-cta__text">
-              {cliMissing ? tr("ext.plugins.emptyCli") : tr("ext.plugins.empty")}
-            </p>
-          </div>
+          <p className="ext-ref-empty">
+            {cliMissing ? tr("ext.plugins.emptyCli") : tr("ext.plugins.empty")}
+          </p>
         )}
-        {!loading && plugins.length > 0 && filteredInstalledPlugins.length === 0 && (
-          <p className="ext-empty">{tr("ext.plugins.filterEmpty")}</p>
-        )}
-        {!loading && filteredInstalledPlugins.length > 0 && (
-          <ul className="ext-ref-list">
-            {filteredInstalledPlugins.map((p) => {
-              const key = pluginRowKey(p);
-              const rowBusy = actionBusy === key;
-              const updating = actionBusy === `update:${key}`;
-              const validating = actionBusy === `validate:${key}`;
-              const busy = rowBusy || updating || validating;
-              const meta = pluginMetaLine(p);
-              const provides = pluginProvidesLine(p);
-              const expanded = !!expandedPluginKeys[key];
-              const vResult = validateByKey[key] ?? null;
-              const vPres =
-                validatePresByKey[key] ??
-                (vResult ? presentValidateResult(vResult) : null);
-              const vTone = vPres
-                ? pluginValidateRowTone(vPres.severity)
-                : vResult
-                  ? vResult.ok
-                    ? "ok"
-                    : "err"
-                  : null;
-              return (
-                <li
-                  key={key}
-                  className={
-                    "ext-ref-row" + (p.enabled ? "" : " ext-ref-row--off")
-                  }
-                >
-                  <div className="ext-ref-row__main">
-                    <div className="ext-ref-row__icon" aria-hidden>
-                      <IconPuzzle size={16} />
-                    </div>
-                    <div className="ext-ref-row__body">
-                      <div className="ext-ref-row__title">{p.name}</div>
-                      <div className="ext-ref-row__desc">
-                        {meta || provides || p.marketplace || "—"}
-                      </div>
-                    </div>
-                    <div className="ext-ref-row__end">
-                      <ExtensionToggle
-                        checked={!!p.enabled}
-                        disabled={busy || !!actionBusy}
-                        label={
-                          p.enabled
-                            ? tr("ext.plugins.status.enabled")
-                            : tr("ext.plugins.status.disabled")
-                        }
-                        onChange={() => togglePlugin(p)}
-                      />
-                      <button
-                        type="button"
-                        className={
-                          "ext-ref-row__chev" + (expanded ? " is-open" : "")
-                        }
-                        aria-expanded={expanded}
-                        aria-label={
-                          expanded
-                            ? tr("ext.plugins.collapseActions")
-                            : tr("ext.plugins.expandActions")
-                        }
-                        onClick={() =>
-                          setExpandedPluginKeys((prev) => ({
-                            ...prev,
-                            [key]: !prev[key],
-                          }))
-                        }
-                      >
-                        ▾
-                      </button>
-                    </div>
-                  </div>
-                  {expanded ? (
-                    <div className="ext-ref-row__expand">
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        disabled={busy || !!actionBusy || cliMissing}
-                        onClick={() => updatePlugin(p)}
-                      >
-                        {updating
-                          ? tr("ext.plugins.updating")
-                          : tr("ext.plugins.update")}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        disabled={busy || !!actionBusy}
-                        onClick={() => validatePlugin(p)}
-                      >
-                        {validating
-                          ? tr("ext.plugins.validating")
-                          : tr("ext.plugins.validate")}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        disabled={busy || !!actionBusy}
-                        onClick={() => void showDetails(p)}
-                      >
-                        {tr("ext.plugins.details")}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm ext-item__danger"
-                        disabled={busy || !!actionBusy}
-                        onClick={() => setUninstallTarget(p)}
-                      >
-                        <IconTrash size={13} />
-                        <span>{tr("ext.plugins.uninstall")}</span>
-                      </button>
-                      {p.path ? (
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          title={p.path}
-                          onClick={() => void reveal(p.path)}
-                        >
-                          <IconFolder size={13} />
-                          <span>{shortPathLabel(p.path, 28)}</span>
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {vResult && vPres ? (
-                    <div
+        {!loading && plugins.length > 0 ? (
+          <>
+            <div className="ext-ref-icons" role="list" aria-label={tr("ext.plugins.installedTitle")}>
+              {plugins.map((p) => {
+                const label = pluginDisplayName(
+                  p,
+                  tr("ext.plugins.recommended.chatcutName"),
+                );
+                const initials = label
+                  .replace(/[^A-Za-z0-9\u4e00-\u9fff]/g, "")
+                  .slice(0, 2) || "P";
+                return (
+                  <button
+                    key={pluginRowKey(p)}
+                    type="button"
+                    role="listitem"
+                    className={
+                      "ext-ref-icon" + (p.enabled ? "" : " is-off")
+                    }
+                    title={label}
+                    aria-label={label}
+                    onClick={() => {
+                      const key = pluginRowKey(p);
+                      setExpandedPluginKeys((prev) => ({
+                        ...prev,
+                        [key]: true,
+                      }));
+                      const el = document.getElementById(
+                        `ext-plugin-row-${key}`,
+                      );
+                      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                    }}
+                  >
+                    <span className="ext-ref-icon__glyph">{initials}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {plugins.length > 0 ? (
+              <div
+                className="ext-plugin-filters"
+                role="tablist"
+                aria-label={tr("ext.plugins.filterLabel")}
+              >
+                {(
+                  [
+                    ["all", "ext.plugins.filter.all"],
+                    ["enabled", "ext.plugins.filter.enabled"],
+                    ["disabled", "ext.plugins.filter.disabled"],
+                  ] as const
+                ).map(([id, key]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={pluginFilter === id}
+                    className={
+                      "ext-plugin-filter" +
+                      (pluginFilter === id ? " is-active" : "")
+                    }
+                    onClick={() => setPluginFilter(id)}
+                  >
+                    {tr(key)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {filteredInstalledPlugins.length === 0 ? (
+              <p className="ext-ref-empty">{tr("ext.plugins.filterEmpty")}</p>
+            ) : (
+              <ul className="ext-ref-list">
+                {filteredInstalledPlugins.map((p) => {
+                  const key = pluginRowKey(p);
+                  const rowBusy = actionBusy === key;
+                  const updating = actionBusy === `update:${key}`;
+                  const validating = actionBusy === `validate:${key}`;
+                  const busy = rowBusy || updating || validating;
+                  const meta = pluginMetaLine(p);
+                  const provides = pluginProvidesLine(p);
+                  const expanded = !!expandedPluginKeys[key];
+                  const display = pluginDisplayName(
+                    p,
+                    tr("ext.plugins.recommended.chatcutName"),
+                  );
+                  const vResult = validateByKey[key] ?? null;
+                  const vPres =
+                    validatePresByKey[key] ??
+                    (vResult ? presentValidateResult(vResult) : null);
+                  const vTone = vPres
+                    ? pluginValidateRowTone(vPres.severity)
+                    : vResult
+                      ? vResult.ok
+                        ? "ok"
+                        : "err"
+                      : null;
+                  return (
+                    <li
+                      key={key}
+                      id={`ext-plugin-row-${key}`}
                       className={
-                        "ext-item__validate" +
-                        (vTone ? ` ext-item__validate--${vTone}` : "")
+                        "ext-ref-row" + (p.enabled ? "" : " ext-ref-row--off")
                       }
-                      role={vPres.ok || vPres.softFail ? "status" : "alert"}
-                      style={{ margin: "0 14px 12px 62px" }}
                     >
-                      <div className="ext-item__validate-head">
-                        <span
-                          className={
-                            "ext-badge ext-badge--" +
-                            pluginValidateBadgeTone(vPres.severity)
-                          }
-                        >
-                          {pluginValidateKindLabel(
-                            vPres.kind,
-                            pluginValidateKindLabels,
-                          )}
-                        </span>
-                        <div className="ext-item__validate-title">
-                          {vPres.ok
-                            ? tr("ext.plugins.validateOk")
-                            : vPres.softFail
-                              ? pluginValidateKindLabel(
-                                  vPres.kind,
-                                  pluginValidateKindLabels,
-                                )
-                              : tr("ext.plugins.validateFailed")}
+                      <div className="ext-ref-row__main">
+                        <div className="ext-ref-row__icon" aria-hidden>
+                          <IconPuzzle size={16} />
+                        </div>
+                        <div className="ext-ref-row__body">
+                          <div className="ext-ref-row__title">{display}</div>
+                          <div className="ext-ref-row__desc">
+                            {meta || provides || p.marketplace || p.name || "—"}
+                          </div>
+                        </div>
+                        <div className="ext-ref-row__end">
+                          <ExtensionToggle
+                            checked={!!p.enabled}
+                            disabled={busy || !!actionBusy}
+                            label={
+                              p.enabled
+                                ? tr("ext.plugins.status.enabled")
+                                : tr("ext.plugins.status.disabled")
+                            }
+                            onChange={() => togglePlugin(p)}
+                          />
+                          <button
+                            type="button"
+                            className={
+                              "ext-ref-row__chev" + (expanded ? " is-open" : "")
+                            }
+                            aria-expanded={expanded}
+                            aria-label={
+                              expanded
+                                ? tr("ext.plugins.collapseActions")
+                                : tr("ext.plugins.expandActions")
+                            }
+                            onClick={() =>
+                              setExpandedPluginKeys((prev) => ({
+                                ...prev,
+                                [key]: !prev[key],
+                              }))
+                            }
+                          >
+                            ▾
+                          </button>
                         </div>
                       </div>
-                      {vResult.messages.length > 0 ? (
-                        <pre className="ext-item__validate-body">
-                          {formatPluginValidateMessages(vResult.messages)}
-                        </pre>
+                      {expanded ? (
+                        <div className="ext-ref-row__expand">
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={busy || !!actionBusy || cliMissing}
+                            onClick={() => updatePlugin(p)}
+                          >
+                            {updating
+                              ? tr("ext.plugins.updating")
+                              : tr("ext.plugins.update")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={busy || !!actionBusy}
+                            onClick={() => validatePlugin(p)}
+                          >
+                            {validating
+                              ? tr("ext.plugins.validating")
+                              : tr("ext.plugins.validate")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={busy || !!actionBusy}
+                            onClick={() => void showDetails(p)}
+                          >
+                            {tr("ext.plugins.details")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm ext-item__danger"
+                            disabled={busy || !!actionBusy}
+                            onClick={() => setUninstallTarget(p)}
+                          >
+                            <IconTrash size={13} />
+                            <span>{tr("ext.plugins.uninstall")}</span>
+                          </button>
+                          {p.path ? (
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              title={p.path}
+                              onClick={() => void reveal(p.path)}
+                            >
+                              <IconFolder size={13} />
+                              <span>{shortPathLabel(p.path, 28)}</span>
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
-                      <div className="ext-item__validate-actions">
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          onClick={() =>
-                            openPluginValidatePresentation(vPres, p.name)
+                      {vResult && vPres ? (
+                        <div
+                          className={
+                            "ext-item__validate" +
+                            (vTone ? ` ext-item__validate--${vTone}` : "")
                           }
+                          role={vPres.ok || vPres.softFail ? "status" : "alert"}
                         >
-                          {tr("ext.plugins.validate.viewResult")}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          onClick={() => {
-                            setValidateByKey((prev) => {
-                              const next = { ...prev };
-                              delete next[key];
-                              return next;
-                            });
-                            setValidatePresByKey((prev) => {
-                              const next = { ...prev };
-                              delete next[key];
-                              return next;
-                            });
-                          }}
-                        >
-                          {tr("common.close")}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                          <div className="ext-item__validate-head">
+                            <span
+                              className={
+                                "ext-badge ext-badge--" +
+                                pluginValidateBadgeTone(vPres.severity)
+                              }
+                            >
+                              {pluginValidateKindLabel(
+                                vPres.kind,
+                                pluginValidateKindLabels,
+                              )}
+                            </span>
+                            <div className="ext-item__validate-title">
+                              {vPres.ok
+                                ? tr("ext.plugins.validateOk")
+                                : vPres.softFail
+                                  ? pluginValidateKindLabel(
+                                      vPres.kind,
+                                      pluginValidateKindLabels,
+                                    )
+                                  : tr("ext.plugins.validateFailed")}
+                            </div>
+                          </div>
+                          {vResult.messages.length > 0 ? (
+                            <pre className="ext-item__validate-body">
+                              {formatPluginValidateMessages(vResult.messages)}
+                            </pre>
+                          ) : null}
+                          <div className="ext-item__validate-actions">
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              onClick={() =>
+                                openPluginValidatePresentation(vPres, p.name)
+                              }
+                            >
+                              {tr("ext.plugins.validate.viewResult")}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              onClick={() => {
+                                setValidateByKey((prev) => {
+                                  const next = { ...prev };
+                                  delete next[key];
+                                  return next;
+                                });
+                                setValidatePresByKey((prev) => {
+                                  const next = { ...prev };
+                                  delete next[key];
+                                  return next;
+                                });
+                              }}
+                            >
+                              {tr("common.close")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        ) : null}
       </section>
 
-      <section className="ext-ref-section" aria-label={tr("ext.plugins.installableTitle")}>
-        <p className="ext-ref-section__lead">
+      <section
+        className="ext-ref-block"
+        id="settings-anchor-ext-plugins-catalog"
+        aria-label={tr("ext.plugins.installableTitle")}
+      >
+        <div className="ext-ref-block__head">
+          <h2 className="ext-ref-block__title">
+            {tr("ext.plugins.installableTitle")}
+          </h2>
+        </div>
+        <p className="ext-ref-block__lead">
           {tr("ext.plugins.installableLead")}
         </p>
         <ExtensionsBuildExtras
@@ -1824,10 +1855,8 @@ export function ExtensionsPanel({
       </section>
 
       {!cliMissing ? (
-        <details className="ext-market-sources ext-ref-section">
-          <summary className="ext-market-sources__summary">
-            {tr("ext.plugins.advancedInstall")}
-          </summary>
+        <details className="ext-ref-advanced">
+          <summary>{tr("ext.plugins.advancedInstall")}</summary>
           <div className="ext-plugin-install">
             <label
               className="ext-plugin-install__label"
@@ -1958,7 +1987,7 @@ export function ExtensionsPanel({
           </div>
         </details>
       ) : null}
-      </>
+      </div>
       )}
 
       {/* Skills */}
@@ -2121,12 +2150,12 @@ export function ExtensionsPanel({
         {loading && <p className="ext-empty">{tr("ext.mcp.loading")}</p>}
         {!loading && (
           <>
-          <div className="ext-ref-section">
-            <div className="ext-ref-section__head">
-              <h3 className="ext-ref-section__title">
+          <div className="ext-ref-block">
+            <div className="ext-ref-block__head">
+              <h3 className="ext-ref-block__title">
                 {tr("ext.mcp.serversTitle")}
               </h3>
-              <span className="ext-ref-section__actions">
+              <span className="ext-ref-block__actions">
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
@@ -2304,9 +2333,9 @@ export function ExtensionsPanel({
             )}
           </div>
 
-          <div className="ext-ref-section">
-            <div className="ext-ref-section__head">
-              <h3 className="ext-ref-section__title">
+          <div className="ext-ref-block">
+            <div className="ext-ref-block__head">
+              <h3 className="ext-ref-block__title">
                 {tr("ext.mcp.fromPluginsTitle")}
               </h3>
             </div>

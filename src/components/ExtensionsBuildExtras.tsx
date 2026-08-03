@@ -1340,29 +1340,21 @@ export function ExtensionsBuildExtras({
           ) : null}
           <div className="settings-card ext-card">
             {embedded ? (
-              <div className="ext-ref-section__head" style={{ marginBottom: 10 }}>
-                <span className="ext-ref-section__title">
-                  {tr("ext.plugins.installableTitle")}
-                </span>
-                {!marketLoading ? (
-                  <span className="ext-count">{filteredByMarket.length}</span>
-                ) : null}
-                <span className="ext-ref-section__actions">
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    disabled={marketLoading || !!marketBusy || cliMissing}
-                    onClick={() => void loadMarket(true)}
-                    title={fromCache ? tr("ext.market.cachedHint") : undefined}
-                  >
-                    <IconRefresh size={13} />
-                    <span>
-                      {marketBusy === "up:all" || marketLoading
-                        ? tr("ext.market.updating")
-                        : tr("ext.market.refreshCatalog")}
-                    </span>
-                  </button>
-                </span>
+              <div className="ext-ref-block__actions" style={{ justifyContent: "flex-end", marginBottom: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={marketLoading || !!marketBusy || cliMissing}
+                  onClick={() => void loadMarket(true)}
+                  title={fromCache ? tr("ext.market.cachedHint") : undefined}
+                >
+                  <IconRefresh size={13} />
+                  <span>
+                    {marketBusy === "up:all" || marketLoading
+                      ? tr("ext.market.updating")
+                      : tr("ext.market.refreshCatalog")}
+                  </span>
+                </button>
               </div>
             ) : null}
             {ensureOpenaiError ? (

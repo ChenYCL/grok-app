@@ -8,6 +8,7 @@ import {
   isOpenaiPluginsSource,
   normalizeMarketplaceLocator,
   pickDefaultInstallableFilter,
+  pluginDisplayName,
   resolveExtensionsTabId,
 } from "./pluginRecommended";
 
@@ -69,6 +70,12 @@ describe("pluginRecommended", () => {
     ).toBe(true);
     expect(isChatCutInstalled([{ name: "vercel" }])).toBe(false);
     expect(findChatCutInstalledPlugin([{ name: "codex" }])?.name).toBe("codex");
+  });
+
+  it("pluginDisplayName maps codex/chatcut to ChatCut once", () => {
+    expect(pluginDisplayName({ name: "codex" })).toBe("ChatCut");
+    expect(pluginDisplayName({ name: "chatcut" })).toBe("ChatCut");
+    expect(pluginDisplayName({ name: "vercel" })).toBe("vercel");
   });
 
   it("picks openai source name as default installable filter", () => {

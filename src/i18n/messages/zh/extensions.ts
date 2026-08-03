@@ -132,7 +132,7 @@ export const zhExtensions = {
   "ext.plugins.recommended.installConfirm": "从 “{source}” 安装 ChatCut？安装后第三方插件代码将以 Agent 权限运行。",
   "ext.plugins.installedTitle": "已安装",
   "ext.plugins.installableTitle": "可安装",
-  "ext.plugins.installableLead": "来自已配置市场源的目录（尽可能 ensure openai/plugins）。",
+  "ext.plugins.installableLead": "来自市场源的可安装目录。进入本页时会 ensure 配置 https://github.com/openai/plugins（失败仅 soft-fail 提示，不删除其它源）。",
   "ext.plugins.ensureOpenaiFailed": "无法添加 openai/plugins 市场源",
   "ext.plugins.ensureOpenaiFailedHint": "仍会展示其它已配置源。也可在可安装筛选中手动添加源。",
   "ext.plugins.expandActions": "更多操作",
