@@ -409,7 +409,9 @@ fn extract_chatcut_detail_snippet(raw: &serde_json::Value) -> Option<String> {
                 || p.ends_with("browserHandoff")
             {
                 if let Ok(s) = serde_json::to_string(v) {
-                    if s.contains("chatcut") || s.contains("browserHandoff") || s.contains("editorUrl")
+                    if s.contains("chatcut")
+                        || s.contains("browserHandoff")
+                        || s.contains("editorUrl")
                     {
                         return Some(s.chars().take(1200).collect());
                     }
@@ -434,8 +436,9 @@ fn find_chatcut_editor_url_in_text(text: &str) -> Option<String> {
             return Some(url);
         }
     }
-    find_https_url_near(text, "chatcut.io")
-        .filter(|u| u.contains("/editor") || u.contains("dockviewLayout") || u.contains("editor-boot-token"))
+    find_https_url_near(text, "chatcut.io").filter(|u| {
+        u.contains("/editor") || u.contains("dockviewLayout") || u.contains("editor-boot-token")
+    })
 }
 
 fn find_https_url_near(text: &str, must_contain: &str) -> Option<String> {
@@ -830,7 +833,11 @@ pub(super) fn normalize_media_ref(path: &str) -> Option<String> {
     }
     if t.starts_with('/') {
         // Local absolute: collapse accidental double slashes (…/T//chatcut-…).
-        let collapsed = t.split('/').filter(|s| !s.is_empty()).collect::<Vec<_>>().join("/");
+        let collapsed = t
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("/");
         return Some(format!("/{collapsed}"));
     }
     // Windows absolute
@@ -1184,10 +1191,9 @@ fn urlencoding_soft_decode(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(
-                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
-                16,
-            ) {
+            if let Ok(v) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            {
                 out.push(v);
                 i += 3;
                 continue;
