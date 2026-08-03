@@ -90,6 +90,26 @@ also /tmp/other.png and /tmp/clip.mp4 and not a file.`;
     ]);
   });
 
+  it("extracts shell-escaped absolute images from user prose", () => {
+    const atts = extractMediaPathsFromContent(
+      "logo换成/Users/me/Downloads/6A5ED46119BDACC7C24DC3B6FF3CF051\\ \\(1\\).png",
+    );
+    expect(atts.map((a) => a.path)).toEqual([
+      "/Users/me/Downloads/6A5ED46119BDACC7C24DC3B6FF3CF051 (1).png",
+    ]);
+  });
+
+  it("ignores CMS site-root media paths", () => {
+    expect(
+      extractMediaPathsFromContent(
+        "logo：`/images/partner-brands/manycore-20260730.png`",
+      ),
+    ).toEqual([]);
+    expect(
+      resolveInlineMediaToken("/images/partner-brands/x.png", null),
+    ).toBeNull();
+  });
+
   it("mergeMessageAttachments combines stored + text paths", () => {
     const out = mergeMessageAttachments(
       [{ path: "/a.png", name: "a.png", isDir: false }],

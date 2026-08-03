@@ -10,10 +10,14 @@ import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import { pathBasename, pathExt } from "@/lib/attachments";
 import {
-  isAbsoluteFsPath,
   isHttpUrl,
+  isRealLocalAbsolutePath,
   normalizePathToken,
 } from "@/lib/pathRefs";
+import {
+  isSiteRootAbsolutePath,
+  normalizeLocalPathToken,
+} from "@/lib/pathNormalize";
 import {
   resolveOpenEditorError,
   resolveRevealError,
@@ -92,7 +96,8 @@ function kindLabel(path: string, kind: FilePathCardKind): string {
 function relativeToken(path: string): string | null {
   // Strip agent ellipsis (`.../a/b.jpg` → `a/b.jpg`) before open/search
   const t = normalizePathToken(path);
-  if (!t || isHttpUrl(t) || isAbsoluteFsPath(t)) return null;
+  if (!t || isHttpUrl(t) || isRealLocalAbsolutePath(t)) return null;
+  if (isSiteRootAbsolutePath(t)) return null;
   if (!(t.includes("/") || t.includes("\\"))) return null;
   return t;
 }
@@ -164,9 +169,21 @@ export function FilePathCard({
     if (isUrl) return null;
     if (resolvedAbs) return resolvedAbs;
 
+    // CMS/site roots are never local files — do not probe the host.
+    if (isSiteRootAbsolutePath(path) || isSiteRootAbsolutePath(absolutePath || "")) {
+      setMissing(true);
+      return null;
+    }
+
+    const pathNorm = normalizeLocalPathToken(path) || path.trim();
+    const absHint =
+      absolutePath && isRealLocalAbsolutePath(absolutePath)
+        ? normalizeLocalPathToken(absolutePath) || absolutePath
+        : null;
+
     if (!api.isTauri()) {
-      if (isAbsoluteFsPath(path)) return path;
-      if (absolutePath && isAbsoluteFsPath(absolutePath)) return absolutePath;
+      if (absHint) return absHint;
+      if (isRealLocalAbsolutePath(pathNorm)) return pathNorm;
       return null;
     }
 
@@ -174,21 +191,28 @@ export function FilePathCard({
     // Relative like `知识库/wiki/...` is resolved by host against project
     // and project parent (sibling folders such as a shared knowledge base).
     const tokens: string[] = [];
-    if (isAbsoluteFsPath(path)) tokens.push(path);
-    if (absolutePath && isAbsoluteFsPath(absolutePath)) {
-      tokens.push(absolutePath);
-    }
+    if (absHint) tokens.push(absHint);
+    if (isRealLocalAbsolutePath(pathNorm)) tokens.push(pathNorm);
     const rel = relativeToken(path);
     if (rel) tokens.push(rel);
-    // Also pass the raw path if it still looks path-like (host may join parent)
-    if (path.trim() && !tokens.includes(path.trim())) {
-      tokens.push(path.trim());
+    // Multi-segment relative only — bare basenames are last-resort and often
+    // OSS names (manycore.png) that do not exist as project files.
+    if (
+      pathNorm &&
+      !tokens.includes(pathNorm) &&
+      (pathNorm.includes("/") || pathNorm.includes("\\")) &&
+      !isSiteRootAbsolutePath(pathNorm)
+    ) {
+      tokens.push(pathNorm);
     }
-    if (!tokens.length) tokens.push(pathBasename(path));
+    // Bare basename last (host may find a unique sibling under project).
+    const bare = pathBasename(pathNorm);
+    if (bare && !tokens.includes(bare)) tokens.push(bare);
 
     const seen = new Set<string>();
     for (const token of tokens) {
       if (!token || seen.has(token)) continue;
+      if (isSiteRootAbsolutePath(token)) continue;
       seen.add(token);
       try {
         const r = await api.fsOpenPath(token, projectPath ?? null);
@@ -201,7 +225,7 @@ export function FilePathCard({
         /* try next token */
       }
       // Absolute-only fallback when smart open fails (legacy host / edge cases)
-      if (isAbsoluteFsPath(token)) {
+      if (isRealLocalAbsolutePath(token)) {
         try {
           const r = await api.fsReadAbsolute(token);
           if (r.absolutePath) {
@@ -247,19 +271,14 @@ export function FilePathCard({
       onOpenInPanel?.({ type: "url", url: path, title: name });
       return;
     }
-    // Resolve before open so the panel never flashes the raw relative path.
-    // Avoid busy/opacity flash on the card itself.
+    // Resolve first — never open an empty resource tab for missing / site paths.
     if (busy) return;
     setBusy(true);
     try {
       const abs = resolvedAbs || (await resolveAbsolute());
       if (!abs) {
-        // Still open with original token; host smart-open may recover.
-        onOpenInPanel?.({
-          type: "file",
-          path: relativeToken(path) || path,
-          title: name,
-        });
+        setMissing(true);
+        onOpenError?.(filePathCardErrLabel(labels, "not_found"));
         return;
       }
       onOpenInPanel?.({ type: "file", path: abs, title: name });
@@ -395,7 +414,11 @@ export function FilePathCard({
           (kind === "dir" ? " file-path-card--dir" : "") +
           (missing && !resolvedAbs ? " file-path-card--missing" : "")
         }
-        title={name}
+        title={
+          missing && !resolvedAbs
+            ? `${name} — ${labels.detailsMissing || labels.errNotFound || "Not found"}`
+            : resolvedAbs || name
+        }
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -407,6 +430,7 @@ export function FilePathCard({
           className="file-path-card__main"
           onClick={() => void openInPanel()}
           disabled={busy}
+          aria-disabled={missing && !resolvedAbs ? true : undefined}
         >
           <span className="file-path-card__icon" aria-hidden>
             {kind === "dir" ? (

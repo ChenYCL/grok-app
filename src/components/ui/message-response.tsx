@@ -13,16 +13,18 @@ import { VideoUi, videoUiLabels } from "@/components/VideoUi";
 import { FilePathCard } from "@/components/FilePathCard";
 import {
   isImagePath,
+  isMediaPath,
   isVideoPath,
   pathBasename,
   resolveInlineMediaToken,
 } from "@/lib/attachments";
 import {
-  classifyPathRef,
   fileSubtitle,
-  isAbsoluteFsPath,
   isHttpUrl,
+  isRealLocalAbsolutePath,
+  isSiteRootAbsolutePath,
   looksLikeFilePath,
+  normalizePathToken,
   resolveFileToken,
 } from "@/lib/pathRefs";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
@@ -103,13 +105,15 @@ function MessageResponseImpl({
   const smoothChildren = useSmoothStream(children, isAnimating);
 
   const renderPathOrUrl = (token: string, linkText?: string) => {
-    const raw = token.trim().replace(/^<|>$/g, "");
-    if (!raw) return null;
+    const rawIn = token.trim().replace(/^<|>$/g, "");
+    if (!rawIn) return null;
+    const raw = normalizePathToken(rawIn) || rawIn;
 
-    if (isHttpUrl(raw)) {
+    if (isHttpUrl(rawIn) || isHttpUrl(raw)) {
+      const url = isHttpUrl(rawIn) ? rawIn : raw;
       return (
         <FilePathCard
-          path={raw}
+          path={url}
           kind="url"
           projectPath={projectPath}
           labels={fileLabels}
@@ -122,9 +126,15 @@ function MessageResponseImpl({
       );
     }
 
-    // Prefer media map (images/videos session paths)
-    const mediaAbs = resolveInlineMediaToken(raw, imagePathMap);
-    if (mediaAbs && isImagePath(mediaAbs)) {
+    if (isSiteRootAbsolutePath(rawIn) || isSiteRootAbsolutePath(raw)) {
+      return null;
+    }
+
+    // Prefer media map (images/videos session paths) — real local only.
+    const mediaAbs =
+      resolveInlineMediaToken(raw, imagePathMap) ||
+      resolveInlineMediaToken(rawIn, imagePathMap);
+    if (mediaAbs && isImagePath(mediaAbs) && isRealLocalAbsolutePath(mediaAbs)) {
       return (
         <ImageUi
           className="md-body__img md-body__img--card"
@@ -136,7 +146,7 @@ function MessageResponseImpl({
         />
       );
     }
-    if (mediaAbs && isVideoPath(mediaAbs)) {
+    if (mediaAbs && isVideoPath(mediaAbs) && isRealLocalAbsolutePath(mediaAbs)) {
       return (
         <VideoUi
           key={mediaAbs}
@@ -148,67 +158,74 @@ function MessageResponseImpl({
       );
     }
 
-    if (!looksLikeFilePath(raw) && !mediaAbs) return null;
+    if (!looksLikeFilePath(raw) && !looksLikeFilePath(rawIn) && !mediaAbs) {
+      return null;
+    }
 
     // Verified absolute only (pathMap / absolute in text). Relative stays relative —
     // FilePathCard resolves via host smart open (no fake projectRoot joins).
     const resolved =
       mediaAbs ||
-      resolveFileToken(raw, { projectPath, pathMap: imagePathMap });
-    if (!resolved && !looksLikeFilePath(raw)) return null;
-
-    const pathToken = resolved || raw;
-    const kind = classifyPathRef(pathToken);
-    const videoAbs =
-      (resolved && isAbsoluteFsPath(resolved) && isVideoPath(resolved) && resolved) ||
-      (mediaAbs && isVideoPath(mediaAbs) && mediaAbs) ||
-      (isAbsoluteFsPath(raw) && isVideoPath(raw) && raw.replace(/\\/g, "/")) ||
-      null;
-    const imageAbs =
-      (resolved && isAbsoluteFsPath(resolved) && isImagePath(resolved) && resolved) ||
-      (mediaAbs && isImagePath(mediaAbs) && mediaAbs) ||
-      (isAbsoluteFsPath(raw) && isImagePath(raw) && raw.replace(/\\/g, "/")) ||
-      null;
-
-    if (imageAbs || (kind === "image" && resolved && isImagePath(resolved))) {
-      const src = imageAbs || resolved!;
-      if (isAbsoluteFsPath(src) && isImagePath(src)) {
-        return (
-          <ImageUi
-            className="md-body__img md-body__img--card"
-            src={src}
-            alt={linkText || pathBasename(src)}
-            path={src}
-            gallery={gallery}
-            labels={imageLabels}
-          />
-        );
-      }
+      resolveFileToken(raw, { projectPath, pathMap: imagePathMap }) ||
+      resolveFileToken(rawIn, { projectPath, pathMap: imagePathMap });
+    if (!resolved && !looksLikeFilePath(raw) && !looksLikeFilePath(rawIn)) {
+      return null;
     }
-    if (videoAbs || (kind === "video" && resolved && isVideoPath(resolved))) {
-      const src = videoAbs || resolved!;
-      if (isVideoPath(src)) {
-        return (
-          <VideoUi
-            key={src}
-            src={src}
-            path={isAbsoluteFsPath(src) ? src : undefined}
-            title={linkText || pathBasename(src)}
-            labels={videoLabels}
-          />
-        );
-      }
+
+    const pathToken = resolved || raw || rawIn;
+    const imageAbs =
+      (resolved && isRealLocalAbsolutePath(resolved) && isImagePath(resolved) && resolved) ||
+      (mediaAbs && isRealLocalAbsolutePath(mediaAbs) && isImagePath(mediaAbs) && mediaAbs) ||
+      (isRealLocalAbsolutePath(raw) && isImagePath(raw) && raw) ||
+      null;
+    const videoAbs =
+      (resolved && isRealLocalAbsolutePath(resolved) && isVideoPath(resolved) && resolved) ||
+      (mediaAbs && isRealLocalAbsolutePath(mediaAbs) && isVideoPath(mediaAbs) && mediaAbs) ||
+      (isRealLocalAbsolutePath(raw) && isVideoPath(raw) && raw) ||
+      null;
+
+    if (imageAbs && isImagePath(imageAbs)) {
+      return (
+        <ImageUi
+          className="md-body__img md-body__img--card"
+          src={imageAbs}
+          alt={linkText || pathBasename(imageAbs)}
+          path={imageAbs}
+          gallery={gallery}
+          labels={imageLabels}
+        />
+      );
+    }
+    if (videoAbs && isVideoPath(videoAbs)) {
+      return (
+        <VideoUi
+          key={videoAbs}
+          src={videoAbs}
+          path={videoAbs}
+          title={linkText || pathBasename(videoAbs)}
+          labels={videoLabels}
+        />
+      );
+    }
+
+    if (
+      isSiteRootAbsolutePath(pathToken) ||
+      (isMediaPath(pathToken) &&
+        !isRealLocalAbsolutePath(pathToken) &&
+        !pathToken.includes("/"))
+    ) {
+      return null;
     }
 
     return (
       <FilePathCard
-        path={raw}
+        path={pathToken}
         absolutePath={
-          resolved && isAbsoluteFsPath(resolved) ? resolved : undefined
+          resolved && isRealLocalAbsolutePath(resolved) ? resolved : undefined
         }
         projectPath={projectPath}
         kind="file"
-        subtitle={fileSubtitle(raw, locale === "en" ? "en" : "zh")}
+        subtitle={fileSubtitle(pathToken, locale === "en" ? "en" : "zh")}
         labels={fileLabels}
         onOpenInPanel={(t) => {
           if (t.type === "file" && t.path) {

@@ -36,7 +36,25 @@ Preview/office: `src/lib/filePreviewSrc.ts` (reassembles multi-Range for full-fi
 - Embedded browser webviews do **not** receive the token; they cannot read local media via this server.
 - Do not reintroduce `Access-Control-Allow-Origin: *` for media.
 
+## Path citation (agent + UI)
+
+| Kind | Agent should write | UI |
+|------|--------------------|-----|
+| Local media to preview | Real absolute path in backticks (real spaces, no shell `\ `) | ImageUi / VideoUi via loopback media |
+| Project code/docs | Project-relative (`apps/web/foo.ts`) | FilePathCard (basename); Host smart open |
+| Web/CMS assets | Full `https://…` | URL card — never treat `/images/…` as local FS |
+
+Host injects a short **path citation** block into session `--rules` (`path_citation_session_rules` in `official_aux.rs`). Soft guidance only.
+
+Frontend normalize (`src/lib/pathNormalize.ts`):
+
+- Shell-unescape POSIX paths (`file\ \(1\).png` → `file (1).png`)
+- Reject site-root absolutes (`/images/…`) for media HTTP
+- Fail soft: unresolved relative media → FilePathCard (or plain code for bare media basenames), not broken ImageUi
+- **FilePathCard open**: resolve first; if missing → mark card, do **not** open an empty resource tab
+- Bare media basenames (`manycore.png`) stay as inline code unless pathMap maps them to a real local abs
+
 ## Related
 
-- Path resolution: `session_resolve_relative_media`, `attachments.ts`, `sessionPathMap.ts`
+- Path resolution: `session_resolve_relative_media`, `attachments.ts`, `sessionPathMap.ts`, `pathNormalize.ts`
 - Allowlist: `path_scope.rs`

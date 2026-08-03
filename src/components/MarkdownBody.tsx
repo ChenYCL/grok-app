@@ -17,6 +17,11 @@ import {
   resolveInlineMediaToken,
   resolveMediaHref,
 } from "@/lib/attachments";
+import {
+  isRealLocalAbsolutePath,
+  isSiteRootAbsolutePath,
+  normalizeLocalPathToken,
+} from "@/lib/pathNormalize";
 
 function textFromChildren(children: ReactNode): string {
   if (children == null || children === false) return "";
@@ -48,6 +53,8 @@ export function MarkdownBody({
   }, [imagePathMap]);
 
   const renderMedia = (abs: string, alt?: string) => {
+    // Only real local abs — never site-root CMS paths.
+    if (!isRealLocalAbsolutePath(abs)) return null;
     if (isVideoPath(abs)) {
       return (
         <VideoUi
@@ -95,26 +102,37 @@ export function MarkdownBody({
             const inline = !className;
             if (inline) {
               const raw = textFromChildren(c).replace(/\n$/, "").trim();
+              if (isSiteRootAbsolutePath(raw)) {
+                return <code className="md-body__code-inline">{c}</code>;
+              }
               const abs = resolveInlineMediaToken(raw, imagePathMap);
-              if (abs) return renderMedia(abs, pathBasename(abs));
+              if (abs) {
+                const media = renderMedia(abs, pathBasename(abs));
+                if (media) return media;
+              }
               return <code className="md-body__code-inline">{c}</code>;
             }
             return <code className={className}>{c}</code>;
           },
           img: ({ src, alt }) => {
             if (!src) return null;
+            if (isSiteRootAbsolutePath(src)) return null;
             const mapped =
-              resolveInlineMediaToken(src, imagePathMap) ?? src;
-            if (isVideoPath(mapped)) {
+              resolveInlineMediaToken(src, imagePathMap) ??
+              normalizeLocalPathToken(src) ??
+              src;
+            if (isSiteRootAbsolutePath(mapped)) return null;
+            if (isVideoPath(mapped) && isRealLocalAbsolutePath(mapped)) {
               return renderMedia(
                 mapped,
                 typeof alt === "string" ? alt : pathBasename(mapped),
               );
             }
-            const local =
-              mapped.startsWith("/") || /^[A-Za-z]:[\\/]/.test(mapped)
-                ? mapped
-                : undefined;
+            // Remote http(s) images still render; local only when real abs.
+            const local = isRealLocalAbsolutePath(mapped) ? mapped : undefined;
+            if (!local && !/^https?:\/\//i.test(mapped) && !mapped.startsWith("data:")) {
+              return null;
+            }
             return (
               <ImageUi
                 className="md-body__img md-body__img--card"

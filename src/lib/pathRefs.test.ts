@@ -15,6 +15,32 @@ describe("normalizePathToken", () => {
     expect(resolveFileToken(abs)).toBe(abs);
   });
 
+  it("shell-unescapes absolute paths with spaces", () => {
+    const raw =
+      "/Users/me/Downloads/6A5ED46119BDACC7C24DC3B6FF3CF051\\ \\(1\\).png";
+    expect(normalizePathToken(raw)).toBe(
+      "/Users/me/Downloads/6A5ED46119BDACC7C24DC3B6FF3CF051 (1).png",
+    );
+    expect(looksLikeFilePath(raw)).toBe(true);
+    expect(resolveFileToken(raw)).toBe(
+      "/Users/me/Downloads/6A5ED46119BDACC7C24DC3B6FF3CF051 (1).png",
+    );
+  });
+
+  it("does not treat CMS site-root paths as file cards", () => {
+    expect(looksLikeFilePath("/images/partner-brands/manycore.png")).toBe(
+      false,
+    );
+    expect(resolveFileToken("/images/partner-brands/manycore.png")).toBeNull();
+  });
+
+  it("does not treat bare media basenames as file cards (OSS cites)", () => {
+    expect(looksLikeFilePath("manycore-20260730.png")).toBe(false);
+    expect(looksLikeFilePath("manycore.png")).toBe(false);
+    // Non-media bare names still can be path cards.
+    expect(looksLikeFilePath("README.md")).toBe(true);
+  });
+
   it("still strips leading ellipsis on relative tokens", () => {
     expect(normalizePathToken(".../foo/bar.mp4")).toBe("foo/bar.mp4");
     expect(normalizePathToken("…/videos/1.mp4")).toBe("videos/1.mp4");

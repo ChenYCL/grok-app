@@ -10,6 +10,13 @@ import {
   pathBasename,
   pathExt,
 } from "@/lib/attachments";
+import {
+  isRealLocalAbsolutePath,
+  isSiteRootAbsolutePath,
+  isWindowsStylePath,
+  normalizeLocalPathToken,
+  unescapeShellPath,
+} from "@/lib/pathNormalize";
 
 const CODE_EXTS =
   "ts|tsx|js|jsx|py|rs|go|java|kt|swift|c|cc|cpp|h|hpp|cs|rb|php|sh|bash|zsh|sql|vue|svelte|dart|lua|r|scala|zig|toml|yaml|yml|json|jsonc|css|scss|less|md|mdx|txt|log|html|htm|xml|csv|tsv|env|ini|conf|config|docx|docm|xlsx|xlsm|pptx|pptm|pdf|odt|ods|odp|zip|tar|gz|tgz|7z|rar|wasm|map|lock|gradle|cmake|dockerfile|makefile|svg";
@@ -28,19 +35,27 @@ export function isHttpUrl(s: string): boolean {
  *   `.../MANISH1027512/2071…/img_000.jpg`
  * Strip that prefix so the remaining multi-segment suffix can be resolved
  * via host smart open (project + sibling knowledge bases).
+ *
+ * Also restores shell escapes (`\ ` `\( `) on POSIX so Downloads paths with
+ * spaces open correctly; does not treat those backslashes as Windows separators.
  */
 export function normalizePathToken(s: string): string {
-  let t = s.trim().replace(/\\/g, "/");
+  let t = s.trim();
   if (!t) return t;
+  // Shell-unescape / Windows normalize before other transforms.
+  t = normalizeLocalPathToken(t) || t;
   // Absolute / home paths must keep their root — stripping leading `/` used to
   // turn `/Users/.../clip.mp4` into a relative token and break video cards on
   // history reload (FilePathCard instead of VideoUi).
   const abs =
+    isRealLocalAbsolutePath(t) ||
     t.startsWith("/") ||
     /^[A-Za-z]:\//.test(t) ||
     t === "~" ||
     t.startsWith("~/");
   if (abs) {
+    // Site-root CMS paths stay as-is for classification (not local open).
+    if (isSiteRootAbsolutePath(t)) return t;
     // Still collapse mid-path ellipsis if agents truncated long abs paths.
     if (t.includes("/.../") || t.includes("/…/")) {
       const parts = t.split(/\/(?:\.\.\.|…)+\//u);
@@ -70,9 +85,15 @@ export function looksLikeFilePath(s: string): boolean {
   if (t.includes("://")) return false;
   // Still-broken truncation (nothing usable left)
   if (t.startsWith("...") || t.startsWith("…")) return false;
-  // Absolute
-  if (t.startsWith("/") || /^[A-Za-z]:[\\/]/.test(t)) {
+  // CMS/site root (`/images/...`) — leave as plain code, not a path card.
+  if (isSiteRootAbsolutePath(t)) return false;
+  // Absolute (real local or home)
+  if (isRealLocalAbsolutePath(t) || isHomeRelativePath(t)) {
     return FILE_EXT_RE.test(t) || /\/[^/]+$/.test(t);
+  }
+  // Other absolute-looking tokens without a known FS root: not a file card.
+  if (t.startsWith("/") && !isWindowsStylePath(t)) {
+    return false;
   }
   // Relative with slash + extension (project / KB paths)
   // Prefer ≥2 segments after normalize so bare `img_000.jpg` stays out
@@ -84,8 +105,11 @@ export function looksLikeFilePath(s: string): boolean {
   ) {
     return true;
   }
-  // Bare filename with known extension
+  // Bare filename with known extension — but not bare media basenames.
+  // Agent often cites OSS / CMS names (`manycore.png`) without a real local
+  // file; those stay as inline code unless pathMap resolves them to ImageUi.
   if (/^[\w.-]+\.\w{1,12}$/.test(t) && FILE_EXT_RE.test(t)) {
+    if (isMediaPath(t)) return false;
     return true;
   }
   return false;
@@ -96,18 +120,25 @@ export function looksLikeFilePath(s: string): boolean {
  * expands it in `fs_open_path` — treat like an absolute open token.
  */
 export function isHomeRelativePath(s: string): boolean {
-  const t = s.trim();
+  const t = unescapeShellPath(s).trim();
   return t === "~" || t.startsWith("~/") || t.startsWith("~\\");
 }
 
+/**
+ * Looks like an absolute path token (includes site-root `/images/...`).
+ * Prefer {@link isRealLocalAbsolutePath} for media open / path_scope.
+ */
 export function isAbsoluteFsPath(s: string): boolean {
-  const t = s.trim();
+  const t = normalizeLocalPathToken(s) || s.trim();
   return (
     t.startsWith("/") ||
     /^[A-Za-z]:[\\/]/.test(t) ||
     isHomeRelativePath(t)
   );
 }
+
+/** Re-export real-local check for markdown / media cards. */
+export { isRealLocalAbsolutePath, isSiteRootAbsolutePath, normalizeLocalPathToken };
 
 /** Join project root + relative path (posix-ish). */
 export function joinProjectPath(projectRoot: string, relative: string): string {
@@ -128,8 +159,8 @@ function uniqueParentDirFromPathMap(
 ): string | null {
   const parents = new Set<string>();
   for (const abs of Object.values(pathMap)) {
-    const n = (abs || "").trim().replace(/\\/g, "/");
-    if (!n || isHttpUrl(n)) continue;
+    const n = normalizeLocalPathToken(abs || "") || (abs || "").trim();
+    if (!n || isHttpUrl(n) || !isRealLocalAbsolutePath(n)) continue;
     const i = n.lastIndexOf("/");
     if (i <= 0) continue;
     parents.add(n.slice(0, i));
@@ -156,18 +187,23 @@ export function resolveFileToken(
 ): string | null {
   const raw = token.trim().replace(/^<|>$/g, "");
   if (!raw) return null;
+  // Site CMS roots are not local files — never invent open targets.
+  if (isSiteRootAbsolutePath(raw)) return null;
   if (opts?.pathMap?.[raw]) return opts.pathMap[raw]!;
-  // Prefer normalized form (strip agent ellipsis) for map + relative open.
+  // Prefer normalized form (shell-unescape + strip agent ellipsis).
   // Do not strip leading `/` or `~/` — those are openable absolute/home paths.
-  const t = isAbsoluteFsPath(raw)
-    ? raw.trim().replace(/\\/g, "/")
-    : normalizePathToken(raw);
+  const t = normalizePathToken(raw);
   if (!t) return null;
+  if (isSiteRootAbsolutePath(t)) return null;
   if (opts?.pathMap?.[t]) return opts.pathMap[t]!;
-  const norm = t.replace(/\\/g, "/");
+  const norm = normalizeLocalPathToken(t) || t;
   if (opts?.pathMap?.[norm]) return opts.pathMap[norm]!;
-  if (isAbsoluteFsPath(t) || isAbsoluteFsPath(raw)) {
-    return isAbsoluteFsPath(raw) ? raw.replace(/\\/g, "/") : norm;
+  // Real local absolute / home only (not /images/...).
+  if (isRealLocalAbsolutePath(norm) || isHomeRelativePath(norm)) {
+    return norm;
+  }
+  if (isRealLocalAbsolutePath(raw) || isHomeRelativePath(raw)) {
+    return normalizeLocalPathToken(raw) || raw;
   }
   // Relative: keep as relative token (do not join project root)
   if (looksLikeFilePath(raw) && !isHttpUrl(raw)) {

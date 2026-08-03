@@ -15,6 +15,11 @@
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { isTauri } from "@/lib/api";
+import {
+  isRealLocalAbsolutePath,
+  isSiteRootAbsolutePath,
+  normalizeLocalPathToken,
+} from "@/lib/pathNormalize";
 
 /** Cache path → viewable URL (or null on hard failure). */
 const resolveCache = new Map<string, string | null>();
@@ -70,19 +75,22 @@ export function normalizeMediaRef(pathOrUrl: string): string | null {
     }
   }
   if (isViewableSrc(raw)) return raw;
-  // Collapse accidental double slashes in absolute local paths only
-  // (e.g. /var/folders/…/T//chatcut-frames/…), not protocol-relative.
-  if (raw.startsWith("/") && !raw.startsWith("//")) {
-    return raw.replace(/\/{2,}/g, "/");
-  }
-  if (/^[A-Za-z]:[\\/]/.test(raw)) return raw;
-  return raw;
+  // CMS/site roots must not hit loopback media as local paths.
+  if (isSiteRootAbsolutePath(raw)) return null;
+  // Shell-unescape + collapse accidental double slashes on real local abs only.
+  const local = normalizeLocalPathToken(raw);
+  if (local && isRealLocalAbsolutePath(local)) return local;
+  if (/^[A-Za-z]:[\\/]/.test(raw)) return normalizeLocalPathToken(raw) || raw;
+  // Relative tokens (images/1.jpg) pass through for pathMap resolve upstream.
+  if (local && !local.startsWith("/")) return local;
+  return local || raw;
 }
 
 function looksAbsoluteFsPath(raw: string): boolean {
   // Protocol-relative //host is NOT a filesystem path.
   if (raw.startsWith("//")) return false;
-  return raw.startsWith("/") || /^[A-Za-z]:[\\/]/.test(raw);
+  // Only real local roots — never `/images/...` CMS paths.
+  return isRealLocalAbsolutePath(raw);
 }
 
 /**

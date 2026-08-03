@@ -1442,18 +1442,42 @@ If search_tool is partial/empty, retry once with query "official-aux" or "x_keyw
     )
 }
 
-/// Merge user session extra_rules with official-aux inject rules.
+/// Narrow path-citation rules for Grok App UI (all routes).
+///
+/// Soft guidance only — Host still normalizes shell escapes / rejects site-root
+/// paths. Prefer short project-relative code paths; absolute only for local media.
+pub fn path_citation_session_rules() -> &'static str {
+    r#"Path citations (Grok App UI):
+- Local media the user should preview (images/videos on disk): put the real absolute filesystem path in backticks. Use real spaces — never shell escapes like `\ ` or `\(1\)`.
+- You may also cite a short session-relative form after the absolute path (e.g. `images/1.jpg`).
+- Project code and docs: prefer project-relative paths (`apps/web/foo.ts`). Do not expand every file to a long absolute path.
+- Web/CMS/OSS assets: use full `https://…` URLs. Never present site-root paths like `/images/…` as local files.
+- Do not invent paths that do not exist on disk."#
+}
+
+/// Merge user session extra_rules with always-on path rules + official-aux inject.
 pub fn merge_extra_rules(user: Option<&str>) -> Option<String> {
+    let path = path_citation_session_rules().trim();
     let inject = inject_session_rules();
     let user = user
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    match (user, inject) {
-        (Some(u), Some(i)) => Some(format!("{u}\n\n{i}")),
-        (Some(u), None) => Some(u),
-        (None, Some(i)) => Some(i),
-        (None, None) => None,
+    let mut parts: Vec<String> = Vec::with_capacity(3);
+    if let Some(u) = user {
+        parts.push(u);
+    }
+    // Always inject path citation rules (short; display stays basename via UI).
+    if !path.is_empty() {
+        parts.push(path.to_string());
+    }
+    if let Some(i) = inject {
+        parts.push(i);
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n\n"))
     }
 }
 
@@ -2279,6 +2303,11 @@ A UI screenshot.
         // Without credentials inject may be None — still ok to call.
         let m = merge_extra_rules(Some("prefer tests"));
         assert!(m.as_deref().unwrap_or("").contains("prefer tests"));
+        // Path citation rules always merge (display stays short in UI).
+        assert!(m.as_deref().unwrap_or("").contains("Path citations"));
+        let only_path = merge_extra_rules(None).expect("path rules alone");
+        assert!(only_path.contains("Path citations"));
+        assert!(only_path.contains("project-relative"));
     }
 
     #[test]

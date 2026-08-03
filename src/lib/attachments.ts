@@ -6,6 +6,13 @@
  * (`images/1.jpg`, `videos/1.mp4`, markdown links, absolute paths).
  */
 
+import {
+  isRealLocalAbsolutePath,
+  isSiteRootAbsolutePath,
+  normalizeLocalPathToken,
+  unescapeShellPath,
+} from "@/lib/pathNormalize";
+
 export interface Attachment {
   path: string;
   name: string;
@@ -39,9 +46,9 @@ export function buildAgentPrompt(
   return body ? `${body}\n\n${refs}` : refs;
 }
 
-/** Basename without emoji. */
+/** Basename without emoji. Shell-unescapes POSIX paths first. */
 export function pathBasename(path: string): string {
-  const norm = path.replace(/\\/g, "/");
+  const norm = normalizeLocalPathToken(path) || path.replace(/\\/g, "/");
   const parts = norm.split("/").filter(Boolean);
   return parts[parts.length - 1] || path;
 }
@@ -136,7 +143,8 @@ export function isMediaPath(path: string): boolean {
 }
 
 function isAbsoluteFsPath(path: string): boolean {
-  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
+  // Real local only — site roots like `/images/x.png` must not become attachments.
+  return isRealLocalAbsolutePath(path);
 }
 
 /**
@@ -158,7 +166,7 @@ export const RELATIVE_MEDIA_ROOTS = [
 
 /** Session-relative media folder segment from an absolute path (`images/1.jpg`, `outputs/...`). */
 export function mediaTailFromPath(abs: string): string | null {
-  const norm = abs.replace(/\\/g, "/");
+  const norm = normalizeLocalPathToken(abs) || abs.replace(/\\/g, "/");
   let best: string | null = null;
   let bestIdx = -1;
   for (const folder of RELATIVE_MEDIA_ROOTS) {
@@ -174,35 +182,92 @@ export function mediaTailFromPath(abs: string): string | null {
 
 /**
  * Extract absolute local image/video paths mentioned in assistant text
- * (backticks, plain paths). Backtick form allows spaces.
+ * (backticks, plain paths). Backtick form allows spaces; prose may use
+ * shell escapes (`\ ` `\( `) which are unescaped before attach.
  */
 export function extractMediaPathsFromContent(content: string): Attachment[] {
   if (!content) return [];
   const seen = new Set<string>();
   const out: Attachment[] = [];
   const push = (raw: string) => {
-    const path = raw.trim();
+    if (!raw) return;
+    // Reject CMS site roots before normalize invents nothing useful.
+    if (isSiteRootAbsolutePath(raw)) return;
+    const path = normalizeLocalPathToken(raw) || raw.trim();
     if (!path || seen.has(path) || !isMediaPath(path)) return;
-    if (!isAbsoluteFsPath(path)) return;
+    if (!isRealLocalAbsolutePath(path)) return;
     seen.add(path);
     out.push({ path, name: pathBasename(path), isDir: false });
   };
 
   const tickRe = new RegExp(
-    `\`((?:\\/|[A-Za-z]:[\\\\/])[^\`]+?\\.(?:${MEDIA_EXT_RE}))\``,
+    `\`((?:\\/|[A-Za-z]:[\\\\/]|~\\/)[^\`]+?\\.(?:${MEDIA_EXT_RE}))\``,
     "gi",
   );
   let m: RegExpExecArray | null;
   while ((m = tickRe.exec(content)) !== null) push(m[1] || "");
 
-  // Allow CJK punctuation / colon before absolute paths (e.g. "位置：/Users/…/a.mp4").
-  const bareRe = new RegExp(
-    `(?:^|[\\s"'()：:，,、【\\[\\]])((?:\\/|[A-Za-z]:[\\\\/])[^\\s\`"'<>|*?]+\\.(?:${MEDIA_EXT_RE}))\\b`,
-    "gi",
-  );
-  while ((m = bareRe.exec(content)) !== null) push(m[1] || "");
+  // Bare paths: scan for real-local roots; allow shell-escaped spaces/parens.
+  // Rejects site roots inside push() via isSiteRootAbsolutePath.
+  extractBareAbsoluteMedia(content, push);
 
   return out;
+}
+
+/**
+ * Scan prose for absolute media paths, including shell-escaped spaces
+ * (`file\ \(1\).png`). Site-root paths are filtered by `push`.
+ *
+ * Roots may follow CJK without a space (`logo换成/Users/…`).
+ */
+function extractBareAbsoluteMedia(
+  content: string,
+  push: (raw: string) => void,
+): void {
+  // Find known local roots anywhere (not only after whitespace).
+  const rootRe =
+    /(\/(?:Users|home|tmp|var|private|opt|Volumes|Applications|System|Library|mnt|run|root|sess)\/|~\/|[A-Za-z]:[\\/])/gi;
+  let sm: RegExpExecArray | null;
+  const mediaExt = new RegExp(`\\.(?:${MEDIA_EXT_RE})$`, "i");
+  while ((sm = rootRe.exec(content)) !== null) {
+    // Skip if this looks like a URL path segment (…://host/Users/…).
+    const before = content.slice(Math.max(0, sm.index - 8), sm.index);
+    if (/:\/\//.test(before) || before.endsWith("://") || /https?:$/i.test(before)) {
+      continue;
+    }
+    const start = sm.index;
+    let i = start;
+    let out = "";
+    while (i < content.length) {
+      const c = content[i]!;
+      if (c === "\\" && i + 1 < content.length) {
+        // Keep escape sequence for push() to unescape.
+        out += c + content[i + 1]!;
+        i += 2;
+        continue;
+      }
+      // Unescaped whitespace / markdown delimiters end the path.
+      if (/[\s`"'<>|*?]/.test(c)) break;
+      // CJK / sentence punctuation often follows paths without space.
+      if (/[，。；：、！？）】》]/.test(c)) break;
+      out += c;
+      i += 1;
+      if (out.length > 800) break;
+    }
+    if (mediaExt.test(out)) push(out);
+    // Advance past this match to avoid tight loops.
+    rootRe.lastIndex = Math.max(rootRe.lastIndex, start + Math.max(out.length, 1));
+  }
+
+  // Simple bare paths without spaces. Require a non-path boundary so we never
+  // re-match mid-path (`…/Support/com.grokapp/…/images/1.jpg` → false `/com…`).
+  // Allows CJK glue: `路径：/tmp/a.png` and `换成/Users/…/a.png`.
+  const bareSimpleRe = new RegExp(
+    `(?<![A-Za-z0-9_./-])((?:\\/(?!images?\\/|static\\/|assets?\\/|public\\/|uploads?\\/)[^\\s\`"'<>|*?]+|~\\/[^\\s\`"'<>|*?]+|[A-Za-z]:[\\\\/][^\\s\`"'<>|*?]+)\\.(?:${MEDIA_EXT_RE}))\\b`,
+    "gi",
+  );
+  let m: RegExpExecArray | null;
+  while ((m = bareSimpleRe.exec(content)) !== null) push(m[1] || "");
 }
 
 /** @deprecated use extractMediaPathsFromContent */
@@ -453,13 +518,31 @@ export function resolveInlineMediaToken(
 ): string | null {
   const t = token.trim();
   if (!t) return null;
-  if (pathMap?.[t]) return pathMap[t]!;
-  const norm = t.replace(/\\/g, "/");
-  if (pathMap?.[norm]) return pathMap[norm]!;
-  if (pathMap?.[norm.toLowerCase()]) return pathMap[norm.toLowerCase()]!;
-  // Absolute path works without a map
-  if (isAbsoluteFsPath(norm) && isMediaPath(norm)) {
-    return pathMap?.[norm] || norm;
+  if (isSiteRootAbsolutePath(t)) return null;
+
+  const mappedOk = (abs: string | undefined): string | null => {
+    if (!abs) return null;
+    if (isSiteRootAbsolutePath(abs)) return null;
+    if (isRealLocalAbsolutePath(abs) && isMediaPath(abs)) return abs;
+    return null;
+  };
+
+  // Relative short tokens (images/1.jpg) resolve only via pathMap.
+  const fromMap =
+    mappedOk(pathMap?.[t]) ||
+    mappedOk(pathMap?.[t.replace(/\\/g, "/")]);
+  if (fromMap) return fromMap;
+
+  const norm = normalizeLocalPathToken(t) || unescapeShellPath(t);
+  if (!norm) return null;
+  if (isSiteRootAbsolutePath(norm)) return null;
+  const fromNorm =
+    mappedOk(pathMap?.[norm]) ||
+    mappedOk(pathMap?.[norm.toLowerCase()]);
+  if (fromNorm) return fromNorm;
+  // Real local absolute without a map.
+  if (isRealLocalAbsolutePath(norm) && isMediaPath(norm)) {
+    return norm;
   }
   return null;
 }

@@ -14,24 +14,35 @@ import {
   isAbsoluteFsPath,
   isHomeRelativePath,
   isHttpUrl,
+  isRealLocalAbsolutePath,
+  isSiteRootAbsolutePath,
   normalizePathToken,
 } from "@/lib/pathRefs";
 import { pathBasename } from "@/lib/attachments";
+import { normalizeLocalPathToken } from "@/lib/pathNormalize";
 
 const ABS_PATH_RE =
   /(?:^|[\s`"'([{])((?:\/(?:Users|home|tmp|var|private|opt|Volumes)\/[^\s`"'\]})]+)|(?:[A-Za-z]:[\\/][^\s`"'\]})]+)|(?:~\/[^\s`"'\]})]+))/g;
 
 function normAbs(p: string): string {
-  return p.replace(/\\/g, "/").replace(/\/+$/, "");
+  const n = normalizeLocalPathToken(p) || p.replace(/\\/g, "/");
+  return n.replace(/\/+$/, "");
 }
 
 function isPlausibleAbsFile(p: string): boolean {
   const t = normAbs(p.trim());
   if (!t || t.length > 800) return false;
   if (isHttpUrl(t) || t.includes("://")) return false;
+  if (isSiteRootAbsolutePath(t)) return false;
   // Real absolute (`/Users/...`) or home-relative (`~/.grok/docs/...`) —
   // agents commonly cite CLI docs with a tilde instead of expanding $HOME.
-  if (!isAbsoluteFsPath(t) && !isHomeRelativePath(t)) return false;
+  if (
+    !isRealLocalAbsolutePath(t) &&
+    !isAbsoluteFsPath(t) &&
+    !isHomeRelativePath(t)
+  ) {
+    return false;
+  }
   // Prefer paths that look like files (have an extension) or known long tails.
   const base = pathBasename(t);
   if (!base || base === t) return false;
@@ -43,7 +54,7 @@ export function collectAbsolutePathsFromMessage(m: ChatMessage): string[] {
   const out: string[] = [];
   const push = (raw?: string | null) => {
     if (!raw) return;
-    const t = raw.trim().replace(/\\/g, "/");
+    const t = normalizeLocalPathToken(raw) || raw.trim();
     if (!isPlausibleAbsFile(t)) return;
     out.push(normAbs(t));
   };

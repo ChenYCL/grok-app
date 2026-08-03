@@ -14,15 +14,16 @@ import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import { HighlightedText } from "@/components/HighlightedText";
 import {
   isImagePath,
+  isMediaPath,
   isVideoPath,
   pathBasename,
   resolveInlineMediaToken,
 } from "@/lib/attachments";
 import {
-  classifyPathRef,
   fileSubtitle,
-  isAbsoluteFsPath,
   isHttpUrl,
+  isRealLocalAbsolutePath,
+  isSiteRootAbsolutePath,
   looksLikeFilePath,
   normalizePathToken,
   resolveFileToken,
@@ -251,7 +252,7 @@ export const MarkdownChat = memo(function MarkdownChat({
   const renderPathOrUrl = (token: string, linkText?: string) => {
     const rawIn = token.trim().replace(/^<|>$/g, "");
     if (!rawIn) return null;
-    // Prefer ellipsis-stripped form for open/search; keep original for display map
+    // Prefer ellipsis-stripped + shell-unescaped form for open/search.
     const raw = normalizePathToken(rawIn) || rawIn;
 
     // Thinking: keep URL/path as original text (no FilePathCard). Media still
@@ -277,10 +278,16 @@ export const MarkdownChat = memo(function MarkdownChat({
       );
     }
 
+    // CMS site-root paths stay plain code — never fake ImageUi.
+    if (isSiteRootAbsolutePath(rawIn) || isSiteRootAbsolutePath(raw)) {
+      return null;
+    }
+
     const mediaAbs =
       resolveInlineMediaToken(raw, imagePathMap) ||
       resolveInlineMediaToken(rawIn, imagePathMap);
-    if (mediaAbs && isImagePath(mediaAbs)) {
+    // Only real local abs for media cards (pathMap already verified in resolve).
+    if (mediaAbs && isImagePath(mediaAbs) && isRealLocalAbsolutePath(mediaAbs)) {
       return (
         <ImageUi
           className="md-body__img md-body__img--card"
@@ -292,7 +299,7 @@ export const MarkdownChat = memo(function MarkdownChat({
         />
       );
     }
-    if (mediaAbs && isVideoPath(mediaAbs)) {
+    if (mediaAbs && isVideoPath(mediaAbs) && isRealLocalAbsolutePath(mediaAbs)) {
       return (
         <VideoUi
           key={mediaAbs}
@@ -321,66 +328,69 @@ export const MarkdownChat = memo(function MarkdownChat({
       return null;
     }
 
-    // Prefer multi-segment relative after ellipsis strip for smart open
+    // Prefer multi-segment relative after ellipsis strip for smart open.
+    // Display token: keep short relative when we only have that; abs is for open.
     const pathToken = resolved || raw || rawIn;
-    const kind = classifyPathRef(pathToken);
-    // Video/image by extension on any candidate — history reload often has
-    // absolute paths in prose without a populated pathMap; never demote those
-    // to a generic document FilePathCard.
+    // Video/image only when we have a real local absolute (pathMap or text).
+    // Never promote site-root or unresolved relative media to ImageUi (broken cards).
     const videoAbs =
-      (resolved && isAbsoluteFsPath(resolved) && isVideoPath(resolved) && resolved) ||
-      (mediaAbs && isVideoPath(mediaAbs) && mediaAbs) ||
-      (isAbsoluteFsPath(rawIn) && isVideoPath(rawIn) && rawIn.replace(/\\/g, "/")) ||
-      (isAbsoluteFsPath(raw) && isVideoPath(raw) && raw) ||
+      (resolved && isRealLocalAbsolutePath(resolved) && isVideoPath(resolved) && resolved) ||
+      (mediaAbs && isRealLocalAbsolutePath(mediaAbs) && isVideoPath(mediaAbs) && mediaAbs) ||
+      (isRealLocalAbsolutePath(raw) && isVideoPath(raw) && raw) ||
+      (isRealLocalAbsolutePath(rawIn) && isVideoPath(rawIn) && normalizePathToken(rawIn)) ||
       null;
     const imageAbs =
-      (resolved && isAbsoluteFsPath(resolved) && isImagePath(resolved) && resolved) ||
-      (mediaAbs && isImagePath(mediaAbs) && mediaAbs) ||
-      (isAbsoluteFsPath(rawIn) && isImagePath(rawIn) && rawIn.replace(/\\/g, "/")) ||
-      (isAbsoluteFsPath(raw) && isImagePath(raw) && raw) ||
+      (resolved && isRealLocalAbsolutePath(resolved) && isImagePath(resolved) && resolved) ||
+      (mediaAbs && isRealLocalAbsolutePath(mediaAbs) && isImagePath(mediaAbs) && mediaAbs) ||
+      (isRealLocalAbsolutePath(raw) && isImagePath(raw) && raw) ||
+      (isRealLocalAbsolutePath(rawIn) && isImagePath(rawIn) && normalizePathToken(rawIn)) ||
       null;
 
-    if (imageAbs || (kind === "image" && resolved && isImagePath(resolved))) {
-      const src = imageAbs || resolved!;
-      if (isAbsoluteFsPath(src) && isImagePath(src)) {
-        return (
-          <ImageUi
-            className="md-body__img md-body__img--card"
-            src={src}
-            alt={linkText || pathBasename(src)}
-            path={src}
-            gallery={gallery}
-            labels={imageLabels}
-          />
-        );
-      }
+    if (imageAbs && isImagePath(imageAbs)) {
+      return (
+        <ImageUi
+          className="md-body__img md-body__img--card"
+          src={imageAbs}
+          alt={linkText || pathBasename(imageAbs)}
+          path={imageAbs}
+          gallery={gallery}
+          labels={imageLabels}
+        />
+      );
     }
-    if (videoAbs || (kind === "video" && resolved && isVideoPath(resolved))) {
-      const src = videoAbs || resolved!;
-      if (isVideoPath(src)) {
-        // Absolute preferred; relative still shows a video card (poster / play)
-        // so history never falls back to a document chip for .mp4/.webm/…
-        return (
-          <VideoUi
-            key={src}
-            src={src}
-            path={isAbsoluteFsPath(src) ? src : undefined}
-            title={linkText || pathBasename(src)}
-            labels={videoLabels}
-          />
-        );
-      }
+    if (videoAbs && isVideoPath(videoAbs)) {
+      return (
+        <VideoUi
+          key={videoAbs}
+          src={videoAbs}
+          path={videoAbs}
+          title={linkText || pathBasename(videoAbs)}
+          labels={videoLabels}
+        />
+      );
     }
+    // Unresolved bare media / site roots: leave as plain code (no dead FilePathCard).
+    const tokenForCard = pathToken;
+    if (
+      isSiteRootAbsolutePath(tokenForCard) ||
+      (isMediaPath(tokenForCard) &&
+        !isRealLocalAbsolutePath(tokenForCard) &&
+        !tokenForCard.includes("/"))
+    ) {
+      return null;
+    }
+    // Relative media without pathMap: still allow multi-segment FilePathCard
+    // (host smart-open); open fails soft if missing — never empty resource tab.
 
     return (
       <FilePathCard
-        path={pathToken}
+        path={tokenForCard}
         absolutePath={
-          resolved && isAbsoluteFsPath(resolved) ? resolved : undefined
+          resolved && isRealLocalAbsolutePath(resolved) ? resolved : undefined
         }
         projectPath={projectPath}
         kind="file"
-        subtitle={fileSubtitle(pathToken, locale === "en" ? "en" : "zh")}
+        subtitle={fileSubtitle(tokenForCard, locale === "en" ? "en" : "zh")}
         labels={fileLabels}
         onOpenInPanel={(t) => {
           if (t.type === "file" && t.path) {
