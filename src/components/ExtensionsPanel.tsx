@@ -1237,11 +1237,25 @@ export function ExtensionsPanel({
   const doctorLastLabel = useMemo(() => {
     if (!doctorLastAt) return null;
     try {
-      return new Date(doctorLastAt).toLocaleString();
+      const d = new Date(doctorLastAt);
+      if (Number.isNaN(d.getTime())) return null;
+      const loc =
+        locale === "zh" || locale === "zh-TW"
+          ? "zh-CN"
+          : locale === "en"
+            ? "en-US"
+            : undefined;
+      return d.toLocaleString(loc, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     } catch {
       return null;
     }
-  }, [doctorLastAt]);
+  }, [doctorLastAt, locale]);
 
   const visiblePlugins = useMemo(
     () => filterPluginsByLoadState(plugins, pluginFilter),
@@ -1912,6 +1926,15 @@ export function ExtensionsPanel({
           <span className="ext-count">{servers.length}</span>
         ) : null}
         <span className="ext-h2-actions">
+          {doctorLastLabel ? (
+            <span
+              className="ext-h2-meta"
+              role="status"
+              title={tr("ext.mcp.doctorLastAt", { time: doctorLastLabel })}
+            >
+              {tr("ext.mcp.doctorLastAt", { time: doctorLastLabel })}
+            </span>
+          ) : null}
           <button
             type="button"
             className="btn btn--ghost ext-bulk-btn"
@@ -1943,11 +1966,6 @@ export function ExtensionsPanel({
         </span>
       </h2>
       <div className="settings-card ext-card">
-        {doctorLastLabel ? (
-          <p className="ext-mcp-last-doctor" role="status">
-            {tr("ext.mcp.doctorLastAt", { time: doctorLastLabel })}
-          </p>
-        ) : null}
         {loading && <p className="ext-empty">{tr("ext.mcp.loading")}</p>}
         {!loading && servers.length === 0 && (
           <p className="ext-empty">

@@ -909,7 +909,7 @@ export function MemoryBrowserPanel({
           </>
         }
       >
-        <p className="settings-row__desc" style={{ margin: 0 }}>
+        <p className="settings-row__desc is-flush">
           {t("settings.memoryBrowser.deleteConfirmMsg", {
             name: deleteTarget?.relativePath || deleteTarget?.name || "",
           })}
@@ -954,7 +954,7 @@ export function MemoryBrowserPanel({
           </>
         }
       >
-        <p className="settings-row__desc" style={{ margin: 0 }}>
+        <p className="settings-row__desc is-flush">
           {clearScope
             ? t(clearConfirmMsgKey(clearScope))
             : t("settings.memoryOps.clear.confirmMsg.workspace")}

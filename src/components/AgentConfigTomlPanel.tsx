@@ -138,7 +138,7 @@ export function AgentConfigTomlPanel({ locale }: { locale: Locale }) {
         <div className="settings-row__label">{t("settings.configTomlView")}</div>
         <div className="settings-row__desc">{t("settings.configTomlViewDesc")}</div>
       </div>
-      <div className="settings-row__actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="settings-row__actions">
         <button
           type="button"
           className="btn btn--ghost btn--sm"

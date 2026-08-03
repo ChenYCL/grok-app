@@ -573,7 +573,7 @@ export function ShortcutsSettingsPanel({
           </>
         }
       >
-        <p className="settings-row__desc" style={{ margin: 0 }}>
+        <p className="settings-row__desc is-flush">
           {t("settings.shortcuts.resetAllMsg", { n: resetAllPlan.count })}
         </p>
       </GlassModal>

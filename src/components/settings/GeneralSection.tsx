@@ -456,7 +456,6 @@ export function GeneralSection() {
                 />
                 <div
                   className="settings-row__desc"
-                  style={{ marginTop: 8 }}
                   id="settings-anchor-cliPermissionMode"
                 >
                   {t("settings.permissionCliMode", {
@@ -511,7 +510,7 @@ export function GeneralSection() {
                     ),
                   }))}
                 />
-                <div className="settings-row__desc" style={{ marginTop: 8 }}>
+                <div className="settings-row__desc">
                   {t("settings.permissionCliAdvancedHint", {
                     mode: policyToCliPermissionMode(policy),
                   })}
@@ -538,12 +537,12 @@ export function GeneralSection() {
                       label: t(o.labelKey),
                     }))}
                   />
-                  <div className="settings-row__desc" style={{ marginTop: 8 }}>
+                  <div className="settings-row__desc">
                     {t(sandboxProfileHelpKey(sandboxProfile || "off"))}
                   </div>
                   {sandboxProfile === RECOMMENDED_SANDBOX_PROFILE ||
                   (sandboxProfile || "off") === "off" ? (
-                    <div className="settings-row__hint" style={{ marginTop: 6 }}>
+                    <div className="settings-row__hint">
                       {t("settings.sandbox.recommendedNote")}
                     </div>
                   ) : null}
@@ -565,10 +564,7 @@ export function GeneralSection() {
                         (platform === "mac" || platform === "other")
                       ) {
                         return (
-                          <div
-                            className="settings-row__hint"
-                            style={{ marginTop: 6 }}
-                          >
+                          <div className="settings-row__hint">
                             {t("settings.sandbox.networkLinuxOnly")}
                           </div>
                         );
@@ -579,7 +575,6 @@ export function GeneralSection() {
                       <div
                         className="settings-row__hint is-danger"
                         role="status"
-                        style={{ marginTop: 6 }}
                       >
                         {t(sandboxSoftFailMessageKey(soft), {
                           min: SANDBOX_MIN_CLI,
@@ -892,10 +887,7 @@ export function GeneralSection() {
                     autoComplete="off"
                     aria-label={t("settings.agentProfilePath")}
                   />
-                  <div
-                    className="settings-row__actions"
-                    style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
-                  >
+                  <div className="settings-row__actions">
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"
@@ -963,17 +955,13 @@ export function GeneralSection() {
                   />
                   {agentsJsonError ? (
                     <div
-                      className="settings-row__desc"
+                      className="settings-row__desc is-danger"
                       role="alert"
-                      style={{ color: "var(--danger, #e35)" }}
                     >
                       {agentsJsonError}
                     </div>
                   ) : null}
-                  <div
-                    className="settings-row__actions"
-                    style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
-                  >
+                  <div className="settings-row__actions">
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"
@@ -1079,7 +1067,7 @@ export function GeneralSection() {
                       },
                     ]}
                   />
-                  <div className="settings-row__desc" style={{ marginTop: 8 }}>
+                  <div className="settings-row__desc">
                     {(() => {
                       const helpByMode: Record<string, string> = {
                         summary: "settings.compactionMode.summary.help",
@@ -1133,7 +1121,7 @@ export function GeneralSection() {
                       },
                     ]}
                   />
-                  <div className="settings-row__desc" style={{ marginTop: 8 }}>
+                  <div className="settings-row__desc">
                     {t("settings.compactionDetail.help")}
                   </div>
                 </div>
@@ -1349,18 +1337,13 @@ export function GeneralSection() {
                           onChange={() => onTodoGateEnabled(!todoGateEnabled)}
                           ariaLabel={t("settings.todoGate")}
                         />
-                        <div
-                          className="settings-row__hint"
-                          role="status"
-                          style={{ marginTop: 6 }}
-                        >
+                        <div className="settings-row__hint" role="status">
                           {t(todoGateView.softRespawnKey)}
                         </div>
                         {todoGateView.cliSoftFailKey ? (
                           <div
                             className="settings-row__hint is-danger"
                             role="status"
-                            style={{ marginTop: 4 }}
                           >
                             {t(todoGateView.cliSoftFailKey, {
                               min: TODO_GATE_MIN_CLI,
@@ -1375,7 +1358,6 @@ export function GeneralSection() {
                               : "")
                           }
                           role="status"
-                          style={{ marginTop: 4 }}
                           data-todo-gate-activity={todoGateView.activity.kind}
                         >
                           {t(
@@ -1424,11 +1406,7 @@ export function GeneralSection() {
                             }}
                             aria-label={t("settings.todoGateMaxFires")}
                           />
-                          <div
-                            className="settings-row__hint"
-                            role="status"
-                            style={{ marginTop: 6 }}
-                          >
+                          <div className="settings-row__hint" role="status">
                             {t(todoGateView.effectiveKey, {
                               n: todoGateView.maxFires,
                               min: MIN_TODO_GATE_MAX_FIRES,
@@ -1444,16 +1422,11 @@ export function GeneralSection() {
                                 : "")
                             }
                             role="status"
-                            style={{ marginTop: 4 }}
                           >
                             {t(todoGateView.applyPathKey)}
                           </div>
                           {todoGateView.clampedKey ? (
-                            <div
-                              className="settings-row__hint"
-                              role="status"
-                              style={{ marginTop: 4 }}
-                            >
+                            <div className="settings-row__hint" role="status">
                               {t(todoGateView.clampedKey, {
                                 min: MIN_TODO_GATE_MAX_FIRES,
                                 max: MAX_TODO_GATE_MAX_FIRES,

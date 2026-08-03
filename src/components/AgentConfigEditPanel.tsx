@@ -479,7 +479,6 @@ export function AgentConfigEditPanel({
 
           <div
             className="settings-row__actions"
-            style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}
           >
             <button
               type="button"

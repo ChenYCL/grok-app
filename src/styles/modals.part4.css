@@ -579,10 +579,37 @@
   background: color-mix(in srgb, #9aa0a6 70%, transparent);
 }
 
+/*
+ * Card-top meta strip (e.g. last doctor run). Must match .ext-item horizontal
+ * padding — a bare <p> with only margin looked glued to the card edge.
+ */
+.ext-list-meta,
 .ext-mcp-last-doctor {
-  margin: 0 0 10px;
+  margin: 0;
+  padding: 10px 14px;
   font-size: 12px;
+  line-height: 1.4;
   color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-hover) 35%, transparent);
+}
+
+.ext-list-meta:last-child,
+.ext-mcp-last-doctor:last-child {
+  border-bottom: none;
+}
+
+/* Quiet meta next to h2 bulk actions (last-run, counts, etc.) */
+.ext-h2-meta {
+  font-size: 11.5px;
+  font-weight: 450;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  max-width: min(16rem, 42vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ext-mcp-status-reason {

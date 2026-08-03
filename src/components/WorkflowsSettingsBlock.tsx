@@ -686,7 +686,6 @@ export function WorkflowsDiscoveryBlock({
 
       <div
         className="settings-row__actions"
-        style={{ gap: 8, flexWrap: "wrap" }}
       >
         <button
           type="button"

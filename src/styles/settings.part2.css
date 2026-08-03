@@ -225,6 +225,54 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   align-items: stretch;
 }
 
+/*
+ * Follow-up copy under a control inside a stacked row (Select / input).
+ * Prefer these over ad-hoc style={{ marginTop }} — bare margin on
+ * .settings-row__desc (designed for under-label) looked stuck to the control.
+ */
+.settings-row--stack > .settings-row__desc {
+  margin-top: 8px;
+}
+
+.settings-row--stack > .settings-row__hint {
+  margin-top: 6px;
+}
+
+/* Stacked status lines under a control (soft-fail → activity → path). */
+.settings-row--stack > .settings-row__hint + .settings-row__hint,
+.settings-row--stack > .settings-row__desc + .settings-row__hint {
+  margin-top: 4px;
+}
+
+/*
+ * Button row under stacked fields. Was used widely with only inline styles.
+ */
+.settings-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-row__actions:first-child {
+  margin-top: 0;
+}
+
+.settings-row__desc.is-danger {
+  color: var(--danger, #e35);
+}
+
+/* Standalone desc (dialogs / empty copy) — no under-label spacing. */
+.settings-row__desc.is-flush {
+  margin: 0;
+}
+
+/* Section blocks that sit outside a settings-card (CLI worktree DB, etc.). */
+.settings-block-gap {
+  margin-top: 12px;
+}
+
 /* Settings → Keyboard (remappable shortcut catalog) */
 .settings-shortcuts-header-actions {
   display: flex;

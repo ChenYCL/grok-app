@@ -8,6 +8,10 @@
  * Stable label: `resource-browser` or `resource-browser-<instanceId>`
  * so host commands (`side_browser_*`) can drive navigate / eval / snapshot.
  *
+ * Bounds: host ResizeObserver + ancestor observers + window resize, coalesced
+ * through a trailing single-flight so setPosition/setSize never interleave
+ * (sidebar drag used to jitter / leave a white gap).
+ *
  * Non-Tauri (dev UI only): falls back to iframe + open-external affordance.
  */
 
@@ -22,8 +26,28 @@ import {
   subscribeNativeWebviewCover,
   subscribeNativeWebviewFloatExclude,
 } from "@/lib/nativeWebviewCover";
+import {
+  boundsNearlyEqual,
+  createTrailingSingleFlight,
+  snapBounds,
+  type BoundsPx,
+} from "@/lib/nativeWebviewBounds";
 
 const WEBVIEW_LABEL_DEFAULT = "resource-browser";
+
+/** How many parent elements to observe so pane/splitter moves re-sync position. */
+const ANCESTOR_OBSERVE_DEPTH = 6;
+
+type DpiMod = typeof import("@tauri-apps/api/dpi");
+
+let dpiModPromise: Promise<DpiMod> | null = null;
+
+function loadDpi(): Promise<DpiMod> {
+  if (!dpiModPromise) {
+    dpiModPromise = import("@tauri-apps/api/dpi");
+  }
+  return dpiModPromise;
+}
 
 export interface EmbeddedBrowserProps {
   url: string;
@@ -83,15 +107,27 @@ export function EmbeddedBrowser({
   const webviewLabel = sideBrowserWebviewLabel(instanceId);
   const activeRef = useRef(active);
   const coveredRef = useRef(covered);
+  const lastBoundsRef = useRef<BoundsPx | null>(null);
+  const scheduleRef = useRef<ReturnType<typeof createTrailingSingleFlight> | null>(
+    null,
+  );
+  const applyBoundsRef = useRef<() => Promise<void>>(async () => undefined);
+  const roRafRef = useRef(0);
   activeRef.current = active;
   coveredRef.current = covered;
 
-  const syncBounds = async () => {
+  /**
+   * Apply host rect → native webview. Always re-reads DOM at start so trailing
+   * coalesced runs pick up the latest sidebar/window size.
+   */
+  applyBoundsRef.current = async () => {
     const el = hostRef.current;
     const wv = webviewRef.current;
     if (!el || !wv || !isTauri()) return;
+
     const rect = el.getBoundingClientRect();
     if (rect.width < 2 || rect.height < 2) {
+      lastBoundsRef.current = null;
       try {
         await wv.hide();
       } catch {
@@ -99,7 +135,7 @@ export function EmbeddedBrowser({
       }
       return;
     }
-    // Shrink away from long-lived float UI (composer) so the page stays visible.
+
     const clipped = applyFloatExcludeToBounds(
       {
         left: rect.left,
@@ -112,7 +148,9 @@ export function EmbeddedBrowser({
       getNativeWebviewFloatExclude(),
       10,
     );
+
     if (clipped.width < 2 || clipped.height < 2) {
+      lastBoundsRef.current = null;
       try {
         await wv.hide();
       } catch {
@@ -120,15 +158,56 @@ export function EmbeddedBrowser({
       }
       return;
     }
+
+    const next = snapBounds({
+      x: clipped.left,
+      y: clipped.top,
+      width: clipped.width,
+      height: clipped.height,
+    });
+
+    const wantShow = activeRef.current && !coveredRef.current;
+    const boundsSame = boundsNearlyEqual(lastBoundsRef.current, next, 0.5);
+
+    if (boundsSame) {
+      try {
+        if (wantShow) await wv.show();
+        else await wv.hide();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
     try {
-      const { LogicalPosition, LogicalSize } = await import("@tauri-apps/api/dpi");
-      await wv.setPosition(new LogicalPosition(clipped.left, clipped.top));
-      await wv.setSize(new LogicalSize(clipped.width, clipped.height));
-      if (activeRef.current && !coveredRef.current) await wv.show();
+      const { LogicalPosition, LogicalSize } = await loadDpi();
+      // Position then size — one pair per apply; single-flight prevents interleave.
+      await wv.setPosition(new LogicalPosition(next.x, next.y));
+      await wv.setSize(new LogicalSize(next.width, next.height));
+      lastBoundsRef.current = next;
+      if (wantShow) await wv.show();
       else await wv.hide();
     } catch (e) {
       console.error("[EmbeddedBrowser] syncBounds", e);
     }
+  };
+
+  // Stable flight controller for this mount lifetime (always calls latest apply).
+  if (!scheduleRef.current) {
+    scheduleRef.current = createTrailingSingleFlight(() =>
+      applyBoundsRef.current(),
+    );
+  }
+
+  const scheduleSync = () => {
+    scheduleRef.current?.schedule();
+  };
+
+  const scheduleSyncRaf = () => {
+    cancelAnimationFrame(roRafRef.current);
+    roRafRef.current = requestAnimationFrame(() => {
+      scheduleSync();
+    });
   };
 
   useEffect(() => {
@@ -138,7 +217,7 @@ export function EmbeddedBrowser({
   // Floating composer moved / sized — re-clip native webview without full hide.
   useEffect(() => {
     return subscribeNativeWebviewFloatExclude(() => {
-      void syncBounds();
+      scheduleSyncRaf();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -152,18 +231,20 @@ export function EmbeddedBrowser({
 
     let cancelled = false;
     let resizeObs: ResizeObserver | null = null;
-    let roFrame = 0;
     let io: IntersectionObserver | null = null;
+
+    // New webview → force bounds re-apply even if numbers match previous instance.
+    lastBoundsRef.current = null;
 
     const boot = async () => {
       setError(null);
       setReady(false);
       try {
+        // Warm dpi module before create so first drag frames don't pay import cost.
+        void loadDpi();
         const { Webview } = await import("@tauri-apps/api/webview");
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const { LogicalPosition, LogicalSize } = await import(
-          "@tauri-apps/api/dpi"
-        );
+        const { LogicalPosition, LogicalSize } = await loadDpi();
         const win = getCurrentWindow();
 
         const existing = await Webview.getByLabel(webviewLabel);
@@ -180,10 +261,10 @@ export function EmbeddedBrowser({
 
         const el = hostRef.current;
         const rect = el?.getBoundingClientRect();
-        const x = rect?.left ?? 0;
-        const y = rect?.top ?? 0;
-        const w = Math.max(rect?.width ?? 320, 40);
-        const h = Math.max(rect?.height ?? 240, 40);
+        const x = Math.round(rect?.left ?? 0);
+        const y = Math.round(rect?.top ?? 0);
+        const w = Math.max(Math.round(rect?.width ?? 320), 40);
+        const h = Math.max(Math.round(rect?.height ?? 240), 40);
 
         const webview = new Webview(win, webviewLabel, {
           url: target,
@@ -221,20 +302,27 @@ export function EmbeddedBrowser({
 
         webviewRef.current = webview;
         currentUrlRef.current = target;
+        lastBoundsRef.current = { x, y, width: w, height: h };
         await webview.setPosition(new LogicalPosition(x, y));
         await webview.setSize(new LogicalSize(w, h));
         if (activeRef.current && !coveredRef.current) await webview.show();
         else await webview.hide();
         setReady(true);
 
+        // Layout may have changed while we awaited create — apply latest once.
+        scheduleSync();
+
         if (hostRef.current && typeof ResizeObserver !== "undefined") {
           resizeObs = new ResizeObserver(() => {
-            cancelAnimationFrame(roFrame);
-            roFrame = requestAnimationFrame(() => {
-              void syncBounds();
-            });
+            scheduleSyncRaf();
           });
-          resizeObs.observe(hostRef.current);
+          // Host + ancestors: sidebar/aside width is often applied on a parent;
+          // host size may lag a frame, and position-only moves need parent RO.
+          let node: HTMLElement | null = hostRef.current;
+          for (let i = 0; i < ANCESTOR_OBSERVE_DEPTH && node; i++) {
+            resizeObs.observe(node);
+            node = node.parentElement;
+          }
         }
         if (hostRef.current && typeof IntersectionObserver !== "undefined") {
           io = new IntersectionObserver(
@@ -244,8 +332,11 @@ export function EmbeddedBrowser({
               );
               const wv = webviewRef.current;
               if (!wv) return;
-              if (!vis || !activeRef.current) void wv.hide().catch(() => undefined);
-              else void syncBounds();
+              if (!vis || !activeRef.current) {
+                void wv.hide().catch(() => undefined);
+              } else {
+                scheduleSyncRaf();
+              }
             },
             { threshold: [0, 0.05, 0.5, 1] },
           );
@@ -262,20 +353,21 @@ export function EmbeddedBrowser({
     };
 
     const onResize = () => {
-      void syncBounds();
+      scheduleSyncRaf();
     };
 
     void boot();
 
     return () => {
       cancelled = true;
-      cancelAnimationFrame(roFrame);
+      cancelAnimationFrame(roRafRef.current);
       resizeObs?.disconnect();
       io?.disconnect();
       window.removeEventListener("resize", onResize);
       const wv = webviewRef.current;
       webviewRef.current = null;
       currentUrlRef.current = "";
+      lastBoundsRef.current = null;
       if (wv) {
         void wv.close().catch(() => undefined);
       } else if (isTauri()) {
@@ -291,13 +383,19 @@ export function EmbeddedBrowser({
   useEffect(() => {
     const wv = webviewRef.current;
     if (!wv || !isTauri()) return;
-    if (active && !covered) {
-      void syncBounds().then(() => wv.show()).catch(() => undefined);
-    } else {
-      void wv.hide().catch(() => undefined);
-    }
+    // Force apply (visibility may change without size change).
+    lastBoundsRef.current = null;
+    scheduleSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, covered]);
+
+  // Dispose flight only on unmount (not on url change — shared scheduleRef).
+  useEffect(() => {
+    return () => {
+      scheduleRef.current?.dispose();
+      scheduleRef.current = null;
+    };
+  }, []);
 
   const openExternal = () => {
     void openExternalUrl(url);
@@ -316,6 +414,7 @@ export function EmbeddedBrowser({
       }
       webviewRef.current = null;
       currentUrlRef.current = "";
+      lastBoundsRef.current = null;
       setReady(false);
       setError(null);
       const el = hostRef.current;
@@ -323,16 +422,18 @@ export function EmbeddedBrowser({
       try {
         const { Webview } = await import("@tauri-apps/api/webview");
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const { LogicalPosition, LogicalSize } = await import(
-          "@tauri-apps/api/dpi"
-        );
+        const { LogicalPosition, LogicalSize } = await loadDpi();
         const rect = el.getBoundingClientRect();
+        const x = Math.round(rect.left);
+        const y = Math.round(rect.top);
+        const w = Math.max(Math.round(rect.width), 40);
+        const h = Math.max(Math.round(rect.height), 40);
         const webview = new Webview(getCurrentWindow(), webviewLabel, {
           url: u,
-          x: rect.left,
-          y: rect.top,
-          width: Math.max(rect.width, 40),
-          height: Math.max(rect.height, 40),
+          x,
+          y,
+          width: w,
+          height: h,
           focus: true,
         });
         await new Promise<void>((resolve, reject) => {
@@ -340,13 +441,13 @@ export function EmbeddedBrowser({
           void webview.once("tauri://error", (e) => reject(e));
         });
         webviewRef.current = webview;
-        await webview.setPosition(new LogicalPosition(rect.left, rect.top));
-        await webview.setSize(
-          new LogicalSize(Math.max(rect.width, 40), Math.max(rect.height, 40)),
-        );
+        lastBoundsRef.current = { x, y, width: w, height: h };
+        await webview.setPosition(new LogicalPosition(x, y));
+        await webview.setSize(new LogicalSize(w, h));
         if (activeRef.current && !coveredRef.current) await webview.show();
         else await webview.hide();
         setReady(true);
+        scheduleSync();
       } catch (e) {
         setError(String(e));
       }

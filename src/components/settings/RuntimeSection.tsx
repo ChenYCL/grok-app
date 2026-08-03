@@ -176,8 +176,10 @@ export function RuntimeSection() {
             )}
             {activeTab === "cli" && (
               <div
-                className={rowHighlight("settings-anchor-cliWorktreeDb")}
-                style={{ marginTop: 12 }}
+                className={
+                  "settings-block-gap" +
+                  rowHighlight("settings-anchor-cliWorktreeDb")
+                }
               >
                 <CliWorktreeDbPanel t={t} />
               </div>

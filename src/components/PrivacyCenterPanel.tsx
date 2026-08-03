@@ -527,7 +527,6 @@ export function PrivacyCenterPanel({
             </div>
             <div
               className="settings-row__actions"
-              style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
             >
               <button
                 type="button"
@@ -571,7 +570,6 @@ export function PrivacyCenterPanel({
 
           <div
             className="settings-row__actions"
-            style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}
           >
             <button
               type="button"
@@ -710,7 +708,6 @@ export function PrivacyCenterPanel({
 
         <div
           className="settings-row__actions"
-          style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}
         >
           <button
             type="button"

@@ -519,7 +519,7 @@ export function ManagedSetupPanel({
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="settings-row__actions">
           <button
             type="button"
             className="btn btn--ghost"

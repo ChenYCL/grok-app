@@ -512,7 +512,7 @@ export function CliSessionsPanel({
           </>
         }
       >
-        <p className="settings-row__desc" style={{ margin: 0 }}>
+        <p className="settings-row__desc is-flush">
           {deleteConfirm?.kind === "unlinked"
             ? t("settings.cliSessionsDeleteUnlinkedConfirmMsg", {
                 n: String(deleteConfirm.count),

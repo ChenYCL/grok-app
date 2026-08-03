@@ -1373,7 +1373,7 @@ export function AppearanceSection() {
                           label={t("settings.sessionMuteSummary")}
                           tip={t("settings.sessionMuteSummaryDesc")}
                         />
-                        <div className="settings-row__desc" style={{ marginTop: 6 }}>
+                        <div className="settings-row__desc">
                           {mutedSessionCount > 0
                             ? t("settings.sessionMuteCount", {
                                 n: String(mutedSessionCount),
@@ -1406,7 +1406,7 @@ export function AppearanceSection() {
                           label={t("settings.sessionUnreadSummary")}
                           tip={t("settings.sessionUnreadSummaryDesc")}
                         />
-                        <div className="settings-row__desc" style={{ marginTop: 6 }}>
+                        <div className="settings-row__desc">
                           {unreadSessionCount > 0
                             ? t("settings.sessionUnreadCount", {
                                 n: String(unreadSessionCount),
