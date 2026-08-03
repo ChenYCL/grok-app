@@ -1,12 +1,13 @@
 /**
- * In-memory catalog cache for Settings → Extensions → Marketplace.
- * Avoids re-running `plugin list --json --available` on every tab visit.
+ * Catalog cache for Settings → Extensions → Marketplace.
+ * Memory + localStorage so reopening Settings is fast.
  */
 
 import type { AvailablePluginLike, MarketplaceSourceLike } from "./pluginMarketplace";
 
 /** Default TTL: 6 hours. Refresh button / mutations force a reload. */
 export const MARKETPLACE_CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
+const STORAGE_KEY = "grok-app.marketplaceCatalog.v1";
 
 export type MarketplaceCatalogSnapshot = {
   fetchedAt: number;
@@ -28,7 +29,35 @@ export type MarketplaceCatalogFetcher = () => Promise<{
 let memory: MarketplaceCatalogSnapshot | null = null;
 let inflight: Promise<MarketplaceCatalogLoadResult> | null = null;
 
+function readStorage(): MarketplaceCatalogSnapshot | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as MarketplaceCatalogSnapshot;
+    if (!parsed || !Array.isArray(parsed.sources) || !Array.isArray(parsed.available)) {
+      return null;
+    }
+    if (typeof parsed.fetchedAt !== "number") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(snap: MarketplaceCatalogSnapshot): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function getMarketplaceCatalogCache(): MarketplaceCatalogSnapshot | null {
+  if (memory) return memory;
+  const stored = readStorage();
+  if (stored) memory = stored;
   return memory;
 }
 
@@ -36,13 +65,21 @@ export function isMarketplaceCatalogFresh(
   now = Date.now(),
   ttlMs = MARKETPLACE_CATALOG_TTL_MS,
 ): boolean {
-  if (!memory) return false;
-  return now - memory.fetchedAt < ttlMs;
+  const snap = getMarketplaceCatalogCache();
+  if (!snap) return false;
+  return now - snap.fetchedAt < ttlMs;
 }
 
 /** Drop cache so the next load hits the CLI. */
 export function invalidateMarketplaceCatalogCache(): void {
   memory = null;
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 /** Remove one available plugin after a successful install (keeps rest of cache). */
@@ -76,9 +113,10 @@ export async function loadMarketplaceCatalog(
   const ttlMs = opts?.ttlMs ?? MARKETPLACE_CATALOG_TTL_MS;
   const now = Date.now();
 
-  if (!force && memory && now - memory.fetchedAt < ttlMs) {
+  const cached = getMarketplaceCatalogCache();
+  if (!force && cached && now - cached.fetchedAt < ttlMs) {
     return {
-      ...memory,
+      ...cached,
       error: null,
       fromCache: true,
     };
@@ -97,6 +135,7 @@ export async function loadMarketplaceCatalog(
         available: res.available ?? [],
       };
       memory = snap;
+      writeStorage(snap);
       return {
         ...snap,
         error: res.error?.trim() || null,
@@ -115,4 +154,11 @@ export async function loadMarketplaceCatalog(
 export function __resetMarketplaceCatalogCacheForTests(): void {
   memory = null;
   inflight = null;
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
 }

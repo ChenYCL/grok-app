@@ -43,8 +43,9 @@ export function resolveTranscriptContentNotifyMs(
 }
 
 /**
- * Past this many characters while streaming, skip live markdown and show
- * plain pre-wrap until the turn settles (one full parse on done).
+ * Historical threshold for the old plain-pre stream body. Kept as a length
+ * breakpoint for adaptive markdown parse throttling only — we no longer drop
+ * to bare markdown mid-turn (that caused visible `**` / fence flashes).
  */
 export const STREAM_PLAIN_TEXT_CHAR_THRESHOLD = 2000;
 
@@ -57,14 +58,32 @@ export function isLowPowerClient(
   return hardwareConcurrency <= 12;
 }
 
-/** Prefer plain streaming body once content crosses the threshold. */
+/**
+ * Always keep live markdown while streaming. Plain-pre fallback was retired
+ * because it showed bare markdown syntax until the turn settled.
+ * Kept for call-site compatibility; always returns false.
+ */
 export function shouldUsePlainStreamBody(
+  _contentLength: number,
+  _streaming: boolean,
+  _threshold: number = STREAM_PLAIN_TEXT_CHAR_THRESHOLD,
+): boolean {
+  return false;
+}
+
+/**
+ * Adaptive ReactMarkdown re-parse interval while streaming.
+ * Longer bodies re-parse less often so the hot path stays cheap without
+ * switching to plain text.
+ */
+export function resolveStreamMarkdownParseMs(
   contentLength: number,
   streaming: boolean,
-  threshold: number = STREAM_PLAIN_TEXT_CHAR_THRESHOLD,
-): boolean {
-  if (!streaming) return false;
-  return contentLength >= threshold;
+): number {
+  if (!streaming) return 0;
+  if (contentLength >= 12_000) return 280;
+  if (contentLength >= STREAM_PLAIN_TEXT_CHAR_THRESHOLD) return 220;
+  return STREAM_MARKDOWN_PARSE_MS;
 }
 
 /**

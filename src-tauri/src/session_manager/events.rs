@@ -382,19 +382,46 @@ impl SessionManager {
                     }
                 }
 
-                let media_path = if status == "completed" {
-                    extract_generated_media_path(&raw).filter(|p| is_media_fs_path(p))
+                // Project path for soft-attach gating (workspace media only).
+                let project_path = {
+                    let guard = self.inner.lock();
+                    guard.as_ref().and_then(|s| s.project_path.clone())
+                };
+
+                // Structured (force-grant) vs freeform (soft: allowlist/project only).
+                // Soft avoids incidental tool reads of plugin logos under ~/.codex
+                // becoming undeliverable paperclip thumbs.
+                let structured_media = if status == "completed" {
+                    extract_structured_media_path(&raw)
+                } else {
+                    None
+                };
+                let freeform_media = if status == "completed" && structured_media.is_none() {
+                    extract_freeform_media_path(&raw)
                 } else {
                     None
                 };
 
                 let (detail, path_hint) = extract_tool_ui_fields(&raw);
-                let path_out = media_path.clone().or(path_hint).filter(|p| !p.is_empty());
+                let path_out = structured_media
+                    .clone()
+                    .or_else(|| freeform_media.clone())
+                    .or(path_hint)
+                    .filter(|p| !p.is_empty());
                 let (before_snip, after_snip) = extract_tool_content_snippets(&raw);
 
-                if let Some(path) = media_path.as_ref() {
-                    // Local file or remote https media (ChatCut S3) — never protocol-relative.
-                    let att = attachment_from_path(path);
+                let prepared = structured_media
+                    .as_deref()
+                    .and_then(|p| prepare_media_attachment_path(p, project_path.as_deref(), true))
+                    .or_else(|| {
+                        freeform_media.as_deref().and_then(|p| {
+                            prepare_media_attachment_path(p, project_path.as_deref(), false)
+                        })
+                    });
+
+                if let Some(path) = prepared {
+                    // Local file (granted) or remote https media (ChatCut S3).
+                    let att = attachment_from_path(&path);
                     let (app_sid, mid) = {
                         let mut guard = self.inner.lock();
                         if let Some(s) = guard.as_mut() {
@@ -422,13 +449,13 @@ impl SessionManager {
                             "kind": if is_video_fs_path(&att.path) { "video" } else { "image" },
                         }),
                     );
-                } else if let Some(path) = path_out.as_ref().filter(|p| {
-                    let n = normalize_media_ref(p).unwrap_or_else(|| (*p).to_string());
-                    is_local_media_fs_path(&n) && std::path::Path::new(&n).is_file()
-                }) {
-                    // Write / read / copy of workspace media: persist as attachment so
+                } else if let Some(path) = path_out.as_ref().and_then(|p| {
+                    // Write / copy of workspace media only (soft): persist so
                     // history reload can render bare basenames after session switch.
-                    let att = attachment_from_path(path);
+                    // Does not attach incidental reads outside path_scope/project.
+                    prepare_media_attachment_path(p, project_path.as_deref(), false)
+                }) {
+                    let att = attachment_from_path(&path);
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         if !s.stream_attachments.iter().any(|a| a.path == att.path) {

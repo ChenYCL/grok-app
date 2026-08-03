@@ -54,7 +54,19 @@ Frontend normalize (`src/lib/pathNormalize.ts`):
 - **FilePathCard open**: resolve first; if missing → mark card, do **not** open an empty resource tab
 - Bare media basenames (`manycore.png`) stay as inline code unless pathMap maps them to a real local abs
 
+## Chat attachments (tool → journal → thumb)
+
+| Source | Policy |
+|--------|--------|
+| Structured tool output (`rawOutput.path`, ChatCut `thumbnail*`) | Attach + **grant** path_scope (may live outside default roots) |
+| Freeform text / tool path_hint (reads, ls, markdown) | Attach only if file exists **and** already allowlisted or under session project — no incidental `~/.codex/plugins/...` logos |
+| Remote `https://` media (ChatCut S3 thumbs) | Always attach |
+| False extracts (`/img_001.png` from `![](media/img_001.png)`) | Never attach; frontend `isDisplayableAttachmentPath` also drops them |
+
+History load calls `paths_classify` (grants existing local paths, drops missing locals) so thumbs do not flash as dead paperclips.
+
 ## Related
 
 - Path resolution: `session_resolve_relative_media`, `attachments.ts`, `sessionPathMap.ts`, `pathNormalize.ts`
+- Attach gate: `prepare_media_attachment_path` / `extract_structured_media_path` in `session_manager/types.rs`
 - Allowlist: `path_scope.rs`

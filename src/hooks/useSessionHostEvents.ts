@@ -97,6 +97,7 @@ import {
   chatcutHandoffToResourceOpenTarget,
   resolveChatcutHandoffFromToolEvent,
 } from "@/lib/chatcutHandoff";
+import { toolEventSuggestsSkillCatalogChange } from "@/lib/skillCatalogRefresh";
 
 /** Mutable bag of AppWorkbench bindings used by Host event handlers. */
 export type SessionHostEventsCtx = {
@@ -106,6 +107,11 @@ export type SessionHostEventsCtx = {
     reduce: (prev: ChatMessage[]) => ChatMessage[],
   ) => void;
   tryApplyAutomationFromSession: (sessionId: string) => void | Promise<void>;
+  /**
+   * Schedule a skills catalog reload (`skills_list`) when a chat turn
+   * installs/writes skills so slash / + palette update without app restart.
+   */
+  onSkillCatalogMaybeStale?: () => void;
 };
 
 /** Dedup handoff opens within a short window (same URL). */
@@ -869,6 +875,15 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             // ChatCut Codex handoff → Resources EmbeddedBrowser (in-app).
             // Run on each event (not only batch flush) so terminal handoffs open promptly.
             maybeOpenChatcutHandoffFromTool(c, p);
+            // Conversation skill/plugin install → refresh App skills_list (debounced
+            // in AppWorkbench). CLI hot-reloads skill files; App catalog is snapshot.
+            if (toolEventSuggestsSkillCatalogChange(p)) {
+              try {
+                c.onSkillCatalogMaybeStale?.();
+              } catch {
+                /* never break the tool stream */
+              }
+            }
           }),
         );
         await track(

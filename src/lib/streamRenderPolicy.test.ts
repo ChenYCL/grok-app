@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   CHAT_VIRTUALIZE_THRESHOLD_PERF,
   resolveStreamFlushMs,
+  resolveStreamMarkdownParseMs,
   resolveStreamOverscanScale,
   resolveTranscriptContentNotifyMs,
   shouldUsePlainStreamBody,
   STREAM_COALESCE_FLUSH_MS,
+  STREAM_MARKDOWN_PARSE_MS,
   STREAM_PLAIN_TEXT_CHAR_THRESHOLD,
   TRANSCRIPT_CONTENT_NOTIFY_MS,
 } from "./streamRenderPolicy";
@@ -16,14 +18,30 @@ describe("streamRenderPolicy", () => {
     expect(CHAT_VIRTUALIZE_THRESHOLD_PERF).toBeGreaterThanOrEqual(12);
   });
 
-  it("plain body only while streaming and past char threshold", () => {
+  it("never drops to plain stream body (keeps live markdown)", () => {
     expect(shouldUsePlainStreamBody(100, true)).toBe(false);
     expect(
       shouldUsePlainStreamBody(STREAM_PLAIN_TEXT_CHAR_THRESHOLD, true),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      shouldUsePlainStreamBody(STREAM_PLAIN_TEXT_CHAR_THRESHOLD + 50_000, true),
+    ).toBe(false);
     expect(
       shouldUsePlainStreamBody(STREAM_PLAIN_TEXT_CHAR_THRESHOLD + 1, false),
     ).toBe(false);
+  });
+
+  it("markdown parse interval lengthens for long streaming bodies", () => {
+    expect(resolveStreamMarkdownParseMs(100, false)).toBe(0);
+    expect(resolveStreamMarkdownParseMs(100, true)).toBe(
+      STREAM_MARKDOWN_PARSE_MS,
+    );
+    expect(
+      resolveStreamMarkdownParseMs(STREAM_PLAIN_TEXT_CHAR_THRESHOLD, true),
+    ).toBeGreaterThan(STREAM_MARKDOWN_PARSE_MS);
+    expect(resolveStreamMarkdownParseMs(12_000, true)).toBeGreaterThan(
+      resolveStreamMarkdownParseMs(STREAM_PLAIN_TEXT_CHAR_THRESHOLD, true),
+    );
   });
 
   it("flush ms scales with hardware concurrency", () => {

@@ -34,10 +34,8 @@ import {
   stepSoftBuffer,
   type SoftBufferState,
 } from "@/lib/softStreamBuffer";
-import {
-  shouldUsePlainStreamBody,
-  STREAM_MARKDOWN_PARSE_MS,
-} from "@/lib/streamRenderPolicy";
+import { softCloseMarkdown } from "@/lib/softCloseMarkdown";
+import { resolveStreamMarkdownParseMs } from "@/lib/streamRenderPolicy";
 import { revealInOsLabel } from "@/lib/appPlatform";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
@@ -89,14 +87,6 @@ function highlightChildren(
     ));
   }
   return children;
-}
-
-function softCloseMarkdown(src: string, streaming: boolean): string {
-  if (!streaming || !src) return src;
-  let s = src;
-  const fenceCount = (s.match(/^```/gm) || []).length;
-  if (fenceCount % 2 === 1) s += "\n```";
-  return s;
 }
 
 function textFromChildren(children: ReactNode): string {
@@ -225,29 +215,27 @@ export const MarkdownChat = memo(function MarkdownChat({
   // Soft buffer only — no character-drip rAF (was a major Intel Retina cost).
   // Store-level content notify throttle + markdown parse throttle pace paints.
   const buffered = streaming ? softDisplayed : children || "";
-  const longStream = shouldUsePlainStreamBody(
-    (buffered || children || "").length,
-    streaming,
-  );
   const liveText = buffered || (streaming ? " " : "");
   const source = softCloseMarkdown(liveText, streaming);
+  const parseMs = resolveStreamMarkdownParseMs(source.length, streaming);
 
   /**
-   * Throttle ReactMarkdown input while streaming so we re-parse ~8×/s instead
-   * of every smooth-stream tick. Final (non-streaming) content always syncs.
+   * Throttle ReactMarkdown input while streaming so we re-parse ~4–8×/s instead
+   * of every soft-buffer tick. Longer bodies use a slower cadence; final
+   * (non-streaming) content always syncs immediately. Always keep markdown
+   * rendering (no plain-pre bare-syntax fallback).
    */
   const [mdSource, setMdSource] = useState(source);
   useEffect(() => {
-    if (!streaming) {
+    if (!streaming || parseMs <= 0) {
       setMdSource(source);
       return;
     }
-    if (longStream) return;
     const id = window.setTimeout(() => {
       setMdSource(source);
-    }, STREAM_MARKDOWN_PARSE_MS);
+    }, parseMs);
     return () => window.clearTimeout(id);
-  }, [source, streaming, longStream]);
+  }, [source, streaming, parseMs]);
 
   const renderPathOrUrl = (token: string, linkText?: string) => {
     const rawIn = token.trim().replace(/^<|>$/g, "");
@@ -408,25 +396,6 @@ export const MarkdownChat = memo(function MarkdownChat({
     qFind
       ? highlightChildren(node, qFind, findActiveOccurrence, findCounter)
       : node;
-
-  // Long streaming bodies: plain pre-wrap (no remark parse) until the turn
-  // settles — one full markdown pass on done. Prevents O(n) parse storms.
-  if (longStream) {
-    return (
-      <div
-        className={cn(
-          "chat-md",
-          "chat-md--streaming",
-          "chat-md--plain-stream",
-          muted && "chat-md--muted",
-          className,
-        )}
-        data-stream-mode="plain"
-      >
-        <pre className="chat-md__plain-stream">{liveText}</pre>
-      </div>
-    );
-  }
 
   return (
     <div

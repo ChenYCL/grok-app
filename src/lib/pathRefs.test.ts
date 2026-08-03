@@ -41,6 +41,14 @@ describe("normalizePathToken", () => {
     expect(looksLikeFilePath("README.md")).toBe(true);
   });
 
+  it("does not treat slash-command / skill tokens as file cards", () => {
+    expect(looksLikeFilePath("/dbs")).toBe(false);
+    expect(looksLikeFilePath("/goal")).toBe(false);
+    expect(looksLikeFilePath("/cyber-xiaowan")).toBe(false);
+    // Real multi-segment paths still cards.
+    expect(looksLikeFilePath("/Users/me/proj/a.md")).toBe(true);
+  });
+
   it("still strips leading ellipsis on relative tokens", () => {
     expect(normalizePathToken(".../foo/bar.mp4")).toBe("foo/bar.mp4");
     expect(normalizePathToken("…/videos/1.mp4")).toBe("videos/1.mp4");

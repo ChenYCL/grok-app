@@ -546,18 +546,27 @@
   font-weight: 500;
 }
 
-/* Aside — resource viewer; fully hideable + drag-resizable */
+/* Aside — resource viewer; fully hideable + drag-resizable.
+ *
+ * Content is full-bleed (no empty flex gutter). Native child Webviews paint
+ * above HTML, so the drag handle straddles into the main column
+ * (`left: -4px`) where the parent WebView still receives pointer events —
+ * browser stays flush to the 1px border line.
+ */
 .aside {
   width: var(--aside-width, 360px);
   min-width: 0;
   border-left: 1px solid var(--border-subtle);
   background: var(--bg-aside);
   transition: opacity 160ms ease, border-color 160ms ease;
-  overflow: hidden;
+  /* visible so the resizer can extend slightly into main for hit-testing */
+  overflow: visible;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   position: relative;
+  /* Above .main (z-index: 2) so the straddle handle receives hits over the seam */
+  z-index: 3;
 }
 
 .aside.is-resizing {
@@ -572,14 +581,16 @@
   border: none !important;
   opacity: 0;
   pointer-events: none;
+  overflow: hidden;
 }
 
 .aside-resizer {
   position: absolute;
-  left: 0;
+  /* Straddle the border: half in main (draggable), half over aside chrome */
+  left: -4px;
   top: 0;
   bottom: 0;
-  width: 5px;
+  width: 8px;
   z-index: 6;
   cursor: col-resize;
   touch-action: none;
@@ -588,12 +599,14 @@
 .aside-resizer::after {
   content: "";
   position: absolute;
-  left: 1px;
+  /* Center of 8px handle ≈ border-left of aside */
+  left: 4px;
   top: 0;
   bottom: 0;
-  width: 2px;
+  width: 1px;
   background: transparent;
   transition: background 120ms ease;
+  pointer-events: none;
 }
 
 .aside-resizer:hover::after,
@@ -611,6 +624,7 @@
   font-size: 13px;
   color: var(--text-secondary);
   overflow: hidden;
+  border-radius: 0;
 }
 
 /* When left sidebar fully closed, reserve mac traffic-light inset on main */

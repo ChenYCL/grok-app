@@ -87,6 +87,7 @@ New Issue
 - [ ] `cd src-tauri && cargo test` (or CI green)  
 - [ ] User-facing strings via `src/i18n/messages.ts` (**en + zh** same keys)  
 - [ ] No `window.confirm` / `prompt` / `alert`  
+- [ ] No OS-default select/menu chrome; no bare transparent `.menu-panel`; overlays use project components + solid/glass surface (see [dialogs.md](./dialogs.md))  
 - [ ] No secrets, `auth.json`, local agent homes  
 - [ ] Scope matches description; no drive-by refactors  
 

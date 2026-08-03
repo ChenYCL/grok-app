@@ -962,6 +962,8 @@ pub fn run() {
 
             commands::marketplace_available,
 
+            commands::marketplace_plugin_meta_index,
+
             commands::marketplace_add,
 
             commands::marketplace_remove,
@@ -1253,6 +1255,10 @@ pub fn run() {
             commands::terminal_pty_resize,
 
             commands::terminal_pty_kill,
+
+            commands::side_browser_create,
+
+            commands::side_browser_close,
 
             commands::side_browser_list,
 

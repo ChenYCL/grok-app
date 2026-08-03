@@ -33,7 +33,7 @@ export function ExtensionsSection() {
                 | "mcp"
                 | "agents"
                 | "hooks"
-                | "market"
+                | "market" // legacy hash → plugins inside panel
                 | null) ?? "plugins"
             }
             onTabChange={(next) => setSectionTab(next)}

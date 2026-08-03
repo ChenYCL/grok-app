@@ -1186,6 +1186,18 @@ describe("session projection", () => {
     expect(messages[1]!.attachments).toHaveLength(2);
     expect(messages[1]!.attachments![1]!.name).toBe("2.png");
   });
+
+  it("applyGeneratedImage ignores false-extract single-segment abs media", () => {
+    let messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hi" },
+      { id: "a1", role: "assistant", content: "done", streaming: true },
+    ];
+    messages = applyGeneratedImage(messages, {
+      path: "/img_001.png",
+      name: "img_001.png",
+    });
+    expect(messages[1]!.attachments).toBeUndefined();
+  });
 });
 
 describe("context compact markers", () => {

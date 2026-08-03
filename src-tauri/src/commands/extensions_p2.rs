@@ -341,8 +341,27 @@ pub fn normalize_plugin_update_name(name: Option<&str>) -> Option<String> {
 
 /// Best-effort plugin name for `plugin enable` after install.
 /// Handles `name`, `name@marketplace`, `owner/repo[@ref]`, git URLs, and paths.
+/// Strips `#fragment` (monorepo subdir pins like `#codex`) before taking the leaf.
 pub fn plugin_name_from_install_source(source: &str) -> Option<String> {
-    let s = source.trim();
+    let raw = source.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    // Strip URL/path fragment first so `…/agent-plugin#codex` does not yield
+    // `agent-plugin#codex` as the enable name. Prefer a simple fragment id when
+    // present (ChatCut `#codex`); otherwise parse the base locator.
+    let (base, fragment) = match raw.split_once('#') {
+        Some((b, f)) => (b.trim(), f.split('?').next().unwrap_or("").trim()),
+        None => (raw, ""),
+    };
+    if !fragment.is_empty()
+        && !fragment.contains('/')
+        && !fragment.contains('\\')
+        && !fragment.contains(':')
+    {
+        return Some(fragment.to_string());
+    }
+    let s = base;
     if s.is_empty() {
         return None;
     }
@@ -891,6 +910,14 @@ disabled = ["yes"]
         assert_eq!(
             plugin_name_from_install_source("owner/repo@v1").as_deref(),
             Some("repo")
+        );
+        // Monorepo subdir pin: prefer #fragment as enable name (ChatCut #codex).
+        assert_eq!(
+            plugin_name_from_install_source(
+                "https://github.com/ChatCut-Inc/agent-plugin#codex"
+            )
+            .as_deref(),
+            Some("codex")
         );
         assert_eq!(
             plugin_name_from_install_source("https://github.com/a/b.git").as_deref(),

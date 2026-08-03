@@ -11,48 +11,35 @@ import { GlassModal } from "@/components/GlassModal";
 import {
   IconDoctor,
   IconEdit,
-  IconExternalLink,
-  IconFolder,
   IconPlus,
   IconPlug,
   IconPuzzle,
   IconRefresh,
+  IconSettings,
   IconSkills,
   IconTrash,
 } from "@/components/icons";
 import {
-  filterPluginsByLoadState,
   isCliMissingError,
   isExtensionEnabled,
   mcpMetaLine,
   mergeInspectErrors,
   normalizePluginInstallSource,
-  pluginMetaLine,
-  pluginProvidesLine,
   pluginRowKey,
-  pluginStatusTone,
   shortPathLabel,
   skillMetaLine,
   skillSourceTone,
   sortMcpByName,
   sortPluginsByName,
   sortSkillsByName,
-  type PluginFilter,
 } from "@/lib/extensionsUi";
 import {
-  buildPluginValidateExceptionPresentation,
-  buildPluginValidatePreflightError,
-  buildPluginValidatePresentation,
   formatPluginValidateMessages,
-  normalizePluginValidateResult,
   pluginValidateBadgeTone,
   pluginValidateHint,
   pluginValidateKindLabel,
-  pluginValidateRowTone,
-  pluginValidateTarget,
   type PluginValidateKind,
   type PluginValidatePresentation,
-  type PluginValidateResult,
 } from "@/lib/pluginValidate";
 import {
   indexDoctorServerStatuses,
@@ -90,13 +77,71 @@ import {
   isFsWriteConflict,
   isResourceDraftDirty,
 } from "@/lib/resourceEdit";
-import { ExtensionsBuildExtras } from "@/components/ExtensionsBuildExtras";
-import { ExtensionsHooksPanel } from "@/components/ExtensionsHooksPanel";
+import {
+  ExtensionsBuildExtras,
+  type ExtAgentsTabActions,
+} from "@/components/ExtensionsBuildExtras";
+import {
+  ExtensionsHooksPanel,
+  type ExtHooksTabActions,
+} from "@/components/ExtensionsHooksPanel";
 import {
   installedPluginDetailModel,
   type AvailablePluginDetailModel,
   type PluginComponentBadgeKind,
 } from "@/lib/pluginMarketplace";
+import {
+  CHATCUT_CODEX_INSTALL_SOURCE,
+  isChatCutInstalled,
+  pluginDisplayName,
+  resolveExtensionsTabId,
+} from "@/lib/pluginRecommended";
+import {
+  buildInstalledCard,
+  marketplaceCategoryMessageKey,
+  parsePluginManifestJson,
+  pluginIconPathCandidates,
+  pluginInitials,
+  pluginManifestPathCandidates,
+  type PluginCardKind,
+  type PluginCardModel,
+} from "@/lib/pluginCard";
+import {
+  invalidatePluginsListCache,
+  loadPluginsListCached,
+  patchPluginsListEnabled,
+} from "@/lib/pluginsListCache";
+import {
+  loadMarketplaceCatalog,
+  invalidateMarketplaceCatalogCache,
+} from "@/lib/marketplaceCatalogCache";
+import {
+  enrichAvailableFromComponents,
+  filterAvailablePlugins,
+  marketplaceQualifiedInstallSource,
+  sortAvailablePluginsByName,
+  type AvailablePluginLike,
+  type MarketplaceSourceLike,
+} from "@/lib/pluginMarketplace";
+import {
+  ensureDefaultMarketplaces,
+  filterCatalogToDefaultSources,
+} from "@/lib/marketplaceDefaults";
+import {
+  availableToCards,
+  buildInstalledPluginNameSet,
+  dedupeAvailablePluginsByName,
+  filterPluginCardsByQuery,
+  installedPluginAliasKeys,
+  PLUGIN_CATALOG_PAGE_SIZE,
+  pickExpandStackLogos,
+  sliceGroupedCatalogPage,
+  splitGroupItemsForCollapse,
+} from "@/lib/pluginCatalogUi";
+import {
+  ensureMediaEndpoint,
+  localPathToMediaHttpUrl,
+} from "@/lib/imageSrc";
 
 type SkillEditorState = {
   skill: api.SkillDto;
@@ -116,11 +161,12 @@ export type ExtensionsTabId =
   | "mcp"
   | "agents"
   | "hooks"
+  /** @deprecated Deep-link only; resolves to plugins. */
   | "market";
 
 export interface ExtensionsPanelProps {
   locale: Locale;
-  /** Active workbench project path (inspect cwd). */
+  /** Active workbench project path (inspect cwd — not shown in toolbar). */
   projectPath?: string | null;
   /** Whether CLI probe found a binary (for empty-state copy). */
   cliFound?: boolean;
@@ -184,15 +230,6 @@ export function ExtensionsPanel({
     [tr],
   );
 
-  const openPluginValidatePresentation = useCallback(
-    (
-      presentation: PluginValidatePresentation,
-      pluginName: string | null,
-    ) => {
-      setValidateModal({ open: true, presentation, pluginName });
-    },
-    [],
-  );
   const [skills, setSkills] = useState<api.SkillDto[]>([]);
   const [skillRoots, setSkillRoots] = useState<string[]>([]);
   const [servers, setServers] = useState<api.McpDto[]>([]);
@@ -201,8 +238,6 @@ export function ExtensionsPanel({
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [pluginsError, setPluginsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [agentHome, setAgentHome] = useState<string | null>(null);
-  const [configPath, setConfigPath] = useState<string | null>(null);
   const [pathHint, setPathHint] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
@@ -220,22 +255,7 @@ export function ExtensionsPanel({
   /** Structured detail when provides / marketplace meta is available. */
   const [detailsModel, setDetailsModel] =
     useState<AvailablePluginDetailModel | null>(null);
-  /** Grok Build Plugins tab filter: all | enabled | disabled */
-  const [pluginFilter, setPluginFilter] = useState<PluginFilter>("all");
   const [installSource, setInstallSource] = useState("");
-  /** Per-row `plugin validate` result (keyed by pluginRowKey). Shown in-panel. */
-  const [validateByKey, setValidateByKey] = useState<
-    Record<string, PluginValidateResult>
-  >({});
-  /** Per-row classified presentation for kind chips / soft-fail tone. */
-  const [validatePresByKey, setValidatePresByKey] = useState<
-    Record<string, PluginValidatePresentation>
-  >({});
-  /** Pre-install validate for advanced path/git install field. */
-  const [installValidate, setInstallValidate] =
-    useState<PluginValidateResult | null>(null);
-  const [installValidatePres, setInstallValidatePres] =
-    useState<PluginValidatePresentation | null>(null);
   /** GlassModal result for last validate (row or advanced install). */
   const [validateModal, setValidateModal] = useState<{
     open: boolean;
@@ -284,13 +304,331 @@ export function ExtensionsPanel({
     action: McpOauthAction;
     status: McpServerStatus;
   } | null>(null);
+  /** Co-located tab search query. */
+  const [extQuery, setExtQuery] = useState("");
+  /** Agents / Hooks actions hosted in the tab trail. */
+  const [agentsTabActions, setAgentsTabActions] =
+    useState<ExtAgentsTabActions | null>(null);
+  const [hooksTabActions, setHooksTabActions] =
+    useState<ExtHooksTabActions | null>(null);
+  /** Expanded installed-plugin rows (secondary actions). */
+  /* expandedPluginKeys removed */
+  /** Expanded MCP row gear menu (secondary actions). */
+  const [expandedMcpNames, setExpandedMcpNames] = useState<
+    Record<string, boolean>
+  >({});
+  /** Confirm Modal for recommended ChatCut install (never auto-install). */
+  const [chatcutInstallOpen, setChatcutInstallOpen] = useState(false);
+  /** Marketplace sources + advanced install live in a modal (not page body). */
+  const [sourcesModalOpen, setSourcesModalOpen] = useState(false);
+  /** Enriched cards (manifest + logo) for installed plugins. */
+  const [pluginCards, setPluginCards] = useState<PluginCardModel[]>([]);
+  /** Discover catalog (available plugins) — own state so we render Featured 2-col. */
+  const [catalogPlugins, setCatalogPlugins] = useState<AvailablePluginLike[]>(
+    [],
+  );
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogPage, setCatalogPage] = useState(1);
+  /** Category keys expanded past the 7+more collapse tile. */
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
+    {},
+  );
+  /** Full meta for detail modal (installed or available). */
+  const [detailCard, setDetailCard] = useState<PluginCardModel | null>(null);
+  const [detailRawAvailable, setDetailRawAvailable] =
+    useState<AvailablePluginLike | null>(null);
+  const [detailRawInstalled, setDetailRawInstalled] =
+    useState<api.PluginDto | null>(null);
+  const [menuPlugin, setMenuPlugin] = useState<api.PluginDto | null>(null);
+  /** name(lower) → logo convertFileSrc URL + enriched fields */
+  const [metaByName, setMetaByName] = useState<
+    Map<
+      string,
+      {
+        displayName?: string | null;
+        description?: string | null;
+        longDescription?: string | null;
+        version?: string | null;
+        category?: string | null;
+        author?: string | null;
+        homepage?: string | null;
+        repository?: string | null;
+        license?: string | null;
+        logoUrl?: string | null;
+        keywords?: string[];
+      }
+    >
+  >(() => new Map());
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const refresh = useCallback(async () => {
+  const categoryLabel = useCallback(
+    (k: PluginCardKind): string => {
+      const map: Record<PluginCardKind, MessageKey> = {
+        video: "ext.plugins.category.video",
+        design: "ext.plugins.category.design",
+        mcp: "ext.plugins.category.mcp",
+        skills: "ext.plugins.category.skills",
+        agents: "ext.plugins.category.agents",
+        hooks: "ext.plugins.category.hooks",
+        devtools: "ext.plugins.category.devtools",
+        productivity: "ext.plugins.category.productivity",
+        other: "ext.plugins.category.other",
+      };
+      return tr(map[k]);
+    },
+    [tr],
+  );
+
+  /** Localize marketplace meta category labels (Developer Tools, Finance, …). */
+  const displayCategoryLabel = useCallback(
+    (raw: string): string => {
+      const key = marketplaceCategoryMessageKey(raw);
+      if (key) return tr(key);
+      return raw.trim() || tr("ext.plugins.category.other");
+    },
+    [tr],
+  );
+
+  const enrichPluginCards = useCallback(
+    async (list: api.PluginDto[]) => {
+      const chatcutLabel = tr("ext.plugins.recommended.chatcutName");
+      const cards: PluginCardModel[] = [];
+      // Prefer loopback media HTTP (path_scope) over convertFileSrc asset protocol.
+      await ensureMediaEndpoint();
+      for (const p of list) {
+        let manifest = null as ReturnType<typeof parsePluginManifestJson>;
+        let iconUrl: string | null = null;
+        let iconPath: string | null = null;
+        const root = (p.path ?? "").trim();
+        if (root && api.isTauri()) {
+          for (const mpath of pluginManifestPathCandidates(root)) {
+            try {
+              const res = await api.fsReadAbsolute(mpath);
+              const text = res?.text?.trim() ? res.text : null;
+              if (text) {
+                manifest = parsePluginManifestJson(text);
+                if (manifest) break;
+              }
+            } catch {
+              /* try next */
+            }
+          }
+          const logoField =
+            (manifest as { logo?: string } | null)?.logo ||
+            (manifest as { interface?: { logo?: string; composerIcon?: string } } | null)
+              ?.interface?.logo ||
+            (manifest as { interface?: { composerIcon?: string } } | null)
+              ?.interface?.composerIcon ||
+            null;
+          const iconTry = [
+            logoField
+              ? logoField.startsWith("/")
+                ? logoField
+                : `${root}/${logoField.replace(/^\.\//, "")}`
+              : null,
+            `${root}/codex/assets/logo-light.png`,
+            `${root}/codex/assets/logo.png`,
+            `${root}/assets/logo-light.png`,
+            `${root}/assets/logo.png`,
+            `${root}/assets/logo.svg`,
+            `${root}/assets/icon.png`,
+            ...pluginIconPathCandidates(root),
+          ].filter(Boolean) as string[];
+          for (const ip of iconTry) {
+            const media = localPathToMediaHttpUrl(ip);
+            if (media) {
+              iconUrl = media;
+              iconPath = ip;
+              break;
+            }
+          }
+        }
+        cards.push(
+          buildInstalledCard(p, {
+            chatcutLabel,
+            manifest,
+            iconPath,
+            iconUrl,
+            categoryLabel,
+          }),
+        );
+      }
+      setPluginCards(cards);
+    },
+    [categoryLabel, tr],
+  );
+
+  const loadCatalog = useCallback(
+    async (force = false) => {
+      if (!api.isTauri() || !cliFound) {
+        setCatalogPlugins([]);
+        setCatalogLoading(false);
+        return;
+      }
+      setCatalogLoading(true);
+      setCatalogError(null);
+      try {
+        await ensureDefaultMarketplaces({
+          list: async () => {
+            const r = await api.marketplaceList();
+            return (r.sources ?? []).map((s: Record<string, unknown>) => ({
+              name: String(s.name ?? ""),
+              url:
+                typeof (s as { url?: string }).url === "string"
+                  ? (s as { url: string }).url
+                  : typeof (s as { source?: { url?: string } }).source?.url ===
+                      "string"
+                    ? (s as { source: { url: string } }).source.url
+                    : null,
+              path: null,
+              kind: String((s as { kind?: string }).kind ?? "git"),
+            }));
+          },
+          add: async (url) => {
+            await api.marketplaceAdd(url);
+          },
+          remove: async (nameOrUrl) => {
+            await api.marketplaceRemove(nameOrUrl);
+          },
+          removeClaude: true,
+        });
+        if (force) invalidateMarketplaceCatalogCache();
+
+        const result = await loadMarketplaceCatalog(async () => {
+          const [srcRes, availRes] = await Promise.all([
+            api.marketplaceList(),
+            api.marketplaceAvailable(),
+          ]);
+          const sources = (srcRes.sources ?? []).map((row) => {
+            const o = row as Record<string, unknown>;
+            const sourceObj =
+              o.source && typeof o.source === "object"
+                ? (o.source as Record<string, unknown>)
+                : null;
+            return {
+              name: String(o.name ?? ""),
+              kind: String(o.kind ?? "git"),
+              url:
+                (typeof o.url === "string" && o.url) ||
+                (typeof sourceObj?.url === "string" && sourceObj.url) ||
+                null,
+              path:
+                (typeof o.path === "string" && o.path) ||
+                (typeof sourceObj?.path === "string" && sourceObj.path) ||
+                null,
+            } as MarketplaceSourceLike;
+          });
+          const mapped: AvailablePluginLike[] = [];
+          for (const row of availRes.plugins ?? []) {
+            const raw = row as Record<string, unknown>;
+            const name = String(raw.name ?? "").trim();
+            if (!name) continue;
+            const skillCountRaw =
+              typeof raw.skillCount === "number"
+                ? raw.skillCount
+                : typeof raw.skill_count === "number"
+                  ? raw.skill_count
+                  : null;
+            const enriched = enrichAvailableFromComponents(raw, {
+              skillCount: skillCountRaw,
+              hasHooks: !!(raw.hasHooks ?? raw.has_hooks),
+              hasAgents: !!(raw.hasAgents ?? raw.has_agents),
+              hasMcp: !!(raw.hasMcp ?? raw.has_mcp),
+            });
+            mapped.push({
+              name,
+              status: String(raw.status ?? "available").trim() || "available",
+              marketplace:
+                (typeof raw.marketplace === "string" && raw.marketplace) ||
+                null,
+              description:
+                (typeof raw.description === "string" && raw.description) ||
+                null,
+              version:
+                (typeof raw.version === "string" && raw.version) || null,
+              skillCount: enriched.skillCount,
+              hasHooks: enriched.hasHooks,
+              hasAgents: enriched.hasAgents,
+              hasMcp: enriched.hasMcp,
+            });
+          }
+          let available = sortAvailablePluginsByName(
+            filterAvailablePlugins(mapped),
+          );
+          available = filterCatalogToDefaultSources(available, sources);
+          available = dedupeAvailablePluginsByName(available);
+          return {
+            sources,
+            available,
+            error: srcRes.error?.trim() || availRes.error?.trim() || null,
+          };
+        }, { force });
+
+        setCatalogPlugins(dedupeAvailablePluginsByName(result.available));
+        setCatalogError(result.error);
+        if (!force) setCatalogPage(1);
+
+        // Enrich logos / display names from marketplace-cache plugin.json
+        try {
+          const metaRes = await api.marketplacePluginMetaIndex();
+          // Media HTTP is path_scope-gated (includes ~/.grok); do not use convertFileSrc.
+          await ensureMediaEndpoint();
+          const map = new Map<
+            string,
+            {
+              displayName?: string | null;
+              description?: string | null;
+              longDescription?: string | null;
+              version?: string | null;
+              category?: string | null;
+              author?: string | null;
+              homepage?: string | null;
+              repository?: string | null;
+              license?: string | null;
+              logoUrl?: string | null;
+              keywords?: string[];
+            }
+          >();
+          for (const m of metaRes.plugins ?? []) {
+            const key = (m.name ?? "").trim().toLowerCase();
+            if (!key) continue;
+            const logoPath = (m.logoPath ?? "").trim();
+            map.set(key, {
+              displayName: m.displayName,
+              description: m.description,
+              longDescription: m.longDescription,
+              version: m.version,
+              category: m.category,
+              author: m.author,
+              homepage: m.homepage,
+              repository: m.repository,
+              license: m.license,
+              logoUrl: logoPath ? localPathToMediaHttpUrl(logoPath) : null,
+              keywords: m.keywords ?? [],
+            });
+          }
+          setMetaByName(map);
+        } catch {
+          /* soft-fail: cards still show CLI description */
+        }
+      } catch (e) {
+        setCatalogPlugins([]);
+        setCatalogError(String(e));
+      } finally {
+        setCatalogLoading(false);
+      }
+    },
+    [cliFound],
+  );
+
+  const refresh = useCallback(async (opts?: { forcePlugins?: boolean }) => {
     if (!api.isTauri()) {
       setSkills([]);
       setSkillRoots([]);
       setServers([]);
       setPlugins([]);
+      setPluginCards([]);
       setSkillsError(tr("ext.needTauri"));
       setMcpError(null);
       setPluginsError(null);
@@ -303,7 +641,8 @@ export function ExtensionsPanel({
     setPluginsError(null);
     setPathHint(null);
     const cwd = projectPath?.trim() || null;
-    const [skillsRes, mcpRes, pluginsRes, providersRes] = await Promise.all([
+    const forcePlugins = !!opts?.forcePlugins;
+    const [skillsRes, mcpRes, pluginsRes] = await Promise.all([
       api.skillsList(cwd).catch((e) => ({
         skills: [] as api.SkillDto[],
         skillRoots: [] as string[],
@@ -313,11 +652,20 @@ export function ExtensionsPanel({
         servers: [] as api.McpDto[],
         error: String(e),
       })),
-      api.pluginsList().catch((e) => ({
-        plugins: [] as api.PluginDto[],
-        error: String(e),
-      })),
-      api.providersList().catch(() => null),
+      loadPluginsListCached(
+        async () => {
+          try {
+            const r = await api.pluginsList();
+            return {
+              plugins: r.plugins ?? [],
+              error: r.error?.trim() || null,
+            };
+          } catch (e) {
+            return { plugins: [], error: String(e) };
+          }
+        },
+        { force: forcePlugins },
+      ),
     ]);
     setSkills(sortSkillsByName(skillsRes.skills ?? []));
     setSkillRoots(
@@ -326,20 +674,30 @@ export function ExtensionsPanel({
         : [],
     );
     setServers(sortMcpByName(mcpRes.servers ?? []));
-    setPlugins(sortPluginsByName(pluginsRes.plugins ?? []));
+    const list = sortPluginsByName(pluginsRes.plugins ?? []);
+    setPlugins(list);
     setSkillsError(skillsRes.error?.trim() ? skillsRes.error : null);
     setMcpError(mcpRes.error?.trim() ? mcpRes.error : null);
     setPluginsError(pluginsRes.error?.trim() ? pluginsRes.error : null);
-    if (providersRes) {
-      setAgentHome(providersRes.agentHome?.trim() || null);
-      setConfigPath(providersRes.configPath?.trim() || null);
-    }
     setLoading(false);
-  }, [projectPath, tr]);
+    // Enrich cards after first paint so cache path feels instant
+    void enrichPluginCards(list);
+  }, [enrichPluginCards, projectPath, tr]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Load discover catalog when plugins tab is shown (cached when possible).
+  useEffect(() => {
+    if (resolveExtensionsTabId(activeTab) !== "plugins") return;
+    void loadCatalog(false);
+  }, [activeTab, loadCatalog]);
+
+  useEffect(() => {
+    setCatalogPage(1);
+    setExpandedGroups({});
+  }, [extQuery]);
 
   const bannerError = useMemo(
     () => mergeInspectErrors(skillsError, mcpError, pluginsError),
@@ -351,11 +709,6 @@ export function ExtensionsPanel({
     isCliMissingError(mcpError) ||
     isCliMissingError(pluginsError);
 
-  const scopeLabel = projectPath?.trim()
-    ? tr("ext.scope.project")
-    : tr("ext.scope.global");
-  const scopePath = projectPath?.trim() || null;
-
   const mcpOffCount = useMemo(
     () => servers.filter((s) => !isExtensionEnabled(s.enabled)).length,
     [servers],
@@ -364,17 +717,6 @@ export function ExtensionsPanel({
     () => skills.filter((s) => !isExtensionEnabled(s.enabled)).length,
     [skills],
   );
-
-  const reveal = async (path: string | null | undefined) => {
-    const p = (path ?? "").trim();
-    if (!p || !api.isTauri()) return;
-    try {
-      await api.pathReveal(p);
-      setPathHint(null);
-    } catch (e) {
-      setPathHint(String(e));
-    }
-  };
 
   const toggleMcp = async (name: string, next: boolean) => {
     if (!api.isTauri() || busyKey) return;
@@ -812,13 +1154,31 @@ export function ExtensionsPanel({
   const runPluginAction = async (
     key: string,
     action: () => Promise<unknown>,
+    opts?: { soft?: boolean },
   ) => {
     setActionBusy(key);
     setActionError(null);
     setActionErrorSource(null);
     try {
       await action();
-      await refresh();
+      if (opts?.soft) {
+        // Enable/disable: trust patch + local state (no full CLI list).
+        setPlugins((prev) =>
+          prev.map((p) => {
+            const match =
+              pluginRowKey(p) === key ||
+              p.name === key ||
+              key.endsWith(`:${p.name}`);
+            if (!match) return p;
+            // action already flipped via API; read from patch cache when possible
+            return p;
+          }),
+        );
+        await refresh({ forcePlugins: false });
+      } else {
+        invalidatePluginsListCache();
+        await refresh({ forcePlugins: true });
+      }
     } catch (e) {
       setActionError(String(e));
       setActionErrorSource("plugin");
@@ -829,13 +1189,29 @@ export function ExtensionsPanel({
 
   const togglePlugin = (p: api.PluginDto) => {
     const key = pluginRowKey(p);
-    void runPluginAction(key, async () => {
-      if (p.enabled) {
-        await api.pluginDisable(p.name);
-      } else {
-        await api.pluginEnable(p.name);
-      }
-    });
+    const nextEnabled = !p.enabled;
+    void runPluginAction(
+      key,
+      async () => {
+        if (p.enabled) {
+          await api.pluginDisable(p.name);
+        } else {
+          await api.pluginEnable(p.name);
+        }
+        patchPluginsListEnabled(p.name, nextEnabled);
+        setPlugins((prev) =>
+          prev.map((row) =>
+            row.name === p.name ? { ...row, enabled: nextEnabled } : row,
+          ),
+        );
+        setPluginCards((prev) =>
+          prev.map((c) =>
+            c.name === p.name ? { ...c, enabled: nextEnabled } : c,
+          ),
+        );
+      },
+      { soft: true },
+    );
   };
 
   const confirmUninstall = async () => {
@@ -859,205 +1235,6 @@ export function ExtensionsPanel({
       await api.pluginInstall(source);
       setInstallSource("");
     });
-  };
-
-  const updatePlugin = (p: api.PluginDto) => {
-    const key = `update:${pluginRowKey(p)}`;
-    void runPluginAction(key, async () => {
-      await api.pluginUpdate(p.name);
-    });
-  };
-
-  const updateAllPlugins = () => {
-    if (!api.isTauri() || actionBusy || cliMissing || plugins.length === 0) {
-      return;
-    }
-    void runPluginAction("update:all", async () => {
-      await api.pluginUpdate(null);
-    });
-  };
-
-  const applyValidateResult = (
-    res: api.PluginValidateResult,
-  ): PluginValidateResult => normalizePluginValidateResult(res);
-
-  const presentValidateResult = (
-    res: PluginValidateResult,
-  ): PluginValidatePresentation =>
-    buildPluginValidatePresentation(res, {
-      kinds: pluginValidateKindLabels,
-      okTitle: tr("ext.plugins.validateOk"),
-      failTitle: tr("ext.plugins.validateFailed"),
-    });
-
-  /** Validate an installed plugin (path preferred) — row + GlassModal soft-fail. */
-  const validatePlugin = (p: api.PluginDto) => {
-    if (actionBusy) return;
-    const key = pluginRowKey(p);
-    const target = pluginValidateTarget(p);
-
-    if (!api.isTauri()) {
-      const presentation = buildPluginValidateExceptionPresentation(
-        tr("ext.needTauri"),
-        { kinds: pluginValidateKindLabels },
-      );
-      // Force host_only if message didn't classify (needTauri string varies).
-      const forced: PluginValidatePresentation = {
-        ...presentation,
-        kind: "host_only",
-        severity: "warn",
-        softFail: true,
-        title: pluginValidateKindLabel("host_only", pluginValidateKindLabels),
-      };
-      setValidateByKey((prev) => ({
-        ...prev,
-        [key]: {
-          ok: false,
-          messages: forced.messages,
-          reason: "host_only",
-        },
-      }));
-      setValidatePresByKey((prev) => ({ ...prev, [key]: forced }));
-      openPluginValidatePresentation(forced, p.name);
-      return;
-    }
-
-    if (cliMissing) {
-      const presentation = presentValidateResult({
-        ok: false,
-        reason: "cli_missing",
-        messages: [tr("ext.plugins.validate.kind.cliMissing")],
-      });
-      setValidateByKey((prev) => ({
-        ...prev,
-        [key]: {
-          ok: false,
-          reason: "cli_missing",
-          messages: presentation.messages,
-        },
-      }));
-      setValidatePresByKey((prev) => ({ ...prev, [key]: presentation }));
-      openPluginValidatePresentation(presentation, p.name);
-      return;
-    }
-
-    setActionBusy(`validate:${key}`);
-    setActionError(null);
-    setActionErrorSource(null);
-    void (async () => {
-      try {
-        const res = applyValidateResult(await api.pluginValidate(target));
-        const presentation = presentValidateResult(res);
-        setValidateByKey((prev) => ({ ...prev, [key]: res }));
-        setValidatePresByKey((prev) => ({ ...prev, [key]: presentation }));
-        openPluginValidatePresentation(presentation, p.name);
-        // Soft-fail (cli too old / missing): modal + row only — not hard action error.
-        if (!res.ok && !presentation.softFail) {
-          setActionError(
-            formatPluginValidateMessages(
-              res.messages,
-              tr("ext.plugins.validateFailed"),
-            ),
-          );
-          setActionErrorSource("plugin");
-        }
-      } catch (e) {
-        const presentation = buildPluginValidateExceptionPresentation(e, {
-          kinds: pluginValidateKindLabels,
-        });
-        const envelope: PluginValidateResult = {
-          ok: false,
-          messages: presentation.messages,
-          reason: presentation.reason,
-        };
-        setValidateByKey((prev) => ({ ...prev, [key]: envelope }));
-        setValidatePresByKey((prev) => ({ ...prev, [key]: presentation }));
-        openPluginValidatePresentation(presentation, p.name);
-        if (!presentation.softFail) {
-          setActionError(presentation.summary || String(e));
-          setActionErrorSource("plugin");
-        }
-      } finally {
-        setActionBusy(null);
-      }
-    })();
-  };
-
-  /** Pre-install validate for a local path in the advanced install field. */
-  const validateInstallSource = () => {
-    if (actionBusy) return;
-    const source = normalizePluginInstallSource(installSource);
-    const preflight = buildPluginValidatePreflightError(source, {
-      isTauri: api.isTauri(),
-      emptyMessage: tr("ext.plugins.installEmpty"),
-      pathOnlyMessage: tr("ext.plugins.validatePathOnly"),
-      hostOnlyMessage: tr("ext.needTauri"),
-      labels: { kinds: pluginValidateKindLabels },
-    });
-    if (preflight) {
-      const envelope: PluginValidateResult = {
-        ok: false,
-        messages: preflight.messages,
-        reason: preflight.reason,
-      };
-      setInstallValidate(envelope);
-      setInstallValidatePres(preflight);
-      openPluginValidatePresentation(preflight, null);
-      return;
-    }
-    if (cliMissing) {
-      const presentation = presentValidateResult({
-        ok: false,
-        reason: "cli_missing",
-        messages: [tr("ext.plugins.validate.kind.cliMissing")],
-      });
-      setInstallValidate({
-        ok: false,
-        reason: "cli_missing",
-        messages: presentation.messages,
-      });
-      setInstallValidatePres(presentation);
-      openPluginValidatePresentation(presentation, null);
-      return;
-    }
-    setActionBusy("validate:install");
-    setActionError(null);
-    setActionErrorSource(null);
-    void (async () => {
-      try {
-        const res = applyValidateResult(await api.pluginValidate(source));
-        const presentation = presentValidateResult(res);
-        setInstallValidate(res);
-        setInstallValidatePres(presentation);
-        openPluginValidatePresentation(presentation, null);
-        if (!res.ok && !presentation.softFail) {
-          setActionError(
-            formatPluginValidateMessages(
-              res.messages,
-              tr("ext.plugins.validateFailed"),
-            ),
-          );
-          setActionErrorSource("plugin");
-        }
-      } catch (e) {
-        const presentation = buildPluginValidateExceptionPresentation(e, {
-          kinds: pluginValidateKindLabels,
-        });
-        setInstallValidate({
-          ok: false,
-          messages: presentation.messages,
-          reason: presentation.reason,
-        });
-        setInstallValidatePres(presentation);
-        openPluginValidatePresentation(presentation, null);
-        if (!presentation.softFail) {
-          setActionError(presentation.summary || String(e));
-          setActionErrorSource("plugin");
-        }
-      } finally {
-        setActionBusy(null);
-      }
-    })();
   };
 
   const showDetails = async (p: api.PluginDto) => {
@@ -1257,96 +1434,293 @@ export function ExtensionsPanel({
     }
   }, [doctorLastAt, locale]);
 
-  const visiblePlugins = useMemo(
-    () => filterPluginsByLoadState(plugins, pluginFilter),
-    [plugins, pluginFilter],
+  // Legacy market deep-link / search → plugins (no top-level market tab).
+  const tab = resolveExtensionsTabId(activeTab);
+  const chatcutInstalled = useMemo(
+    () => isChatCutInstalled(plugins),
+    [plugins],
   );
 
-  const tab = activeTab;
+  const q = extQuery.trim().toLowerCase();
+  const filterText = useCallback(
+    (parts: Array<string | null | undefined>) => {
+      if (!q) return true;
+      return parts.some((p) => (p ?? "").toLowerCase().includes(q));
+    },
+    [q],
+  );
+
+  const filteredSkills = useMemo(() => {
+    if (!q) return skills;
+    return skills.filter((s) =>
+      filterText([s.name, s.description, s.source, s.path]),
+    );
+  }, [skills, q, filterText]);
+
+  /** User-managed MCP vs plugin-provided (honest empty when unknown). */
+  const { userMcpServers, pluginMcpServers } = useMemo(() => {
+    const user: api.McpDto[] = [];
+    const fromPlugin: api.McpDto[] = [];
+    for (const s of servers) {
+      const vendor = (s.vendor ?? "").toLowerCase();
+      const src = `${s.vendor ?? ""} ${s.target ?? ""} ${s.name ?? ""}`.toLowerCase();
+      const looksPlugin =
+        vendor.includes("plugin") ||
+        src.includes("plugin:") ||
+        src.includes("/plugins/") ||
+        !!(s as { fromPlugin?: boolean }).fromPlugin;
+      if (looksPlugin) fromPlugin.push(s);
+      else user.push(s);
+    }
+    return { userMcpServers: user, pluginMcpServers: fromPlugin };
+  }, [servers]);
+
+  const filteredUserMcp = useMemo(() => {
+    if (!q) return userMcpServers;
+    return userMcpServers.filter((s) =>
+      filterText([s.name, s.target, s.transport, s.vendor]),
+    );
+  }, [userMcpServers, q, filterText]);
+
+  const filteredPluginMcp = useMemo(() => {
+    if (!q) return pluginMcpServers;
+    return pluginMcpServers.filter((s) =>
+      filterText([s.name, s.target, s.transport, s.vendor]),
+    );
+  }, [pluginMcpServers, q, filterText]);
+
+  const mcpCount = servers.length;
+  const searchPlaceholder =
+    tab === "mcp"
+      ? tr("ext.search.mcp")
+      : tab === "skills"
+        ? tr("ext.search.skills")
+        : tr("ext.search.plugins");
+  /** Search only on list tabs; Agents/Hooks use the same trail slot for actions. */
+  const showTabSearch =
+    tab === "plugins" || tab === "mcp" || tab === "skills";
+
+  const installChatCut = async () => {
+    if (!api.isTauri() || actionBusy || cliMissing) return;
+    setChatcutInstallOpen(false);
+    await runPluginAction("install:chatcut", async () => {
+      await api.pluginInstall(CHATCUT_CODEX_INSTALL_SOURCE);
+    });
+  };
+
+  const installAvailableDirect = async (target: AvailablePluginLike) => {
+    if (!api.isTauri() || actionBusy || cliMissing) return;
+    const source = marketplaceQualifiedInstallSource(
+      target.name,
+      target.marketplace,
+    );
+    await runPluginAction(`inst:${target.name}`, async () => {
+      await api.pluginInstall(source);
+      invalidateMarketplaceCatalogCache();
+      void loadCatalog(true);
+    });
+  };
+
+  const installedNameSet = useMemo(
+    () => buildInstalledPluginNameSet(plugins),
+    [plugins],
+  );
+
+  const discoverCards = useMemo(() => {
+    const cards = availableToCards(catalogPlugins, {
+      installedNames: installedNameSet,
+      categoryLabel,
+      metaByName,
+    });
+    // Second pass: guard against any residual id/name dupes after enrich
+    const seen = new Set<string>();
+    const unique = cards.filter((c) => {
+      const k = c.name.trim().toLowerCase();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return filterPluginCardsByQuery(unique, extQuery);
+  }, [catalogPlugins, installedNameSet, categoryLabel, extQuery, metaByName]);
+
+  /**
+   * Group full catalog first, then take a prefix — so loading more only
+   * appends below (never re-inserts into earlier category sections).
+   */
+  const discoverPage = useMemo(
+    () =>
+      sliceGroupedCatalogPage(
+        discoverCards,
+        catalogPage,
+        PLUGIN_CATALOG_PAGE_SIZE,
+      ),
+    [discoverCards, catalogPage],
+  );
+
+  const discoverGroups = discoverPage.groups;
+  const catalogHasMore = discoverPage.hasMore;
+  const catalogVisibleCount = discoverPage.visibleCount;
+  const catalogTotal = discoverPage.total;
+
+  // Keep latest hasMore for the observer without re-binding every page.
+  const catalogHasMoreRef = useRef(catalogHasMore);
+  catalogHasMoreRef.current = catalogHasMore;
+  const catalogLoadLockRef = useRef(false);
+
+  // Infinite scroll: append next page when sentinel enters view.
+  // Avoid re-creating the observer on every length change (that + regroup
+  // used to yank scroll upward). After each page grow, re-check once in
+  // case the sentinel is still visible at the bottom.
+  useEffect(() => {
+    if (resolveExtensionsTabId(activeTab) !== "plugins") return;
+    const el = loadMoreSentinelRef.current;
+    if (!el) return;
+
+    const tryLoadMore = () => {
+      if (!catalogHasMoreRef.current) return;
+      if (catalogLoadLockRef.current) return;
+      catalogLoadLockRef.current = true;
+      setCatalogPage((p) => p + 1);
+      // Unlock on next frame so one intersection cannot multi-fire.
+      requestAnimationFrame(() => {
+        catalogLoadLockRef.current = false;
+      });
+    };
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) tryLoadMore();
+      },
+      // Modest rootMargin — large pre-fetch + regroup used to feel like bounce.
+      { root: null, rootMargin: "120px", threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [activeTab, catalogHasMore]);
+
+  // If the sentinel stays in view after content grows, IntersectionObserver
+  // will not re-fire (no edge change). Nudge another page when still visible.
+  useEffect(() => {
+    if (resolveExtensionsTabId(activeTab) !== "plugins") return;
+    if (!catalogHasMore) return;
+    const el = loadMoreSentinelRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const viewportH =
+      typeof window !== "undefined" ? window.innerHeight : 0;
+    if (rect.top <= viewportH + 120) {
+      if (catalogLoadLockRef.current) return;
+      catalogLoadLockRef.current = true;
+      setCatalogPage((p) => p + 1);
+      requestAnimationFrame(() => {
+        catalogLoadLockRef.current = false;
+      });
+    }
+  }, [activeTab, catalogHasMore, catalogVisibleCount]);
 
   return (
-    <div className="ext-panel" data-testid="extensions-panel">
+    <div className="ext-panel ext-ref-shell" data-testid="extensions-panel">
       <p className="settings-page__lead">{tr("ext.lead")}</p>
 
       {onTabChange ? (
         <div
-          className="settings-account-tabs settings-page__tabs"
+          className="ext-ref-tabs"
           role="tablist"
           aria-label={tr("settings.nav.extensions")}
         >
-          <div
-            className="settings-seg settings-seg--lg settings-page__tabs-seg"
-            role="presentation"
-          >
+          <div className="ext-ref-tabs__list" role="presentation">
             {(
               [
-                ["plugins", "ext.plugins.title"],
-                ["skills", "ext.skills.title"],
-                ["mcp", "ext.mcp.title"],
-                ["agents", "ext.agents.title"],
-                ["hooks", "ext.hooks.title"],
-                ["market", "ext.market.title"],
+                ["plugins", "ext.plugins.title", plugins.length] as const,
+                ["mcp", "ext.mcp.title", mcpCount] as const,
+                ["skills", "ext.skills.title", skills.length] as const,
+                ["agents", "ext.agents.title", null] as const,
+                ["hooks", "ext.hooks.title", null] as const,
               ] as const
-            ).map(([id, key]) => (
+            ).map(([id, key, count]) => (
               <button
                 key={id}
                 type="button"
                 role="tab"
-                className={"settings-seg__btn" + (tab === id ? " is-on" : "")}
+                className={
+                  "ext-ref-tabs__tab" + (tab === id ? " is-on" : "")
+                }
                 aria-selected={tab === id}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   onTabChange(id);
+                  setExtQuery("");
                 }}
               >
-                {tr(key)}
+                <span>{tr(key)}</span>
+                {!loading && count != null ? (
+                  <span className="ext-ref-tabs__count">{count}</span>
+                ) : null}
               </button>
             ))}
           </div>
+          <div className="ext-ref-tabs__trail">
+            {showTabSearch ? (
+              <input
+                type="search"
+                className="settings-input"
+                value={extQuery}
+                placeholder={searchPlaceholder}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(e) => setExtQuery(e.target.value)}
+                aria-label={searchPlaceholder}
+              />
+            ) : tab === "agents" ? (
+              <div className="ext-ref-tabs__actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!agentsTabActions || agentsTabActions.busy}
+                  onClick={() => agentsTabActions?.refresh()}
+                >
+                  <IconRefresh size={14} />
+                  <span>{tr("ext.refresh")}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--solid btn--sm"
+                  disabled={!agentsTabActions || agentsTabActions.busy}
+                  onClick={() => agentsTabActions?.openNew()}
+                >
+                  <IconPlus size={14} />
+                  <span>
+                    {agentsTabActions?.busy
+                      ? tr("ext.agents.creating")
+                      : tr("ext.agents.new")}
+                  </span>
+                </button>
+              </div>
+            ) : tab === "hooks" ? (
+              <div className="ext-ref-tabs__actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={
+                    !hooksTabActions ||
+                    hooksTabActions.busy ||
+                    hooksTabActions.loading
+                  }
+                  onClick={() => hooksTabActions?.refresh()}
+                >
+                  <IconRefresh size={14} />
+                  <span>
+                    {hooksTabActions?.loading
+                      ? tr("ext.refreshing")
+                      : tr("ext.refresh")}
+                  </span>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
-
-      <div className="ext-toolbar">
-        <div className="ext-toolbar__scope">
-          <span className="ext-badge ext-badge--scope">{scopeLabel}</span>
-          {scopePath ? (
-            <button
-              type="button"
-              className="ext-path-btn"
-              title={scopePath}
-              onClick={() => void reveal(scopePath)}
-            >
-              <IconFolder size={14} />
-              <span>{shortPathLabel(scopePath, 48)}</span>
-            </button>
-          ) : (
-            <span className="ext-toolbar__hint">{tr("ext.scope.globalHint")}</span>
-          )}
-        </div>
-        <div className="ext-toolbar__actions">
-          {(agentHome || configPath) && (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => void reveal(configPath || agentHome)}
-              title={configPath || agentHome || undefined}
-            >
-              <IconExternalLink size={14} />
-              <span>{tr("ext.openAgentHome")}</span>
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={() => void refresh()}
-            disabled={loading || !!actionBusy || !!busyKey}
-          >
-            <IconRefresh size={14} />
-            <span>{loading ? tr("ext.refreshing") : tr("ext.refresh")}</span>
-          </button>
-        </div>
-      </div>
 
       {pathHint && (
         <p className="ext-alert ext-alert--warn" role="status">
@@ -1406,407 +1780,443 @@ export function ExtensionsPanel({
         </div>
       )}
 
-      {/* Plugins — same inventory as Grok Build `plugin list` / Plugins tab */}
+      {/* Plugins — reference layout: installed strip + 2-col featured catalog */}
       {tab === "plugins" && (
-      <>
-      <h2 className="settings-page__h2" id="settings-anchor-ext-plugins">
-        <IconPuzzle size={15} />
-        {tr("ext.plugins.title")}
-        {!loading ? (
-          <span className="ext-count">{plugins.length}</span>
-        ) : null}
-        {!loading && plugins.length > 0 ? (
-          <button
-            type="button"
-            className="btn btn--ghost ext-bulk-btn"
-            disabled={!!actionBusy || !!busyKey || cliMissing}
-            onClick={() => updateAllPlugins()}
-          >
-            {actionBusy === "update:all"
-              ? tr("ext.plugins.updating")
-              : tr("ext.plugins.updateAll")}
-          </button>
-        ) : null}
-      </h2>
-      <div className="settings-card ext-card">
-        {!loading && plugins.length > 0 ? (
-          <div
-            className="ext-plugin-filters"
-            role="tablist"
-            aria-label={tr("ext.plugins.filterLabel")}
-          >
-            {(
-              [
-                ["all", "ext.plugins.filter.all"],
-                ["enabled", "ext.plugins.filter.enabled"],
-                ["disabled", "ext.plugins.filter.disabled"],
-              ] as const
-            ).map(([id, key]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={pluginFilter === id}
-                className={
-                  "ext-plugin-filter" + (pluginFilter === id ? " is-active" : "")
-                }
-                onClick={() => setPluginFilter(id)}
-              >
-                {tr(key)}
-              </button>
-            ))}
+      <div className="ext-ref-stack ext-ref-plugins-scroll">
+        {/* Installed strip */}
+        <section
+          className="ext-ref-block"
+          id="settings-anchor-ext-plugins"
+        >
+          <div className="ext-ref-section-label">
+            {tr("ext.plugins.installedTitle")}
+            {!loading ? ` · ${plugins.length}` : ""}
           </div>
-        ) : null}
-        {loading && <p className="ext-empty">{tr("ext.plugins.loading")}</p>}
-        {!loading && plugins.length === 0 && (
-          <div className="ext-empty-cta">
-            <p className="ext-empty-cta__text">
+          {loading && plugins.length === 0 ? (
+            <p className="ext-ref-empty">{tr("ext.plugins.loading")}</p>
+          ) : null}
+          {!loading && plugins.length === 0 ? (
+            <p className="ext-ref-empty">
               {cliMissing ? tr("ext.plugins.emptyCli") : tr("ext.plugins.empty")}
             </p>
-            {!cliMissing && onTabChange ? (
+          ) : null}
+          {plugins.length > 0 ? (
+            <div className="ext-ref-installed-strip" role="list">
+              {(pluginCards.length > 0
+                ? pluginCards
+                : plugins.map((p) =>
+                    buildInstalledCard(p, {
+                      chatcutLabel: tr("ext.plugins.recommended.chatcutName"),
+                      categoryLabel,
+                    }),
+                  )
+              ).map((c) => {
+                const raw = plugins.find((p) => p.name === c.name);
+                const meta = metaByName.get(c.name.trim().toLowerCase());
+                const logo = c.iconUrl || meta?.logoUrl || null;
+                const label =
+                  meta?.displayName?.trim() || c.displayName;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="listitem"
+                    className={
+                      "ext-ref-installed-chip" + (c.enabled ? "" : " is-off")
+                    }
+                    title={label}
+                    aria-label={label}
+                    onClick={() => {
+                      setDetailCard({
+                        ...c,
+                        displayName: label,
+                        description:
+                          meta?.description ||
+                          c.description ||
+                          meta?.longDescription ||
+                          c.description,
+                        iconUrl: logo,
+                      });
+                      setDetailRawInstalled(raw ?? null);
+                      setDetailRawAvailable(null);
+                    }}
+                  >
+                    {logo ? (
+                      <img
+                        src={logo}
+                        alt=""
+                        onError={(e) => {
+                          const el = e.target as HTMLImageElement;
+                          const btn = el.parentElement;
+                          el.remove();
+                          if (!btn) return;
+                          if (btn.querySelector(".ext-ref-icon__glyph")) return;
+                          const span = document.createElement("span");
+                          span.className = "ext-ref-icon__glyph";
+                          span.textContent = pluginInitials(label);
+                          btn.appendChild(span);
+                        }}
+                      />
+                    ) : (
+                      <span className="ext-ref-icon__glyph">
+                        {pluginInitials(label)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </section>
+
+        {/* Recommended ChatCut if missing */}
+        {!chatcutInstalled ? (
+          <section
+            className="ext-ref-block"
+            id="settings-anchor-ext-plugins-recommended"
+          >
+            <div className="ext-ref-section-label">
+              {tr("ext.plugins.recommendedTitle")}
+            </div>
+            <ul className="ext-ref-featured">
+              <li className="ext-ref-featured__item">
+                <div className="ext-ref-featured__icon" aria-hidden>
+                  <IconPuzzle size={18} />
+                </div>
+                <div className="ext-ref-featured__body">
+                  <div className="ext-ref-featured__title">
+                    {tr("ext.plugins.recommended.chatcutName")}
+                  </div>
+                  <div className="ext-ref-featured__desc">
+                    {tr("ext.plugins.recommended.chatcutDesc")}
+                  </div>
+                </div>
+                <div className="ext-ref-featured__end">
+                  <button
+                    type="button"
+                    className="btn btn--solid btn--sm"
+                    disabled={!!actionBusy || cliMissing}
+                    onClick={() => setChatcutInstallOpen(true)}
+                  >
+                    {actionBusy === "install:chatcut"
+                      ? tr("ext.plugins.installing")
+                      : tr("ext.plugins.recommended.install")}
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </section>
+        ) : null}
+
+        {/* Discover / Featured catalog — 2 columns, paginated */}
+        <section
+          className="ext-ref-block"
+          id="settings-anchor-ext-plugins-catalog"
+        >
+          <div className="ext-ref-block__head">
+            <div className="ext-ref-section-label">
+              {tr("ext.plugins.discoverTitle")}
+              {!catalogLoading && discoverCards.length > 0
+                ? ` · ${discoverCards.length}`
+                : ""}
+            </div>
+            <span className="ext-ref-block__actions">
               <button
                 type="button"
-                className="btn btn--solid btn--sm"
-                onClick={() => onTabChange("market")}
+                className="btn btn--ghost btn--sm"
+                disabled={loading || catalogLoading || !!actionBusy || cliMissing}
+                onClick={() => {
+                  void refresh({ forcePlugins: true });
+                  void loadCatalog(true);
+                }}
               >
-                <IconPuzzle size={14} />
-                <span>{tr("ext.plugins.browseOfficial")}</span>
+                <IconRefresh size={14} />
+                <span>
+                  {loading || catalogLoading
+                    ? tr("ext.refreshing")
+                    : tr("ext.refresh")}
+                </span>
               </button>
-            ) : null}
-          </div>
-        )}
-        {!loading && plugins.length > 0 && visiblePlugins.length === 0 && (
-          <p className="ext-empty">{tr("ext.plugins.filterEmpty")}</p>
-        )}
-        {!loading && visiblePlugins.length > 0 && (
-          <ul className="ext-list">
-            {visiblePlugins.map((p) => {
-              const key = pluginRowKey(p);
-              const rowBusy = actionBusy === key;
-              const updating = actionBusy === `update:${key}`;
-              const validating = actionBusy === `validate:${key}`;
-              const busy = rowBusy || updating || validating;
-              const tone = pluginStatusTone(p.status, p.enabled);
-              const meta = pluginMetaLine(p);
-              const provides = pluginProvidesLine(p);
-              const vResult = validateByKey[key] ?? null;
-              const vPres =
-                validatePresByKey[key] ??
-                (vResult
-                  ? presentValidateResult(vResult)
-                  : null);
-              const vTone = vPres
-                ? pluginValidateRowTone(vPres.severity)
-                : vResult
-                  ? vResult.ok
-                    ? "ok"
-                    : "err"
-                  : null;
-              return (
-                <li
-                  key={key}
-                  className={
-                    "ext-item" + (p.enabled ? "" : " ext-item--disabled")
-                  }
-                >
-                  <div className="ext-item__head">
-                    <strong className="ext-item__name">{p.name}</strong>
-                    <span className={`ext-badge ext-badge--plugin-${tone}`}>
-                      {p.enabled
-                        ? tr("ext.plugins.status.enabled")
-                        : tr("ext.plugins.status.disabled")}
-                    </span>
-                    {p.scope ? (
-                      <span className="ext-badge ext-badge--muted">{p.scope}</span>
-                    ) : null}
-                    {p.version ? (
-                      <span className="ext-badge ext-badge--muted">
-                        v{String(p.version).replace(/^v/i, "")}
-                      </span>
-                    ) : null}
-                  </div>
-                  {meta ? <p className="ext-item__desc">{meta}</p> : null}
-                  {provides ? (
-                    <p className="ext-item__desc ext-item__provides">{provides}</p>
-                  ) : null}
-                  <div className="ext-item__meta">
-                    {p.marketplace ? (
-                      <span>
-                        {tr("ext.plugins.marketplace")}: {p.marketplace}
-                      </span>
-                    ) : null}
-                    {p.path ? (
-                      <button
-                        type="button"
-                        className="ext-path-btn"
-                        title={p.path}
-                        onClick={() => void reveal(p.path)}
-                      >
-                        <IconFolder size={13} />
-                        <span>{shortPathLabel(p.path, 42)}</span>
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="ext-item__actions">
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={busy || !!actionBusy}
-                      onClick={() => togglePlugin(p)}
-                    >
-                      {rowBusy
-                        ? tr("ext.plugins.working")
-                        : p.enabled
-                          ? tr("ext.plugins.disable")
-                          : tr("ext.plugins.enable")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={busy || !!actionBusy || cliMissing}
-                      onClick={() => updatePlugin(p)}
-                    >
-                      {updating
-                        ? tr("ext.plugins.updating")
-                        : tr("ext.plugins.update")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={busy || !!actionBusy}
-                      onClick={() => validatePlugin(p)}
-                    >
-                      {validating
-                        ? tr("ext.plugins.validating")
-                        : tr("ext.plugins.validate")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={busy || !!actionBusy}
-                      onClick={() => void showDetails(p)}
-                    >
-                      {tr("ext.plugins.details")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm ext-item__danger"
-                      disabled={busy || !!actionBusy}
-                      onClick={() => setUninstallTarget(p)}
-                    >
-                      <IconTrash size={13} />
-                      <span>{tr("ext.plugins.uninstall")}</span>
-                    </button>
-                  </div>
-                  {vResult && vPres ? (
-                    <div
-                      className={
-                        "ext-item__validate" +
-                        (vTone ? ` ext-item__validate--${vTone}` : "")
-                      }
-                      role={vPres.ok || vPres.softFail ? "status" : "alert"}
-                    >
-                      <div className="ext-item__validate-head">
-                        <span
-                          className={
-                            "ext-badge ext-badge--" +
-                            pluginValidateBadgeTone(vPres.severity)
-                          }
-                        >
-                          {pluginValidateKindLabel(
-                            vPres.kind,
-                            pluginValidateKindLabels,
-                          )}
-                        </span>
-                        <div className="ext-item__validate-title">
-                          {vPres.ok
-                            ? tr("ext.plugins.validateOk")
-                            : vPres.softFail
-                              ? pluginValidateKindLabel(
-                                  vPres.kind,
-                                  pluginValidateKindLabels,
-                                )
-                              : tr("ext.plugins.validateFailed")}
-                        </div>
-                      </div>
-                      {vResult.messages.length > 0 ? (
-                        <pre className="ext-item__validate-body">
-                          {formatPluginValidateMessages(vResult.messages)}
-                        </pre>
-                      ) : null}
-                      <div className="ext-item__validate-actions">
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          onClick={() =>
-                            openPluginValidatePresentation(vPres, p.name)
-                          }
-                        >
-                          {tr("ext.plugins.validate.viewResult")}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          onClick={() => {
-                            setValidateByKey((prev) => {
-                              const next = { ...prev };
-                              delete next[key];
-                              return next;
-                            });
-                            setValidatePresByKey((prev) => {
-                              const next = { ...prev };
-                              delete next[key];
-                              return next;
-                            });
-                          }}
-                        >
-                          {tr("common.close")}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {!cliMissing ? (
-          <details className="ext-market-sources">
-            <summary className="ext-market-sources__summary">
-              {tr("ext.plugins.advancedInstall")}
-            </summary>
-            <div className="ext-plugin-install">
-              <label
-                className="ext-plugin-install__label"
-                htmlFor="ext-plugin-source"
+              <button
+                type="button"
+                className="ext-ref-icon-btn"
+                disabled={cliMissing}
+                onClick={() => setSourcesModalOpen(true)}
+                title={tr("ext.plugins.sourcesAndInstall")}
+                aria-label={tr("ext.plugins.sourcesAndInstall")}
               >
-                {tr("ext.plugins.installLabel")}
-              </label>
-              <div className="ext-plugin-install__row">
-                <input
-                  id="ext-plugin-source"
-                  type="text"
-                  className="settings-input ext-plugin-install__input"
-                  value={installSource}
-                  placeholder={tr("ext.plugins.installPlaceholder")}
-                  disabled={!!actionBusy || cliMissing}
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(e) => {
-                    setInstallSource(e.target.value);
-                    if (installValidate) setInstallValidate(null);
-                    if (installValidatePres) setInstallValidatePres(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void installPlugin();
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm"
-                  disabled={!!actionBusy}
-                  title={tr("ext.plugins.validateHint")}
-                  onClick={() => validateInstallSource()}
+                <IconSettings size={16} />
+              </button>
+            </span>
+          </div>
+          {catalogError ? (
+            <div className="ext-alert ext-alert--warn" role="status">
+              <p className="ext-alert__body">{catalogError}</p>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => void loadCatalog(true)}
+              >
+                {tr("ext.market.retry")}
+              </button>
+            </div>
+          ) : null}
+          {catalogLoading && catalogPlugins.length === 0 ? (
+            <p className="ext-ref-empty">{tr("ext.market.availableLoading")}</p>
+          ) : null}
+          {!catalogLoading && discoverCards.length === 0 && !catalogError ? (
+            <p className="ext-ref-empty">
+              {cliMissing
+                ? tr("ext.market.emptyCli")
+                : extQuery.trim()
+                  ? tr("ext.market.availableEmpty")
+                  : tr("ext.market.emptyCatalog")}
+            </p>
+          ) : null}
+          {catalogVisibleCount > 0 ? (
+            <div className="ext-ref-cat-stack">
+              {discoverGroups.map((group) => {
+                const expanded = !!expandedGroups[group.key];
+                const {
+                  visible: visibleItems,
+                  remaining,
+                  collapsed,
+                  moreCount,
+                } = splitGroupItemsForCollapse(group.items, expanded);
+                // Image logos only, preferred first; reverse for stack paint order.
+                const stackIcons = pickExpandStackLogos(remaining);
+                return (
+                <section
+                  key={group.key}
+                  className="ext-ref-cat-group"
+                  aria-label={displayCategoryLabel(group.label)}
                 >
-                  {actionBusy === "validate:install"
-                    ? tr("ext.plugins.validating")
-                    : tr("ext.plugins.validate")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--solid btn--sm"
-                  disabled={
-                    !!actionBusy ||
-                    cliMissing ||
-                    !normalizePluginInstallSource(installSource)
-                  }
-                  onClick={() => void installPlugin()}
-                >
-                  {actionBusy === "install"
-                    ? tr("ext.plugins.installing")
-                    : tr("ext.plugins.install")}
-                </button>
-              </div>
-              <p className="ext-plugin-install__hint">
-                {tr("ext.plugins.installHint")}
-              </p>
-              {installValidate ? (
-                (() => {
-                  const iPres =
-                    installValidatePres ??
-                    presentValidateResult(installValidate);
-                  const iTone = pluginValidateRowTone(iPres.severity);
-                  return (
-                    <div
-                      className={
-                        "ext-item__validate" +
-                        ` ext-item__validate--${iTone}`
-                      }
-                      role={iPres.ok || iPres.softFail ? "status" : "alert"}
-                    >
-                      <div className="ext-item__validate-head">
-                        <span
+                  <div className="ext-ref-section-label ext-ref-cat-group__label">
+                    {displayCategoryLabel(group.label)}
+                    <span className="ext-ref-cat-group__count">
+                      {group.items.length}
+                    </span>
+                  </div>
+                  <ul className="ext-ref-featured">
+                    {visibleItems.map((c) => {
+                      const nameKey = c.name.trim().toLowerCase();
+                      const raw =
+                        catalogPlugins.find(
+                          (p) => p.name.trim().toLowerCase() === nameKey,
+                        ) ?? null;
+                      const busy =
+                        actionBusy === `inst:${c.name}` ||
+                        actionBusy === `install:chatcut`;
+                      const installed = c.installed;
+                      const meta = metaByName.get(nameKey);
+                      const hasLogo = !!(c.iconUrl && c.iconUrl.trim());
+                      // Resolve installed dto even when CLI used a hash-suffixed name
+                      const installedDto =
+                        plugins.find(
+                          (p) => p.name.trim().toLowerCase() === nameKey,
+                        ) ??
+                        plugins.find((p) =>
+                          installedPluginAliasKeys(p).includes(nameKey),
+                        ) ??
+                        null;
+                      return (
+                        <li
+                          key={nameKey}
                           className={
-                            "ext-badge ext-badge--" +
-                            pluginValidateBadgeTone(iPres.severity)
+                            "ext-ref-featured__item" +
+                            (installed ? " is-off" : "")
                           }
-                        >
-                          {pluginValidateKindLabel(
-                            iPres.kind,
-                            pluginValidateKindLabels,
-                          )}
-                        </span>
-                        <div className="ext-item__validate-title">
-                          {iPres.ok
-                            ? tr("ext.plugins.validateOk")
-                            : iPres.softFail
-                              ? pluginValidateKindLabel(
-                                  iPres.kind,
-                                  pluginValidateKindLabels,
-                                )
-                              : tr("ext.plugins.validateFailed")}
-                        </div>
-                      </div>
-                      {installValidate.messages.length > 0 ? (
-                        <pre className="ext-item__validate-body">
-                          {formatPluginValidateMessages(
-                            installValidate.messages,
-                          )}
-                        </pre>
-                      ) : null}
-                      <div className="ext-item__validate-actions">
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          onClick={() =>
-                            openPluginValidatePresentation(iPres, null)
-                          }
-                        >
-                          {tr("ext.plugins.validate.viewResult")}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
+                          role="button"
+                          tabIndex={0}
                           onClick={() => {
-                            setInstallValidate(null);
-                            setInstallValidatePres(null);
+                            setDetailCard({
+                              ...c,
+                              installed: installed || !!installedDto,
+                            });
+                            setDetailRawAvailable(raw);
+                            setDetailRawInstalled(installedDto);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setDetailCard({
+                                ...c,
+                                installed: installed || !!installedDto,
+                              });
+                              setDetailRawAvailable(raw);
+                              setDetailRawInstalled(installedDto);
+                            }
                           }}
                         >
-                          {tr("common.close")}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()
-              ) : null}
+                          {hasLogo ? (
+                            <div
+                              className="ext-ref-featured__icon ext-ref-featured__icon--logo"
+                              aria-hidden
+                            >
+                              <img
+                                src={c.iconUrl!}
+                                alt=""
+                                onError={(e) => {
+                                  const wrap = (e.target as HTMLImageElement)
+                                    .parentElement;
+                                  if (wrap) {
+                                    wrap.classList.remove(
+                                      "ext-ref-featured__icon--logo",
+                                    );
+                                    wrap.classList.add(
+                                      "ext-ref-featured__icon--fallback",
+                                    );
+                                    (e.target as HTMLImageElement).remove();
+                                    const span = document.createElement("span");
+                                    span.className = "ext-ref-icon__glyph";
+                                    span.textContent = pluginInitials(
+                                      c.displayName,
+                                    );
+                                    wrap.appendChild(span);
+                                  }
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <div
+                              className="ext-ref-featured__icon ext-ref-featured__icon--fallback"
+                              aria-hidden
+                            >
+                              <span className="ext-ref-icon__glyph">
+                                {pluginInitials(c.displayName)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="ext-ref-featured__body">
+                            <div className="ext-ref-featured__title">
+                              {c.displayName}
+                            </div>
+                            <div className="ext-ref-featured__desc">
+                              {c.description ||
+                                meta?.longDescription ||
+                                c.providesLine ||
+                                c.marketplace ||
+                                "—"}
+                            </div>
+                          </div>
+                          <div
+                            className="ext-ref-featured__end"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {installed ? (
+                              <span className="ext-ref-badge">
+                                {tr("ext.market.installedBadge")}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn--solid btn--sm"
+                                disabled={
+                                  busy || !!actionBusy || cliMissing || !raw
+                                }
+                                onClick={() => {
+                                  if (raw) void installAvailableDirect(raw);
+                                }}
+                              >
+                                {busy
+                                  ? tr("ext.market.installing")
+                                  : tr("ext.market.install")}
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                    {collapsed && moreCount > 0 ? (
+                      <li
+                        key={`${group.key}__more`}
+                        className="ext-ref-featured__item ext-ref-featured__more-tile"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={tr("ext.plugins.groupMoreHint")}
+                        title={tr("ext.plugins.groupMoreHint")}
+                        onClick={() => {
+                          setExpandedGroups((prev) => ({
+                            ...prev,
+                            [group.key]: true,
+                          }));
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setExpandedGroups((prev) => ({
+                              ...prev,
+                              [group.key]: true,
+                            }));
+                          }
+                        }}
+                      >
+                        {stackIcons.length > 0 ? (
+                          <div className="ext-ref-stack-icons" aria-hidden>
+                            {stackIcons.map((ic, idx) => (
+                              <span
+                                key={ic.key}
+                                className="ext-ref-stack-icons__item"
+                                style={{ zIndex: idx + 1 }}
+                              >
+                                <img
+                                  src={ic.iconUrl}
+                                  alt=""
+                                  onError={(e) => {
+                                    // No text-glyph fallback on expand stack —
+                                    // drop broken image tiles entirely.
+                                    const wrap = (e.target as HTMLImageElement)
+                                      .parentElement;
+                                    wrap?.remove();
+                                  }}
+                                />
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div
+                            className="ext-ref-featured__icon ext-ref-featured__icon--fallback ext-ref-featured__more-icon"
+                            aria-hidden
+                          >
+                            <span className="ext-ref-icon__glyph">+</span>
+                          </div>
+                        )}
+                        <div className="ext-ref-featured__body">
+                          <div className="ext-ref-featured__title">
+                            {tr("ext.plugins.groupMore", {
+                              n: String(moreCount),
+                            })}
+                          </div>
+                          <div className="ext-ref-featured__desc">
+                            {tr("ext.plugins.groupMoreHint")}
+                          </div>
+                        </div>
+                      </li>
+                    ) : null}
+                  </ul>
+                </section>
+                );
+              })}
             </div>
-          </details>
-        ) : null}
+          ) : null}
+          {/* Infinite-scroll sentinel (no button) */}
+          {catalogHasMore ? (
+            <div
+              ref={loadMoreSentinelRef}
+              className="ext-ref-load-more"
+              aria-hidden
+            >
+              <span className="ext-ref-block__meta">
+                {catalogVisibleCount} / {catalogTotal}
+              </span>
+            </div>
+          ) : catalogTotal > 0 ? (
+            <div className="ext-ref-load-more">
+              <span className="ext-ref-block__meta">{catalogTotal}</span>
+            </div>
+          ) : null}
+        </section>
       </div>
-      </>
       )}
 
       {/* Skills */}
@@ -1821,7 +2231,7 @@ export function ExtensionsPanel({
         <span className="ext-h2-actions">
           <button
             type="button"
-            className="btn btn--ghost ext-bulk-btn"
+            className="btn btn--ghost btn--sm"
             disabled={!!actionBusy || !!busyKey || !api.isTauri() || !!skillEditor}
             onClick={openSkillNew}
           >
@@ -1831,7 +2241,7 @@ export function ExtensionsPanel({
           {!loading && skills.length > 0 && skillsOffCount > 0 ? (
             <button
               type="button"
-              className="btn btn--ghost ext-bulk-btn"
+              className="btn btn--ghost btn--sm"
               disabled={!!busyKey}
               onClick={() => void enableAllSkills()}
             >
@@ -1849,64 +2259,64 @@ export function ExtensionsPanel({
             {cliMissing ? tr("ext.skills.emptyCli") : tr("ext.skills.empty")}
           </p>
         )}
-        {!loading && skills.length > 0 && (
-          <ul className="ext-list">
-            {skills.map((s) => {
+        {!loading && skills.length > 0 && filteredSkills.length === 0 && (
+          <p className="ext-empty">{tr("ext.plugins.filterEmpty")}</p>
+        )}
+        {!loading && filteredSkills.length > 0 && (
+          <ul className="ext-ref-list">
+            {filteredSkills.map((s) => {
               const tone = skillSourceTone(s.source);
               const on = isExtensionEnabled(s.enabled);
               const editable = isSkillEditable(s, skillRoots);
               return (
                 <li
                   key={`${s.source}:${s.name}:${s.path ?? ""}`}
-                  className={"ext-item" + (on ? "" : " ext-item--off")}
+                  className={
+                    "ext-ref-row ext-ref-row--dense" +
+                    (on ? "" : " ext-ref-row--off")
+                  }
                 >
-                  <div className="ext-item__head">
-                    <strong className="ext-item__name">{s.name}</strong>
-                    <span className={`ext-badge ext-badge--${tone}`}>
-                      {normalizeSourceLabel(s.source)}
-                    </span>
-                    {s.userInvocable ? (
-                      <span className="ext-badge ext-badge--invocable">
-                        {tr("ext.skills.invocable")}
-                      </span>
-                    ) : null}
-                    <ExtensionToggle
-                      checked={on}
-                      disabled={!!busyKey}
-                      label={on ? tr("ext.enabled") : tr("ext.disabled")}
-                      onChange={(next) => void toggleSkill(s.name, next)}
-                    />
-                  </div>
-                  {s.description ? (
-                    <p className="ext-item__desc">{s.description}</p>
-                  ) : null}
-                  <div className="ext-item__meta">
-                    <span>{skillMetaLine(s)}</span>
-                    {s.path ? (
-                      <button
-                        type="button"
-                        className="ext-path-btn"
-                        title={s.path}
-                        onClick={() => void reveal(s.path)}
-                      >
-                        <IconFolder size={13} />
-                        <span>{shortPathLabel(s.path, 42)}</span>
-                      </button>
-                    ) : null}
-                  </div>
-                  {editable ? (
-                    <div className="ext-item__actions">
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        disabled={!!busyKey || !!skillEditor}
-                        onClick={() => void openSkillEditor(s)}
-                      >
-                        <IconEdit size={13} />
-                        <span>{tr("ext.skills.edit")}</span>
-                      </button>
+                  <div className="ext-ref-row__main">
+                    <div className="ext-ref-row__icon" aria-hidden>
+                      <IconSkills size={14} />
                     </div>
-                  ) : null}
+                    <div className="ext-ref-row__body">
+                      <div className="ext-ref-row__title">{s.name}</div>
+                      <div className="ext-ref-row__desc">
+                        {s.description || skillMetaLine(s) || "—"}
+                      </div>
+                      <div className="ext-ref-row__meta">
+                        <span className={`ext-ref-badge ext-badge--${tone}`}>
+                          {normalizeSourceLabel(s.source)}
+                        </span>
+                        {s.userInvocable ? (
+                          <span className="ext-ref-badge">
+                            {tr("ext.skills.invocable")}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="ext-ref-row__end">
+                      {editable ? (
+                        <button
+                          type="button"
+                          className="ext-ref-gear"
+                          disabled={!!busyKey || !!skillEditor}
+                          title={tr("ext.skills.edit")}
+                          aria-label={tr("ext.skills.edit")}
+                          onClick={() => void openSkillEditor(s)}
+                        >
+                          <IconEdit size={14} />
+                        </button>
+                      ) : null}
+                      <ExtensionToggle
+                        checked={on}
+                        disabled={!!busyKey}
+                        label={on ? tr("ext.enabled") : tr("ext.disabled")}
+                        onChange={(next) => void toggleSkill(s.name, next)}
+                      />
+                    </div>
+                  </div>
                 </li>
               );
             })}
@@ -1937,7 +2347,7 @@ export function ExtensionsPanel({
           ) : null}
           <button
             type="button"
-            className="btn btn--ghost ext-bulk-btn"
+            className="btn btn--ghost btn--sm"
             disabled={!!actionBusy || !!busyKey || cliMissing}
             onClick={() => void runDoctor(null)}
           >
@@ -1946,7 +2356,7 @@ export function ExtensionsPanel({
           </button>
           <button
             type="button"
-            className="btn btn--ghost ext-bulk-btn"
+            className="btn btn--ghost btn--sm"
             disabled={!!actionBusy || !!busyKey || !api.isTauri()}
             onClick={openAdd}
           >
@@ -1956,7 +2366,7 @@ export function ExtensionsPanel({
           {!loading && servers.length > 0 && mcpOffCount > 0 ? (
             <button
               type="button"
-              className="btn btn--ghost ext-bulk-btn"
+              className="btn btn--ghost btn--sm"
               disabled={!!busyKey || !!actionBusy}
               onClick={() => void enableAllMcp()}
             >
@@ -1965,16 +2375,20 @@ export function ExtensionsPanel({
           ) : null}
         </span>
       </h2>
-      <div className="settings-card ext-card">
-        {loading && <p className="ext-empty">{tr("ext.mcp.loading")}</p>}
-        {!loading && servers.length === 0 && (
-          <p className="ext-empty">
-            {cliMissing ? tr("ext.mcp.emptyCli") : tr("ext.mcp.empty")}
+      <div className="ext-ref-stack">
+        {loading ? (
+          <p className="ext-ref-empty">{tr("ext.mcp.loading")}</p>
+        ) : filteredUserMcp.length === 0 ? (
+          <p className="ext-ref-empty">
+            {cliMissing
+              ? tr("ext.mcp.emptyCli")
+              : q
+                ? tr("ext.plugins.filterEmpty")
+                : tr("ext.mcp.empty")}
           </p>
-        )}
-        {!loading && servers.length > 0 && (
-          <ul className="ext-list">
-            {servers.map((s) => {
+        ) : (
+          <ul className="ext-ref-list">
+            {filteredUserMcp.map((s) => {
               const meta = mcpMetaLine(s);
               const on = isExtensionEnabled(s.enabled);
               const rmBusy = actionBusy === `mcp:rm:${s.name}`;
@@ -1984,168 +2398,179 @@ export function ExtensionsPanel({
               const oauthAction = st
                 ? classifyMcpOauthFromStatus(st)
                 : null;
+              const expanded = !!expandedMcpNames[s.name];
               return (
                 <li
                   key={s.name}
-                  className={"ext-item" + (on ? "" : " ext-item--off")}
+                  className={
+                    "ext-ref-row" + (on ? "" : " ext-ref-row--off")
+                  }
                 >
-                  <div className="ext-item__head">
-                    <strong className="ext-item__name">{s.name}</strong>
-                    {st && badgeMod ? (
-                      <span
-                        className={
-                          "ext-mcp-status ext-mcp-status--" + badgeMod
-                        }
-                        title={st.reason ?? undefined}
-                      >
-                        <span
-                          className="ext-mcp-status__lamp"
-                          aria-hidden
-                        />
-                        <span
-                          className={"ext-badge ext-badge--" + badgeMod}
-                        >
-                          {tr(mcpStatusLabelKey(st.tone) as MessageKey)}
-                        </span>
-                      </span>
-                    ) : null}
-                    {s.transport ? (
-                      <span className="ext-badge ext-badge--muted">
-                        {s.transport}
-                      </span>
-                    ) : null}
-                    {s.compatibilityStatus ? (
-                      <span className="ext-badge ext-badge--compat">
-                        {s.compatibilityStatus}
-                      </span>
-                    ) : null}
-                    <ExtensionToggle
-                      checked={on}
-                      disabled={!!busyKey || !!actionBusy}
-                      label={on ? tr("ext.enabled") : tr("ext.disabled")}
-                      onChange={(next) => void toggleMcp(s.name, next)}
-                    />
-                  </div>
-                  {meta ? <p className="ext-item__desc">{meta}</p> : null}
-                  {st?.reason && st.tone !== "ok" ? (
-                    <p className="ext-item__desc ext-mcp-status-reason">
-                      {redactMcpText(st.reason)}
-                    </p>
-                  ) : null}
-                  {/*
-                    OAuth row:
-                    - After doctor: needsAuthRefresh (ChatCut etc.)
-                    - Or remote HTTP/SSE without doctor yet: still offer 授权…
-                      so users are not stuck when doctor was never run / not found.
-                  */}
-                  {(() => {
-                    const transport = (s.transport || "").toLowerCase();
-                    const isRemoteHttp =
-                      transport === "http" ||
-                      transport === "sse" ||
-                      /^https?:\/\//i.test(s.target || "");
-                    const showAuth =
-                      (st?.needsAuthRefresh && guidanceKey) ||
-                      (isRemoteHttp &&
-                        (!st ||
-                          st.tone === "auth_required" ||
-                          st.tone === "auth_expired" ||
-                          st.tone === "error" ||
-                          st.tone === "unknown"));
-                    if (!showAuth) return null;
-                    const syntheticStatus: McpServerStatus = st ?? {
-                      name: s.name,
-                      tone: "auth_required",
-                      needsAuthRefresh: true,
-                      reason: null,
-                      issues: [],
-                      healthy: null,
-                    };
-                    const action =
-                      oauthAction ??
-                      classifyMcpOauthFromStatus(syntheticStatus) ??
-                      ({
-                        kind: "authorize" as const,
-                        authUrls: [] as string[],
-                        preferredUrl: null as string | null,
-                        server: s.name,
-                        isRetry: false,
-                      });
-                    return (
-                      <div className="ext-mcp-auth-row">
-                        <p className="ext-mcp-auth-hint">
-                          {guidanceKey
-                            ? tr(guidanceKey as MessageKey)
-                            : tr("ext.mcp.auth.requiredHint")}
-                        </p>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          onClick={() =>
-                            openOauthWizard(action, syntheticStatus)
-                          }
-                        >
-                          {tr(
-                            mcpOauthActionLabelKey(action.kind) as MessageKey,
-                          )}
-                        </button>
+                  <div className="ext-ref-row__main">
+                    <div className="ext-ref-row__icon" aria-hidden>
+                      <IconPlug size={16} />
+                    </div>
+                    <div className="ext-ref-row__body">
+                      <div className="ext-ref-row__title">{s.name}</div>
+                      <div className="ext-ref-row__desc">
+                        {meta || s.target || "—"}
                       </div>
-                    );
-                  })()}
-                  {s.target ? (
-                    <div className="ext-item__meta">
-                      <em className="ext-item__target" title={s.target}>
-                        {shortPathLabel(s.target, 64) || s.target}
-                      </em>
-                      {looksLikePath(s.target) ? (
-                        <button
-                          type="button"
-                          className="ext-path-btn"
-                          title={s.target}
-                          onClick={() => void reveal(s.target)}
-                        >
-                          <IconFolder size={13} />
-                          <span>{tr("ext.reveal")}</span>
-                        </button>
+                      {st && badgeMod ? (
+                        <div className="ext-ref-row__meta">
+                          <span
+                            className={
+                              "ext-mcp-status ext-mcp-status--" + badgeMod
+                            }
+                            title={st.reason ?? undefined}
+                          >
+                            <span
+                              className="ext-mcp-status__lamp"
+                              aria-hidden
+                            />
+                            <span
+                              className={"ext-badge ext-badge--" + badgeMod}
+                            >
+                              {tr(mcpStatusLabelKey(st.tone) as MessageKey)}
+                            </span>
+                          </span>
+                        </div>
                       ) : null}
                     </div>
-                  ) : null}
-                  {s.vendor ? (
-                    <div className="ext-item__meta">
-                      <span>
-                        {tr("ext.mcp.vendor")}: {s.vendor}
-                      </span>
+                    <div className="ext-ref-row__end">
+                      <button
+                        type="button"
+                        className="ext-ref-gear"
+                        disabled={!!actionBusy || doctorLoading}
+                        aria-label={tr("ext.mcp.serverSettings")}
+                        title={tr("ext.mcp.serverSettings")}
+                        onClick={() =>
+                          setExpandedMcpNames((prev) => ({
+                            ...prev,
+                            [s.name]: !prev[s.name],
+                          }))
+                        }
+                      >
+                        <IconSettings size={16} />
+                      </button>
+                      <ExtensionToggle
+                        checked={on}
+                        disabled={!!busyKey || !!actionBusy}
+                        label={on ? tr("ext.enabled") : tr("ext.disabled")}
+                        onChange={(next) => void toggleMcp(s.name, next)}
+                      />
+                    </div>
+                  </div>
+                  {expanded ? (
+                    <div className="ext-ref-row__expand">
+                      {(() => {
+                        const transport = (s.transport || "").toLowerCase();
+                        const isRemoteHttp =
+                          transport === "http" ||
+                          transport === "sse" ||
+                          /^https?:\/\//i.test(s.target || "");
+                        const showAuth =
+                          (st?.needsAuthRefresh && guidanceKey) ||
+                          (isRemoteHttp &&
+                            (!st ||
+                              st.tone === "auth_required" ||
+                              st.tone === "auth_expired" ||
+                              st.tone === "error" ||
+                              st.tone === "unknown"));
+                        if (!showAuth) return null;
+                        const syntheticStatus: McpServerStatus = st ?? {
+                          name: s.name,
+                          tone: "auth_required",
+                          needsAuthRefresh: true,
+                          reason: null,
+                          issues: [],
+                          healthy: null,
+                        };
+                        const action =
+                          oauthAction ??
+                          classifyMcpOauthFromStatus(syntheticStatus) ??
+                          ({
+                            kind: "authorize" as const,
+                            authUrls: [] as string[],
+                            preferredUrl: null as string | null,
+                            server: s.name,
+                            isRetry: false,
+                          });
+                        return (
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            onClick={() =>
+                              openOauthWizard(action, syntheticStatus)
+                            }
+                          >
+                            {tr(
+                              mcpOauthActionLabelKey(
+                                action.kind,
+                              ) as MessageKey,
+                            )}
+                          </button>
+                        );
+                      })()}
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={
+                          !!actionBusy || doctorLoading || cliMissing
+                        }
+                        onClick={() => void runDoctor(s.name)}
+                      >
+                        <IconDoctor size={13} />
+                        <span>{tr("ext.mcp.doctor")}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm ext-item__danger"
+                        disabled={rmBusy || !!actionBusy}
+                        onClick={() => setRemoveTarget(s)}
+                      >
+                        <IconTrash size={13} />
+                        <span>
+                          {rmBusy
+                            ? tr("ext.plugins.working")
+                            : tr("ext.mcp.remove")}
+                        </span>
+                      </button>
                     </div>
                   ) : null}
-                  <div className="ext-item__actions">
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={!!actionBusy || doctorLoading || cliMissing}
-                      onClick={() => void runDoctor(s.name)}
-                    >
-                      <IconDoctor size={13} />
-                      <span>{tr("ext.mcp.doctor")}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm ext-item__danger"
-                      disabled={rmBusy || !!actionBusy}
-                      onClick={() => setRemoveTarget(s)}
-                    >
-                      <IconTrash size={13} />
-                      <span>
-                        {rmBusy
-                          ? tr("ext.plugins.working")
-                          : tr("ext.mcp.remove")}
-                      </span>
-                    </button>
-                  </div>
                 </li>
               );
             })}
           </ul>
         )}
+
+        {!loading ? (
+          <section className="ext-ref-block">
+            <div className="ext-ref-section-label">
+              {tr("ext.mcp.fromPluginsTitle")}
+            </div>
+            {filteredPluginMcp.length === 0 ? (
+              <p className="ext-ref-empty">{tr("ext.mcp.fromPluginsEmpty")}</p>
+            ) : (
+              <ul className="ext-ref-list">
+                {filteredPluginMcp.map((s) => (
+                  <li key={`plugin-mcp:${s.name}`} className="ext-ref-row">
+                    <div className="ext-ref-row__main">
+                      <div className="ext-ref-row__icon" aria-hidden>
+                        <IconPlug size={16} />
+                      </div>
+                      <div className="ext-ref-row__body">
+                        <div className="ext-ref-row__title">{s.name}</div>
+                        <div className="ext-ref-row__desc">
+                          {mcpMetaLine(s) || s.vendor || "—"}
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : null}
       </div>
       </>
       )}
@@ -2155,17 +2580,24 @@ export function ExtensionsPanel({
           locale={locale}
           projectPath={projectPath}
           cliFound={cliFound && !cliMissing}
+          hidePageToolbar
+          onTabActionsChange={setHooksTabActions}
         />
       )}
-      {(tab === "market" || tab === "agents") && (
+      {tab === "agents" && (
         <ExtensionsBuildExtras
           locale={locale}
           projectPath={projectPath}
           cliFound={cliFound && !cliMissing}
-          mode={tab === "agents" ? "agents" : "market"}
+          mode="agents"
+          hidePageToolbar
+          onTabActionsChange={setAgentsTabActions}
           installedPlugins={plugins.map((p) => ({
             name: p.name,
             marketplace: p.marketplace,
+            path: p.path,
+            source: p.source,
+            repoKey: p.repoKey,
           }))}
           onOpenRuntime={onOpenRuntime}
           onPluginsChanged={() => {
@@ -2173,6 +2605,375 @@ export function ExtensionsPanel({
           }}
         />
       )}
+
+      <GlassModal
+        open={chatcutInstallOpen}
+        onClose={() => {
+          if (actionBusy !== "install:chatcut") setChatcutInstallOpen(false);
+        }}
+        title={tr("ext.plugins.recommended.installTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={actionBusy === "install:chatcut"}
+              onClick={() => setChatcutInstallOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={actionBusy === "install:chatcut" || cliMissing}
+              onClick={() => void installChatCut()}
+            >
+              {actionBusy === "install:chatcut"
+                ? tr("ext.plugins.installing")
+                : tr("ext.plugins.recommended.install")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">
+          {tr("ext.plugins.recommended.installConfirm", {
+            source: CHATCUT_CODEX_INSTALL_SOURCE,
+          })}
+        </p>
+        <p className="ext-field-hint">{tr("ext.market.installTrustNote")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!detailCard}
+        onClose={() => {
+          setDetailCard(null);
+          setDetailRawAvailable(null);
+          setDetailRawInstalled(null);
+        }}
+        title={detailCard?.displayName ?? tr("ext.market.detailTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                setDetailCard(null);
+                setDetailRawAvailable(null);
+                setDetailRawInstalled(null);
+              }}
+            >
+              {tr("common.close")}
+            </button>
+            {detailRawAvailable && !detailCard?.installed ? (
+              <button
+                type="button"
+                className="btn btn--solid"
+                disabled={
+                  !!actionBusy ||
+                  cliMissing ||
+                  actionBusy === `inst:${detailRawAvailable.name}`
+                }
+                onClick={() => {
+                  const t = detailRawAvailable;
+                  setDetailCard(null);
+                  setDetailRawAvailable(null);
+                  void installAvailableDirect(t);
+                }}
+              >
+                {actionBusy === `inst:${detailRawAvailable.name}`
+                  ? tr("ext.market.installing")
+                  : tr("ext.market.install")}
+              </button>
+            ) : null}
+            {detailRawInstalled ? (
+              <button
+                type="button"
+                className="btn btn--solid"
+                onClick={() => {
+                  togglePlugin(detailRawInstalled);
+                  setDetailCard(null);
+                  setDetailRawInstalled(null);
+                }}
+              >
+                {detailRawInstalled.enabled
+                  ? tr("ext.plugins.disable")
+                  : tr("ext.plugins.enable")}
+              </button>
+            ) : null}
+          </>
+        }
+      >
+        {detailCard ? (
+          <div className="ext-market-detail">
+            <div
+              style={{
+                display: "flex",
+                gap: 14,
+                alignItems: "flex-start",
+                marginBottom: 12,
+              }}
+            >
+              <div className="ext-ref-featured__icon" aria-hidden>
+                {detailCard.iconUrl ? (
+                  <img src={detailCard.iconUrl} alt="" />
+                ) : (
+                  <span className="ext-ref-icon__glyph">
+                    {pluginInitials(detailCard.displayName)}
+                  </span>
+                )}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="ext-ref-featured__title">
+                  {detailCard.displayName}
+                </div>
+                <div className="ext-ref-featured__desc">
+                  {detailCard.description || "—"}
+                </div>
+              </div>
+            </div>
+            {(() => {
+              const meta = metaByName.get(
+                detailCard.name.trim().toLowerCase(),
+              );
+              const clean: Array<[string, string]> = [];
+              clean.push([
+                tr("ext.market.field.marketplace"),
+                detailCard.marketplace?.trim() || "—",
+              ]);
+              clean.push([
+                tr("ext.market.field.version"),
+                String(detailCard.version || meta?.version || "—"),
+              ]);
+              if (meta?.category || detailCard.categoryLabel) {
+                clean.push([
+                  detailCard.categoryLabel || "Category",
+                  meta?.category || detailCard.categoryLabel || "—",
+                ]);
+              }
+              if (meta?.author) clean.push(["Author", meta.author]);
+              if (meta?.homepage) clean.push(["Homepage", meta.homepage]);
+              if (meta?.repository) clean.push(["Repository", meta.repository]);
+              if (meta?.license) clean.push(["License", meta.license]);
+              if (detailCard.providesLine) {
+                clean.push([
+                  tr("ext.market.componentsLabel"),
+                  detailCard.providesLine,
+                ]);
+              }
+              if (meta?.keywords && meta.keywords.length > 0) {
+                clean.push(["Keywords", meta.keywords.join(", ")]);
+              }
+              if (detailRawInstalled?.path) {
+                clean.push(["Path", detailRawInstalled.path]);
+              }
+              if (detailRawInstalled?.source) {
+                clean.push([
+                  tr("ext.market.field.source"),
+                  detailRawInstalled.source,
+                ]);
+              }
+              return (
+                <dl className="ext-market-detail__meta">
+                  {clean.map(([k, v]) => (
+                    <div key={k} className="ext-market-detail__row">
+                      <dt>{k}</dt>
+                      <dd title={v}>{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              );
+            })()}
+            {(() => {
+              const meta = metaByName.get(
+                detailCard.name.trim().toLowerCase(),
+              );
+              const long =
+                meta?.longDescription?.trim() ||
+                detailCard.description ||
+                "";
+              if (!long) return null;
+              return (
+                <p className="ext-field-hint" style={{ marginTop: 12 }}>
+                  {long}
+                </p>
+              );
+            })()}
+            {!detailCard.installed ? (
+              <p className="ext-field-hint" style={{ marginTop: 8 }}>
+                {tr("ext.market.installTrustNote")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </GlassModal>
+
+      <GlassModal
+        open={!!menuPlugin}
+        onClose={() => setMenuPlugin(null)}
+        title={
+          pluginDisplayName(
+            menuPlugin,
+            tr("ext.plugins.recommended.chatcutName"),
+          )
+        }
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setMenuPlugin(null)}
+          >
+            {tr("common.close")}
+          </button>
+        }
+      >
+        {menuPlugin ? (
+          <div className="ext-ref-stack" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              style={{ justifyContent: "flex-start" }}
+              onClick={() => {
+                togglePlugin(menuPlugin);
+                setMenuPlugin(null);
+              }}
+            >
+              {menuPlugin.enabled
+                ? tr("ext.plugins.disable")
+                : tr("ext.plugins.enable")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              style={{ justifyContent: "flex-start" }}
+              onClick={() => {
+                void showDetails(menuPlugin);
+                setMenuPlugin(null);
+              }}
+            >
+              {tr("ext.plugins.details")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost ext-item__danger"
+              style={{ justifyContent: "flex-start" }}
+              onClick={() => {
+                setUninstallTarget(menuPlugin);
+                setMenuPlugin(null);
+              }}
+            >
+              {tr("ext.plugins.uninstall")}
+            </button>
+          </div>
+        ) : null}
+      </GlassModal>
+
+      <GlassModal
+        open={sourcesModalOpen}
+        onClose={() => setSourcesModalOpen(false)}
+        title={tr("ext.plugins.sourcesModalTitle")}
+        size="lg"
+        closeLabel={tr("common.close")}
+        wrapBody
+        footer={
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setSourcesModalOpen(false)}
+          >
+            {tr("common.close")}
+          </button>
+        }
+      >
+        <p className="ext-ref-block__lead" style={{ marginBottom: 12 }}>
+          {tr("ext.plugins.sourcesModalLead")}
+        </p>
+        <div className="ext-ref-block" style={{ marginBottom: 16 }}>
+          <div className="ext-ref-block__head">
+            <h3 className="ext-ref-block__title">
+              {tr("ext.plugins.sourcesListTitle")}
+            </h3>
+          </div>
+          {/* Reuse market block for sources management only (non-embedded shows sources). */}
+          <ExtensionsBuildExtras
+            locale={locale}
+            projectPath={projectPath}
+            cliFound={cliFound && !cliMissing}
+            mode="market"
+            embedded
+            sourcesOnly
+            installedPlugins={plugins.map((p) => ({
+              name: p.name,
+              marketplace: p.marketplace,
+              path: p.path,
+              source: p.source,
+              repoKey: p.repoKey,
+            }))}
+            onOpenRuntime={onOpenRuntime}
+            onPluginsChanged={() => {
+              invalidatePluginsListCache();
+              void refresh({ forcePlugins: true });
+            }}
+          />
+        </div>
+        <div className="ext-ref-advanced" style={{ borderRadius: 12 }}>
+          <div style={{ padding: "12px 14px" }}>
+            <div className="ext-ref-block__title" style={{ marginBottom: 8 }}>
+              {tr("ext.plugins.advancedInstall")}
+            </div>
+            <div className="ext-plugin-install">
+              <label
+                className="ext-plugin-install__label"
+                htmlFor="ext-plugin-source-modal"
+              >
+                {tr("ext.plugins.installLabel")}
+              </label>
+              <div className="ext-plugin-install__row">
+                <input
+                  id="ext-plugin-source-modal"
+                  type="text"
+                  className="settings-input ext-plugin-install__input"
+                  value={installSource}
+                  placeholder={tr("ext.plugins.installPlaceholder")}
+                  disabled={!!actionBusy || cliMissing}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(e) => setInstallSource(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void installPlugin();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn--solid btn--sm"
+                  disabled={
+                    !!actionBusy ||
+                    cliMissing ||
+                    !normalizePluginInstallSource(installSource)
+                  }
+                  onClick={() => void installPlugin()}
+                >
+                  {actionBusy === "install"
+                    ? tr("ext.plugins.installing")
+                    : tr("ext.plugins.install")}
+                </button>
+              </div>
+              <p className="ext-plugin-install__hint">
+                {tr("ext.plugins.installHint")}
+              </p>
+            </div>
+          </div>
+        </div>
+      </GlassModal>
 
       <GlassModal
         open={!!uninstallTarget}
@@ -3262,15 +4063,4 @@ function ExtensionToggle({
 function normalizeSourceLabel(source: string): string {
   const s = (source ?? "").trim();
   return s || "unknown";
-}
-
-function looksLikePath(target: string): boolean {
-  const t = target.trim();
-  if (!t) return false;
-  if (t.startsWith("/") || /^[A-Za-z]:[\\/]/.test(t)) return true;
-  if (t.startsWith("~")) return true;
-  if (/\s/.test(t) || t.startsWith("http://") || t.startsWith("https://")) {
-    return false;
-  }
-  return t.includes("/") || t.includes("\\");
 }

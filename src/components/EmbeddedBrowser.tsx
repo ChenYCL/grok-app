@@ -8,6 +8,9 @@
  * Stable label: `resource-browser` or `resource-browser-<instanceId>`
  * so host commands (`side_browser_*`) can drive navigate / eval / snapshot.
  *
+ * Creation goes through host `side_browser_create` (not frontend `new Webview`)
+ * so downloads get a native save dialog via wry/Tauri `on_download`.
+ *
  * Bounds: host ResizeObserver + ancestor observers + window resize, coalesced
  * through a trailing single-flight so setPosition/setSize never interleave
  * (sidebar drag used to jitter / leave a white gap).
@@ -16,7 +19,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { isTauri } from "@/lib/api";
+import { isTauri, sideBrowserClose, sideBrowserCreate } from "@/lib/api";
+import type { SideBrowserDownloadEvent } from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { IconExternalLink, IconRefresh } from "@/components/icons";
 import {
@@ -28,12 +32,68 @@ import {
 } from "@/lib/nativeWebviewCover";
 import {
   boundsNearlyEqual,
+  clipHostRectAgainstLeftResizers,
   createTrailingSingleFlight,
   snapBounds,
   type BoundsPx,
+  type HostRectPx,
 } from "@/lib/nativeWebviewBounds";
 
+/** Collect visible vertical pane resizers that may sit under this host. */
+function leftPaneResizersNear(hostEl: HTMLElement): HostRectPx[] {
+  const out: HostRectPx[] = [];
+  const aside = hostEl.closest(".aside");
+  if (!aside) return out;
+  const nodes = aside.querySelectorAll(".aside-resizer");
+  for (let i = 0; i < nodes.length; i++) {
+    const el = nodes[i] as HTMLElement;
+    try {
+      const style = window.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+    } catch {
+      continue;
+    }
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) continue;
+    out.push({
+      left: r.left,
+      top: r.top,
+      right: r.right,
+      bottom: r.bottom,
+      width: r.width,
+      height: r.height,
+    });
+  }
+  return out;
+}
+
+/** Keep the 1px aside border hairline visible under native child Webviews. */
+const ASIDE_BROWSER_LEFT_INSET_PX = 1;
+
+function hostRectForWebview(hostEl: HTMLElement): HostRectPx {
+  const rect = hostEl.getBoundingClientRect();
+  let base: HostRectPx = {
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+  };
+  base = clipHostRectAgainstLeftResizers(base, leftPaneResizersNear(hostEl));
+  // Side-pane browser only: shrink 1px from the left so the divider line shows.
+  if (hostEl.closest(".aside") && base.width > ASIDE_BROWSER_LEFT_INSET_PX) {
+    base = {
+      ...base,
+      left: base.left + ASIDE_BROWSER_LEFT_INSET_PX,
+      width: base.width - ASIDE_BROWSER_LEFT_INSET_PX,
+    };
+  }
+  return base;
+}
+
 const WEBVIEW_LABEL_DEFAULT = "resource-browser";
+const DOWNLOAD_EVENT = "side-browser://download";
 
 /** How many parent elements to observe so pane/splitter moves re-sync position. */
 const ANCESTOR_OBSERVE_DEPTH = 6;
@@ -101,6 +161,8 @@ export function EmbeddedBrowser({
   const currentUrlRef = useRef<string>("");
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  /** Short status for download save result (host event). */
+  const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
   /** DOM overlays (floating menus) that must paint above native Webviews. */
   const [covered, setCovered] = useState(() => isNativeWebviewCovered());
   const tr = createT(locale);
@@ -113,8 +175,17 @@ export function EmbeddedBrowser({
   );
   const applyBoundsRef = useRef<() => Promise<void>>(async () => undefined);
   const roRafRef = useRef(0);
+  const downloadStatusTimerRef = useRef(0);
   activeRef.current = active;
   coveredRef.current = covered;
+
+  const flashDownloadStatus = (msg: string) => {
+    setDownloadStatus(msg);
+    window.clearTimeout(downloadStatusTimerRef.current);
+    downloadStatusTimerRef.current = window.setTimeout(() => {
+      setDownloadStatus(null);
+    }, 4200);
+  };
 
   /**
    * Apply host rect → native webview. Always re-reads DOM at start so trailing
@@ -125,7 +196,8 @@ export function EmbeddedBrowser({
     const wv = webviewRef.current;
     if (!el || !wv || !isTauri()) return;
 
-    const rect = el.getBoundingClientRect();
+    // Clip past left-edge pane resizers first (native webviews paint above DOM).
+    const rect = hostRectForWebview(el);
     if (rect.width < 2 || rect.height < 2) {
       lastBoundsRef.current = null;
       try {
@@ -222,8 +294,53 @@ export function EmbeddedBrowser({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Download status from host on_download (save dialog + finish).
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const off = await listen<SideBrowserDownloadEvent>(
+          DOWNLOAD_EVENT,
+          (ev) => {
+            const p = ev.payload;
+            if (!p || p.label !== webviewLabel) return;
+            if (p.phase === "finished") {
+              if (p.success) {
+                const name =
+                  p.fileName ||
+                  (p.path ? p.path.split(/[/\\]/).pop() : "") ||
+                  "file";
+                flashDownloadStatus(
+                  tr("resources.browserDownloadSaved", { name }),
+                );
+              } else {
+                flashDownloadStatus(tr("resources.browserDownloadFailed"));
+              }
+            } else if (p.phase === "cancelled") {
+              flashDownloadStatus(tr("resources.browserDownloadCancelled"));
+            }
+          },
+        );
+        if (cancelled) off();
+        else unlisten = off;
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      window.clearTimeout(downloadStatusTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webviewLabel, locale]);
+
   // Create / recreate native webview when URL or label changes.
   // Inactive tabs stay mounted (persist host) — hide only via active/covered.
+  // Host create attaches on_download (native save dialog); JS new Webview does not.
   useEffect(() => {
     if (!isTauri()) return;
     const target = url.trim();
@@ -247,57 +364,50 @@ export function EmbeddedBrowser({
         const { LogicalPosition, LogicalSize } = await loadDpi();
         const win = getCurrentWindow();
 
-        const existing = await Webview.getByLabel(webviewLabel);
-        if (existing) {
-          try {
-            await existing.close();
-          } catch {
-            /* ignore */
-          }
+        try {
+          await sideBrowserClose(webviewLabel);
+        } catch {
+          /* ignore */
+        }
+        try {
+          const existing = await Webview.getByLabel(webviewLabel);
+          if (existing) await existing.close();
+        } catch {
+          /* ignore */
         }
         webviewRef.current = null;
         currentUrlRef.current = "";
         if (cancelled) return;
 
         const el = hostRef.current;
-        const rect = el?.getBoundingClientRect();
+        const rect = el ? hostRectForWebview(el) : null;
         const x = Math.round(rect?.left ?? 0);
         const y = Math.round(rect?.top ?? 0);
         const w = Math.max(Math.round(rect?.width ?? 320), 40);
         const h = Math.max(Math.round(rect?.height ?? 240), 40);
 
-        const webview = new Webview(win, webviewLabel, {
+        await sideBrowserCreate({
+          label: webviewLabel,
           url: target,
+          windowLabel: win.label,
           x,
           y,
           width: w,
           height: h,
-          focus: true,
-          acceptFirstMouse: true,
-        });
-
-        await new Promise<void>((resolve, reject) => {
-          const t = window.setTimeout(
-            () => reject(new Error("webview create timeout")),
-            8000,
-          );
-          void webview.once("tauri://created", () => {
-            window.clearTimeout(t);
-            resolve();
-          });
-          void webview.once("tauri://error", (e) => {
-            window.clearTimeout(t);
-            reject(e.payload ?? e);
-          });
         });
 
         if (cancelled) {
           try {
-            await webview.close();
+            await sideBrowserClose(webviewLabel);
           } catch {
             /* ignore */
           }
           return;
+        }
+
+        const webview = await Webview.getByLabel(webviewLabel);
+        if (!webview) {
+          throw new Error("side browser webview missing after create");
         }
 
         webviewRef.current = webview;
@@ -371,10 +481,7 @@ export function EmbeddedBrowser({
       if (wv) {
         void wv.close().catch(() => undefined);
       } else if (isTauri()) {
-        void import("@tauri-apps/api/webview")
-          .then(({ Webview }) => Webview.getByLabel(webviewLabel))
-          .then((w) => w?.close())
-          .catch(() => undefined);
+        void sideBrowserClose(webviewLabel).catch(() => undefined);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -406,6 +513,11 @@ export function EmbeddedBrowser({
     const u = url;
     void (async () => {
       try {
+        await sideBrowserClose(webviewLabel);
+      } catch {
+        /* ignore */
+      }
+      try {
         const { Webview } = await import("@tauri-apps/api/webview");
         const w = await Webview.getByLabel(webviewLabel);
         if (w) await w.close();
@@ -423,23 +535,25 @@ export function EmbeddedBrowser({
         const { Webview } = await import("@tauri-apps/api/webview");
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const { LogicalPosition, LogicalSize } = await loadDpi();
-        const rect = el.getBoundingClientRect();
+        const rect = hostRectForWebview(el);
         const x = Math.round(rect.left);
         const y = Math.round(rect.top);
         const w = Math.max(Math.round(rect.width), 40);
         const h = Math.max(Math.round(rect.height), 40);
-        const webview = new Webview(getCurrentWindow(), webviewLabel, {
+        const win = getCurrentWindow();
+        await sideBrowserCreate({
+          label: webviewLabel,
           url: u,
+          windowLabel: win.label,
           x,
           y,
           width: w,
           height: h,
-          focus: true,
         });
-        await new Promise<void>((resolve, reject) => {
-          void webview.once("tauri://created", () => resolve());
-          void webview.once("tauri://error", (e) => reject(e));
-        });
+        const webview = await Webview.getByLabel(webviewLabel);
+        if (!webview) {
+          throw new Error("side browser webview missing after reload");
+        }
         webviewRef.current = webview;
         lastBoundsRef.current = { x, y, width: w, height: h };
         await webview.setPosition(new LogicalPosition(x, y));
@@ -493,6 +607,15 @@ export function EmbeddedBrowser({
         <span className="embedded-browser__url" title={url}>
           {url}
         </span>
+        {downloadStatus ? (
+          <span
+            className="embedded-browser__download-status"
+            role="status"
+            title={downloadStatus}
+          >
+            {downloadStatus}
+          </span>
+        ) : null}
         <button
           type="button"
           className="chrome-btn"

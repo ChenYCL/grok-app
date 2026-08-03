@@ -46,7 +46,7 @@ export type SettingsTabId =
   | "official"
   | "providers"
   | "extras"
-  // extensions
+  // extensions (legacy hash segment "market" resolves to plugins — not a live tab)
   | "plugins"
   | "skills"
   | "mcp"

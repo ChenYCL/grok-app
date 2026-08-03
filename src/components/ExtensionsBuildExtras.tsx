@@ -53,15 +53,27 @@ import {
   marketplaceRemoveTarget,
   marketplaceSourceLabel,
   normalizeMarketplaceAddSource,
-  pickDefaultMarketplaceFilter,
   sortAvailablePluginsByName,
   sortMarketplaceSourcesByName,
-  XAI_OFFICIAL_MARKETPLACE,
   type AvailablePluginDetailModel,
   type AvailablePluginLike,
   type MarketplaceSourceLike,
   type PluginComponentBadgeKind,
 } from "@/lib/pluginMarketplace";
+import {
+  buildInstalledPluginNameSet,
+  isCatalogPluginInstalled,
+} from "@/lib/pluginCatalogUi";
+import {
+  findOpenaiPluginsSource,
+  pickDefaultInstallableFilter,
+} from "@/lib/pluginRecommended";
+import {
+  ensureDefaultMarketplaces,
+  filterCatalogToDefaultSources,
+  isClaudeMarketplaceSource,
+  isDefaultAllowedMarketplaceSource,
+} from "@/lib/marketplaceDefaults";
 import {
   buildPluginMarketErrorView,
   clearPluginMarketRowError,
@@ -76,23 +88,52 @@ import {
   type PluginMarketRowError,
 } from "@/lib/pluginMarketPro";
 
+/** Actions the parent tab trail can host (Agents). */
+export type ExtAgentsTabActions = {
+  refresh: () => void;
+  openNew: () => void;
+  busy: boolean;
+  loading: boolean;
+};
+
 export type ExtensionsBuildExtrasProps = {
   locale: Locale;
   projectPath?: string | null;
   cliFound?: boolean;
-  /** Which block(s) to render — settings page tabs use hooks | market | agents. */
+  /** Which block(s) to render — settings page tabs use market | agents. */
   mode?: "hooks" | "market" | "agents" | "all";
+  /**
+   * When true (plugins tab installable section), hide page-level market H2
+   * and rely on parent section chrome.
+   */
+  embedded?: boolean;
+  /** Sources management only (modal) — hide available catalog list. */
+  sourcesOnly?: boolean;
+  /** Soft-fail ensure openai/plugins error bubble (optional parent display). */
+  onEnsureOpenaiError?: (message: string | null) => void;
   /** After plugin install — parent can refresh plugins list. */
   onPluginsChanged?: () => void;
   /** Navigate to Settings → Runtime when CLI is missing / too old. */
   onOpenRuntime?: () => void;
+  /** Tab-level search query (Agents / market filter). */
+  query?: string;
   /**
-   * Installed plugin names (and optional marketplace) so catalog rows can
-   * offer Reinstall and match “already installed” state.
+   * When true, hide the in-page Agents toolbar (actions live in the tab trail).
+   */
+  hidePageToolbar?: boolean;
+  /** Register / clear Agents actions for the parent tab trail. */
+  onTabActionsChange?: (actions: ExtAgentsTabActions | null) => void;
+  /**
+   * Installed plugin names (and optional marketplace/source/path) so catalog
+   * rows can offer Reinstall and match “already installed” state — including
+   * CLI hash-suffixed ids (e.g. game-studio-8978c99b ↔ game-studio).
    */
   installedPlugins?: Array<{
     name: string;
     marketplace?: string | null;
+    path?: string | null;
+    source?: string | null;
+    repoKey?: string | null;
   }>;
 };
 
@@ -154,8 +195,14 @@ export function ExtensionsBuildExtras({
   projectPath = null,
   cliFound = true,
   mode = "all",
+  embedded = false,
+  sourcesOnly = false,
+  onEnsureOpenaiError,
   onPluginsChanged,
   onOpenRuntime,
+  query = "",
+  hidePageToolbar = false,
+  onTabActionsChange,
   installedPlugins = [],
 }: ExtensionsBuildExtrasProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -163,11 +210,9 @@ export function ExtensionsBuildExtras({
   const showHooks = mode === "all" || mode === "hooks";
   const showMarket = mode === "all" || mode === "market";
   const showAgents = mode === "all" || mode === "agents";
+  const q = query.trim().toLowerCase();
 
   const [hooks, setHooks] = useState<HookLike[]>([]);
-  const [hooksUserDir, setHooksUserDir] = useState("");
-  const [hooksProjectDir, setHooksProjectDir] = useState<string | null>(null);
-  const [hooksDocs, setHooksDocs] = useState<string | null>(null);
   const [hooksError, setHooksError] = useState<string | null>(null);
   const [hooksLoading, setHooksLoading] = useState(true);
   const [hooksBusy, setHooksBusy] = useState<string | null>(null);
@@ -197,7 +242,11 @@ export function ExtensionsBuildExtras({
   const [marketBusy, setMarketBusy] = useState<string | null>(null);
   const [addSource, setAddSource] = useState("");
   const [availQuery, setAvailQuery] = useState("");
-  const [marketFilter, setMarketFilter] = useState<string>(XAI_OFFICIAL_MARKETPLACE);
+  /** Default prefers openai/plugins when present (D8-A); set after load. */
+  const [marketFilter, setMarketFilter] = useState<string>("__all__");
+  const [ensureOpenaiError, setEnsureOpenaiError] = useState<string | null>(
+    null,
+  );
   const [pageLimit, setPageLimit] = useState(PAGE_SIZE);
   const [fromCache, setFromCache] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
@@ -216,20 +265,16 @@ export function ExtensionsBuildExtras({
     Record<string, PluginMarketRowError>
   >({});
 
-  const installedNameSet = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of installedPlugins) {
-      const n = (p.name ?? "").trim().toLowerCase();
-      if (n) set.add(n);
-    }
-    return set;
-  }, [installedPlugins]);
+  const installedNameSet = useMemo(
+    () => buildInstalledPluginNameSet(installedPlugins),
+    [installedPlugins],
+  );
 
   const isPluginInstalled = useCallback(
     (p: AvailablePluginLike) => {
       const detail = availablePluginDetailModel(p);
       if (detail.isInstalled) return true;
-      return installedNameSet.has(p.name.trim().toLowerCase());
+      return isCatalogPluginInstalled(p.name, installedNameSet);
     },
     [installedNameSet],
   );
@@ -274,9 +319,6 @@ export function ExtensionsBuildExtras({
         ),
       );
       setHooks(list);
-      setHooksUserDir(res.userDir || "");
-      setHooksProjectDir(res.projectDir ?? null);
-      setHooksDocs(res.docsPath ?? null);
     } catch (e) {
       setHooks([]);
       setHooksError(String(e));
@@ -422,6 +464,36 @@ export function ExtensionsBuildExtras({
     setMarketLoading(true);
     setMarketError(null);
     try {
+      // Default sources: xAI + openai; remove Claude sources (soft-fail).
+      const ensure = await ensureDefaultMarketplaces({
+        list: async () => {
+          const r = await api.marketplaceList();
+          return (r.sources ?? [])
+            .map((row) => asSource(row as Record<string, unknown>))
+            .filter((x): x is MarketplaceSourceLike => !!x)
+            .map((s) => ({
+              name: s.name,
+              url: s.url,
+              path: s.path,
+              kind: s.kind,
+            }));
+        },
+        add: async (url) => {
+          await api.marketplaceAdd(url);
+        },
+        remove: async (nameOrUrl) => {
+          await api.marketplaceRemove(nameOrUrl);
+        },
+        removeClaude: true,
+      });
+      const ensureErr =
+        ensure.errors.length > 0 ? ensure.errors.join("; ") : null;
+      setEnsureOpenaiError(ensureErr);
+      onEnsureOpenaiError?.(ensureErr);
+      if (ensure.added.length || ensure.removed.length || force) {
+        invalidateMarketplaceCatalogCache();
+      }
+
       const result = await loadMarketplaceCatalog(async () => {
         const [srcRes, availRes] = await Promise.all([
           api.marketplaceList(),
@@ -432,33 +504,40 @@ export function ExtensionsBuildExtras({
         const src = sortMarketplaceSourcesByName(
           (srcRes.sources ?? [])
             .map((r) => asSource(r as Record<string, unknown>))
-            .filter((x): x is MarketplaceSourceLike => !!x),
+            .filter((x): x is MarketplaceSourceLike => !!x)
+            // Keep only default-allowed sources in the UI list.
+            .filter(
+              (s) =>
+                isDefaultAllowedMarketplaceSource(s) ||
+                !isClaudeMarketplaceSource(s),
+            )
+            .filter((s) => !isClaudeMarketplaceSource(s)),
         );
-        const avail = sortAvailablePluginsByName(
+        let avail = sortAvailablePluginsByName(
           filterAvailablePlugins(
             (availRes.plugins ?? [])
               .map((r) => asAvailable(r as Record<string, unknown>))
               .filter((x): x is AvailablePluginLike => !!x),
           ),
         );
+        avail = filterCatalogToDefaultSources(avail, src);
         return { sources: src, available: avail, error: err };
-      }, { force });
+      }, { force: force || ensure.added.length > 0 || ensure.removed.length > 0 });
 
-      setSources(result.sources);
-      setAvailable(result.available);
+      setSources(result.sources.filter((s) => !isClaudeMarketplaceSource(s)));
+      setAvailable(
+        filterCatalogToDefaultSources(result.available, result.sources),
+      );
       setFromCache(result.fromCache);
       // Soft-fail capability gaps are presented via empty-state, not only a banner.
       if (result.error) setMarketError(result.error);
 
-      // Keep official default when that source exists; otherwise stay on filter chip.
+      // Prefer openai/plugins when present; keep user chip if still valid.
       setMarketFilter((prev) => {
-        if (prev === "__all__") return prev;
-        if (result.sources.some((s) => s.name === prev)) return prev;
-        if (isXaiOfficialMarketplace(prev)) {
-          return pickDefaultMarketplaceFilter(result.sources);
+        if (prev && prev !== "__all__" && result.sources.some((s) => s.name === prev)) {
+          return prev;
         }
-        // If previous source was removed, fall back to official / all.
-        return pickDefaultMarketplaceFilter(result.sources);
+        return pickDefaultInstallableFilter(result.sources);
       });
     } catch (e) {
       setSources([]);
@@ -467,7 +546,7 @@ export function ExtensionsBuildExtras({
     } finally {
       setMarketLoading(false);
     }
-  }, [cliMissing]);
+  }, [cliMissing, onEnsureOpenaiError]);
 
   useEffect(() => {
     if (showHooks) void loadHooks();
@@ -482,20 +561,27 @@ export function ExtensionsBuildExtras({
   }, [loadAgents, showAgents]);
 
   const marketChips = useMemo(() => {
-    const chips: { id: string; label: string }[] = [
-      {
-        id: pickDefaultMarketplaceFilter(sources),
-        label: tr("ext.market.filterOfficial"),
-      },
-      { id: "__all__", label: tr("ext.market.filterAll") },
-    ];
-    // Deduplicate official id if name differs
-    const officialId = chips[0].id;
+    const chips: { id: string; label: string }[] = [];
+    const openai = findOpenaiPluginsSource(sources);
+    if (openai?.name) {
+      chips.push({
+        id: openai.name,
+        label: openai.name,
+      });
+    }
+    chips.push({ id: "__all__", label: tr("ext.market.filterAll") });
+    const seen = new Set(chips.map((c) => c.id));
     for (const s of sources) {
-      if (s.name === officialId || isXaiOfficialMarketplace(s.name)) continue;
+      if (!s.name || seen.has(s.name)) continue;
+      seen.add(s.name);
       chips.push({ id: s.name, label: s.name });
     }
-    return chips;
+    // Prefer xAI chip label when it is the official catalog
+    return chips.map((c) =>
+      isXaiOfficialMarketplace(c.id)
+        ? { ...c, label: tr("ext.market.filterOfficial") }
+        : c,
+    );
   }, [sources, tr]);
 
   const filteredByMarket = useMemo(
@@ -807,82 +893,225 @@ export function ExtensionsBuildExtras({
     (newAgentScope !== "project" || !!projectPath?.trim()) &&
     agentsBusy !== "scaffold";
 
+  const openNewAgentDialog = useCallback(() => {
+    setNewAgentError(null);
+    setAgentsHint(null);
+    setNewAgentName("");
+    setNewAgentScope(projectPath?.trim() ? "project" : "user");
+    setNewAgentOpen(true);
+  }, [projectPath]);
+
+  useEffect(() => {
+    if (!showAgents || !onTabActionsChange) return;
+    onTabActionsChange({
+      refresh: () => {
+        void loadAgents();
+      },
+      openNew: openNewAgentDialog,
+      busy: !!agentsBusy,
+      loading: agentsLoading,
+    });
+    return () => onTabActionsChange(null);
+  }, [
+    showAgents,
+    onTabActionsChange,
+    loadAgents,
+    openNewAgentDialog,
+    agentsBusy,
+    agentsLoading,
+  ]);
+
+  const filteredAgents = useMemo(() => {
+    if (!q) return agents;
+    return agents.filter((a) => {
+      const hay = [a.name, a.description ?? "", a.scope, a.path ?? ""]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [agents, q]);
+
+  const agentsByScope = useMemo(() => {
+    const groups: {
+      key: "project" | "user" | "bundled";
+      label: string;
+      items: AgentDefLike[];
+    }[] = [
+      {
+        key: "project",
+        label: tr("ext.agents.group.project"),
+        items: [],
+      },
+      {
+        key: "user",
+        label: tr("ext.agents.group.user"),
+        items: [],
+      },
+      {
+        key: "bundled",
+        label: tr("ext.agents.group.bundled"),
+        items: [],
+      },
+    ];
+    for (const a of filteredAgents) {
+      const g =
+        a.scope === "project"
+          ? groups[0]
+          : a.scope === "bundled"
+            ? groups[2]
+            : groups[1];
+      g.items.push(a);
+    }
+    return groups.filter((g) => g.items.length > 0);
+  }, [filteredAgents, tr]);
+
+  const renderAgentRow = (a: AgentDefLike) => {
+    const tone = agentScopeTone(a.scope);
+    const editable = a.path && a.scope !== "bundled";
+    return (
+      <li
+        key={`${a.scope}:${a.name}:${a.path}`}
+        className="ext-ref-row ext-ref-row--dense"
+      >
+        <div className="ext-ref-row__main">
+          <div className="ext-ref-row__icon" aria-hidden>
+            <IconRobot size={14} />
+          </div>
+          <div className="ext-ref-row__body">
+            <div className="ext-ref-row__title">{a.name}</div>
+            <div className="ext-ref-row__desc">
+              {a.description?.trim() ||
+                agentMetaLine({ scope: a.scope, description: null }) ||
+                "—"}
+            </div>
+            <div className="ext-ref-row__meta">
+              <span className={`ext-ref-badge ext-badge--${tone}`}>
+                {scopeLabel(a.scope)}
+              </span>
+              {a.path ? (
+                <span className="ext-ref-block__meta" title={a.path}>
+                  {shortPathLabel(a.path, 36)}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div className="ext-ref-row__end">
+            {editable ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!agentsBusy}
+                onClick={() => void openAgentFile(a.path)}
+              >
+                <IconExternalLink size={13} />
+                <span>{tr("ext.agents.open")}</span>
+              </button>
+            ) : null}
+            {a.path ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!agentsBusy}
+                title={a.path}
+                onClick={() => void revealAgentPath(a.path)}
+              >
+                <IconFolder size={13} />
+                <span>{tr("ext.agents.reveal")}</span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </li>
+    );
+  };
+
   return (
     <>
       {/* ── Agents ── */}
       {showAgents ? (
         <>
-          <h2 className="settings-page__h2" id="settings-anchor-ext-agents">
-            <IconRobot size={15} />
-            {tr("ext.agents.title")}
-            {!agentsLoading ? (
-              <span className="ext-count">{agents.length}</span>
+          <div
+            className="ext-ref-stack"
+            id="settings-anchor-ext-agents"
+            data-testid="ext-agents-panel"
+          >
+            {!hidePageToolbar ? (
+              <div className="ext-ref-block__head ext-ref-toolbar">
+                <span className="ext-ref-block__actions">
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={!!agentsBusy}
+                    onClick={() => void loadAgents()}
+                  >
+                    <IconRefresh size={14} />
+                    <span>
+                      {agentsBusy === "scaffold"
+                        ? tr("ext.agents.creating")
+                        : tr("ext.refresh")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--solid btn--sm"
+                    disabled={!!agentsBusy}
+                    onClick={openNewAgentDialog}
+                  >
+                    <IconPlus size={14} />
+                    <span>{tr("ext.agents.new")}</span>
+                  </button>
+                </span>
+              </div>
             ) : null}
-            <span className="ext-h2-actions">
-              <button
-                type="button"
-                className="btn btn--ghost ext-bulk-btn"
-                disabled={!!agentsBusy}
-                onClick={() => void loadAgents()}
-              >
-                <IconRefresh size={13} />
-                <span>
-                  {agentsBusy === "scaffold"
-                    ? tr("ext.agents.creating")
-                    : tr("ext.refresh")}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="btn btn--solid ext-bulk-btn"
-                disabled={!!agentsBusy}
-                onClick={() => {
-                  setNewAgentError(null);
-                  setAgentsHint(null);
-                  setNewAgentName("");
-                  setNewAgentScope(projectPath?.trim() ? "project" : "user");
-                  setNewAgentOpen(true);
-                }}
-              >
-                <IconPlus size={13} />
-                <span>{tr("ext.agents.new")}</span>
-              </button>
-            </span>
-          </h2>
-          <div className="settings-card ext-card">
-            <p className="ext-section-note ext-section-note--top">
-              {tr("ext.agents.desc")}
-            </p>
-            <div className="ext-folder-actions">
-              {agentsUserDir ? (
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm"
-                  disabled={!!agentsBusy}
-                  onClick={() => void revealAgentPath(agentsUserDir)}
-                  title={agentsUserDir}
-                >
-                  <IconFolder size={13} />
-                  <span>{tr("ext.agents.openUser")}</span>
-                </button>
-              ) : null}
-              {projectPath?.trim() && agentsProjectDir ? (
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm"
-                  disabled={!!agentsBusy}
-                  onClick={() => void revealAgentPath(agentsProjectDir)}
-                  title={agentsProjectDir}
-                >
-                  <IconFolder size={13} />
-                  <span>{tr("ext.agents.openProject")}</span>
-                </button>
-              ) : (
-                <span className="ext-field-hint">
-                  {tr("ext.agents.needProjectHint")}
-                </span>
-              )}
-            </div>
+
+            <section className="ext-ref-block">
+              <div className="ext-ref-section-label">
+                {tr("ext.agents.locationsTitle")}
+              </div>
+              <div className="ext-ref-dir-bar">
+                <div className="ext-ref-dir-group">
+                  <span className="ext-ref-dir-group__label">
+                    {tr("ext.agents.group.user")}
+                  </span>
+                  <div className="ext-ref-dir-group__actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!agentsBusy || !agentsUserDir}
+                      title={agentsUserDir || undefined}
+                      onClick={() => void revealAgentPath(agentsUserDir)}
+                    >
+                      <IconFolder size={13} />
+                      <span>{tr("ext.agents.openUser")}</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="ext-ref-dir-group">
+                  <span className="ext-ref-dir-group__label">
+                    {tr("ext.agents.group.project")}
+                  </span>
+                  <div className="ext-ref-dir-group__actions">
+                    {projectPath?.trim() && agentsProjectDir ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={!!agentsBusy}
+                        title={agentsProjectDir}
+                        onClick={() => void revealAgentPath(agentsProjectDir)}
+                      >
+                        <IconFolder size={13} />
+                        <span>{tr("ext.agents.openProject")}</span>
+                      </button>
+                    ) : (
+                      <span className="ext-ref-block__meta">
+                        {tr("ext.agents.needProjectHint")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+
             {agentsError ? (
               <div className="ext-alert ext-alert--error" role="alert">
                 <div className="ext-alert__title">{tr("ext.agents.error")}</div>
@@ -890,89 +1119,31 @@ export function ExtensionsBuildExtras({
               </div>
             ) : null}
             {agentsHint ? (
-              <p className="ext-section-note" role="status">
+              <p className="ext-ref-block__lead" role="status">
                 {agentsHint}
               </p>
             ) : null}
+
             {agentsLoading ? (
-              <p className="ext-empty">{tr("ext.agents.loading")}</p>
+              <p className="ext-ref-empty">{tr("ext.agents.loading")}</p>
             ) : agents.length === 0 ? (
-              <p className="ext-empty">{tr("ext.agents.empty")}</p>
+              <p className="ext-ref-empty">{tr("ext.agents.empty")}</p>
+            ) : filteredAgents.length === 0 ? (
+              <p className="ext-ref-empty">{tr("ext.plugins.filterEmpty")}</p>
             ) : (
-              <ul className="ext-list">
-                {agents.map((a) => {
-                  const tone = agentScopeTone(a.scope);
-                  return (
-                    <li
-                      key={`${a.scope}:${a.name}:${a.path}`}
-                      className="ext-item"
-                    >
-                      <div className="ext-item__head">
-                        <strong className="ext-item__name">{a.name}</strong>
-                        <span className={`ext-badge ext-badge--${tone}`}>
-                          {scopeLabel(a.scope)}
-                        </span>
-                      </div>
-                      {a.description ? (
-                        <p className="ext-item__desc">{a.description}</p>
-                      ) : null}
-                      <div className="ext-item__meta">
-                        <span>
-                          {agentMetaLine({
-                            scope: a.scope,
-                            description: null,
-                          })}
-                        </span>
-                        {a.path ? (
-                          <button
-                            type="button"
-                            className="ext-path-btn"
-                            title={a.path}
-                            onClick={() => void revealAgentPath(a.path)}
-                          >
-                            <IconFolder size={13} />
-                            <span>{shortPathLabel(a.path, 42)}</span>
-                          </button>
-                        ) : null}
-                      </div>
-                      {a.path && a.scope !== "bundled" ? (
-                        <div className="ext-item__actions">
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--sm"
-                            disabled={!!agentsBusy}
-                            onClick={() => void openAgentFile(a.path)}
-                          >
-                            <IconExternalLink size={13} />
-                            <span>{tr("ext.agents.open")}</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--sm"
-                            disabled={!!agentsBusy}
-                            onClick={() => void revealAgentPath(a.path)}
-                          >
-                            <IconFolder size={13} />
-                            <span>{tr("ext.agents.reveal")}</span>
-                          </button>
-                        </div>
-                      ) : a.path ? (
-                        <div className="ext-item__actions">
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--sm"
-                            disabled={!!agentsBusy}
-                            onClick={() => void revealAgentPath(a.path)}
-                          >
-                            <IconFolder size={13} />
-                            <span>{tr("ext.agents.reveal")}</span>
-                          </button>
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
+              agentsByScope.map((group) => (
+                <section key={group.key} className="ext-ref-block">
+                  <div className="ext-ref-section-label">
+                    {group.label}
+                    <span className="ext-ref-cat-group__count">
+                      {group.items.length}
+                    </span>
+                  </div>
+                  <ul className="ext-ref-list">
+                    {group.items.map(renderAgentRow)}
+                  </ul>
+                </section>
+              ))
             )}
           </div>
 
@@ -1234,56 +1405,75 @@ export function ExtensionsBuildExtras({
                 ))}
               </ul>
             )}
-            {hooksUserDir || hooksProjectDir ? (
-              <p className="ext-section-note">
-                {hooksUserDir ? (
-                  <span>
-                    {tr("ext.hooks.scope.user")}: <code>{hooksUserDir}</code>
-                  </span>
-                ) : null}
-                {hooksProjectDir ? (
-                  <span>
-                    {hooksUserDir ? " · " : null}
-                    {tr("ext.hooks.scope.project")}:{" "}
-                    <code>{hooksProjectDir}</code>
-                  </span>
-                ) : null}
-              </p>
-            ) : null}
-            {hooksDocs ? (
-              <p className="ext-section-note">
-                {tr("ext.hooks.docs")}: <code>{hooksDocs}</code>
-              </p>
-            ) : null}
           </div>
         </>
       ) : null}
 
-      {/* ── Marketplace ── */}
+      {/* ── Marketplace / installable catalog ── */}
       {showMarket ? (
-        <>
-          <h2 className="settings-page__h2" id="settings-anchor-ext-market">
-            <IconPuzzle size={15} />
-            {tr("ext.market.title")}
-            {!marketLoading ? (
-              <span className="ext-count">{filteredByMarket.length}</span>
-            ) : null}
-            <button
-              type="button"
-              className="btn btn--ghost ext-bulk-btn"
-              disabled={marketLoading || !!marketBusy || cliMissing}
-              onClick={() => void loadMarket(true)}
-              title={fromCache ? tr("ext.market.cachedHint") : undefined}
-            >
-              <IconRefresh size={14} />
-              <span>
-                {marketBusy === "up:all" || marketLoading
-                  ? tr("ext.market.updating")
-                  : tr("ext.market.refreshCatalog")}
-              </span>
-            </button>
-          </h2>
+        <div
+          className={
+            "ext-ref-catalog" + (embedded ? " ext-ref-catalog--embedded" : "")
+          }
+          id={
+            embedded
+              ? "settings-anchor-ext-plugins-catalog"
+              : "settings-anchor-ext-market"
+          }
+        >
+          {!embedded ? (
+            <h2 className="settings-page__h2" id="settings-anchor-ext-market">
+              <IconPuzzle size={15} />
+              {tr("ext.market.title")}
+              {!marketLoading ? (
+                <span className="ext-count">{filteredByMarket.length}</span>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn--ghost ext-bulk-btn"
+                disabled={marketLoading || !!marketBusy || cliMissing}
+                onClick={() => void loadMarket(true)}
+                title={fromCache ? tr("ext.market.cachedHint") : undefined}
+              >
+                <IconRefresh size={14} />
+                <span>
+                  {marketBusy === "up:all" || marketLoading
+                    ? tr("ext.market.updating")
+                    : tr("ext.market.refreshCatalog")}
+                </span>
+              </button>
+            </h2>
+          ) : null}
           <div className="settings-card ext-card">
+            {embedded ? (
+              <div className="ext-ref-block__actions" style={{ justifyContent: "flex-end", marginBottom: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={marketLoading || !!marketBusy || cliMissing}
+                  onClick={() => void loadMarket(true)}
+                  title={fromCache ? tr("ext.market.cachedHint") : undefined}
+                >
+                  <IconRefresh size={13} />
+                  <span>
+                    {marketBusy === "up:all" || marketLoading
+                      ? tr("ext.market.updating")
+                      : tr("ext.market.refreshCatalog")}
+                  </span>
+                </button>
+              </div>
+            ) : null}
+            {ensureOpenaiError ? (
+              <div className="ext-alert ext-alert--warn" role="status">
+                <div className="ext-alert__title">
+                  {tr("ext.plugins.ensureOpenaiFailed")}
+                </div>
+                <p className="ext-alert__body">
+                  {tr("ext.plugins.ensureOpenaiFailedHint")}
+                </p>
+                <p className="ext-alert__detail">{ensureOpenaiError}</p>
+              </div>
+            ) : null}
             {showMarketErrorBanner && marketLoadView ? (
               <div
                 className={
@@ -1325,6 +1515,8 @@ export function ExtensionsBuildExtras({
               </div>
             ) : null}
 
+            {!sourcesOnly ? (
+            <>
             <div className="ext-market-browse">
               <div
                 className="ext-plugin-filters"
@@ -1357,9 +1549,6 @@ export function ExtensionsBuildExtras({
                 spellCheck={false}
                 onChange={(e) => setAvailQuery(e.target.value)}
               />
-              {fromCache && !marketLoading ? (
-                <p className="ext-field-hint">{tr("ext.market.cachedHint")}</p>
-              ) : null}
             </div>
 
             {catalogEmpty ? (
@@ -1555,10 +1744,14 @@ export function ExtensionsBuildExtras({
                 </button>
               </div>
             ) : null}
+            </>
+            ) : null}
 
+            {/* Sources + add URL: non-embedded page, or sources-only modal. */}
+            {!embedded || sourcesOnly ? (
             <details
               className="ext-market-sources"
-              open={sourcesOpen}
+              open={sourcesOnly ? true : sourcesOpen}
               onToggle={(e) =>
                 setSourcesOpen((e.target as HTMLDetailsElement).open)
               }
@@ -1667,6 +1860,7 @@ export function ExtensionsBuildExtras({
                 </ul>
               )}
             </details>
+            ) : null}
           </div>
 
           <GlassModal
@@ -1922,7 +2116,7 @@ export function ExtensionsBuildExtras({
                   })}
             </p>
           </GlassModal>
-        </>
+        </div>
       ) : null}
     </>
   );

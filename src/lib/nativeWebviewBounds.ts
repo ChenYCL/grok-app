@@ -35,6 +35,54 @@ export function snapBounds(b: BoundsPx): BoundsPx {
   };
 }
 
+export type HostRectPx = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+/**
+ * Clip host bounds so they do not cover a vertical pane resizer that lives
+ * **inside** the host (legacy absolute left:0 handle).
+ *
+ * When the resizer straddles into the main column (`left: -Npx`), it already
+ * receives hits from the parent WebView — do **not** inset the child browser
+ * (that would leave a visible empty gutter). Only clip when the resizer starts
+ * at/inside the host left edge.
+ */
+export function clipHostRectAgainstLeftResizers(
+  host: HostRectPx,
+  resizers: Array<Pick<HostRectPx, "left" | "right" | "top" | "bottom" | "width" | "height">>,
+): HostRectPx {
+  let left = host.left;
+  const right = host.right;
+  for (const r of resizers) {
+    if (r.width <= 0 || r.height <= 0) continue;
+    // Must share vertical span with host.
+    if (r.bottom <= host.top || r.top >= host.bottom) continue;
+    // Only inset for in-host resizers (not straddle-into-main handles).
+    const fullyInsideHostLeft =
+      r.right > left &&
+      r.left < right &&
+      r.left >= left - 0.5 &&
+      r.right < right;
+    if (fullyInsideHostLeft) {
+      left = Math.max(left, r.right);
+    }
+  }
+  return {
+    left,
+    top: host.top,
+    right,
+    bottom: host.bottom,
+    width: Math.max(0, right - left),
+    height: host.height,
+  };
+}
+
 /**
  * Single-flight + trailing-edge runner.
  *

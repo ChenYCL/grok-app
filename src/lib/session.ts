@@ -1,4 +1,5 @@
 import type { Locale } from "../i18n";
+import { isDisplayableAttachmentPath } from "./attachments";
 import { buildErrorDeck, deckCodeFromAgent, resolveErrorDeckCode } from "./errorDeck";
 import type { ErrorDeckAction, ErrorDeckCard } from "./errorDeck";
 import { inferKindFromToolCallId } from "./toolDisplay";
@@ -1989,6 +1990,9 @@ export function applyGeneratedImage(
 ): ChatMessage[] {
   const path = (payload.path || "").trim();
   if (!path) return messages;
+  // Reject false extracts (`/img_001.png`) and site-root CMS paths — they
+  // become dead paperclip cards that cannot open or preview.
+  if (!isDisplayableAttachmentPath(path)) return messages;
   const name =
     (payload.name || "").trim() ||
     path.replace(/\\/g, "/").split("/").filter(Boolean).pop() ||

@@ -56,11 +56,10 @@ export const SETTINGS_NAV: readonly SettingsNavDef[] = [
     defaultTab: "plugins",
     tabs: [
       { id: "plugins", labelKey: "ext.plugins.title" },
-      { id: "skills", labelKey: "ext.skills.title" },
       { id: "mcp", labelKey: "ext.mcp.title" },
+      { id: "skills", labelKey: "ext.skills.title" },
       { id: "agents", labelKey: "ext.agents.title" },
       { id: "hooks", labelKey: "ext.hooks.title" },
-      { id: "market", labelKey: "ext.market.title" },
     ],
   },
   {

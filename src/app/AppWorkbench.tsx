@@ -513,6 +513,7 @@ import {
   buildAgentPrompt,
   buildInlineMediaPathMap,
   collectSessionRelativeMediaRefs,
+  isDisplayableAttachmentPath,
   isImagePath,
   mergeAttachments,
   type Attachment
@@ -657,7 +658,10 @@ import {
   isCliVersionUnsupported,
   resolveSetupGateBoot
 } from "@/lib/setupGatePro";
-import { getComposerCaretOffset } from "@/components/ComposerEditor";
+import {
+  getComposerCaretOffset,
+  resizeComposerInput,
+} from "@/components/ComposerEditor";
 import { ComposerDraftEditor } from "@/components/ComposerDraftEditor";
 import {
   ComposerClearDraftButton,
@@ -967,6 +971,7 @@ import { useLiveMapWhen } from "@/hooks/useSessionLiveMap";
 import { useComposerController } from "@/hooks/useComposerController";
 import { useAppDialogs } from "@/hooks/useAppDialogs";
 import { useSessionHostEvents } from "@/hooks/useSessionHostEvents";
+import { createDebouncedSkillsReload } from "@/lib/skillCatalogRefresh";
 import { useStreamPerfMode } from "@/hooks/useStreamPerfMode";
 
 /** App-local plan chrome state (session-scoped via planBySessionRef). */
@@ -3566,9 +3571,29 @@ export function AppWorkbench() {
     });
   }, []);
 
+  /**
+   * Debounced skills_list reload after conversation skill installs.
+   * Bump target is wired below (skillsReloadToken lives later in this component).
+   * See skillCatalogRefresh.ts.
+   */
+  const skillsReloadBumpRef = useRef<() => void>(() => {});
+  const skillsCatalogReloadRef = useRef(
+    createDebouncedSkillsReload(() => {
+      skillsReloadBumpRef.current();
+    }, 900),
+  );
+  useEffect(() => {
+    return () => {
+      skillsCatalogReloadRef.current.cancel();
+    };
+  }, []);
+
   useSessionHostEvents({
     patchSessionMessages,
     tryApplyAutomationFromSession,
+    onSkillCatalogMaybeStale: () => {
+      skillsCatalogReloadRef.current.schedule();
+    },
     setLiveHost,
     liveHostRef,
     setLiveMap,
@@ -3834,6 +3859,8 @@ export function AppWorkbench() {
       );
       // Grant path_scope + refine isDir before first paint so history
       // thumbnails (Desktop/Downloads drops, etc.) do not flash broken.
+      // Drop false extracts / missing local files so dead paperclip thumbs
+      // never paint (https media always kept).
       const allPaths = chosen.flatMap(
         (m) => m.attachments?.map((a) => a.path) ?? [],
       );
@@ -3844,20 +3871,53 @@ export function AppWorkbench() {
             const byPath = new Map(list.map((c) => [c.path, c]));
             chosen = chosen.map((msg) => {
               if (!msg.attachments?.length) return msg;
-              return {
-                ...msg,
-                attachments: msg.attachments.map((a) => {
+              const nextAtts = msg.attachments
+                .map((a) => {
+                  if (!isDisplayableAttachmentPath(a.path)) return null;
+                  const remote = /^https?:\/\//i.test(a.path);
                   const c = byPath.get(a.path);
+                  if (remote) {
+                    return c
+                      ? { path: c.path, name: c.name, isDir: c.isDir }
+                      : a;
+                  }
+                  // Local: require exists after classify (also grants path_scope).
+                  if (c && !c.exists) return null;
                   return c
                     ? { path: c.path, name: c.name, isDir: c.isDir }
                     : a;
-                }),
+                })
+                .filter((a): a is NonNullable<typeof a> => a != null);
+              return {
+                ...msg,
+                attachments: nextAtts.length ? nextAtts : undefined,
               };
             });
           }
         } catch {
-          /* classify is best-effort */
+          /* classify is best-effort — still drop known false extracts */
+          chosen = chosen.map((msg) => {
+            if (!msg.attachments?.length) return msg;
+            const nextAtts = msg.attachments.filter((a) =>
+              isDisplayableAttachmentPath(a.path),
+            );
+            return {
+              ...msg,
+              attachments: nextAtts.length ? nextAtts : undefined,
+            };
+          });
         }
+      } else if (allPaths.length) {
+        chosen = chosen.map((msg) => {
+          if (!msg.attachments?.length) return msg;
+          const nextAtts = msg.attachments.filter((a) =>
+            isDisplayableAttachmentPath(a.path),
+          );
+          return {
+            ...msg,
+            attachments: nextAtts.length ? nextAtts : undefined,
+          };
+        });
       }
       if (viewingSessionIdRef.current !== s.id) {
         // User switched again while we were loading — keep cache warm, skip UI write.
@@ -4264,7 +4324,7 @@ export function AppWorkbench() {
       const el = composerInputRef.current;
       if (el && el.getAttribute("contenteditable") !== "false") {
         el.focus({ preventScroll: true });
-        resizeComposer(el);
+        resizeComposerInput(el);
         try {
           const sel = window.getSelection();
           if (sel) {
@@ -7706,27 +7766,20 @@ export function AppWorkbench() {
     };
   }, [resizingSidebar]);
 
-  const resizeComposer = (el: HTMLElement) => {
-    const line = 22; // ~line-height
-    const min = line * 1;
-    const max = line * 10;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`;
-  };
-
   /** Programmatic draft / layout changes: recompute height after paint. */
   const syncComposerHeight = useCallback(() => {
     // Double rAF: wait for React commit + layout after mainPane switch.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const node = composerInputRef.current;
-        if (node) resizeComposer(node);
+        if (node) resizeComposerInput(node);
       });
     });
   }, []);
 
-  /** Bumped when Extensions skill toggles change so slash palette refilters. */
+  /** Bumped when Extensions skill toggles change, or chat installs skills, so slash palette reloads. */
   const [skillsReloadToken, setSkillsReloadToken] = useState(0);
+  skillsReloadBumpRef.current = () => setSkillsReloadToken((n) => n + 1);
 
   // Refresh agent definition catalog when the active project changes.
   useEffect(() => {

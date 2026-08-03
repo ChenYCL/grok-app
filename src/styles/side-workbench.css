@@ -176,31 +176,44 @@ html[data-wallpaper="1"].platform-mac[data-theme="light"]
 
 /*
  * Tabs + plus stick together (Codex):
- *   [ tab ][ tab ][ + ]  ………  [ expand ][ side ]
- * Do NOT flex-grow the tabs strip to the action cluster.
+ *   [ tab ][ tab ][ + ]  ………drag………  [ expand ][ side ]
+ * Tabs cluster sizes to content; empty gap is .sw-chrome__drag (window move).
+ *
+ * Do NOT set max-width: calc(100% - 36px) on the scroll strip when the cluster
+ * is content-sized — that circular constraint under-sizes the strip and clips
+ * the last tab’s right border-radius against overflow.
  */
 .sw-tabs-cluster {
   position: relative;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 2px;
-  overflow: hidden;
+  /* visible: avoid clipping tab chip border-radius; fade masks still work */
+  overflow: visible;
 }
 
-/* Scroll only the tab chips; size to content until max, then scroll */
+/* Titlebar drag filler — blank area between tab cluster and right actions */
+.sw-chrome__drag {
+  flex: 1 1 auto;
+  min-width: 8px;
+  align-self: stretch;
+  height: 100%;
+}
+
+/* Scroll only the tab chips; width follows content; shrink+scroll when tight */
 .sw-tabs-cluster .sw-tabs__scroll,
 .sw-tabs-cluster .rp-tabs__scroll {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: calc(100% - 36px);
   display: flex;
   align-items: center;
   gap: 2px;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
   scrollbar-width: none;
 }
 

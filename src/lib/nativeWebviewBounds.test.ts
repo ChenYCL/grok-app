@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   boundsNearlyEqual,
+  clipHostRectAgainstLeftResizers,
   createTrailingSingleFlight,
   snapBounds,
 } from "./nativeWebviewBounds";
@@ -41,6 +42,45 @@ describe("snapBounds", () => {
       width: 0,
       height: 10,
     });
+  });
+});
+
+describe("clipHostRectAgainstLeftResizers", () => {
+  const host = {
+    left: 100,
+    top: 0,
+    right: 500,
+    bottom: 400,
+    width: 400,
+    height: 400,
+  };
+
+  it("insets left when a resizer covers the host left edge (in-host handle)", () => {
+    const next = clipHostRectAgainstLeftResizers(host, [
+      { left: 100, right: 106, top: 0, bottom: 400, width: 6, height: 400 },
+    ]);
+    expect(next.left).toBe(106);
+    expect(next.width).toBe(394);
+    expect(next.right).toBe(500);
+  });
+
+  it("no-ops for straddle handles that start outside the host (keep browser flush)", () => {
+    // left: -4 relative → rect starts at 96 when host is 100
+    const next = clipHostRectAgainstLeftResizers(host, [
+      { left: 96, right: 104, top: 0, bottom: 400, width: 8, height: 400 },
+    ]);
+    expect(next).toEqual(host);
+  });
+
+  it("no-ops when resizer is outside host", () => {
+    const next = clipHostRectAgainstLeftResizers(host, [
+      { left: 0, right: 6, top: 0, bottom: 400, width: 6, height: 400 },
+    ]);
+    expect(next).toEqual(host);
+  });
+
+  it("no-ops when resizer list empty", () => {
+    expect(clipHostRectAgainstLeftResizers(host, [])).toEqual(host);
   });
 });
 

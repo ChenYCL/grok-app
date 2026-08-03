@@ -1,30 +1,33 @@
 # Plugin marketplace (App)
 
-Install and manage Grok Build plugins from Settings → Extensions without dropping to the CLI for day-1 discovery.
+Install and manage Grok Build plugins from **Settings → Extensions → Plugins** without a separate Market tab. Catalog lives under **可安装 / Installable** on the plugins page.
 
 ## Current behavior
 
 | Action | Where | Effect |
 |--------|--------|--------|
-| List installed | Extensions → Plugins | `grok plugin list --json` + inspect enrich |
-| Enable / disable | Same | CLI + `~/.grok/config.toml` |
-| Details / uninstall / update | Same | CLI; GlassModal confirms uninstall |
-| **Validate** | Installed row **Validate**, or advanced install **Validate** on a local path | `grok plugin validate [path]`; classified outcomes (kind chip + hint) in **GlassModal** + in-row summary; soft-fail if CLI too old / missing (warn, no hard banner) |
-| Browse catalog | Extensions → Marketplace | `plugin list --json --available` (cached) |
-| Install from catalog | Marketplace row → confirm | `plugin install --trust` then `plugin enable` + soft-respawn |
-| Manual install | Plugins → “Install from path or git…” | Same install path (path / git / `owner/repo`); optional pre-install validate for local folders |
-| Marketplace sources | Marketplace → sources details | add / remove / refresh git sources |
+| Recommended | Plugins → **推荐** | ChatCut only (`https://github.com/ChatCut-Inc/agent-plugin#codex`); **never auto-install**; GlassModal confirm then `plugin install --trust` |
+| List installed | Plugins → **已安装** | `grok plugin list --json` + inspect enrich; primary control = enable toggle; update/validate/details/uninstall under expand |
+| Details / uninstall / update | Expanded installed row | CLI; GlassModal confirms uninstall |
+| **Validate** | Expanded **Validate**, or advanced install **Validate** on a local path | `grok plugin validate [path]`; GlassModal + in-row summary; soft-fail if CLI too old / missing |
+| Browse catalog | Plugins → **可安装** | ensure `https://github.com/openai/plugins` (idempotent soft-fail) then `plugin list --json --available` (cached) |
+| Install from catalog | Installable row → confirm | `plugin install --trust` then `plugin enable` + soft-respawn |
+| Manual install | Plugins → **高级** “Install from path or git…” | path / git / `owner/repo[#subdir]`; optional pre-install validate for local folders |
+| Marketplace sources | Installable → sources details | add / remove / refresh git sources (**never** delete user sources when ensuring openai) |
 
 Skills / MCP enable toggles remain App-side (`extensions.json` + ACP inject). **Plugins follow CLI/config as source of truth** — do not invent a second store under `~/.grok-app`.
 
+**Deep link:** `#/settings/extensions/market` → Plugins tab (installable anchor `settings-anchor-ext-plugins-catalog`). Search for marketplace/市场 hits the same entry.
+
 ## Catalog UX
 
-1. **Default filter** is **xAI Official** (about a dozen curated plugins). Other sources (e.g. Claude official) are available under “All sources” or per-source chips.
-2. **Cache**: first load runs CLI; re-entering Marketplace within ~6h uses in-memory cache. “Refresh catalog” forces a reload. Install/add/remove sources invalidate or patch the cache.
-3. **Detail panel**: clicking a catalog row opens a GlassModal detail (name, description, marketplace, version, skill/hooks/agents/MCP badges, install source). **Install** / **Reinstall** from the detail or row still use GlassModal confirm (no `window.confirm`). On success the plugin is **trusted and enabled**, then the agent soft-respawns so skills/MCP appear on the next turn.
-4. **Install failure recovery**: errors stick to that plugin row (and detail) with **Retry**; cleared on success. Do not only show a global banner. Errors are **classified** (`cli_missing` / `cli_too_old` / `network` / …) via pure `pluginMarketPro` helpers — kind chip + hint + retry plan (open Runtime / update CLI / retry install). Soft-fail capability gaps use warn tone, not a hard crash banner.
-5. **Empty Plugins tab** links to Marketplace (“Browse official plugins”). Installed **Details** may show structured provides/marketplace summary when the CLI list includes it, plus `plugin details` text.
-6. **Catalog empty honesty**: loading · CLI missing · CLI too old · offline/network · load error · no sources · empty catalog · empty filter · empty query — each with a distinct title/hint and CTA (Retry / Refresh / Clear filters / Open Runtime). Never invent catalog rows when the CLI fails.
+1. **Default filter** prefers **openai/plugins** when that source is configured; otherwise **All sources**. Other chips (xAI Official, user sources) remain available.
+2. **Ensure openai/plugins**: entering installable load path lists sources; if missing, `marketplaceAdd` then optional update. Failures soft-fail with visible warn copy; existing sources still load.
+3. **Cache**: first load runs CLI; re-entering within ~6h uses in-memory cache. “Refresh catalog” forces a reload. Install/add/remove sources invalidate or patch the cache.
+4. **Detail panel**: catalog row opens GlassModal detail. **Install** / **Reinstall** use GlassModal confirm (no `window.confirm`). On success the plugin is **trusted and enabled**, then soft-respawn.
+5. **Install failure recovery**: classified row errors + Retry (`pluginMarketPro`). Soft-fail capability gaps use warn tone.
+6. **Catalog empty honesty**: loading · CLI missing · CLI too old · offline/network · load error · no sources · empty catalog · empty filter · empty query — distinct title/hint/CTA. Never invent catalog rows when the CLI fails.
+7. **Installed badge**: installable rows that are already installed show Installed / reinstall path rather than a second blind install.
 
 ## Component counts
 

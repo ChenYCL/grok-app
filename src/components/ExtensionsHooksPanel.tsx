@@ -119,20 +119,34 @@ function severityMsgClass(
   return "";
 }
 
+/** Actions the parent tab trail can host (Hooks). */
+export type ExtHooksTabActions = {
+  refresh: () => void;
+  busy: boolean;
+  loading: boolean;
+};
+
 export function ExtensionsHooksPanel({
   locale,
   projectPath = null,
   cliFound = true,
+  query = "",
+  hidePageToolbar = false,
+  onTabActionsChange,
 }: {
   locale: Locale;
   projectPath?: string | null;
   cliFound?: boolean;
+  /** Tab-level search query. */
+  query?: string;
+  /** When true, hide the in-page refresh toolbar (actions live in the tab trail). */
+  hidePageToolbar?: boolean;
+  /** Register / clear Hooks actions for the parent tab trail. */
+  onTabActionsChange?: (actions: ExtHooksTabActions | null) => void;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
+  const q = query.trim().toLowerCase();
   const [hooks, setHooks] = useState<HookLike[]>([]);
-  const [userDir, setUserDir] = useState("");
-  const [projectDir, setProjectDir] = useState<string | null>(null);
-  const [docsPath, setDocsPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -401,9 +415,6 @@ export function ExtensionsHooksPanel({
           })),
         ),
       );
-      setUserDir(res.userDir || "");
-      setProjectDir(res.projectDir ?? null);
-      setDocsPath(res.docsPath ?? null);
     } catch (e) {
       setHooks([]);
       setError(String(e));
@@ -415,6 +426,18 @@ export function ExtensionsHooksPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!onTabActionsChange) return;
+    onTabActionsChange({
+      refresh: () => {
+        void load();
+      },
+      busy: !!busy,
+      loading,
+    });
+    return () => onTabActionsChange(null);
+  }, [onTabActionsChange, load, busy, loading]);
 
   const openDir = async (scope: "user" | "project", create: boolean) => {
     if (scope === "project" && !projectPath?.trim()) return;
@@ -433,6 +456,40 @@ export function ExtensionsHooksPanel({
     scope === "project"
       ? tr("ext.hooks.scope.project")
       : tr("ext.hooks.scope.user");
+
+  const filteredHooks = useMemo(() => {
+    if (!q) return hooks;
+    return hooks.filter((h) => {
+      const hay = [
+        h.name,
+        h.scope,
+        h.kind ?? "",
+        h.ext ?? "",
+        h.path ?? "",
+        hookTypeLabel(h),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [hooks, q]);
+
+  const hooksByScope = useMemo(() => {
+    const project: HookLike[] = [];
+    const user: HookLike[] = [];
+    for (const h of filteredHooks) {
+      if (h.scope === "project") project.push(h);
+      else user.push(h);
+    }
+    return [
+      { key: "user" as const, label: tr("ext.hooks.group.user"), items: user },
+      {
+        key: "project" as const,
+        label: tr("ext.hooks.group.project"),
+        items: project,
+      },
+    ].filter((g) => g.items.length > 0);
+  }, [filteredHooks, tr]);
 
   const scriptHooks = useMemo(
     () => hooks.filter((h) => isHookScriptTryable(h)),
@@ -604,71 +661,94 @@ export function ExtensionsHooksPanel({
 
   return (
     <>
-      <h2 className="settings-page__h2" id="settings-anchor-ext-hooks">
-        <IconHooks size={15} />
-        {tr("ext.hooks.title")}
-        {!loading ? <span className="ext-count">{hooks.length}</span> : null}
-        <button
-          type="button"
-          className="btn btn--ghost ext-bulk-btn"
-          disabled={loading || !!busy}
-          onClick={() => void load()}
-        >
-          <IconRefresh size={13} />
-          <span>{tr("ext.market.update")}</span>
-        </button>
-      </h2>
-      <div className="settings-card ext-card">
-        <p className="ext-section-note">{tr("ext.hooks.desc")}</p>
-        {!projectPath?.trim() ? (
-          <p className="ext-field-hint">{tr("ext.hooks.emptyProject")}</p>
-        ) : null}
-        <div className="ext-toolbar">
-          <div className="ext-toolbar__actions">
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              disabled={!!busy || cliMissing}
-              onClick={() => void openDir("user", false)}
-            >
-              <IconFolder size={13} />
-              <span>{tr("ext.hooks.openUser")}</span>
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              disabled={!!busy || cliMissing}
-              onClick={() => void openDir("user", true)}
-            >
-              <IconPlus size={13} />
-              <span>{tr("ext.hooks.createUser")}</span>
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              disabled={!!busy || cliMissing || !projectPath?.trim()}
-              onClick={() => void openDir("project", false)}
-            >
-              <IconFolder size={13} />
-              <span>{tr("ext.hooks.openProject")}</span>
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              disabled={!!busy || cliMissing || !projectPath?.trim()}
-              onClick={() => void openDir("project", true)}
-            >
-              <IconPlus size={13} />
-              <span>{tr("ext.hooks.createProject")}</span>
-            </button>
+      <div
+        className="ext-ref-stack"
+        id="settings-anchor-ext-hooks"
+        data-testid="ext-hooks-panel"
+      >
+        {!hidePageToolbar ? (
+          <div className="ext-ref-block__head ext-ref-toolbar">
+            <span className="ext-ref-block__actions">
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={loading || !!busy}
+                onClick={() => void load()}
+              >
+                <IconRefresh size={14} />
+                <span>{tr("ext.refresh")}</span>
+              </button>
+            </span>
           </div>
-          {userDir ? (
-            <p className="ext-toolbar__hint" title={userDir}>
-              {userDir}
-              {projectDir ? ` · ${projectDir}` : ""}
-            </p>
-          ) : null}
-        </div>
+        ) : null}
+
+        {/* ── Directories ── */}
+        <section className="ext-ref-block">
+          <div className="ext-ref-section-label">
+            {tr("ext.hooks.locationsTitle")}
+          </div>
+          <div className="ext-ref-dir-bar">
+            <div className="ext-ref-dir-group">
+              <span className="ext-ref-dir-group__label">
+                {tr("ext.hooks.group.user")}
+              </span>
+              <div className="ext-ref-dir-group__actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!busy || cliMissing}
+                  onClick={() => void openDir("user", false)}
+                >
+                  <IconFolder size={13} />
+                  <span>{tr("ext.hooks.openUser")}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!busy || cliMissing}
+                  onClick={() => void openDir("user", true)}
+                >
+                  <IconPlus size={13} />
+                  <span>{tr("ext.hooks.createUser")}</span>
+                </button>
+              </div>
+            </div>
+            <div className="ext-ref-dir-group">
+              <span className="ext-ref-dir-group__label">
+                {tr("ext.hooks.group.project")}
+              </span>
+              <div className="ext-ref-dir-group__actions">
+                {projectPath?.trim() ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!busy || cliMissing}
+                      onClick={() => void openDir("project", false)}
+                    >
+                      <IconFolder size={13} />
+                      <span>{tr("ext.hooks.openProject")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!busy || cliMissing}
+                      onClick={() => void openDir("project", true)}
+                    >
+                      <IconPlus size={13} />
+                      <span>{tr("ext.hooks.createProject")}</span>
+                    </button>
+                  </>
+                ) : (
+                  <span className="ext-ref-block__meta">
+                    {tr("ext.hooks.emptyProject")}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
         {error ? (
           <div
             className={
@@ -683,90 +763,108 @@ export function ExtensionsHooksPanel({
             <p className="ext-alert__body">{error}</p>
           </div>
         ) : null}
-        {loading ? (
-          <p className="ext-field-hint">{tr("ext.hooks.loading")}</p>
-        ) : hooks.length === 0 ? (
-          <p className="ext-field-hint">{tr("ext.hooks.empty")}</p>
-        ) : (
-          <ul className="ext-list">
-            {hooks.map((h) => (
-              <li key={hookRowKey(h)} className="ext-item">
-                <div className="ext-item__head">
-                  <span className="ext-item__name">{h.name}</span>
-                  <span
-                    className={
-                      "ext-badge" +
-                      (h.scope === "project"
-                        ? " ext-badge--project"
-                        : " ext-badge--user")
-                    }
-                  >
-                    {scopeLabel(h.scope)}
-                  </span>
-                  <span className="ext-badge ext-badge--muted">
-                    {hookTypeLabel(h)}
-                  </span>
-                </div>
-                <div className="ext-item__meta">
-                  {hookMetaLine(h, { locale, scopeLabel })}
-                  {" · "}
-                  {formatHookSize(h.size)}
-                  {h.mtimeMs ? ` · ${formatHookMtime(h.mtimeMs, locale)}` : ""}
-                </div>
-                <div className="ext-item__actions">
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    disabled={!!busy}
-                    onClick={() =>
-                      void api
-                        .hooksReveal(h.path)
-                        .catch((e) => setError(String(e)))
-                    }
-                  >
-                    <IconExternalLink size={13} />
-                    <span>{tr("ext.hooks.reveal")}</span>
-                  </button>
-                  {isHookScriptTryable(h) ? (
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={!!busy || tryRunning}
-                      onClick={() => selectTryPath(h.path)}
-                    >
-                      <span>{tr("ext.hooks.try.action")}</span>
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        {docsPath ? (
-          <p className="ext-section-note">
-            {tr("ext.hooks.docs")}: <code>{docsPath}</code>
-          </p>
-        ) : null}
-      </div>
 
-      {/* Real try-run + validate */}
-      <div className="settings-card ext-card ext-hooks-try">
-        <button
-          type="button"
-          className="ext-hooks-try__toggle"
-          aria-expanded={tryOpen}
-          onClick={() => setTryOpen((v) => !v)}
+        {/* ── Scripts list ── */}
+        <section className="ext-ref-block">
+          <div className="ext-ref-section-label">
+            {tr("ext.hooks.scriptsTitle")}
+            {!loading ? (
+              <span className="ext-ref-cat-group__count">{hooks.length}</span>
+            ) : null}
+          </div>
+          {loading ? (
+            <p className="ext-ref-empty">{tr("ext.hooks.loading")}</p>
+          ) : hooks.length === 0 ? (
+            <p className="ext-ref-empty">{tr("ext.hooks.empty")}</p>
+          ) : filteredHooks.length === 0 ? (
+            <p className="ext-ref-empty">{tr("ext.plugins.filterEmpty")}</p>
+          ) : (
+            hooksByScope.map((group) => (
+              <div key={group.key} className="ext-ref-scope-group">
+                <div className="ext-ref-scope-group__label">
+                  {group.label}
+                  <span className="ext-ref-cat-group__count">
+                    {group.items.length}
+                  </span>
+                </div>
+                <ul className="ext-ref-list">
+                  {group.items.map((h) => (
+                    <li
+                      key={hookRowKey(h)}
+                      className="ext-ref-row ext-ref-row--dense"
+                    >
+                      <div className="ext-ref-row__main">
+                        <div className="ext-ref-row__icon" aria-hidden>
+                          <IconHooks size={14} />
+                        </div>
+                        <div className="ext-ref-row__body">
+                          <div className="ext-ref-row__title">{h.name}</div>
+                          <div className="ext-ref-row__desc">
+                            {hookMetaLine(h, { locale, scopeLabel })}
+                            {" · "}
+                            {formatHookSize(h.size)}
+                            {h.mtimeMs
+                              ? ` · ${formatHookMtime(h.mtimeMs, locale)}`
+                              : ""}
+                          </div>
+                          <div className="ext-ref-row__meta">
+                            <span
+                              className={
+                                "ext-ref-badge" +
+                                (h.scope === "project"
+                                  ? " ext-badge--project"
+                                  : " ext-badge--user")
+                              }
+                            >
+                              {scopeLabel(h.scope)}
+                            </span>
+                            <span className="ext-ref-badge">
+                              {hookTypeLabel(h)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="ext-ref-row__end">
+                          {isHookScriptTryable(h) ? (
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              disabled={!!busy || tryRunning}
+                              onClick={() => selectTryPath(h.path)}
+                            >
+                              <span>{tr("ext.hooks.try.action")}</span>
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!!busy}
+                            onClick={() =>
+                              void api
+                                .hooksReveal(h.path)
+                                .catch((e) => setError(String(e)))
+                            }
+                          >
+                            <IconExternalLink size={13} />
+                            <span>{tr("ext.hooks.reveal")}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+        </section>
+
+        {/* ── Try-run (collapsible advanced) ── */}
+        <details
+          className="ext-ref-advanced ext-hooks-try"
+          open={tryOpen}
+          onToggle={(e) => setTryOpen((e.target as HTMLDetailsElement).open)}
         >
-          <span className="ext-hooks-try__chevron" aria-hidden>
-            {tryOpen ? "▾" : "▸"}
-          </span>
-          <span className="ext-hooks-try__toggle-title">
-            {tr("ext.hooks.try.title")}
-          </span>
-        </button>
-        {tryOpen ? (
+          <summary>{tr("ext.hooks.try.title")}</summary>
           <div className="ext-hooks-try__body">
-            <p className="ext-section-note">{tr("ext.hooks.try.desc")}</p>
             <label className="ext-hooks-try__field ext-hooks-try__field--block">
               <span className="ext-hooks-try__label">
                 {tr("ext.hooks.try.scriptPath")}
@@ -811,7 +909,7 @@ export function ExtensionsHooksPanel({
               />
             </label>
             <div className="ext-hooks-try__row">
-              <label className="ext-hooks-try__field">
+              <label className="ext-hooks-try__field ext-hooks-try__field--timeout">
                 <span className="ext-hooks-try__label">
                   {tr("ext.hooks.try.timeout")}
                 </span>
@@ -826,67 +924,69 @@ export function ExtensionsHooksPanel({
                   aria-label={tr("ext.hooks.try.timeout")}
                 />
               </label>
-            </div>
-            <div className="ext-hooks-try__actions">
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                disabled={tryRunning || !!busy}
-                onClick={onValidate}
-              >
-                {tr("ext.hooks.try.validate")}
-              </button>
-              <button
-                type="button"
-                className="btn btn--solid btn--sm"
-                disabled={tryRunning || !!busy || !tryPath.trim()}
-                onClick={() => void onTryRun()}
-              >
-                {tryRunning
-                  ? tr("ext.hooks.try.running")
-                  : tr("ext.hooks.try.run")}
-              </button>
-              {resultPresentation || tryResult ? (
+              <div className="ext-hooks-try__actions">
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
-                  disabled={!resultPresentation && !tryResult}
-                  onClick={() => {
-                    if (resultPresentation) {
-                      setResultOpen(true);
-                    } else if (tryResult) {
-                      openPresentation(
-                        "try",
-                        buildHooksTryPresentation(tryResult, {
-                          ...summaryLabels,
-                          fail: tr("ext.hooks.try.summaryFail", {
-                            code:
-                              tryResult.exitCode == null ||
-                              tryResult.exitCode === undefined
-                                ? "?"
-                                : String(tryResult.exitCode),
-                          }),
-                          kinds: kindLabels,
-                        }),
-                      );
-                    }
-                  }}
+                  disabled={tryRunning || !!busy}
+                  onClick={onValidate}
                 >
-                  {tr("ext.hooks.try.viewResult")}
+                  {tr("ext.hooks.try.validate")}
                 </button>
-              ) : null}
+                <button
+                  type="button"
+                  className="btn btn--solid btn--sm"
+                  disabled={tryRunning || !!busy || !tryPath.trim()}
+                  onClick={() => void onTryRun()}
+                >
+                  {tryRunning
+                    ? tr("ext.hooks.try.running")
+                    : tr("ext.hooks.try.run")}
+                </button>
+                {resultPresentation || tryResult ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={!resultPresentation && !tryResult}
+                    onClick={() => {
+                      if (resultPresentation) {
+                        setResultOpen(true);
+                      } else if (tryResult) {
+                        openPresentation(
+                          "try",
+                          buildHooksTryPresentation(tryResult, {
+                            ...summaryLabels,
+                            fail: tr("ext.hooks.try.summaryFail", {
+                              code:
+                                tryResult.exitCode == null ||
+                                tryResult.exitCode === undefined
+                                  ? "?"
+                                  : String(tryResult.exitCode),
+                            }),
+                            kinds: kindLabels,
+                          }),
+                        );
+                      }
+                    }}
+                  >
+                    {tr("ext.hooks.try.viewResult")}
+                  </button>
+                ) : null}
+              </div>
             </div>
             {tryMsg ? (
               <p
                 className={
                   "ext-field-hint ext-hooks-try__msg" +
-                  (tryMsg.kind === "ok"
-                    ? " ext-hooks-try__msg--ok"
-                    : tryMsg.kind === "err"
-                      ? " ext-hooks-try__msg--err"
-                      : tryMsg.kind === "warn"
-                        ? " ext-hooks-try__msg--warn"
-                        : "")
+                  severityMsgClass(
+                    tryMsg.kind === "ok"
+                      ? "ok"
+                      : tryMsg.kind === "err"
+                        ? "err"
+                        : tryMsg.kind === "warn"
+                          ? "warn"
+                          : "info",
+                  )
                 }
                 role="status"
               >
@@ -957,135 +1057,147 @@ export function ExtensionsHooksPanel({
                     {formatHooksTryRunOutput(tryResult)}
                   </pre>
                 ) : (
-                  <p className="ext-field-hint">
+                  <p className="ext-ref-block__meta">
                     {tr("ext.hooks.try.noOutput")}
                   </p>
                 )}
               </div>
             ) : null}
           </div>
-        ) : null}
-      </div>
+        </details>
 
-      <div className="settings-card ext-card ext-hooks-activity">
-        <div className="ext-hooks-activity__head">
-          <h3 className="settings-page__h2 ext-hooks-activity__title">
-            {tr("ext.hooks.activity.title")}
-          </h3>
-          <div className="ext-hooks-activity__head-actions">
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              title={tr("ext.hooks.activity.exportHint")}
-              onClick={onExportActivityJson}
-            >
-              {tr("ext.hooks.activity.export")}
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              title={tr("ext.hooks.activity.copySummaryHint")}
-              onClick={() => void onCopyActivitySummary()}
-            >
-              {tr("ext.hooks.activity.copySummary")}
-            </button>
-            {!clearPlan.empty ? (
+        {/* ── Recent activity ── */}
+        <section className="ext-ref-block ext-hooks-activity">
+          <div className="ext-ref-block__head">
+            <div className="ext-ref-section-label">
+              {tr("ext.hooks.activity.title")}
+              {activity.length > 0 ? (
+                <span className="ext-ref-cat-group__count">
+                  {activity.length}
+                </span>
+              ) : null}
+            </div>
+            <div className="ext-ref-block__actions">
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
-                onClick={() => setClearConfirmOpen(true)}
+                title={tr("ext.hooks.activity.exportHint")}
+                onClick={onExportActivityJson}
               >
-                {tr("ext.hooks.activity.clear")}
+                {tr("ext.hooks.activity.export")}
               </button>
-            ) : null}
-          </div>
-        </div>
-        <p className="ext-section-note">{tr("ext.hooks.activity.desc")}</p>
-        {activity.length > 0 ? (
-          <div
-            className="settings-seg ext-hooks-activity__chips"
-            role="tablist"
-            aria-label={tr("ext.hooks.activity.filterLabel")}
-          >
-            {OUTCOME_FILTERS.map((id) => (
               <button
-                key={id}
                 type="button"
-                role="tab"
-                aria-selected={outcomeFilter === id}
-                className={
-                  "settings-seg__btn" + (outcomeFilter === id ? " is-on" : "")
-                }
-                onClick={() => {
-                  setOutcomeFilter(id);
-                  setExportMsg(null);
-                }}
+                className="btn btn--ghost btn--sm"
+                title={tr("ext.hooks.activity.copySummaryHint")}
+                onClick={() => void onCopyActivitySummary()}
               >
-                {filterChipLabel(id, tr)}
-                <span className="ext-hooks-activity__count" aria-hidden>
-                  {activityCounts[id]}
-                </span>
+                {tr("ext.hooks.activity.copySummary")}
               </button>
-            ))}
+              {!clearPlan.empty ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setClearConfirmOpen(true)}
+                >
+                  {tr("ext.hooks.activity.clear")}
+                </button>
+              ) : null}
+            </div>
           </div>
-        ) : null}
-        {exportMsg ? (
-          <p
-            className={
-              "ext-field-hint ext-hooks-try__msg" +
-              (exportMsg.kind === "ok"
-                ? " ext-hooks-try__msg--ok"
-                : exportMsg.kind === "err"
-                  ? " ext-hooks-try__msg--err"
-                  : "")
-            }
-            role="status"
-          >
-            {exportMsg.text}
-          </p>
-        ) : null}
-        {activityEmptyState === "empty" ? (
-          <p className="ext-field-hint" role="status">
-            {tr("ext.hooks.activity.empty")}
-          </p>
-        ) : activityEmptyState === "filtered" ? (
-          <p className="ext-field-hint" role="status">
-            {tr("ext.hooks.activity.emptyFilter")}
-          </p>
-        ) : (
-          <ul className="ext-list ext-hooks-activity__list">
-            {filteredActivity.map((row) => (
-              <li key={row.id} className="ext-item ext-hooks-activity__item">
-                <div className="ext-item__head">
-                  <span className="ext-item__name">{row.type}</span>
-                  <span className={outcomeBadgeClass(row.outcome)}>
-                    {outcomeLabel(row.outcome, tr)}
+          {activity.length > 0 ? (
+            <div
+              className="settings-seg ext-hooks-activity__chips"
+              role="tablist"
+              aria-label={tr("ext.hooks.activity.filterLabel")}
+            >
+              {OUTCOME_FILTERS.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={outcomeFilter === id}
+                  className={
+                    "settings-seg__btn" + (outcomeFilter === id ? " is-on" : "")
+                  }
+                  onClick={() => {
+                    setOutcomeFilter(id);
+                    setExportMsg(null);
+                  }}
+                >
+                  {filterChipLabel(id, tr)}
+                  <span className="ext-hooks-activity__count" aria-hidden>
+                    {activityCounts[id]}
                   </span>
-                  <span className="ext-badge ext-badge--muted">
-                    {formatHookActivityTime(row.atMs, locale)}
-                  </span>
-                  {row.source === "try" ? (
-                    <span className="ext-badge ext-badge--muted">
-                      {tr("ext.hooks.try.badgeTry")}
-                    </span>
-                  ) : row.source === "debug" ? (
-                    <span className="ext-badge ext-badge--muted">
-                      {tr("ext.hooks.activity.sourceDebug")}
-                    </span>
-                  ) : null}
-                </div>
-                {row.detail ? (
-                  <div
-                    className="ext-item__meta ext-hooks-activity__detail"
-                    title={row.detail}
-                  >
-                    {row.detail}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {exportMsg ? (
+            <p
+              className={
+                "ext-field-hint ext-hooks-try__msg" +
+                (exportMsg.kind === "ok"
+                  ? " ext-hooks-try__msg--ok"
+                  : exportMsg.kind === "err"
+                    ? " ext-hooks-try__msg--err"
+                    : "")
+              }
+              role="status"
+            >
+              {exportMsg.text}
+            </p>
+          ) : null}
+          {activityEmptyState === "empty" ? (
+            <p className="ext-ref-empty" role="status">
+              {tr("ext.hooks.activity.empty")}
+            </p>
+          ) : activityEmptyState === "filtered" ? (
+            <p className="ext-ref-empty" role="status">
+              {tr("ext.hooks.activity.emptyFilter")}
+            </p>
+          ) : (
+            <ul className="ext-ref-list">
+              {filteredActivity.map((row) => (
+                <li
+                  key={row.id}
+                  className="ext-ref-row ext-ref-row--dense"
+                >
+                  <div className="ext-ref-row__main">
+                    <div className="ext-ref-row__body">
+                      <div className="ext-ref-row__title">{row.type}</div>
+                      {row.detail ? (
+                        <div
+                          className="ext-ref-row__desc ext-hooks-activity__detail"
+                          title={row.detail}
+                        >
+                          {row.detail}
+                        </div>
+                      ) : null}
+                      <div className="ext-ref-row__meta">
+                        <span className={outcomeBadgeClass(row.outcome)}>
+                          {outcomeLabel(row.outcome, tr)}
+                        </span>
+                        <span className="ext-ref-badge">
+                          {formatHookActivityTime(row.atMs, locale)}
+                        </span>
+                        {row.source === "try" ? (
+                          <span className="ext-ref-badge">
+                            {tr("ext.hooks.try.badgeTry")}
+                          </span>
+                        ) : row.source === "debug" ? (
+                          <span className="ext-ref-badge">
+                            {tr("ext.hooks.activity.sourceDebug")}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
 
       <GlassModal

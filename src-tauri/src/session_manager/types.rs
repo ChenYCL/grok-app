@@ -868,19 +868,50 @@ pub(super) fn first_media_path_in_text(text: &str) -> Option<String> {
         let p = part.trim();
         if let Some(n) = normalize_media_ref(p) {
             if is_media_fs_path(&n) {
-                // Prefer remote URLs and real local paths; skip non-media.
-                if n.starts_with("http://") || n.starts_with("https://") || is_local_media_fs_path(&n)
-                {
+                // Prefer remote URLs and multi-segment local paths; skip
+                // single-segment false extracts like `/img_001.png`.
+                if n.starts_with("http://") || n.starts_with("https://") {
+                    return Some(n);
+                }
+                if is_plausible_local_media_abs(&n) {
                     return Some(n);
                 }
             }
         }
     }
-    // Bare absolute path token (stop at whitespace / quote / paren / markdown)
+    // Bare absolute path token (stop at whitespace / quote / paren / markdown).
+    // Only start at a path boundary — never mid-relative like `media/img_001.png`
+    // where the `/` would false-extract `/img_001.png` (breaks chat attachments).
     let mut start = None;
     for (i, ch) in text.char_indices() {
         if ch == '/' && start.is_none() {
-            start = Some(i);
+            let prev_ok = if i == 0 {
+                true
+            } else {
+                // Previous char must not be part of a relative path segment.
+                let prev = text[..i].chars().next_back().unwrap_or('\0');
+                matches!(
+                    prev,
+                    ' ' | '\n'
+                        | '\r'
+                        | '\t'
+                        | '`'
+                        | '"'
+                        | '\''
+                        | '('
+                        | '['
+                        | '='
+                        | ':'
+                        | ','
+                        | '（'
+                        | '!'
+                        | '<'
+                        | '>'
+                )
+            };
+            if prev_ok {
+                start = Some(i);
+            }
             continue;
         }
         if let Some(s) = start {
@@ -892,10 +923,12 @@ pub(super) fn first_media_path_in_text(text: &str) -> Option<String> {
                 let end_i = if end { i } else { text.len() };
                 let candidate = text[s..end_i].trim_end_matches(['.', ',', ';', '。', '，']);
                 if let Some(n) = normalize_media_ref(candidate) {
-                    if is_local_media_fs_path(&n) || {
-                        (n.starts_with("http://") || n.starts_with("https://"))
-                            && is_media_fs_path(&n)
-                    } {
+                    // Reject single-segment abs media (`/img_001.png`) — almost always
+                    // a false extract; real workspace media has ≥2 segments.
+                    if is_plausible_local_media_abs(&n)
+                        || ((n.starts_with("http://") || n.starts_with("https://"))
+                            && is_media_fs_path(&n))
+                    {
                         return Some(n);
                     }
                 }
@@ -906,25 +939,52 @@ pub(super) fn first_media_path_in_text(text: &str) -> Option<String> {
     None
 }
 
-/// Pull media path/URL from ACP tool_call / tool_call_update payload
-/// (image_gen, image_edit, image_to_video, reference_to_video, MCP / ChatCut, …).
-/// Returns normalized local path or https URL (never protocol-relative / placeholders).
-pub(super) fn extract_generated_media_path(raw: &serde_json::Value) -> Option<String> {
-    let accept = |s: &str| -> Option<String> {
-        let n = normalize_media_ref(s)?;
-        if is_media_fs_path(&n) {
-            Some(n)
-        } else {
-            None
-        }
-    };
+/// Local media abs path worth attaching: real multi-segment FS path, not
+/// `/basename.png` false extracts from markdown relatives.
+pub(super) fn is_plausible_local_media_abs(path: &str) -> bool {
+    if !is_local_media_fs_path(path) {
+        return false;
+    }
+    let n = normalize_media_ref(path).unwrap_or_else(|| path.to_string());
+    if n.starts_with("http://") || n.starts_with("https://") {
+        return false;
+    }
+    // Windows drive always multi-part enough.
+    if n.len() > 3 && n.as_bytes().get(1) == Some(&b':') {
+        return true;
+    }
+    let segs: Vec<&str> = n.split('/').filter(|s| !s.is_empty()).collect();
+    segs.len() >= 2
+}
+
+/// Accept normalized media refs for attach candidates.
+fn accept_media_ref(s: &str) -> Option<String> {
+    let n = normalize_media_ref(s)?;
+    if !is_media_fs_path(&n) {
+        return None;
+    }
+    if n.starts_with("http://") || n.starts_with("https://") {
+        return Some(n);
+    }
+    // Local: require multi-segment abs (reject `/img_001.png` false extracts).
+    if is_plausible_local_media_abs(&n) {
+        Some(n)
+    } else {
+        None
+    }
+}
+
+/// Structured media only: `rawOutput.path`, JSON `path` / thumbnail keys.
+/// These are intentional tool outputs (image_gen, ChatCut create_project, …)
+/// and may force a path_scope grant even outside default roots.
+pub(super) fn extract_structured_media_path(raw: &serde_json::Value) -> Option<String> {
     // ImageGen / ImageEdit / video tools rawOutput
     if let Some(path) = raw
         .pointer("/rawOutput/path")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
     {
-        if let Some(n) = accept(path) {
+        if let Some(n) = accept_media_ref(path) {
             return Some(n);
         }
     }
@@ -934,10 +994,56 @@ pub(super) fn extract_generated_media_path(raw: &serde_json::Value) -> Option<St
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
     {
-        if let Some(n) = accept(path) {
+        if let Some(n) = accept_media_ref(path) {
             return Some(n);
         }
     }
+    // content[].content.text as JSON with path / thumbnail fields
+    if let Some(arr) = raw.get("content").and_then(|v| v.as_array()) {
+        for item in arr {
+            let text = item
+                .pointer("/content/text")
+                .or_else(|| item.get("text"))
+                .and_then(|v| v.as_str());
+            if let Some(t) = text {
+                if let Ok(j) = serde_json::from_str::<serde_json::Value>(t) {
+                    if let Some(path) = j.get("path").and_then(|v| v.as_str()) {
+                        if let Some(n) = accept_media_ref(path) {
+                            return Some(n);
+                        }
+                    }
+                    // ChatCut: thumbnail / imageUrl (not freeform editorUrl text)
+                    for key in ["thumbnail", "thumbnailUrl", "imageUrl"] {
+                        if let Some(u) = j.get(key).and_then(|v| v.as_str()) {
+                            if let Some(n) = accept_media_ref(u) {
+                                return Some(n);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Top-level structured ChatCut fields
+    for key in [
+        "/rawOutput/thumbnail",
+        "/rawOutput/thumbnailUrl",
+        "/rawOutput/imageUrl",
+        "/rawOutput/structuredContent/thumbnail",
+        "/rawOutput/structuredContent/thumbnailUrl",
+    ] {
+        if let Some(u) = raw.pointer(key).and_then(|v| v.as_str()) {
+            if let Some(n) = accept_media_ref(u) {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
+/// Freeform media scan in tool text (OkayOutput markdown, content text paths).
+/// Soft attach only — do not force-grant paths outside path_scope / project.
+pub(super) fn extract_freeform_media_path(raw: &serde_json::Value) -> Option<String> {
     // MCP use_tool result: rawOutput.output.OkayOutput | output (string)
     for key in [
         "/rawOutput/output/OkayOutput",
@@ -952,7 +1058,6 @@ pub(super) fn extract_generated_media_path(raw: &serde_json::Value) -> Option<St
             }
         }
     }
-    // content[].content.text is often a JSON string with {"path":"..."} or markdown path
     if let Some(arr) = raw.get("content").and_then(|v| v.as_array()) {
         for item in arr {
             let text = item
@@ -960,21 +1065,8 @@ pub(super) fn extract_generated_media_path(raw: &serde_json::Value) -> Option<St
                 .or_else(|| item.get("text"))
                 .and_then(|v| v.as_str());
             if let Some(t) = text {
-                if let Ok(j) = serde_json::from_str::<serde_json::Value>(t) {
-                    if let Some(path) = j.get("path").and_then(|v| v.as_str()) {
-                        if let Some(n) = accept(path) {
-                            return Some(n);
-                        }
-                    }
-                    // ChatCut: editorUrl / thumbnail / browserHandoff.image
-                    for key in ["thumbnail", "thumbnailUrl", "imageUrl", "url", "editorUrl"] {
-                        if let Some(u) = j.get(key).and_then(|v| v.as_str()) {
-                            if let Some(n) = accept(u) {
-                                return Some(n);
-                            }
-                        }
-                    }
-                }
+                // Skip pure JSON objects handled as structured above; still scan
+                // freeform markdown that happens to parse as JSON without path keys.
                 if let Some(p) = first_media_path_in_text(t) {
                     return Some(p);
                 }
@@ -982,6 +1074,66 @@ pub(super) fn extract_generated_media_path(raw: &serde_json::Value) -> Option<St
         }
     }
     None
+}
+
+/// Pull media path/URL from ACP tool_call / tool_call_update payload
+/// (image_gen, image_edit, image_to_video, reference_to_video, MCP / ChatCut, …).
+/// Returns normalized local path or https URL (never protocol-relative / placeholders).
+/// Prefers structured fields, then freeform text.
+///
+/// Live attach uses structured/freeform separately (different grant policy);
+/// this composite remains for tests and any caller that only needs the path.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn extract_generated_media_path(raw: &serde_json::Value) -> Option<String> {
+    extract_structured_media_path(raw).or_else(|| extract_freeform_media_path(raw))
+}
+
+/// Normalize + gate a media path before persisting as a chat attachment.
+///
+/// - Remote `http(s)` media: always ok when it looks like media.
+/// - Local: file must exist and be multi-segment (no `/img_001.png` false extracts).
+/// - `force_grant`: structured tool outputs may live outside default path_scope
+///   roots (Desktop image_gen, etc.) — grant so loopback media HTTP can serve them.
+/// - Soft (freeform / path_hint): only attach when already allowlisted or under
+///   the session project — prevents incidental reads of `~/.codex/.../logo.png`
+///   from becoming dead paperclip thumbs.
+pub(super) fn prepare_media_attachment_path(
+    path: &str,
+    project_path: Option<&str>,
+    force_grant: bool,
+) -> Option<String> {
+    let n = normalize_media_ref(path).unwrap_or_else(|| path.to_string());
+    if n.starts_with("http://") || n.starts_with("https://") {
+        return if is_media_fs_path(&n) { Some(n) } else { None };
+    }
+    if !is_plausible_local_media_abs(&n) {
+        return None;
+    }
+    let pb = std::path::Path::new(&n);
+    if !pb.is_file() {
+        return None;
+    }
+    let allowed = crate::path_scope::is_allowed(pb);
+    let under_project = project_path
+        .map(|proj| {
+            let proj_p = std::path::Path::new(proj);
+            if pb.starts_with(proj_p) {
+                return true;
+            }
+            match (pb.canonicalize(), proj_p.canonicalize()) {
+                (Ok(c), Ok(r)) => c.starts_with(r),
+                _ => false,
+            }
+        })
+        .unwrap_or(false);
+    if force_grant || allowed || under_project {
+        // Always grant so history thumbs work without relying on a later
+        // paths_classify race (live stream attach used to skip grant → paperclip).
+        crate::path_scope::grant_path(pb);
+        Some(n)
+    } else {
+        None
+    }
 }
 
 pub(super) fn is_image_fs_path(path: &str) -> bool {
