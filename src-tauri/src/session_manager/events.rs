@@ -109,8 +109,13 @@ impl SessionManager {
                     self.handle_acp_event_on_background(app, &sid, ev).await;
                     return;
                 }
-                // Never fail silently: a dropped chunk is a truncated answer.
-                tracing::warn!(
+                // Expected drops: session/load history replay and orphaned
+                // tails arrive on a process before/after any App session owns
+                // it (the App keeps its own journal). Sid-routed turn events
+                // are handled above — reaching here means no live/background/
+                // parked owner, so a real in-turn chunk cannot be truncated
+                // without first dropping through the sid match.
+                tracing::debug!(
                     "acp event dropped: no session owns process={process_id} ev={}",
                     Self::event_kind_name(&ev)
                 );

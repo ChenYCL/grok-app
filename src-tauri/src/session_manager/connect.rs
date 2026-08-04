@@ -447,8 +447,12 @@ impl SessionManager {
                     if p_effort != Some(prefs.effort.as_str()) {
                         parts.push(format!("effort {:?}≠{:?}", p_effort, Some(prefs.effort.as_str())));
                     }
-                    if p_sandbox != Some(eff_sandbox.as_str()) {
-                        parts.push(format!("sandbox {:?}≠{:?}", p_sandbox, Some(eff_sandbox.as_str())));
+                    if p_sandbox.unwrap_or("off") != eff_sandbox.as_str() {
+                        parts.push(format!(
+                            "sandbox {:?}≠{:?}",
+                            p_sandbox.unwrap_or("off"),
+                            eff_sandbox
+                        ));
                     }
                     if p_custom != target_custom {
                         parts.push(format!("route custom={p_custom}≠{target_custom}"));
@@ -1134,6 +1138,10 @@ impl SessionManager {
     /// effort, sandbox profile, and route class (official OIDC vs custom
     /// relay — those cannot share a GROK_HOME). Model is session-level
     /// (`set_model`), so it deliberately does not gate.
+    ///
+    /// Sandbox: the CLI normalizes "off" to no `--sandbox` flag (stored as
+    /// `None` on the client), while settings resolve to the string "off".
+    /// Treat None as "off" so both representations match.
     pub(super) fn reuse_gate(
         alive: bool,
         p_policy: PermissionPolicy,
@@ -1148,7 +1156,7 @@ impl SessionManager {
         alive
             && p_policy == policy
             && p_effort == Some(effort)
-            && p_sandbox == Some(sandbox)
+            && p_sandbox.unwrap_or("off") == sandbox
             && p_custom_route == target_custom_route
     }
 
