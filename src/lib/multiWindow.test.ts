@@ -119,20 +119,22 @@ describe("multiWindow", () => {
     expect(shouldSkipAgentSpawn(false)).toBe(false);
   });
 
-  it("defers foreign-busy warm-connect only on main (secondary concurrent)", () => {
+  it("never defers foreign-busy warm-connect (process sharing)", () => {
+    // Process sharing + concurrent multi-session: connecting another chat no
+    // longer steals the live slot from a streaming turn — deferring left
+    // viewed history chats unconnected whenever anything else was mid-turn.
     expect(
       shouldDeferWarmConnectForForeignBusy({
         isSecondaryWindow: false,
         foreignBusy: true,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldDeferWarmConnectForForeignBusy({
         isSecondaryWindow: false,
         foreignBusy: false,
       }),
     ).toBe(false);
-    // Secondary exists for concurrent work — do not defer on foreign busy.
     expect(
       shouldDeferWarmConnectForForeignBusy({
         isSecondaryWindow: true,

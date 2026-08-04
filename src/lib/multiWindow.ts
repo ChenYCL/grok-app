@@ -385,13 +385,20 @@ export function shouldSkipWarmConnect(isSecondaryWindow: boolean): boolean {
  * Main workbench: defer passive warm-connect while another chat is mid-turn
  * so browsing does not thrash demote/spawn. Secondary windows exist for
  * concurrent work — do not defer just because a foreign chat is streaming.
+ *
+ * RETIRED (process sharing + concurrent multi-session): connecting another
+ * chat no longer steals the live slot from a streaming turn — the busy chat
+ * demotes to background and keeps running on the same (or its own) process,
+ * and the new chat reuses a warm process via session/load. Deferring left
+ * viewed history chats unconnected whenever anything else was mid-turn.
  */
 export function shouldDeferWarmConnectForForeignBusy(opts: {
   isSecondaryWindow: boolean;
   foreignBusy: boolean;
 }): boolean {
-  if (opts.isSecondaryWindow) return false;
-  return !!opts.foreignBusy;
+  void opts.isSecondaryWindow;
+  void opts.foreignBusy;
+  return false;
 }
 
 /**
