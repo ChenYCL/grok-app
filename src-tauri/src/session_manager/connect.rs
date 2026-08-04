@@ -405,29 +405,75 @@ impl SessionManager {
                 )
             };
             let reused = {
-                let parked = self.parked.lock();
-                let busy = self.busy_process_ids();
+                // Reuse candidates = parked (idle) **and** background (busy)
+                // processes, deduped by process id. The CLI is a multi-session
+                // ACP host with a per-session dispatch lock, so a busy process
+                // can host a brand-new session too — this is what makes "open
+                // another chat while one is running" free of cold spawns.
                 let target_custom = crate::providers::is_custom_provider_id(&prefs.model_id);
-                parked
-                    .iter()
-                    .filter(|(_, p)| {
-                        !busy.contains(&p.process_id)
-                            && Self::reuse_gate(
-                                p.acp.is_alive(),
-                                p.policy,
-                                p.effort.as_deref(),
-                                p.sandbox_profile.as_deref(),
-                                crate::providers::is_custom_provider_id(
-                                    p.model_id.as_deref().unwrap_or(""),
-                                ),
-                                policy,
-                                &prefs.effort,
-                                &eff_sandbox,
-                                target_custom,
-                            )
-                    })
-                    .max_by_key(|(_, p)| p.last_activity)
-                    .map(|(_, p)| (p.acp.clone(), p.process_id.clone()))
+                let gate = |alive: bool,
+                            p_policy: PermissionPolicy,
+                            p_effort: Option<&str>,
+                            p_sandbox: Option<&str>,
+                            p_custom: bool| {
+                    Self::reuse_gate(
+                        alive,
+                        p_policy,
+                        p_effort,
+                        p_sandbox,
+                        p_custom,
+                        policy,
+                        &prefs.effort,
+                        &eff_sandbox,
+                        target_custom,
+                    )
+                };
+                let mut best: Option<(Arc<AcpClient>, String, Instant)> = None;
+                {
+                    let parked = self.parked.lock();
+                    for p in parked.values() {
+                        if !gate(
+                            p.acp.is_alive(),
+                            p.policy,
+                            p.effort.as_deref(),
+                            p.acp.sandbox_profile().as_deref(),
+                            crate::providers::is_custom_provider_id(
+                                p.model_id.as_deref().unwrap_or(""),
+                            ),
+                        ) {
+                            continue;
+                        }
+                        let cand = (p.acp.clone(), p.process_id.clone(), p.last_activity);
+                        if best.as_ref().is_none_or(|b| cand.2 > b.2) {
+                            best = Some(cand);
+                        }
+                    }
+                }
+                if best.is_none() {
+                    let bg = self.background.lock();
+                    for s in bg.values() {
+                        if !gate(
+                            s.acp.as_ref().is_some_and(|c| c.is_alive()),
+                            s.policy,
+                            s.effort.as_deref(),
+                            s.acp.as_ref().and_then(|c| c.sandbox_profile()).as_deref(),
+                            crate::providers::is_custom_provider_id(
+                                s.model_id.as_deref().unwrap_or(""),
+                            ),
+                        ) {
+                            continue;
+                        }
+                        let cand = (
+                            s.acp.clone().unwrap(),
+                            s.process_id.clone(),
+                            s.last_activity,
+                        );
+                        if best.as_ref().is_none_or(|b| cand.2 > b.2) {
+                            best = Some(cand);
+                        }
+                    }
+                }
+                best.map(|(acp, pid, _)| (acp, pid))
             };
             if let Some((acp, reused_process)) = reused {
                 let reused_from = self
@@ -435,7 +481,14 @@ impl SessionManager {
                     .lock()
                     .values()
                     .find(|p| p.process_id == reused_process)
-                    .map(|p| p.app_session_id.clone());
+                    .map(|p| p.app_session_id.clone())
+                    .or_else(|| {
+                        self.background
+                            .lock()
+                            .values()
+                            .find(|s| s.process_id == reused_process)
+                            .map(|s| s.app_session_id.clone())
+                    });
                 tracing::info!(
                     target: "session",
                     session = %meta.id,

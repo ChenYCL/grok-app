@@ -47,6 +47,7 @@ impl SessionManager {
     /// Process ids that currently run a turn (live busy or demoted background).
     /// A shared process with a busy session must not be picked for a new
     /// session's reuse — that would stack a second concurrent turn on it.
+    #[allow(dead_code)] // kept for diagnostics; reuse now includes busy processes
     pub(super) fn busy_process_ids(&self) -> std::collections::HashSet<String> {
         let mut out = std::collections::HashSet::new();
         if let Some(s) = self.inner.lock().as_ref() {

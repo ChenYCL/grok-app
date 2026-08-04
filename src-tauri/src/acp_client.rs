@@ -178,6 +178,10 @@ pub enum StreamKind {
 struct Pending {
     method: String,
     tx: oneshot::Sender<Result<Value, String>>,
+    /// Owning agent session (for session/prompt) — lets the prompt_complete
+    /// fallback free only the right waiter when one process hosts several
+    /// concurrent turns (concurrent multi-session).
+    session_id: Option<String>,
 }
 
 const HANDSHAKE_TIMEOUT_SECS: u64 = 45;
@@ -231,6 +235,17 @@ fn prompt_wait_should_timeout(
         return Some("idle");
     }
     None
+}
+
+/// Whether a pending prompt belongs to the fallback target session.
+/// A prompt without a recorded sid matches any target (legacy single-session);
+/// an explicit target only frees its own session's waiter (concurrent).
+fn pending_prompt_matches(prompt_sid: Option<&str>, target: Option<&str>) -> bool {
+    match (target, prompt_sid) {
+        (Some(a), Some(b)) => a == b,
+        (None, _) => true,
+        (Some(_), None) => true,
+    }
 }
 
 /// Pure decision for the `prompt_complete` fallback: release the waiter only
@@ -1729,12 +1744,20 @@ impl AcpClient {
                         .and_then(|v| v.as_str())
                         .unwrap_or("end_turn")
                         .to_string();
-                    let _ = self.event_tx.send((None, AcpEvent::PromptComplete {
+                    // The notification envelope carries the owning sessionId —
+                    // with concurrent turns on one process the fallback must
+                    // only free that session's pending prompt.
+                    let sid = msg
+                        .pointer("/params/sessionId")
+                        .or_else(|| msg.pointer("/params/session_id"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let _ = self.event_tx.send((sid.clone(), AcpEvent::PromptComplete {
                         stop_reason: stop.clone(),
                         authoritative: false,
                     }));
                     // Grace period: free waiters only if the RPC result never arrives.
-                    self.schedule_prompt_complete_fallback(stop);
+                    self.schedule_prompt_complete_fallback(sid, stop);
                 } else {
                     debug!("acp notification ignored method={method}");
                 }
@@ -1759,11 +1782,10 @@ impl AcpClient {
     }
 
     /// Whether a `session/prompt` request is still awaiting its RPC result.
-    fn has_pending_prompt(&self) -> bool {
-        self.pending
-            .lock()
-            .values()
-            .any(|p| p.method == "session/prompt")
+    fn has_pending_prompt_for(&self, session_id: Option<&str>) -> bool {
+        self.pending.lock().values().any(|p| {
+            p.method == "session/prompt" && pending_prompt_matches(p.session_id.as_deref(), session_id)
+        })
     }
 
     /// Release the `session/prompt` waiter only once the agent has actually gone
@@ -1774,14 +1796,19 @@ impl AcpClient {
     /// ended the turn early and every later chunk was discarded as replay —
     /// a truncated journal and a chat frozen mid-answer. Each `session/update`
     /// re-arms the window; idle + absolute prompt waits still cap a wedged RPC.
-    fn schedule_prompt_complete_fallback(self: &Arc<Self>, stop_reason: String) {
+    ///
+    /// `session_id` (from the notification envelope) scopes the fallback to
+    /// one session's pending prompt when a process hosts several concurrent
+    /// turns — another chat's early complete must not free this waiter.
+    fn schedule_prompt_complete_fallback(self: &Arc<Self>, session_id: Option<String>, stop_reason: String) {
         let this = Arc::clone(self);
+        let sid = session_id.as_deref().map(|s| s.to_string());
         tokio::spawn(async move {
             let grace = Duration::from_millis(PROMPT_COMPLETE_FALLBACK_GRACE_MS);
             loop {
                 tokio::time::sleep(grace).await;
                 // Real RPC result landed (or the turn was cancelled) — nothing to free.
-                if !this.has_pending_prompt() {
+                if !this.has_pending_prompt_for(sid.as_deref()) {
                     return;
                 }
                 let last = *this.last_update_at.lock();
@@ -1792,16 +1819,19 @@ impl AcpClient {
                     "acp prompt_complete fallback re-armed: agent still streaming after early complete"
                 );
             }
-            this.complete_pending_prompt_fallback(&stop_reason);
+            this.complete_pending_prompt_fallback(&sid, &stop_reason);
         });
     }
 
     /// If agent never returned a session/prompt result after prompt_complete, free waiters.
-    fn complete_pending_prompt_fallback(&self, stop_reason: &str) {
+    fn complete_pending_prompt_fallback(&self, session_id: &Option<String>, stop_reason: &str) {
         let mut pending = self.pending.lock();
         let prompt_ids: Vec<u64> = pending
             .iter()
-            .filter(|(_, p)| p.method == "session/prompt")
+            .filter(|(_, p)| {
+                p.method == "session/prompt"
+                    && pending_prompt_matches(p.session_id.as_deref(), session_id.as_deref())
+            })
             .map(|(id, _)| *id)
             .collect();
         for id in prompt_ids {
@@ -2146,6 +2176,7 @@ impl AcpClient {
             Pending {
                 method: method.to_string(),
                 tx,
+                session_id: None,
             },
         );
         let msg = json!({
@@ -2205,6 +2236,7 @@ impl AcpClient {
             Pending {
                 method: method.to_string(),
                 tx,
+                session_id: None,
             },
         );
         let msg = json!({
@@ -4669,6 +4701,19 @@ mod prompt_fallback_tests {
     #[test]
     fn no_updates_yet_completes_immediately() {
         assert!(prompt_fallback_due(None, grace(), Instant::now()));
+    }
+
+    #[test]
+    fn fallback_sid_match_is_scoped_per_session() {
+        // Concurrent turns on one process: an explicit target only matches its
+        // own session's prompt.
+        assert!(pending_prompt_matches(Some("sidA"), Some("sidA")));
+        assert!(!pending_prompt_matches(Some("sidA"), Some("sidB")));
+        // Legacy prompts without a recorded sid match any target (never stranded).
+        assert!(pending_prompt_matches(None, Some("sidA")));
+        // Unscoped fallback (no target) frees any pending prompt.
+        assert!(pending_prompt_matches(Some("sidA"), None));
+        assert!(pending_prompt_matches(None, None));
     }
 
     #[test]

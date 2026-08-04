@@ -1,10 +1,12 @@
 # 2026-08-04 — 单进程多会话池（per-route agent process reuse）
 
-> **状态：IMPLEMENTED（进程内多会话保持，已完成双向免冷切换）**
+> **状态：IMPLEMENTED（并发多会话宿主，已完成）**
 > ① 事件按 `sessionId` 路由（防串扰安全网）；② parked 进程**共享**（复用不移交，
 > 一个进程承载多个 App 会话，A↔B 切换均为进程内 unpark，双向免冷 spawn）；
-> ③ 所有会话级 RPC（prompt/interject/cancel/rewind/set_model/set_mode）显式按 sid 定位。
-> 未做：单进程**并发多会话宿主**（同一进程同时跑两个活跃 turn）——见「边界」。
+> ③ **复用候选扩展到 background（busy）进程**——一个进程可同时承载多个活跃 turn
+> （CLI per-session dispatch lock 支持并发）；④ 所有会话级 RPC（prompt/interject/
+> cancel/rewind/set_model/set_mode）显式按 sid 定位；⑤ prompt_complete 回退按
+> sid 隔离（并发时 A 的早 complete 不会释放 B 的 waiter）。
 
 ## 已实现（本期）
 
@@ -35,12 +37,14 @@
 
 ## 边界（未做 / 为什么）
 
-- **单进程并发多会话宿主**（一个进程同时跑两个活跃 turn）不做：需要
-  `AcpClient` 多会话状态机（`agent_session_id` 集合、prompt_complete 回退按会话
-  匹配、pending prompt 按会话隔离），且 CLI 并发 prompt 的事件交织需要更严的
-  golden 测试。收益边际小（App 是单焦点 UI），风险高（数据串扰红线）。
-- 复用进程在同一时刻只**活跃一个 App 会话**（live 或 background 其一）；新会话
-  复用被 busy 进程过滤，保证不会在 busy 进程上叠第二个活跃 turn。
+- ~~**单进程并发多会话宿主**~~ → 已实现：复用候选含 background（busy）进程，
+  一个进程可同时承载多个活跃 turn（CLI per-session dispatch lock + 事件 sid 路由
+  + prompt_complete 回退按 sid 隔离）。
+- 崩溃风险：共享进程崩溃 = 该进程上所有会话中断（ProcessExited 按 process_id
+  清理全部共享条目；会话重连走 session/load 快速重建）。多进程仍保留（不同
+  route / policy / effort / sandbox 不共享，天然分池）。
+- 未做“App 启动即预热常驻进程”：启动时未知用户的 route/policy/effort 配置，
+  预热命中率有限；首个会话冷 spawn 不可避免（除非按默认配置预热）。
 
 ## 池边界（与切模型/切服务商的关系，已确认）
 
