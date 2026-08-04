@@ -944,11 +944,11 @@ impl SessionManager {
                 );
 
                 if abort {
-                    let acp = {
+                    let (acp, agent_sid) = {
                         let mut guard = self.inner.lock();
                         if let Some(s) = guard.as_mut() {
                             if s.provider_retry_aborted {
-                                None
+                                (None, None)
                             } else {
                                 s.provider_retry_aborted = true;
                                 let msg = if reason.trim().is_empty() {
@@ -964,10 +964,10 @@ impl SessionManager {
                                 // Chat-visible error row (must happen before clearing stream ids)
                                 Self::record_turn_error(s, app, &err);
                                 let _ = s.fsm.fail_with(err);
-                                s.acp.clone()
+                                (s.acp.clone(), s.meta.agent_session_id.clone())
                             }
                         } else {
-                            None
+                            (None, None)
                         }
                     };
                     if let Some(acp) = acp {
@@ -975,7 +975,11 @@ impl SessionManager {
                             "provider retries exhausted (host cap {HOST_PROVIDER_MAX_RETRIES})"
                         );
                         acp.abort_pending_prompts(&abort_msg);
-                        let _ = acp.cancel().await;
+                        // Target the session explicitly (shared process safety).
+                        let _ = match agent_sid {
+                            Some(sid) => acp.cancel_for(&sid).await,
+                            None => acp.cancel().await,
+                        };
                     }
                     Self::emit_state(app, &self.snapshot());
                 }

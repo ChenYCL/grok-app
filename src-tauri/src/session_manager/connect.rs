@@ -227,13 +227,17 @@ impl SessionManager {
                 live.meta.mode = Some(prefs.mode.clone());
                 live.meta.effort = Some(prefs.effort.clone());
                 live.meta.permission_policy = Some(prefs.permission_policy.clone());
-                // Best-effort align agent process to channel prefs.
+                // Best-effort align agent process to channel prefs. Target the
+                // session explicitly — on a shared process the "recently bound"
+                // agent session id may belong to another App session.
                 if let Some(acp) = live.acp.clone() {
-                    if let Err(e) = acp.set_model(&agent_model).await {
-                        tracing::warn!("acp set_model on unpark soft-fail: {e}");
-                    }
-                    if let Err(e) = acp.set_mode(&prefs.mode).await {
-                        tracing::warn!("acp set_mode on unpark soft-fail: {e}");
+                    if let Some(sid) = live.meta.agent_session_id.clone() {
+                        if let Err(e) = acp.set_model_for(&sid, &agent_model).await {
+                            tracing::warn!("acp set_model on unpark soft-fail: {e}");
+                        }
+                        if let Err(e) = acp.set_mode_for(&sid, &prefs.mode).await {
+                            tracing::warn!("acp set_mode on unpark soft-fail: {e}");
+                        }
                     }
                 }
                 *self.inner.lock() = Some(live);
@@ -381,9 +385,12 @@ impl SessionManager {
         // (permission policy / effort / sandbox / route class) can host this
         // App session's agent session directly: no CLI spawn, no initialize,
         // no auth — the CLI is a multi-session ACP host, we just session/load
-        // (resume) or session/new on it. The old parked session detaches; its
-        // tail events carry their own sessionId and are dropped by sid
-        // routing (events.rs), so they can never leak into this chat.
+        // (resume) or session/new on it. The parked session is NOT removed:
+        // process and agent sessions are shared, so switching back later is a
+        // plain unpark (session still live on the process) — both directions
+        // of a chat switch stay free of cold spawns. Tail events carry their
+        // own sessionId and are routed by sid (events.rs), so cross-chat
+        // leakage is impossible.
         if !pending_fork {
             let eff_sandbox = {
                 let project_sandbox = meta.project_id.as_deref().and_then(|pid| {
@@ -398,39 +405,43 @@ impl SessionManager {
                 )
             };
             let reused = {
-                let mut parked = self.parked.lock();
+                let parked = self.parked.lock();
+                let busy = self.busy_process_ids();
                 let target_custom = crate::providers::is_custom_provider_id(&prefs.model_id);
-                let key = parked
+                parked
                     .iter()
                     .filter(|(_, p)| {
-                        Self::reuse_gate(
-                            p.acp.is_alive(),
-                            p.policy,
-                            p.effort.as_deref(),
-                            p.sandbox_profile.as_deref(),
-                            crate::providers::is_custom_provider_id(
-                                p.model_id.as_deref().unwrap_or(""),
-                            ),
-                            policy,
-                            &prefs.effort,
-                            &eff_sandbox,
-                            target_custom,
-                        )
+                        !busy.contains(&p.process_id)
+                            && Self::reuse_gate(
+                                p.acp.is_alive(),
+                                p.policy,
+                                p.effort.as_deref(),
+                                p.sandbox_profile.as_deref(),
+                                crate::providers::is_custom_provider_id(
+                                    p.model_id.as_deref().unwrap_or(""),
+                                ),
+                                policy,
+                                &prefs.effort,
+                                &eff_sandbox,
+                                target_custom,
+                            )
                     })
                     .max_by_key(|(_, p)| p.last_activity)
-                    .map(|(k, _)| k.clone());
-                key.and_then(|k| parked.remove(&k))
+                    .map(|(_, p)| (p.acp.clone(), p.process_id.clone()))
             };
-            if let Some(p) = reused {
-                let acp = p.acp;
-                let reused_process = p.process_id.clone();
-                let reused_from = p.app_session_id.clone();
+            if let Some((acp, reused_process)) = reused {
+                let reused_from = self
+                    .parked
+                    .lock()
+                    .values()
+                    .find(|p| p.process_id == reused_process)
+                    .map(|p| p.app_session_id.clone());
                 tracing::info!(
                     target: "session",
                     session = %meta.id,
                     reused_process = %reused_process,
-                    reused_from = %reused_from,
-                    "connect warm-process reuse (no spawn)"
+                    reused_from = ?reused_from,
+                    "connect warm-process reuse (shared, no spawn)"
                 );
                 let cwd_str = cwd.to_string_lossy().to_string();
                 let open_result = acp

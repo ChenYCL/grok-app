@@ -2621,16 +2621,27 @@ impl AcpClient {
     }
 
     /// Switch model on the live agent session (`session/set_model`).
+    /// Switch model on the live agent session (`session/set_model`).
+    /// Uses the process's most recently bound agent session id.
     pub async fn set_model(&self, model_id: &str) -> Result<(), String> {
-        let model_id = model_id.trim();
-        if model_id.is_empty() {
-            return Err("model id empty".into());
-        }
         let sid = self
             .agent_session_id
             .lock()
             .clone()
             .ok_or_else(|| "no agent session".to_string())?;
+        self.set_model_for(&sid, model_id).await
+    }
+
+    /// Switch model on an explicit session (`session/set_model`).
+    /// Shared-process multi-session: callers MUST target the session they
+    /// mean — the process-level "recently bound" id may belong to another
+    /// App session on the same process.
+    pub async fn set_model_for(&self, session_id: &str, model_id: &str) -> Result<(), String> {
+        let model_id = model_id.trim();
+        if model_id.is_empty() {
+            return Err("model id empty".into());
+        }
+        let sid = session_id.to_string();
         // ACP SetSessionModelRequest: sessionId + modelId (+ optional meta).
         let result = self
             .request(
@@ -2664,12 +2675,19 @@ impl AcpClient {
     }
 
     /// Switch product session mode (`session/set_mode`). Tries candidate modeIds.
+    /// Uses the process's most recently bound agent session id.
     pub async fn set_mode(&self, product_mode: &str) -> Result<String, String> {
         let sid = self
             .agent_session_id
             .lock()
             .clone()
             .ok_or_else(|| "no agent session".to_string())?;
+        self.set_mode_for(&sid, product_mode).await
+    }
+
+    /// Switch product session mode on an explicit session (`session/set_mode`).
+    pub async fn set_mode_for(&self, session_id: &str, product_mode: &str) -> Result<String, String> {
+        let sid = session_id.to_string();
         let candidates = crate::agent_prefs::product_mode_candidates(product_mode);
         let mut last_err = String::from("no mode candidates");
         for mode_id in candidates {
@@ -2716,12 +2734,20 @@ impl AcpClient {
         }
     }
 
+    /// Prompt the most recently bound agent session (`session/prompt`).
     pub async fn prompt(&self, text: &str) -> Result<(), AgentError> {
         let sid = self
             .agent_session_id
             .lock()
             .clone()
             .ok_or_else(|| AgentError::new(AgentErrorCode::AgentCrashed, "no session"))?;
+        self.prompt_for(&sid, text).await
+    }
+
+    /// Prompt an explicit agent session (`session/prompt`).
+    /// Shared-process multi-session: callers MUST pass the session they mean.
+    pub async fn prompt_for(&self, session_id: &str, text: &str) -> Result<(), AgentError> {
+        let sid = session_id.to_string();
 
         self.stopped.store(false, Ordering::SeqCst);
 
@@ -2754,31 +2780,45 @@ impl AcpClient {
 
     /// Inject guidance into the active prompt without cancelling the turn.
     /// Grok Build extension: `_x.ai/interject`.
+    /// Interject into the most recently bound agent session.
     pub async fn interject(&self, text: &str) -> Result<(), String> {
-        let text = text.trim();
-        if text.is_empty() {
-            return Err("empty interjection".into());
-        }
         let sid = self
             .agent_session_id
             .lock()
             .clone()
             .ok_or_else(|| "no agent session".to_string())?;
-        self.request("_x.ai/interject", wire_session_interject_params(&sid, text))
-            .await
-            .map(|_| ())
-            .map_err(|e| format!("_x.ai/interject: {e}"))
+        self.interject_for(&sid, text).await
     }
 
-    /// Cancel in-flight prompt (ACP notification — no id).
+    /// Interject into an explicit agent session (shared-process safe).
+    pub async fn interject_for(&self, session_id: &str, text: &str) -> Result<(), String> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Err("empty interjection".into());
+        }
+        self.request(
+            "_x.ai/interject",
+            wire_session_interject_params(session_id, text),
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("_x.ai/interject: {e}"))
+    }
+
+    /// Cancel in-flight prompt on the most recently bound session (no id).
     pub async fn cancel(&self) -> Result<(), String> {
         let sid = self
             .agent_session_id
             .lock()
             .clone()
             .ok_or_else(|| "no session".to_string())?;
+        self.cancel_for(&sid).await
+    }
+
+    /// Cancel in-flight prompt on an explicit session (shared-process safe).
+    pub async fn cancel_for(&self, session_id: &str) -> Result<(), String> {
         self.stopped.store(true, Ordering::SeqCst);
-        self.notify("session/cancel", wire_session_cancel_params(&sid))
+        self.notify("session/cancel", wire_session_cancel_params(session_id))
             .await
     }
 
@@ -2789,8 +2829,16 @@ impl AcpClient {
             .lock()
             .clone()
             .ok_or_else(|| "no session".to_string())?;
-        self.request("x.ai/rewind/points", json!({ "sessionId": sid }))
-            .await
+        self.rewind_points_for(&sid).await
+    }
+
+    /// List rewind points on an explicit session (shared-process safe).
+    pub async fn rewind_points_for(&self, session_id: &str) -> Result<Value, String> {
+        self.request(
+            "x.ai/rewind/points",
+            json!({ "sessionId": session_id }),
+        )
+        .await
     }
 
     /// Truncate agent conversation to a user-prompt index (and optionally restore files).
@@ -2799,6 +2847,7 @@ impl AcpClient {
     /// Semantics (TUI `/rewind`): discard everything **after** the selected turn.
     /// For "edit last user message", pass the **previous** user-turn index, or when
     /// editing the only user message use index `0` with a full clear via host journal.
+    /// Truncate agent conversation on the most recently bound session.
     pub async fn rewind_execute(
         &self,
         target_prompt_index: u32,
@@ -2809,9 +2858,20 @@ impl AcpClient {
             .lock()
             .clone()
             .ok_or_else(|| "no session".to_string())?;
+        self.rewind_execute_for(&sid, target_prompt_index, restore_files)
+            .await
+    }
+
+    /// Truncate agent conversation on an explicit session (shared-process safe).
+    pub async fn rewind_execute_for(
+        &self,
+        session_id: &str,
+        target_prompt_index: u32,
+        restore_files: bool,
+    ) -> Result<Value, String> {
         // Prefer conversation truncate; file restore is optional (edit-resend usually false).
         let mut params = json!({
-            "sessionId": sid,
+            "sessionId": session_id,
             "targetPromptIndex": target_prompt_index,
         });
         if let Some(obj) = params.as_object_mut() {

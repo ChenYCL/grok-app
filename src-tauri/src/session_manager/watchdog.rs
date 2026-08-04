@@ -188,13 +188,23 @@ impl SessionManager {
                 );
                 // Unblock the agent: force_end only cleared Host FSM; without cancel
                 // the CLI stays blocked on model inference and refuses the next send.
-                let acp = self.with_session_mut(&session_id, |s| s.acp.clone());
-                if let Some(acp) = acp.flatten() {
-                    let msg = format!("stream stall recovery ({reason})");
-                    acp.abort_pending_prompts(&msg);
-                    tauri::async_runtime::spawn(async move {
-                        let _ = acp.cancel().await;
-                    });
+                if let Some((acp, agent_sid)) =
+                    self.with_session_mut(&session_id, |s| {
+                        (s.acp.clone(), s.meta.agent_session_id.clone())
+                    })
+                {
+                    if let Some(acp) = acp {
+                        let msg = format!("stream stall recovery ({reason})");
+                        acp.abort_pending_prompts(&msg);
+                        let sid = agent_sid;
+                        tauri::async_runtime::spawn(async move {
+                            // Target the session explicitly (shared process safety).
+                            let _ = match sid {
+                                Some(sid) => acp.cancel_for(&sid).await,
+                                None => acp.cancel().await,
+                            };
+                        });
+                    }
                 }
                 Self::emit_runtime(
                     app,

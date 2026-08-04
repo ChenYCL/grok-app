@@ -748,7 +748,7 @@ impl SessionManager {
     #[allow(clippy::type_complexity)]
     pub(super) fn pick_interjection_target(
         s: &LiveSession,
-    ) -> Result<(String, String, String, Option<Arc<AcpClient>>), String> {
+    ) -> Result<(String, String, String, Option<String>, Option<Arc<AcpClient>>), String> {
         if !(s.prompt_in_flight || s.fsm.state() == SessionState::Streaming) {
             return Err("interjection requires a streaming turn".into());
         }
@@ -760,6 +760,7 @@ impl SessionManager {
             s.backend.clone(),
             s.app_session_id.clone(),
             turn_id,
+            s.meta.agent_session_id.clone(),
             s.acp.clone(),
         ))
     }

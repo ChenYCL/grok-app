@@ -17,7 +17,7 @@ impl SessionManager {
         app: AppHandle,
         session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
-        let (backend, app_sid, acp, user_prompt_count) = {
+        let (backend, app_sid, acp, agent_sid, user_prompt_count) = {
             let guard = self.inner.lock();
             let s = guard.as_ref().ok_or("no active session")?;
             if let Some(target) = session_id.as_deref() {
@@ -42,6 +42,7 @@ impl SessionManager {
                 s.backend.clone(),
                 s.app_session_id.clone(),
                 s.acp.clone(),
+                s.meta.agent_session_id.clone(),
                 user_prompt_count,
             )
         };
@@ -60,7 +61,14 @@ impl SessionManager {
                     // Keep through previous user turn → drop last.
                     user_prompt_count - 2
                 };
-                match client.rewind_execute(exec_index, false).await {
+                match client
+                    .rewind_execute_for(
+                        agent_sid.as_deref().ok_or("chat has no agent session id")?,
+                        exec_index,
+                        false,
+                    )
+                    .await
+                {
                     Ok(_) => {
                         tracing::info!(
                             target: "session",
@@ -74,7 +82,14 @@ impl SessionManager {
                             error = %e,
                             "rewind_execute({exec_index}) failed; trying last-turn index {target}"
                         );
-                        if let Err(e2) = client.rewind_execute(target, false).await {
+                        if let Err(e2) = client
+                            .rewind_execute_for(
+                                agent_sid.as_deref().ok_or("chat has no agent session id")?,
+                                target,
+                                false,
+                            )
+                            .await
+                        {
                             tracing::warn!(
                                 target: "session",
                                 error = %e2,
@@ -179,15 +194,21 @@ impl SessionManager {
         };
 
         // Block if *this* session is mid-turn on the live host.
-        let (live_match, backend, acp, busy) = {
+        let (live_match, backend, acp, agent_sid, busy) = {
             let guard = self.inner.lock();
             match guard.as_ref() {
                 Some(s) if s.app_session_id == app_sid => {
                     let busy = s.fsm.state() == SessionState::Streaming
                         || s.fsm.state() == SessionState::AwaitingPermission;
-                    (true, s.backend.clone(), s.acp.clone(), busy)
+                    (
+                        true,
+                        s.backend.clone(),
+                        s.acp.clone(),
+                        s.meta.agent_session_id.clone(),
+                        busy,
+                    )
                 }
-                _ => (false, String::new(), None, false),
+                _ => (false, String::new(), None, None, false),
             }
         };
         if busy {
@@ -211,8 +232,9 @@ impl SessionManager {
         // Agent path only when this is the live session with a real ACP client.
         if live_match && backend != "mock_acp" && !AcpClient::use_mock() {
             if let Some(client) = acp {
+                let sid = agent_sid.ok_or("chat has no agent session id")?;
                 match client
-                    .rewind_execute(target_prompt_index, restore_files)
+                    .rewind_execute_for(&sid, target_prompt_index, restore_files)
                     .await
                 {
                     Ok(_) => {

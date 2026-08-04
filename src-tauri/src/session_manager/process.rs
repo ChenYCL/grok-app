@@ -44,6 +44,26 @@ impl SessionManager {
         live + background + parked
     }
 
+    /// Process ids that currently run a turn (live busy or demoted background).
+    /// A shared process with a busy session must not be picked for a new
+    /// session's reuse — that would stack a second concurrent turn on it.
+    pub(super) fn busy_process_ids(&self) -> std::collections::HashSet<String> {
+        let mut out = std::collections::HashSet::new();
+        if let Some(s) = self.inner.lock().as_ref() {
+            if Self::live_session_is_busy(s) {
+                if !s.process_id.is_empty() {
+                    out.insert(s.process_id.clone());
+                }
+            }
+        }
+        for s in self.background.lock().values() {
+            if !s.process_id.is_empty() {
+                out.insert(s.process_id.clone());
+            }
+        }
+        out
+    }
+
     pub(super) fn max_concurrent_from_settings() -> u32 {
         normalize_max_concurrent(store::load_settings().max_concurrent_agents)
     }
@@ -566,25 +586,57 @@ impl SessionManager {
         if need_slots == 0 {
             return;
         }
+        // One slot = one process. Parked entries may now SHARE a process, so
+        // recycle whole process groups (all sessions on the oldest process),
+        // never individual entries (killing one session's handle would kill
+        // the shared CLI under its co-tenants).
         for _ in 0..need_slots {
             let victim = {
                 let mut parked = self.parked.lock();
-                let key = parked
+                let mut groups: HashMap<String, Vec<ParkedAgent>> = HashMap::new();
+                let keys: Vec<String> = parked.keys().cloned().collect();
+                for k in keys {
+                    if let Some(p) = parked.remove(&k) {
+                        groups.entry(p.process_id.clone()).or_default().push(p);
+                    }
+                }
+                let oldest_pid = groups
                     .iter()
-                    .min_by_key(|(_, p)| p.last_activity)
-                    .map(|(k, _)| k.clone());
-                key.and_then(|k| parked.remove(&k))
+                    .min_by_key(|(_, es)| {
+                        es.iter()
+                            .map(|p| p.last_activity)
+                            .min()
+                            .unwrap_or(std::time::Instant::now())
+                    })
+                    .map(|(pid, _)| pid.clone());
+                match oldest_pid {
+                    Some(pid) => {
+                        let entries = groups.remove(&pid).unwrap_or_default();
+                        let mut rest: Vec<ParkedAgent> = Vec::new();
+                        for (_, es) in groups {
+                            rest.extend(es);
+                        }
+                        for p in rest {
+                            parked.insert(p.app_session_id.clone(), p);
+                        }
+                        Some((pid, entries))
+                    }
+                    None => None,
+                }
             };
-            let Some(p) = victim else {
+            let Some((pid, entries)) = victim else {
                 break;
             };
             tracing::info!(
-                "process limit: recycling parked session={} process={}",
-                p.app_session_id,
-                p.process_id
+                "process limit: recycling process={pid} sessions={}",
+                entries.len()
             );
-            p.acp.kill().await;
-            Self::emit_idle_recycled(app, &p.app_session_id, "capacity");
+            if let Some(acp) = entries.first().map(|p| p.acp.clone()) {
+                acp.kill().await;
+            }
+            for p in entries {
+                Self::emit_idle_recycled(app, &p.app_session_id, "capacity");
+            }
         }
     }
 
@@ -638,27 +690,50 @@ impl SessionManager {
         // Finished background turns become parked so the idle window applies.
         self.sweep_finished_background_to_parked();
 
-        // Parked first
-        let expired_parked: Vec<ParkedAgent> = {
+        // Parked first — recycle whole process groups when EVERY session on the
+        // process is idle-expired (a shared process must not be killed while a
+        // co-tenant session is still warm).
+        let expired_groups: Vec<(String, Vec<ParkedAgent>)> = {
             let mut parked = self.parked.lock();
-            let keys: Vec<String> = parked
-                .iter()
-                .filter(|(_, p)| is_idle_expired(p.last_activity, idle_mins, now))
-                .map(|(k, _)| k.clone())
-                .collect();
-            keys.into_iter().filter_map(|k| parked.remove(&k)).collect()
+            let mut groups: HashMap<String, Vec<ParkedAgent>> = HashMap::new();
+            let keys: Vec<String> = parked.keys().cloned().collect();
+            for k in keys {
+                if let Some(p) = parked.remove(&k) {
+                    groups.entry(p.process_id.clone()).or_default().push(p);
+                }
+            }
+            let mut keep: HashMap<String, ParkedAgent> = HashMap::new();
+            let mut expired: Vec<(String, Vec<ParkedAgent>)> = Vec::new();
+            for (pid, entries) in groups {
+                if entries
+                    .iter()
+                    .all(|p| is_idle_expired(p.last_activity, idle_mins, now))
+                {
+                    expired.push((pid, entries));
+                } else {
+                    for p in entries {
+                        keep.insert(p.app_session_id.clone(), p);
+                    }
+                }
+            }
+            *parked = keep;
+            expired
         };
-        for p in expired_parked {
+        for (pid, entries) in expired_groups {
             tracing::info!(
-                "idle recycle parked session={} after {}min",
-                p.app_session_id,
-                idle_mins
+                "idle recycle process={pid} sessions={} after {idle_mins}min",
+                entries.len()
             );
-            p.acp.kill().await;
-            Self::emit_idle_recycled(app, &p.app_session_id, "idle");
+            if let Some(acp) = entries.first().map(|p| p.acp.clone()) {
+                acp.kill().await;
+            }
+            for p in entries {
+                Self::emit_idle_recycled(app, &p.app_session_id, "idle");
+            }
         }
 
-        // Live: only true idle Ready (never mid-turn / open tools).
+        // Live: only true idle Ready (never mid-turn / open tools). Killing a
+        // live process also reaps any parked co-tenant entries sharing it.
         let live_kill = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
@@ -669,7 +744,7 @@ impl SessionManager {
                     if let Some(acp) = s.acp.take() {
                         s.fsm.soft_disconnect();
                         s.needs_history_bootstrap = false;
-                        Some((s.app_session_id.clone(), acp))
+                        Some((s.app_session_id.clone(), s.process_id.clone(), acp))
                     } else {
                         None
                     }
@@ -680,9 +755,11 @@ impl SessionManager {
                 None
             }
         };
-        if let Some((sid, acp)) = live_kill {
+        if let Some((sid, pid, acp)) = live_kill {
             tracing::info!("idle recycle live session={sid} after {idle_mins}min");
             acp.kill().await;
+            // Co-tenants on the same process lose their process too.
+            self.parked.lock().retain(|_, p| p.process_id != pid);
             Self::emit_idle_recycled(app, &sid, "idle");
             Self::emit_state(app, &self.snapshot());
         }

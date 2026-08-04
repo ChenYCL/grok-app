@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use crate::acp_client::{AcpClient, AskUserOutcome};
-use crate::error::AgentErrorCode;
+use crate::error::{AgentError, AgentErrorCode};
 use crate::journal_throttle::is_paragraph_break;
 use crate::mock_acp::{self, StreamChunk};
 use crate::session_fsm::SessionState;
@@ -151,11 +151,12 @@ impl SessionManager {
                 s.backend.clone(),
                 s.app_session_id.clone(),
                 s.acp.clone(),
+                s.meta.agent_session_id.clone(),
                 agent_prompt,
                 mid,
             ))
         });
-        let (backend, app_sid, acp, agent_prompt, message_id) = match open {
+        let (backend, app_sid, acp, agent_sid, agent_prompt, message_id) = match open {
             Some(Ok(v)) => v,
             Some(Err(e)) => return Err(e),
             None => {
@@ -368,7 +369,18 @@ impl SessionManager {
         let app2 = app.clone();
         let turn_sid = app_sid.clone();
         tokio::spawn(async move {
-            let outcome = acp.prompt(&agent_prompt).await;
+            // Explicit session id: on a shared process the CLI's “recently
+            // bound” id may belong to another App session — prompts must
+            // target this chat's own agent session.
+            let outcome = match agent_sid {
+                Some(sid) => acp.prompt_for(&sid, &agent_prompt).await,
+                None => {
+                    Err(AgentError::new(
+                        AgentErrorCode::AgentCrashed,
+                        "chat has no agent session id (reconnect)",
+                    ))
+                }
+            };
             if let Err(e) = outcome {
                 // Route by session id: this chat may have been demoted to
                 // background while the prompt ran, and the live slot now holds
@@ -449,14 +461,14 @@ impl SessionManager {
 
         // Take any pending ask-user / plan reverse-RPC so steer is not blocked
         // behind an unanswered questionnaire (diag: interject OK + ask_user hang).
-        let (backend, app_sid, turn_id, acp, pending_ask, pending_plan) = {
+        let (backend, app_sid, turn_id, agent_sid, acp, pending_ask, pending_plan) = {
             if let Some(t) = target {
                 let mut guard = self.inner.lock();
                 if let Some(s) = guard.as_mut().filter(|s| s.app_session_id == t) {
                     let picked = Self::pick_interjection_target(s)?;
                     let pending_ask = s.pending_ask_user_rpc_id.take();
                     let pending_plan = s.pending_plan_rpc_id.take();
-                    (picked.0, picked.1, picked.2, picked.3, pending_ask, pending_plan)
+                    (picked.0, picked.1, picked.2, picked.3, picked.4, pending_ask, pending_plan)
                 } else {
                     drop(guard);
                     let mut background = self.background.lock();
@@ -466,7 +478,7 @@ impl SessionManager {
                     let picked = Self::pick_interjection_target(s)?;
                     let pending_ask = s.pending_ask_user_rpc_id.take();
                     let pending_plan = s.pending_plan_rpc_id.take();
-                    (picked.0, picked.1, picked.2, picked.3, pending_ask, pending_plan)
+                    (picked.0, picked.1, picked.2, picked.3, picked.4, pending_ask, pending_plan)
                 }
             } else {
                 let mut guard = self.inner.lock();
@@ -474,7 +486,7 @@ impl SessionManager {
                 let picked = Self::pick_interjection_target(s)?;
                 let pending_ask = s.pending_ask_user_rpc_id.take();
                 let pending_plan = s.pending_plan_rpc_id.take();
-                (picked.0, picked.1, picked.2, picked.3, pending_ask, pending_plan)
+                (picked.0, picked.1, picked.2, picked.3, picked.4, pending_ask, pending_plan)
             }
         };
 
@@ -505,7 +517,12 @@ impl SessionManager {
                     tracing::warn!("interject: auto-cancel plan id={id} failed: {e}");
                 }
             }
-            client.interject(&text).await?;
+            match agent_sid {
+                Some(sid) => client.interject_for(&sid, &text).await?,
+                None => {
+                    return Err("interjection: chat has no agent session id (reconnect)".into());
+                }
+            }
         }
 
         let created_at = chrono::Utc::now();
@@ -559,7 +576,7 @@ impl SessionManager {
         // Also release ask_user / plan reverse-RPCs. Leaving them set kept
         // `live_session_is_busy` true after stop, so Send/park paths stayed
         // wedged until process kill (user diag 5bda6b52).
-        let (acp, pending_ask, pending_plan) = self
+        let (acp, agent_sid, pending_ask, pending_plan) = self
             .with_session_mut(&target, move |s| {
                 let app = app_for_marker;
                 if let Some(h) = s.mock_stream.take() {
@@ -633,7 +650,12 @@ impl SessionManager {
                 s.prompt_in_flight = false;
                 s.journal_throttle.reset();
                 s.last_stall_emit = None;
-                (s.acp.clone(), pending_ask, pending_plan)
+                (
+                    s.acp.clone(),
+                    s.meta.agent_session_id.clone(),
+                    pending_ask,
+                    pending_plan,
+                )
             })
             .ok_or("no active session")?;
         let had_pending_ask = pending_ask.is_some();
@@ -653,7 +675,11 @@ impl SessionManager {
                     tracing::warn!("stop: cancel plan id={id} failed: {e}");
                 }
             }
-            let _ = acp.cancel().await;
+            // Target the session explicitly (shared process safety).
+            let _ = match agent_sid {
+                Some(sid) => acp.cancel_for(&sid).await,
+                None => acp.cancel().await,
+            };
         }
         if had_pending_ask {
             let _ = app.emit(

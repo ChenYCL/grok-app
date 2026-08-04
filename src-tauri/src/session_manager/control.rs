@@ -286,19 +286,20 @@ impl SessionManager {
         }
         // Store composer preference; agent receives channel-resolved id.
         let agent_model = crate::providers::agent_spawn_model_id(&model_id);
-        let acp = {
+        let (acp, sid) = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 s.model_id = Some(model_id.clone());
                 s.meta.model_id = Some(model_id.clone());
                 let _ = store::update_session_meta(&s.meta);
-                s.acp.clone()
+                (s.acp.clone(), s.meta.agent_session_id.clone())
             } else {
-                None
+                (None, None)
             }
         };
-        if let Some(acp) = acp {
-            acp.set_model(&agent_model).await?;
+        // Target the live session explicitly (shared process safety).
+        if let (Some(acp), Some(sid)) = (acp, sid) {
+            acp.set_model_for(&sid, &agent_model).await?;
         }
         Ok(())
     }
@@ -309,7 +310,7 @@ impl SessionManager {
         if !matches!(mode.as_str(), "agent" | "plan" | "ask") {
             return Err(format!("invalid mode: {mode}"));
         }
-        let acp = {
+        let (acp, sid) = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 let same = s.product_mode.as_deref() == Some(mode.as_str());
@@ -317,16 +318,17 @@ impl SessionManager {
                 s.meta.mode = Some(mode.clone());
                 let _ = store::update_session_meta(&s.meta);
                 if same {
-                    None
+                    (None, None)
                 } else {
-                    s.acp.clone()
+                    (s.acp.clone(), s.meta.agent_session_id.clone())
                 }
             } else {
-                None
+                (None, None)
             }
         };
-        if let Some(acp) = acp {
-            if let Err(e) = acp.set_mode(&mode).await {
+        // Target the live session explicitly (shared process safety).
+        if let (Some(acp), Some(sid)) = (acp, sid) {
+            if let Err(e) = acp.set_mode_for(&sid, &mode).await {
                 tracing::warn!("set_mode failed, soft-respawn: {e}");
                 self.soft_respawn(app).await;
             }
