@@ -37,14 +37,16 @@
 
 ## 边界（未做 / 为什么）
 
+- **App 启动即预热**不做，改为**进入新建会话界面时预热**（用户明确要开新会话，命中率高）：
+  `session_prewarm` 只 spawn + initialize + auth（**不建会话**，cwd 用通用工作区占位，
+  不绑定项目——提交时 `session/new` 才绑定实际项目 cwd）。提交时 connect 优先
+  复用预热进程。10 分钟未消耗自动回收。
 - ~~**单进程并发多会话宿主**~~ → 已实现：复用候选含 background（busy）进程，
   一个进程可同时承载多个活跃 turn（CLI per-session dispatch lock + 事件 sid 路由
   + prompt_complete 回退按 sid 隔离）。
 - 崩溃风险：共享进程崩溃 = 该进程上所有会话中断（ProcessExited 按 process_id
   清理全部共享条目；会话重连走 session/load 快速重建）。多进程仍保留（不同
   route / policy / effort / sandbox 不共享，天然分池）。
-- 未做“App 启动即预热常驻进程”：启动时未知用户的 route/policy/effort 配置，
-  预热命中率有限；首个会话冷 spawn 不可避免（除非按默认配置预热）。
 
 ## 池边界（与切模型/切服务商的关系，已确认）
 

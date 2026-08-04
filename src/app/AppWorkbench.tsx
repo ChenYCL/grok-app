@@ -4454,6 +4454,10 @@ export function AppWorkbench() {
     // Focus explicitly — do not rely only on useEffect: after await, effects may
     // already have run, and identical draft/sessionId can skip a re-render.
     requestComposerFocus();
+    // Entering new-chat view: prewarm a CLI process (spawn+init+auth, no
+    // session, no project binding) so the first send is near-instant. The host
+    // skips when a warm process already exists. Never awaited.
+    api.sessionPrewarm();
   };
 
   const sessionsForProject = (projectId: string) =>

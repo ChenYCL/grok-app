@@ -429,8 +429,27 @@ impl SessionManager {
                     )
                 };
                 let mut best: Option<(Arc<AcpClient>, String, Instant)> = None;
+                // Prewarm is the freshest candidate — purpose-built for the next
+                // chat. Consume it first (matches are exclusive to this connect).
                 {
-                    let parked = self.parked.lock();
+                    let mut pw = self.prewarm.lock();
+                    if let Some(p) = pw.as_ref() {
+                        if gate(
+                            p.acp.is_alive(),
+                            p.policy,
+                            p.effort.as_deref(),
+                            p.sandbox_profile.as_deref(),
+                            crate::providers::is_custom_provider_id(
+                                p.model_id.as_deref().unwrap_or(""),
+                            ),
+                        ) {
+                            best = Some((p.acp.clone(), p.process_id.clone(), p.created_at));
+                            *pw = None;
+                        }
+                    }
+                }
+                if best.is_none() {
+                let parked = self.parked.lock();
                     for p in parked.values() {
                         if !gate(
                             p.acp.is_alive(),
@@ -900,6 +919,118 @@ impl SessionManager {
     }
 
     /// Short event name for diagnostics (no payload — journals stay readable).
+    /// Prewarm a CLI process while the user is composing a new chat: spawn +
+    /// initialize + auth only — NO session (the chat's project cwd is bound
+    /// later at `session/new` on submit). Connect reuses this process first,
+    /// so the first send in a new chat is near-instant.
+    ///
+    /// Idempotent: skips when a prewarm already lives, or when any warm
+    /// process already exists (parked / background covers connect). Uses the
+    /// global/default channel prefs — if the submitted session differs in
+    /// policy/effort/sandbox/route, connect falls back to a cold spawn.
+    pub async fn prewarm(self: &Arc<Self>, app: AppHandle) {
+        let _guard = self.connect_lock.lock().await;
+        // Already prewarmed and alive → no-op (drop dead entries).
+        {
+            let mut pw = self.prewarm.lock();
+            match pw.as_ref() {
+                Some(p) if p.acp.is_alive() => return,
+                _ => *pw = None,
+            }
+        }
+        // Any warm process already covers connect — don't spawn a second one.
+        if self.parked.lock().values().any(|p| p.acp.is_alive())
+            || self
+                .background
+                .lock()
+                .values()
+                .any(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
+            || self
+                .inner
+                .lock()
+                .as_ref()
+                .is_some_and(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
+        {
+            return;
+        }
+
+        let settings = store::load_settings();
+        let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+        let Some(cli_path) = probe.path else {
+            return;
+        };
+        let cli_path = std::path::PathBuf::from(cli_path);
+        let prefs = store::resolve_composer_prefs(None, None);
+        let policy = PermissionPolicy::parse(&prefs.permission_policy);
+        let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
+        // Placeholder cwd — session cwd is a per-session parameter, so this
+        // never binds the upcoming chat to a project.
+        let cwd = crate::paths::general_workspace_dir();
+        let effective_sandbox =
+            store::resolve_sandbox_profile(&settings.sandbox_profile, None);        let spawn_opts = crate::acp_client::SpawnOptions {
+            model_id: Some(agent_model),
+            effort: Some(prefs.effort.clone()),
+            permission_policy: Some(prefs.permission_policy.clone()),
+            product_mode: Some(prefs.mode.clone()),
+            sandbox_profile: Some(effective_sandbox.clone()),
+            ..Default::default()
+        };
+        let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(code = e.code.as_str(), error = %e.message, "prewarm spawn failed");
+                return;
+            }
+        };
+        let process_id = Uuid::new_v4().to_string();
+        // Drain the event stream (prewarm has no session; events are dropped by
+        // sid routing — but the reader must still consume stdout).
+        {
+            let mgr = Arc::clone(self);
+            let pid = process_id.clone();
+            tokio::spawn(async move {
+                while let Some((_sid, ev)) = events.recv().await {
+                    mgr.handle_acp_event(&app, &pid, None, ev).await;
+                }
+            });
+        }
+        if let Err(e) = client.initialize_and_auth().await {
+            tracing::warn!(code = e.code.as_str(), error = %e.message, "prewarm init failed");
+            client.kill().await;
+            return;
+        }
+        *self.prewarm.lock() = Some(PrewarmedProcess {
+            acp: client,
+            process_id,
+            policy,
+            effort: Some(prefs.effort),
+            sandbox_profile: Some(effective_sandbox),
+            model_id: Some(prefs.model_id),
+            created_at: Instant::now(),
+            backend: "grok_agent_stdio".into(),
+        });
+        tracing::info!(target: "session", "prewarm ready (spawn+init+auth, no session)");
+    }
+
+    /// Reap a prewarm process that has been idle too long (nothing consumed it).
+    pub(super) async fn sweep_expired_prewarm(&self, ttl: Duration) {
+        let victim = {
+            let mut pw = self.prewarm.lock();
+            match pw.as_ref() {
+                Some(p) if p.acp.is_alive() && p.created_at.elapsed() >= ttl => pw.take(),
+                Some(p) if !p.acp.is_alive() => pw.take(),
+                _ => None,
+            }
+        };
+        if let Some(p) = victim {
+            tracing::info!(
+                "prewarm process {} recycled (idle or dead)",
+                p.process_id
+            );
+            p.acp.kill().await;
+        }
+    }
+
     /// Pure reuse gate — split out for unit tests (no AcpClient needed).
     /// Process-level spawn flags must match: permission policy, reasoning
     /// effort, sandbox profile, and route class (official OIDC vs custom

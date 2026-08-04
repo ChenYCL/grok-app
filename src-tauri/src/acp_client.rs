@@ -2343,11 +2343,28 @@ impl AcpClient {
     /// `session/fork` (CLI `--fork-session` semantics) for a **new** agent id
     /// with the source context. Fall back to `session/new`.
     /// Returns `(session_id, resumed)`.
+    /// Initialize + best-effort auth, then open a session.
+    /// Prefer `session/load` when `resume_session_id` is set (Grok persists agent
+    /// sessions under GROK_HOME). When `fork_session` is true, use ACP
+    /// `session/fork` (CLI `--fork-session` semantics) for a **new** agent id
+    /// with the source context. Fall back to `session/new`.
+    /// Returns `(session_id, resumed)`.
     pub async fn initialize_and_open_session(
         &self,
         resume_session_id: Option<&str>,
         fork_session: bool,
     ) -> Result<(String, bool), AgentError> {
+        self.initialize_and_auth().await?;
+        self.open_session(resume_session_id, fork_session).await
+    }
+
+    /// Initialize + best-effort cached auth only — no session.
+    ///
+    /// Used to prewarm a process while the user is still composing (new-chat
+    /// draft) so the later `session/new` on a real project is near-instant.
+    /// `session/new`'s cwd is a per-session parameter, so the prewarm spawn
+    /// cwd does not bind the chat to a project.
+    pub async fn initialize_and_auth(&self) -> Result<Value, AgentError> {
         // Do not advertise client fs methods we do not implement — avoids agent
         // hanging on fs/readTextFile while we never reply.
         let init = self
@@ -2360,12 +2377,11 @@ impl AcpClient {
             .map_err(|e| self.map_handshake_err("initialize", e))?;
 
         info!(
-            "acp initialized agentVersion={:?} loadSession={:?} forkSession={}",
+            "acp initialized agentVersion={:?} loadSession={:?}",
             init.pointer("/_meta/agentVersion")
                 .or_else(|| init.pointer("/agentVersion")),
             init.pointer("/agentCapabilities/loadSession")
                 .or_else(|| init.pointer("/capabilities/loadSession")),
-            fork_session
         );
 
         // Live per-model context windows (ClaudeCode `_meta.modelState`).
@@ -2389,8 +2405,7 @@ impl AcpClient {
             Ok(_) => info!("acp authenticate cached_token ok"),
             Err(e) => warn!("acp authenticate soft-fail (continuing): {e}"),
         }
-
-        self.open_session(resume_session_id, fork_session).await
+        Ok(init)
     }
 
     /// Open or resume an ACP session on an already-initialized agent process.

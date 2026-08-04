@@ -234,6 +234,19 @@ pub(crate) struct LiveSession {
     pub(super) last_tool_heartbeat_emit: Option<Instant>,
 }
 
+/// Process prewarmed while the user composes a new chat (spawn + init + auth
+/// only, no session — the chat's project cwd is bound later at `session/new`).
+pub(crate) struct PrewarmedProcess {
+    pub(super) acp: Arc<AcpClient>,
+    pub(super) process_id: ProcessId,
+    pub(super) policy: PermissionPolicy,
+    pub(super) effort: Option<String>,
+    pub(super) sandbox_profile: Option<String>,
+    pub(super) model_id: Option<String>,
+    pub(super) created_at: Instant,
+    pub(super) backend: String,
+}
+
 /// Ready agent process parked while another App session is focused (I01/I02).
 pub(crate) struct ParkedAgent {
     pub(super) process_id: ProcessId,

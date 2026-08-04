@@ -25,6 +25,7 @@ pub async fn session_get_state(
     Ok(mgr.snapshot())
 }
 
+/// Connect the live slot to an agent process (cold spawn or warm reuse).
 #[tauri::command]
 pub async fn session_connect(
     app: tauri::AppHandle,
@@ -34,6 +35,21 @@ pub async fn session_connect(
     mode: Option<String>,
 ) -> Result<SessionSnapshot, String> {
     mgr.connect(app, project_path, session_id, mode).await
+}
+
+/// Fire-and-forget prewarm: spawn + initialize + auth a CLI process while the
+/// user is composing a new chat, so the first send is near-instant. No session
+/// is created — the chat's project cwd is bound at `session/new` on submit.
+#[tauri::command]
+pub async fn session_prewarm(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<(), String> {
+    let mgr = mgr.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        mgr.prewarm(app).await;
+    });
+    Ok(())
 }
 
 /// Send a turn. `text` goes to the agent; optional `display_text` is stored in the journal

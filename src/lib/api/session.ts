@@ -43,6 +43,18 @@ export async function sessionConnect(opts?: {
 }
 
 /**
+ * Fire-and-forget: prewarm a CLI process while the user composes a new chat
+ * (spawn + initialize + auth, no session). The first send then reuses the warm
+ * process — no cold spawn / auth wait. Never awaited by the UI.
+ */
+export function sessionPrewarm(): void {
+  if (!isTauri() || isMirrorClient()) return;
+  void invoke("session_prewarm", {}).catch(() => {
+    /* best-effort — connect still works via cold spawn */
+  });
+}
+
+/**
  * Send a turn to the agent.
  * @param text Agent prompt (skills as `/name`, attachments as `@path`, etc.)
  * @param displayText Optional user-bubble text for journal (e.g. `[[skill:name]]` chips).

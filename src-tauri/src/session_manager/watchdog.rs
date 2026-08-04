@@ -21,6 +21,8 @@ impl SessionManager {
             loop {
                 ticker.tick().await;
                 mgr.tick_idle_recycle(&app).await;
+                // Prewarm processes left un-consumed expire after a few minutes.
+                mgr.sweep_expired_prewarm(Duration::from_secs(10 * 60)).await;
             }
         });
     }
