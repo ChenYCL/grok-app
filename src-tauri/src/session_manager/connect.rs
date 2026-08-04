@@ -376,6 +376,113 @@ impl SessionManager {
                 && !m.is_error
         });
 
+        // ── Warm-process reuse (per-route pool) ────────────────────────────
+        // A Ready parked process with identical process-level spawn flags
+        // (permission policy / effort / sandbox / route class) can host this
+        // App session's agent session directly: no CLI spawn, no initialize,
+        // no auth — the CLI is a multi-session ACP host, we just session/load
+        // (resume) or session/new on it. The old parked session detaches; its
+        // tail events carry their own sessionId and are dropped by sid
+        // routing (events.rs), so they can never leak into this chat.
+        if !pending_fork {
+            let eff_sandbox = {
+                let project_sandbox = meta.project_id.as_deref().and_then(|pid| {
+                    store::load_projects()
+                        .into_iter()
+                        .find(|p| p.id == pid)
+                        .and_then(|p| p.sandbox_profile)
+                });
+                store::resolve_sandbox_profile(
+                    &settings.sandbox_profile,
+                    project_sandbox.as_deref(),
+                )
+            };
+            let reused = {
+                let mut parked = self.parked.lock();
+                let target_custom = crate::providers::is_custom_provider_id(&prefs.model_id);
+                let key = parked
+                    .iter()
+                    .filter(|(_, p)| {
+                        Self::reuse_gate(
+                            p.acp.is_alive(),
+                            p.policy,
+                            p.effort.as_deref(),
+                            p.sandbox_profile.as_deref(),
+                            crate::providers::is_custom_provider_id(
+                                p.model_id.as_deref().unwrap_or(""),
+                            ),
+                            policy,
+                            &prefs.effort,
+                            &eff_sandbox,
+                            target_custom,
+                        )
+                    })
+                    .max_by_key(|(_, p)| p.last_activity)
+                    .map(|(k, _)| k.clone());
+                key.and_then(|k| parked.remove(&k))
+            };
+            if let Some(p) = reused {
+                let acp = p.acp;
+                let reused_process = p.process_id.clone();
+                let reused_from = p.app_session_id.clone();
+                tracing::info!(
+                    target: "session",
+                    session = %meta.id,
+                    reused_process = %reused_process,
+                    reused_from = %reused_from,
+                    "connect warm-process reuse (no spawn)"
+                );
+                let cwd_str = cwd.to_string_lossy().to_string();
+                let open_result = acp
+                    .open_session_at(resume_agent_sid.as_deref(), false, &cwd_str)
+                    .await;
+                match open_result {
+                    Ok((agent_sid, resumed)) => {
+                        let need_bootstrap = !resumed && journal_has_history;
+                        {
+                            let mut guard = self.inner.lock();
+                            if let Some(s) = guard.as_mut() {
+                                let _ = s.fsm.handshake_ok();
+                                s.acp = Some(acp);
+                                s.process_id = reused_process;
+                                s.meta.agent_session_id = Some(agent_sid.clone());
+                                s.model_id = Some(prefs.model_id.clone());
+                                s.effort = Some(prefs.effort.clone());
+                                s.product_mode = Some(prefs.mode.clone());
+                                s.policy = policy;
+                                s.project_path = project_path.clone();
+                                s.needs_history_bootstrap = need_bootstrap;
+                                Self::touch_activity_locked(s);
+                                meta = s.meta.clone();
+                            }
+                        }
+                        let _ = store::update_session_meta(&meta);
+                        let snap = self.snapshot();
+                        Self::emit_state(&app, &snap);
+                        tracing::info!(
+                            target: "session",
+                            session = %meta.id,
+                            agent = %agent_sid,
+                            resumed,
+                            "connect warm-reuse ok"
+                        );
+                        return Ok(snap);
+                    }
+                    Err(e) => {
+                        // Reuse failed (session id lost / process wedged):
+                        // kill and fall through to the cold spawn path.
+                        tracing::warn!(
+                            target: "session",
+                            session = %meta.id,
+                            error = %e.message,
+                            "connect warm-reuse open_session failed; cold spawn"
+                        );
+                        acp.kill().await;
+                    }
+                }
+            }
+        }
+
         // Capacity: reclaim idle parked first (they fill the pool when browsing
         // chats). Never kill background-busy turns. Live shell has no acp yet.
         self.reclaim_parked_until_can_spawn(&app, max_concurrent)
@@ -501,14 +608,17 @@ impl SessionManager {
             }
         };
 
-        // Event pump tagged with process_id (multi-process routing).
+        // Event pump tagged with process_id (multi-process routing). Events
+        // carry the CLI's owning sessionId when known so a reused process
+        // never cross-routes another session's stream into the live chat.
         {
             let mgr = Arc::clone(self);
             let app_ev = app.clone();
             let pid = process_id.clone();
             tokio::spawn(async move {
-                while let Some(ev) = events.recv().await {
-                    mgr.handle_acp_event(&app_ev, &pid, ev).await;
+                while let Some((sid, ev)) = events.recv().await {
+                    mgr.handle_acp_event(&app_ev, &pid, sid.as_deref(), ev)
+                        .await;
                 }
             });
         }
@@ -726,6 +836,29 @@ impl SessionManager {
     }
 
     /// Short event name for diagnostics (no payload — journals stay readable).
+    /// Pure reuse gate — split out for unit tests (no AcpClient needed).
+    /// Process-level spawn flags must match: permission policy, reasoning
+    /// effort, sandbox profile, and route class (official OIDC vs custom
+    /// relay — those cannot share a GROK_HOME). Model is session-level
+    /// (`set_model`), so it deliberately does not gate.
+    pub(super) fn reuse_gate(
+        alive: bool,
+        p_policy: PermissionPolicy,
+        p_effort: Option<&str>,
+        p_sandbox: Option<&str>,
+        p_custom_route: bool,
+        policy: PermissionPolicy,
+        effort: &str,
+        sandbox: &str,
+        target_custom_route: bool,
+    ) -> bool {
+        alive
+            && p_policy == policy
+            && p_effort == Some(effort)
+            && p_sandbox == Some(sandbox)
+            && p_custom_route == target_custom_route
+    }
+
     pub(super) fn event_kind_name(ev: &AcpEvent) -> &'static str {
         match ev {
             AcpEvent::State { .. } => "state",
@@ -902,5 +1035,90 @@ mod connect_preserve_tests {
         assert!(!s.prompt_in_flight);
         assert!(s.streaming_message_id.is_none());
         assert!(!SessionManager::should_preserve_live_process(&s));
+    }
+}
+
+#[cfg(test)]
+mod reuse_gate_tests {
+    use super::*;
+
+    fn ask() -> PermissionPolicy {
+        PermissionPolicy::parse("ask")
+    }
+
+    #[test]
+    fn reuse_requires_matching_process_flags() {
+        // All matching → reusable.
+        assert!(SessionManager::reuse_gate(
+            true,
+            ask(),
+            Some("high"),
+            Some("off"),
+            true, // custom route
+            ask(),
+            "high",
+            "off",
+            true,
+        ));
+        // Policy mismatch blocks.
+        assert!(!SessionManager::reuse_gate(
+            true,
+            ask(),
+            Some("high"),
+            Some("off"),
+            true,
+            PermissionPolicy::parse("bypassPermissions"),
+            "high",
+            "off",
+            true,
+        ));
+        // Effort mismatch blocks.
+        assert!(!SessionManager::reuse_gate(
+            true,
+            ask(),
+            Some("high"),
+            Some("off"),
+            true,
+            ask(),
+            "low",
+            "off",
+            true,
+        ));
+        // Sandbox mismatch blocks.
+        assert!(!SessionManager::reuse_gate(
+            true,
+            ask(),
+            Some("high"),
+            Some("off"),
+            true,
+            ask(),
+            "high",
+            "workspace",
+            true,
+        ));
+        // Route class mismatch blocks (official target vs custom parked).
+        assert!(!SessionManager::reuse_gate(
+            true,
+            ask(),
+            Some("high"),
+            Some("off"),
+            true,
+            ask(),
+            "high",
+            "off",
+            false,
+        ));
+        // Dead process blocks.
+        assert!(!SessionManager::reuse_gate(
+            false,
+            ask(),
+            Some("high"),
+            Some("off"),
+            true,
+            ask(),
+            "high",
+            "off",
+            true,
+        ));
     }
 }

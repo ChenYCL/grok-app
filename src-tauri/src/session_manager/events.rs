@@ -24,8 +24,54 @@ impl SessionManager {
         self: &Arc<Self>,
         app: &AppHandle,
         process_id: &str,
+        session_id: Option<&str>,
         ev: AcpEvent,
     ) {
+        // Multi-session safety: when the CLI stamps the owning session on a
+        // turn event, route strictly to the App session that owns that agent
+        // session on this process. A reused process may still flush an
+        // orphaned session's tail — writing it into another chat would
+        // corrupt the journal, so unmatched events are dropped (never
+        // cross-routed). `None` (process-scoped events like State / stderr /
+        // ProcessExited) falls through to the legacy process_id routing.
+        if let Some(sid) = session_id {
+            let live_ok = self.inner.lock().as_ref().is_some_and(|s| {
+                s.process_id == process_id
+                    && s.meta.agent_session_id.as_deref() == Some(sid)
+            });
+            if !live_ok {
+                let bg_sid = self
+                    .background
+                    .lock()
+                    .iter()
+                    .find(|(_, s)| {
+                        s.process_id == process_id
+                            && s.meta.agent_session_id.as_deref() == Some(sid)
+                    })
+                    .map(|(id, _)| id.clone());
+                if let Some(bg) = bg_sid {
+                    self.handle_acp_event_on_background(app, &bg, ev).await;
+                    return;
+                }
+                let parked_owns = self.parked.lock().iter().any(|(_, p)| {
+                    p.process_id == process_id
+                        && p.meta.agent_session_id.as_deref() == Some(sid)
+                });
+                if parked_owns {
+                    // Parked but still emitting (should not happen now that
+                    // `prompt_in_flight` blocks parking) — rescue to background.
+                    if let Some(rsid) = self.rescue_parked_to_background(process_id) {
+                        self.handle_acp_event_on_background(app, &rsid, ev).await;
+                    }
+                    return;
+                }
+                tracing::debug!(
+                    "acp event dropped: no owner for session={sid} process={process_id} ev={}",
+                    Self::event_kind_name(&ev)
+                );
+                return;
+            }
+        }
         // Route events to the focused live session **or** a background busy session
         // (multi-session parallel streaming). Idle parked agents should not emit.
         let is_live = self

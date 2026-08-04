@@ -219,6 +219,7 @@ impl SessionManager {
                         return Ok(());
                     }
                 };
+                let sandbox_profile = acp.sandbox_profile();
                 let parked = ParkedAgent {
                     process_id: s.process_id.clone(),
                     app_session_id: s.app_session_id.clone(),
@@ -230,6 +231,7 @@ impl SessionManager {
                     product_mode: s.product_mode.clone(),
                     project_path: s.project_path.clone(),
                     policy: s.policy,
+                    sandbox_profile,
                     needs_history_bootstrap: s.needs_history_bootstrap,
                     backend: s.backend.clone(),
                 };
@@ -302,6 +304,7 @@ impl SessionManager {
         let Some(acp) = s.acp.take() else {
             return;
         };
+        let sandbox_profile = acp.sandbox_profile();
         let parked = ParkedAgent {
             process_id: s.process_id.clone(),
             app_session_id: s.app_session_id.clone(),
@@ -313,6 +316,7 @@ impl SessionManager {
             product_mode: s.product_mode.clone(),
             project_path: s.project_path.clone(),
             policy: s.policy,
+            sandbox_profile,
             needs_history_bootstrap: s.needs_history_bootstrap,
             backend: s.backend.clone(),
         };

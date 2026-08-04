@@ -418,7 +418,7 @@ No repo edits. Prefer built-in tools. Keep the final answer concise and complete
     let progress_ev = progress.clone();
     let client_pump = Arc::clone(&client);
     let pump = tokio::spawn(async move {
-        while let Some(ev) = events.recv().await {
+        while let Some((_sid, ev)) = events.recv().await {
             match ev {
                 AcpEvent::Stream { kind, text, .. } => {
                     if text.is_empty() {

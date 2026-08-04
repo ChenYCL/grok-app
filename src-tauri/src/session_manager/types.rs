@@ -246,6 +246,8 @@ pub(crate) struct ParkedAgent {
     pub(super) product_mode: Option<String>,
     pub(super) project_path: Option<String>,
     pub(super) policy: PermissionPolicy,
+    /// Process-level `--sandbox` profile at spawn (reuse gate).
+    pub(super) sandbox_profile: Option<String>,
     pub(super) needs_history_bootstrap: bool,
     pub(super) backend: String,
 }

@@ -7,6 +7,7 @@
 
 | # | 项 | 改动 |
 |---|----|------|
+| P0-1 | **单进程多会话池（保守版）** | ① 事件按 `sessionId` 路由（`event_tx` 带 sid，不匹配丢弃——复用进程孤儿会话残流永不串扰）；② parked 进程复用（`reuse_gate` 门：policy/effort/sandbox/route 全匹配时新会话 `session/load|new` 免冷 spawn；失败回退冷 spawn）。设计见 `2026-08-04-per-route-agent-pool-DESIGN.md` |
 | P0-2 | **MCP 热更新** | `acp_client.rs` 新增 `update_mcp_servers`（`_x.ai/session/update_mcp_servers`）；`control.rs apply_extensions_mcp_change` 优先热替换（live Ready 会话），失败/忙碌才回退 soft-respawn → 免掉扩展 MCP 变更的全进程重启 |
 | P0-3 | **Host 重试 cap 12 → 15** | `acp_client.rs HOST_PROVIDER_MAX_RETRIES` 对齐 CLI `DEFAULT_MAX_RETRIES`（15），不再提前掐断 CLI 本可恢复的 turn |
 | P1-4 | **省冗余 set_model RPC** | `connect.rs` 冷 spawn 后删除 set_model（进程 `--model` 已对齐，`session/new` 继承进程默认）；unpark 路径保留 |
@@ -19,8 +20,8 @@
 
 ## 设计未实现（独立测试周期）
 
-- **P0-1 单进程多会话池** → `docs/plans/2026-08-04-per-route-agent-pool-DESIGN.md`
-  （需要事件按 sessionId 路由 + AcpClient 多会话状态机改造，避免数据串扰风险，不与此批同落地）。
+- ~~**P0-1 单进程多会话池**~~ → 已实现保守版（`2026-08-04-per-route-agent-pool-DESIGN.md`）。
+  未做单进程并发多会话宿主（需 AcpClient 多会话状态机 + 并发 golden 测试）。
 
 ## 验证
 
