@@ -527,6 +527,18 @@ pub fn run() {
 
                 mgr.start_stream_stall_watchdog(app.handle().clone());
 
+                // Prewarm one CLI process on launch (spawn + init + auth, no
+                // session): the first connect then reuses it instead of
+                // cold-spawning (~1.5s initialize + network auth). Best-effort —
+                // no CLI / no auth / existing warm process all skip it.
+                {
+                    let mgr = Arc::clone(&mgr);
+                    let app_handle = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        mgr.prewarm(app_handle).await;
+                    });
+                }
+
                 // Scheduled automations: host tick works while window is in tray
 
                 // (and with --start-in-tray / keep_tray_for_schedules). No daemon.
@@ -649,6 +661,8 @@ pub fn run() {
             commands::session_get_state,
 
             commands::session_connect,
+
+            commands::session_prewarm,
 
             commands::session_send,
 

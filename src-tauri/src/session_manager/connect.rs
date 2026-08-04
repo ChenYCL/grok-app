@@ -1105,19 +1105,22 @@ impl SessionManager {
         tracing::info!(target: "session", "prewarm ready (spawn+init+auth, no session)");
     }
 
-    /// Reap a prewarm process that has been idle too long (nothing consumed it).
+    /// Reap a dead prewarm process. Prewarm is intentionally persistent
+    /// (one warm CLI serves all quick switches); no time-based reclamation —
+    /// a stale-config process is replaced by connect's cold-spawn fallback
+    /// and the next prewarm re-fills the slot.
     pub(super) async fn sweep_expired_prewarm(&self, ttl: Duration) {
+        let _ = ttl; // persistent — only dead entries are reaped
         let victim = {
             let mut pw = self.prewarm.lock();
             match pw.as_ref() {
-                Some(p) if p.acp.is_alive() && p.created_at.elapsed() >= ttl => pw.take(),
                 Some(p) if !p.acp.is_alive() => pw.take(),
                 _ => None,
             }
         };
         if let Some(p) = victim {
             tracing::info!(
-                "prewarm process {} recycled (idle or dead)",
+                "prewarm process {} recycled (dead)",
                 p.process_id
             );
             p.acp.kill().await;
