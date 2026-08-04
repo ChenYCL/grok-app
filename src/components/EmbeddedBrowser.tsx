@@ -19,7 +19,12 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { isTauri, sideBrowserClose, sideBrowserCreate } from "@/lib/api";
+import {
+  isTauri,
+  sideBrowserClose,
+  sideBrowserCreate,
+  sideBrowserInstallDownloadHook,
+} from "@/lib/api";
 import type { SideBrowserDownloadEvent } from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { IconExternalLink, IconRefresh } from "@/components/icons";
@@ -307,7 +312,12 @@ export function EmbeddedBrowser({
           (ev) => {
             const p = ev.payload;
             if (!p || p.label !== webviewLabel) return;
-            if (p.phase === "finished") {
+            if (p.phase === "requested") {
+              const name = p.fileName || "file";
+              flashDownloadStatus(
+                tr("resources.browserDownloadStarted", { name }),
+              );
+            } else if (p.phase === "finished") {
               if (p.success) {
                 const name =
                   p.fileName ||
@@ -418,6 +428,15 @@ export function EmbeddedBrowser({
         if (activeRef.current && !coveredRef.current) await webview.show();
         else await webview.hide();
         setReady(true);
+
+        // Non-blocking reinject after paint (host eval no longer waits 15s).
+        // ChatCut is a slow SPA — reinject a few times until hooks stick.
+        const injectHook = () => {
+          void sideBrowserInstallDownloadHook(webviewLabel).catch(() => undefined);
+        };
+        window.setTimeout(injectHook, 500);
+        window.setTimeout(injectHook, 2000);
+        window.setTimeout(injectHook, 5000);
 
         // Layout may have changed while we awaited create — apply latest once.
         scheduleSync();

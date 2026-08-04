@@ -245,10 +245,7 @@ fn run_inspect_json_soft(cli_path: &Path) -> Result<serde_json::Value, String> {
     std::thread::spawn(move || {
         let mut cmd = std::process::Command::new(&cli);
         cmd.args(["inspect", "--json"]);
-        process_util::apply_no_window_std(&mut cmd);
-        if let Some(path_env) = process_util::enriched_path_env() {
-            cmd.env("PATH", path_env);
-        }
+        process_util::apply_cli_env_std(&mut cmd);
         let _ = tx.send(cmd.output());
     });
     match rx.recv_timeout(Duration::from_secs(INSPECT_TIMEOUT_SECS)) {

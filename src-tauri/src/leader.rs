@@ -410,10 +410,7 @@ fn run_grok_cli_args(args: &[&str], timeout_secs: u64) -> Result<(String, String
     std::thread::spawn(move || {
         let mut cmd = std::process::Command::new(&cli_path);
         cmd.args(&args_owned);
-        process_util::apply_no_window_std(&mut cmd);
-        if let Some(path_env) = process_util::enriched_path_env() {
-            cmd.env("PATH", path_env);
-        }
+        process_util::apply_cli_env_std(&mut cmd);
         let result = cmd.output();
         let _ = tx.send(result);
     });
@@ -659,6 +656,7 @@ fn spawn_leader_process(cli_path: &Path, socket_path: &Path) -> Result<TrackedLe
         .stderr(Stdio::null());
 
     process_util::apply_no_window_std(&mut cmd);
+    process_util::ensure_home_env_std(&mut cmd);
     if let Some(path_env) = process_util::enriched_path_env() {
         cmd.env("PATH", path_env);
     }

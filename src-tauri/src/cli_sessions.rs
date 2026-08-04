@@ -774,6 +774,7 @@ fn run_grok_sessions_search(
         let mut cmd = crate::process_util::command(&cli_path);
         cmd.args(&args);
         cmd.env("GROK_HOME", &grok_home);
+        crate::process_util::ensure_home_env_std(&mut cmd);
         if let Some(path_env) = crate::process_util::enriched_path_env() {
             cmd.env("PATH", path_env);
         }

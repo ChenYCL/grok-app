@@ -764,7 +764,6 @@ import {
   IconSearch,
   IconAttach,
   IconMic,
-  IconLiveVoice,
   IconFolder,
   IconFolderPlus,
   IconArrowsVerticalCollapse,
@@ -8499,6 +8498,14 @@ export function AppWorkbench() {
           if (r.status === "fulfilled") {
             ok += 1;
             settleStoppedSessionUi(id);
+            clearPendingGates(id);
+            if (
+              id ===
+              (viewingSessionIdRef.current || liveHostRef.current.sessionId)
+            ) {
+              setAskUser(null);
+              setPerm(null);
+            }
           } else {
             fail += 1;
           }
@@ -8533,7 +8540,7 @@ export function AppWorkbench() {
         },
       });
     },
-    [settleStoppedSessionUi, showToast, tr],
+    [clearPendingGates, settleStoppedSessionUi, showToast, tr],
   );
 
   /**
@@ -10833,6 +10840,17 @@ export function AppWorkbench() {
       setRetryStatus(null);
       setStreamStall(null);
       setTurnStartedAt(null);
+      // Stop must dismiss ask-user / permission gates even if Host event is late.
+      {
+        const gateId =
+          sid ||
+          viewingSessionIdRef.current ||
+          liveHostRef.current.sessionId ||
+          null;
+        if (gateId) clearPendingGates(gateId);
+        setAskUser(null);
+        setPerm(null);
+      }
       const liveId = sid || liveHostRef.current.sessionId;
       if (liveId) {
         if (timeoutSettledSessionId !== liveId) {
@@ -18564,7 +18582,7 @@ export function AppWorkbench() {
                   label={tr("composer.clearDraft")}
                 />
                 <span className="composer__spacer" />
-                {/* Dictation (mic) + Live Voice (headphones): official auth only. */}
+                {/* Dictation (mic): official auth only. Live Voice icon entry hidden. */}
                 {(voiceGate.available || voiceIsActive(voice.phase)) && (
                   <Tip
                     label={
@@ -18604,28 +18622,6 @@ export function AppWorkbench() {
                     </button>
                   </Tip>
                 )}
-                {voiceGate.available ? (
-                  <Tip label={tr("voice.startLiveDesc")}>
-                    <button
-                      type="button"
-                      className={
-                        "icon-btn composer__voice composer__voice--live-mode" +
-                        (liveVoiceOpen ? " composer__voice--live" : "")
-                      }
-                      disabled={liveVoiceOpen || voiceIsActive(voice.phase)}
-                      aria-pressed={liveVoiceOpen}
-                      aria-label={tr("voice.startLive")}
-                      onClick={() => {
-                        if (voiceIsActive(voice.phase)) {
-                          cancelVoice();
-                        }
-                        setLiveVoiceOpen(true);
-                      }}
-                    >
-                      <IconLiveVoice size={16} />
-                    </button>
-                  </Tip>
-                ) : null}
                 <ComposerSendCluster
                   attachmentsLength={attachments.length}
                   effectiveCanStop={effectiveCanStop}

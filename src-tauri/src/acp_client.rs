@@ -1303,6 +1303,7 @@ impl AcpClient {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         crate::process_util::apply_no_window_tokio(&mut cmd);
+        crate::process_util::ensure_home_env_tokio(&mut cmd);
         if let Some(path) = crate::process_util::enriched_path_env() {
             cmd.env("PATH", path);
         }

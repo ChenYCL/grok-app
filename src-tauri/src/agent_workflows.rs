@@ -656,10 +656,7 @@ pub fn run_workflow(
             .current_dir(&cwd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        process_util::apply_no_window_std(&mut cmd);
-        if let Some(path_env) = process_util::enriched_path_env() {
-            cmd.env("PATH", path_env);
-        }
+        process_util::apply_cli_env_std(&mut cmd);
         let grok_home = crate::paths::resolve_agent_grok_home(&mode_home);
         let _ = std::fs::create_dir_all(&grok_home);
         cmd.env("GROK_HOME", &grok_home);

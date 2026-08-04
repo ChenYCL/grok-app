@@ -127,3 +127,9 @@ pub fn side_browser_eval(app: AppHandle, label: String, script: String) -> Resul
 pub fn side_browser_snapshot(app: AppHandle, label: String) -> Result<String, String> {
     side_browser_host::snapshot(&app, label)
 }
+
+/// Force-inject blob download polyfill into a side-browser webview (idempotent).
+#[tauri::command]
+pub fn side_browser_install_download_hook(app: AppHandle, label: String) -> Result<(), String> {
+    crate::side_browser_blob::install_hook(&app, label)
+}

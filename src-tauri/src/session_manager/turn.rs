@@ -6,7 +6,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
-use crate::acp_client::AcpClient;
+use crate::acp_client::{AcpClient, AskUserOutcome};
 use crate::error::AgentErrorCode;
 use crate::journal_throttle::is_paragraph_break;
 use crate::mock_acp::{self, StreamChunk};
@@ -447,28 +447,65 @@ impl SessionManager {
         }
         let target = session_id.as_deref();
 
-        let (backend, app_sid, turn_id, acp) = {
+        // Take any pending ask-user / plan reverse-RPC so steer is not blocked
+        // behind an unanswered questionnaire (diag: interject OK + ask_user hang).
+        let (backend, app_sid, turn_id, acp, pending_ask, pending_plan) = {
             if let Some(t) = target {
-                let guard = self.inner.lock();
-                if let Some(s) = guard.as_ref().filter(|s| s.app_session_id == t) {
-                    Self::pick_interjection_target(s)?
+                let mut guard = self.inner.lock();
+                if let Some(s) = guard.as_mut().filter(|s| s.app_session_id == t) {
+                    let picked = Self::pick_interjection_target(s)?;
+                    let pending_ask = s.pending_ask_user_rpc_id.take();
+                    let pending_plan = s.pending_plan_rpc_id.take();
+                    (picked.0, picked.1, picked.2, picked.3, pending_ask, pending_plan)
                 } else {
                     drop(guard);
-                    let background = self.background.lock();
+                    let mut background = self.background.lock();
                     let s = background
-                        .get(t)
+                        .get_mut(t)
                         .ok_or_else(|| format!("interjection: chat {t} is not active"))?;
-                    Self::pick_interjection_target(s)?
+                    let picked = Self::pick_interjection_target(s)?;
+                    let pending_ask = s.pending_ask_user_rpc_id.take();
+                    let pending_plan = s.pending_plan_rpc_id.take();
+                    (picked.0, picked.1, picked.2, picked.3, pending_ask, pending_plan)
                 }
             } else {
-                let guard = self.inner.lock();
-                let s = guard.as_ref().ok_or("no active session")?;
-                Self::pick_interjection_target(s)?
+                let mut guard = self.inner.lock();
+                let s = guard.as_mut().ok_or("no active session")?;
+                let picked = Self::pick_interjection_target(s)?;
+                let pending_ask = s.pending_ask_user_rpc_id.take();
+                let pending_plan = s.pending_plan_rpc_id.take();
+                (picked.0, picked.1, picked.2, picked.3, pending_ask, pending_plan)
             }
         };
 
         if backend != "mock_acp" && !AcpClient::use_mock() {
-            acp.ok_or("ACP client missing")?.interject(&text).await?;
+            let client = acp.ok_or("ACP client missing")?;
+            // Unblock reverse-RPCs first — otherwise interject is accepted but
+            // the agent stays wedged on ask_user_question / exit_plan_mode.
+            if let Some(id) = pending_ask {
+                if let Err(e) = client
+                    .respond_ask_user_question(id, AskUserOutcome::Cancelled)
+                    .await
+                {
+                    tracing::warn!("interject: auto-cancel ask_user id={id} failed: {e}");
+                }
+                let _ = app.emit(
+                    "session://ask_user_cleared",
+                    serde_json::json!({
+                        "sessionId": app_sid,
+                        "reason": "interject",
+                    }),
+                );
+            }
+            if let Some(id) = pending_plan {
+                if let Err(e) = client
+                    .respond_exit_plan_mode(id, "cancelled", None)
+                    .await
+                {
+                    tracing::warn!("interject: auto-cancel plan id={id} failed: {e}");
+                }
+            }
+            client.interject(&text).await?;
         }
 
         let created_at = chrono::Utc::now();
@@ -519,16 +556,24 @@ impl SessionManager {
                 .ok_or("no active session")?,
         };
         let app_for_marker = app.clone();
-        let acp = self
+        // Also release ask_user / plan reverse-RPCs. Leaving them set kept
+        // `live_session_is_busy` true after stop, so Send/park paths stayed
+        // wedged until process kill (user diag 5bda6b52).
+        let (acp, pending_ask, pending_plan) = self
             .with_session_mut(&target, move |s| {
                 let app = app_for_marker;
                 if let Some(h) = s.mock_stream.take() {
                     h.request_stop();
                 }
+                let pending_ask = s.pending_ask_user_rpc_id.take();
+                let pending_plan = s.pending_plan_rpc_id.take();
                 let was_busy = s.fsm.state() == SessionState::Streaming
                     || s.fsm.state() == SessionState::AwaitingPermission
                     || s.streaming_message_id.is_some()
-                    || !s.open_tool_ids.is_empty();
+                    || !s.open_tool_ids.is_empty()
+                    || s.prompt_in_flight
+                    || pending_ask.is_some()
+                    || pending_plan.is_some();
                 let partial = s.stream_buf.trim().to_string();
                 // Journal a cancel marker so UI history is not left as user-only silence.
                 if was_busy {
@@ -588,11 +633,36 @@ impl SessionManager {
                 s.prompt_in_flight = false;
                 s.journal_throttle.reset();
                 s.last_stall_emit = None;
-                s.acp.clone()
+                (s.acp.clone(), pending_ask, pending_plan)
             })
             .ok_or("no active session")?;
+        let had_pending_ask = pending_ask.is_some();
         if let Some(acp) = acp {
+            // Reply to reverse-RPCs before session/cancel so the agent does not
+            // sit forever on an unanswered ask_user_question after Host "stop".
+            if let Some(id) = pending_ask {
+                if let Err(e) = acp
+                    .respond_ask_user_question(id, AskUserOutcome::Cancelled)
+                    .await
+                {
+                    tracing::warn!("stop: cancel ask_user id={id} failed: {e}");
+                }
+            }
+            if let Some(id) = pending_plan {
+                if let Err(e) = acp.respond_exit_plan_mode(id, "cancelled", None).await {
+                    tracing::warn!("stop: cancel plan id={id} failed: {e}");
+                }
+            }
             let _ = acp.cancel().await;
+        }
+        if had_pending_ask {
+            let _ = app.emit(
+                "session://ask_user_cleared",
+                serde_json::json!({
+                    "sessionId": target,
+                    "reason": "user_stop",
+                }),
+            );
         }
         // Stopped background turn is Ready again → park it warm.
         self.promote_background_ready_to_parked(&target);

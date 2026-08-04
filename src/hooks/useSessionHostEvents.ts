@@ -1339,6 +1339,21 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             }
           }),
         );
+        // Host stop / interject auto-cancels pending questionnaires — drop the modal.
+        await track(
+          api.listen<{ sessionId?: string; reason?: string }>(
+            "session://ask_user_cleared",
+            (p) => {
+              if (cancelled) return;
+              const sid = p?.sessionId?.trim();
+              if (!sid) return;
+              c.clearPendingGatesRef.current(sid);
+              if (sid === c.viewingSessionIdRef.current) {
+                c.setAskUser(null);
+              }
+            },
+          ),
+        );
         await track(
           api.listen<{
             entries?: unknown[];

@@ -116,6 +116,7 @@ fn apply_agent_env(cmd: &mut Command) {
     if mode != "shared" {
         crate::providers::prepare_route_auth_for_agent();
     }
+    crate::process_util::ensure_home_env_std(cmd);
     if let Some(path_env) = crate::process_util::enriched_path_env() {
         cmd.env("PATH", path_env);
     }

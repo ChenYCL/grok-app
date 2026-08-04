@@ -204,12 +204,34 @@ fn extract_json_object(s: &str) -> Option<&str> {
 }
 
 fn parse_update_check_value(v: &Value) -> Result<CliUpdateCheck, String> {
-    let current = string_field(v, &["currentVersion", "current_version"])
-        .ok_or_else(|| "missing currentVersion".to_string())?;
-    let latest = string_field(v, &["latestVersion", "latest_version"])
-        .ok_or_else(|| "missing latestVersion".to_string())?;
-    let update_available = bool_field(v, &["updateAvailable", "update_available"])
-        .unwrap_or_else(|| versions_differ(&current, &latest));
+    let error = string_field(v, &["error"]).filter(|s| !s.is_empty());
+    // Accept camelCase / snake_case / short aliases. Some CLI builds or
+    // failure payloads omit latestVersion while still reporting currentVersion.
+    let current = string_field(
+        v,
+        &["currentVersion", "current_version", "current", "version"],
+    );
+    let latest = string_field(v, &["latestVersion", "latest_version", "latest"]);
+
+    let (current, latest, update_available, error) = match (current, latest) {
+        (Some(c), Some(l)) => {
+            let available = bool_field(v, &["updateAvailable", "update_available"])
+                .unwrap_or_else(|| versions_differ(&c, &l));
+            (c, l, available, error)
+        }
+        (Some(c), None) => {
+            // Remote check incomplete: keep UI usable with current. Preserve CLI
+            // `error` when present so Settings can surface the real cause.
+            (c.clone(), c, false, error)
+        }
+        (None, Some(l)) => (l.clone(), l, false, error),
+        (None, None) => {
+            return Err(error.unwrap_or_else(|| {
+                "missing currentVersion/latestVersion in update --check JSON".into()
+            }));
+        }
+    };
+
     // Keep only recognized channel labels from CLI JSON — never invent.
     let channel = string_field(v, &["channel"]).and_then(|c| match parse_cli_channel(Some(&c)) {
         CliReleaseChannel::Unknown => None,
@@ -217,7 +239,6 @@ fn parse_update_check_value(v: &Value) -> Result<CliUpdateCheck, String> {
     });
     let installer = string_field(v, &["installer"]);
     let auto_update = bool_field(v, &["autoUpdate", "auto_update"]);
-    let error = string_field(v, &["error"]).filter(|s| !s.is_empty());
 
     Ok(CliUpdateCheck {
         current_version: current,
@@ -233,11 +254,20 @@ fn parse_update_check_value(v: &Value) -> Result<CliUpdateCheck, String> {
 
 fn string_field(v: &Value, keys: &[&str]) -> Option<String> {
     for k in keys {
-        if let Some(s) = v.get(*k).and_then(|x| x.as_str()) {
+        let Some(x) = v.get(*k) else { continue };
+        if let Some(s) = x.as_str() {
             let t = s.trim();
             if !t.is_empty() && t != "null" {
                 return Some(t.to_string());
             }
+            continue;
+        }
+        // Rare: numeric version tokens (coerce so parse does not hard-fail).
+        if let Some(n) = x.as_u64() {
+            return Some(n.to_string());
+        }
+        if let Some(n) = x.as_i64() {
+            return Some(n.to_string());
         }
     }
     None
@@ -409,10 +439,8 @@ fn run_cli_with_timeout(bin: &Path, args: &[&str], timeout: Duration) -> Result<
     std::thread::spawn(move || {
         let mut cmd = Command::new(&bin);
         cmd.args(&args_owned);
-        process_util::apply_no_window_std(&mut cmd);
-        if let Some(path_env) = process_util::enriched_path_env() {
-            cmd.env("PATH", path_env);
-        }
+        // PATH + HOME (Windows GUI often lacks $HOME; CLI hub / update cache needs it).
+        process_util::apply_cli_env_std(&mut cmd);
         // `grok update` downloads over the network — honor the proxy (NEW-02).
         crate::proxy::apply_to_std_command(&mut cmd);
         let result = cmd.output();
@@ -515,6 +543,49 @@ mod tests {
     fn parse_rejects_empty() {
         assert!(parse_update_check_json("  ").is_err());
         assert!(parse_update_check_json("not json").is_err());
+    }
+
+    #[test]
+    fn parse_accepts_short_aliases_latest_and_current() {
+        let raw = r#"{"current":"0.2.100","latest":"0.2.111","updateAvailable":true}"#;
+        let d = parse_update_check_json(raw).unwrap();
+        assert_eq!(d.current_version, "0.2.100");
+        assert_eq!(d.latest_version, "0.2.111");
+        assert!(d.update_available);
+    }
+
+    #[test]
+    fn parse_soft_fills_missing_latest_from_current() {
+        // Incomplete payload without latestVersion still yields a usable DTO.
+        let raw = r#"{"currentVersion":"0.2.117","updateAvailable":false}"#;
+        let d = parse_update_check_json(raw).unwrap();
+        assert_eq!(d.current_version, "0.2.117");
+        assert_eq!(d.latest_version, "0.2.117");
+        assert!(!d.update_available);
+        assert!(d.error.is_none());
+    }
+
+    #[test]
+    fn parse_preserves_cli_error_when_latest_missing() {
+        let raw = r#"{"currentVersion":"0.2.117","error":"fetch failed"}"#;
+        let d = parse_update_check_json(raw).unwrap();
+        assert_eq!(d.latest_version, "0.2.117");
+        assert_eq!(d.error.as_deref(), Some("fetch failed"));
+    }
+
+    #[test]
+    fn parse_surfaces_cli_error_when_versions_absent() {
+        let raw = r#"{"error":"hub error: neither $GROK_HOME nor $HOME is set"}"#;
+        let err = parse_update_check_json(raw).unwrap_err();
+        assert!(err.contains("neither $GROK_HOME nor $HOME is set"));
+    }
+
+    #[test]
+    fn parse_coerces_numeric_version_tokens() {
+        let raw = r#"{"currentVersion":1,"latestVersion":2,"updateAvailable":true}"#;
+        let d = parse_update_check_json(raw).unwrap();
+        assert_eq!(d.current_version, "1");
+        assert_eq!(d.latest_version, "2");
     }
 
     #[test]

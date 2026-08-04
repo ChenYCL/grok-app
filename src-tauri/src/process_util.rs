@@ -75,17 +75,78 @@ pub fn apply_no_window_tokio(cmd: &mut tokio::process::Command) {
     let _ = cmd;
 }
 
-/// Build a `std::process::Command` with Windows console hidden (Fixes #162).
+/// Whether process env already has a non-empty `HOME`.
+fn home_env_present() -> bool {
+    std::env::var_os("HOME").is_some_and(|v| !v.is_empty())
+}
+
+/// Ensure child sees `$HOME` when the parent GUI process does not.
+///
+/// Windows apps launched from Start Menu / Explorer typically only have
+/// `USERPROFILE`, not `HOME`. Grok Build CLI hub resolves data under
+/// `$GROK_HOME` **or** `$HOME/.grok` and errors with
+/// `neither $GROK_HOME nor $HOME is set` when both are missing
+/// (e.g. `grok worktree db path|stats|rebuild`).
+///
+/// Does **not** set `GROK_HOME` — agent/session paths set that explicitly
+/// (independent vs shared). Worktree / update / probe CLIs should use the
+/// user's real home (`USERPROFILE` on Windows) via `HOME`.
+pub fn ensure_home_env_std(cmd: &mut StdCommand) {
+    if home_env_present() {
+        return;
+    }
+    let home = user_home();
+    if home.as_os_str().is_empty() || home == PathBuf::from(".") {
+        return;
+    }
+    cmd.env("HOME", home);
+}
+
+/// Same as [`ensure_home_env_std`] for `tokio::process::Command`.
+pub fn ensure_home_env_tokio(cmd: &mut tokio::process::Command) {
+    if home_env_present() {
+        return;
+    }
+    let home = user_home();
+    if home.as_os_str().is_empty() || home == PathBuf::from(".") {
+        return;
+    }
+    cmd.env("HOME", home);
+}
+
+/// Standard env for GUI-spawned Grok CLI / sibling tools:
+/// no-window (Windows), enriched PATH, and HOME when missing.
+pub fn apply_cli_env_std(cmd: &mut StdCommand) {
+    apply_no_window_std(cmd);
+    ensure_home_env_std(cmd);
+    if let Some(path_env) = enriched_path_env() {
+        cmd.env("PATH", path_env);
+    }
+}
+
+/// Same as [`apply_cli_env_std`] for `tokio::process::Command`.
+pub fn apply_cli_env_tokio(cmd: &mut tokio::process::Command) {
+    apply_no_window_tokio(cmd);
+    ensure_home_env_tokio(cmd);
+    if let Some(path_env) = enriched_path_env() {
+        cmd.env("PATH", path_env);
+    }
+}
+
+/// Build a `std::process::Command` with Windows console hidden (Fixes #162)
+/// and HOME filled in for GUI-spawned CLI tools on Windows.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> StdCommand {
     let mut cmd = StdCommand::new(program);
     apply_no_window_std(&mut cmd);
+    ensure_home_env_std(&mut cmd);
     cmd
 }
 
-/// Build a `tokio::process::Command` with Windows console hidden.
+/// Build a `tokio::process::Command` with Windows console hidden + HOME.
 pub fn tokio_command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(program);
     apply_no_window_tokio(&mut cmd);
+    ensure_home_env_tokio(&mut cmd);
     cmd
 }
 
@@ -375,6 +436,46 @@ mod tests {
     #[test]
     fn user_home_nonempty() {
         assert!(!user_home().as_os_str().is_empty());
+    }
+
+    #[test]
+    fn ensure_home_env_uses_userprofile_fallback_when_home_absent() {
+        // Serialise against other env-mutating tests in this crate.
+        let _lock = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var_os("HOME");
+        let prev_profile = std::env::var_os("USERPROFILE");
+        // Simulate Windows GUI: no HOME, only USERPROFILE (Unix falls back the same way).
+        std::env::remove_var("HOME");
+        std::env::set_var("USERPROFILE", "/tmp/grok-app-win-home-sim");
+        assert!(!home_env_present());
+        let home = user_home();
+        assert_eq!(home, PathBuf::from("/tmp/grok-app-win-home-sim"));
+        // Must not panic; Command env is opaque so we only assert resolution path.
+        let mut cmd = StdCommand::new("true");
+        ensure_home_env_std(&mut cmd);
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        match prev_profile {
+            Some(v) => std::env::set_var("USERPROFILE", v),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+    }
+
+    #[test]
+    fn ensure_home_env_skips_when_home_already_set() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", "/tmp/grok-app-home-test");
+        assert!(home_env_present());
+        // Should not panic / should be a no-op path.
+        let mut cmd = StdCommand::new("true");
+        ensure_home_env_std(&mut cmd);
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
     }
 
     #[test]

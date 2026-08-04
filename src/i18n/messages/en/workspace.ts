@@ -207,6 +207,7 @@ export const enWorkspace = {
   "resources.browserReload": "Reload",
   "resources.browserFailed": "Could not load this page in the built-in browser.",
   "resources.browserIframeHint": "Some sites block iframe embedding. Use “Open externally”, or run the desktop app for a real webview.",
+  "resources.browserDownloadStarted": "Downloading {name}…",
   "resources.browserDownloadSaved": "Saved {name}",
   "resources.browserDownloadFailed": "Download failed",
   "resources.browserDownloadCancelled": "Download cancelled",

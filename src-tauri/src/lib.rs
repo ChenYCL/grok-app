@@ -59,6 +59,7 @@ mod cli_update;
 
 mod cli_worktrees;
 
+mod side_browser_blob;
 mod side_browser_host;
 
 mod commands;
@@ -307,6 +308,13 @@ pub fn run() {
 
             media_protocol::dispatch(request, responder);
 
+        })
+        // Side-browser blob:/data: download bridge (ChatCut export etc. — WKWebView
+        // does not fire on_download for createObjectURL + <a download>).
+        .register_asynchronous_uri_scheme_protocol("sbdl", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let label = ctx.webview_label().to_string();
+            side_browser_blob::dispatch_async(app, label, request, responder);
         })
 
         // Close button / Alt+F4: hide to tray (default) or ask frontend to quit.
@@ -1271,6 +1279,8 @@ pub fn run() {
             commands::side_browser_eval,
 
             commands::side_browser_snapshot,
+
+            commands::side_browser_install_download_hook,
 
         ])
 

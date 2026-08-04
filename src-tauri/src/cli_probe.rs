@@ -313,12 +313,8 @@ pub fn read_version_of(path: &Path) -> Option<String> {
 fn read_version(path: &Path) -> Option<String> {
     let mut cmd = Command::new(path);
     cmd.arg("--version");
-    process_util::apply_no_window_std(&mut cmd);
-    // GUI-spawned probes: give the child the same enriched PATH used for agents
-    // so sibling tools / DLL lookup behave like a real shell session.
-    if let Some(path_env) = process_util::enriched_path_env() {
-        cmd.env("PATH", path_env);
-    }
+    // GUI-spawned probes: PATH + HOME (Windows often lacks $HOME for CLI hub).
+    process_util::apply_cli_env_std(&mut cmd);
     let out = cmd.output().ok()?;
     if !out.status.success() {
         // Some builds print version on stderr

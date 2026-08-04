@@ -134,6 +134,11 @@ export async function sideBrowserSnapshot(label: string) {
   return invoke<string>("side_browser_snapshot", { label });
 }
 
+/** Re-inject blob-download polyfill into an embedded side browser (idempotent). */
+export async function sideBrowserInstallDownloadHook(label: string) {
+  return invoke<void>("side_browser_install_download_hook", { label });
+}
+
 export interface NetworkProbeTarget {
   key: string;
   url: string;

@@ -280,3 +280,38 @@ fn enrich_recovers_search_tool_from_variant() {
         "title={title}"
     );
 }
+
+/// Regression for diag 5bda6b52: unanswered `ask_user_question` kept the session
+/// busy after host stop markers were cleared (pending reverse-RPC not taken).
+/// Stop must take `pending_ask_user_rpc_id` so `live_session_is_busy` returns false.
+#[test]
+fn clearing_pending_ask_user_releases_busy_after_stream_markers_drop() {
+    let t0 = Instant::now();
+    let mut s = streaming_session(t0, |s| {
+        s.pending_ask_user_rpc_id = Some(0);
+        s.prompt_in_flight = true;
+    });
+    assert!(
+        SessionManager::live_session_is_busy(&s),
+        "pending ask_user alone (with stream) must be busy"
+    );
+
+    // Mirror stop()'s marker release: take reverse-RPC ids + drop turn flags.
+    let pending_ask = s.pending_ask_user_rpc_id.take();
+    let pending_plan = s.pending_plan_rpc_id.take();
+    assert_eq!(pending_ask, Some(0));
+    assert!(pending_plan.is_none());
+    s.streaming_message_id = None;
+    s.active_turn_id = None;
+    s.stream_message_id_locked = false;
+    s.stream_buf.clear();
+    s.open_tool_ids.clear();
+    s.deferred_prompt_complete = None;
+    s.prompt_in_flight = false;
+    let _ = s.fsm.end_stream();
+
+    assert!(
+        !SessionManager::live_session_is_busy(&s),
+        "after stop-style clear, pending ask_user must not leave the session busy"
+    );
+}

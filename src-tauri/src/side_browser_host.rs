@@ -5,25 +5,51 @@
 //! labeled webviews so Agent tooling can drive the same surface the user sees.
 //!
 //! Child webviews **must** be created via [`create`] so downloads get an
-//! `on_download` handler with a native save dialog. Frontend `new Webview()`
-//! skips that hook — WKWebView then cannot prompt for a destination and
-//! downloads fail or vanish silently.
+//! `on_download` handler. Frontend `new Webview()` cannot attach that hook.
+//!
+//! ## Download UX
+//!
+//! WKWebView / WebView2 call `on_download` from a platform callback that must
+//! return a destination path quickly. Showing a modal `rfd` save dialog inside
+//! `DownloadEvent::Requested` often fails silently on macOS (nested modal in a
+//! WebKit download decision) — the handler then returns `false` and the
+//! download is cancelled with no UI.
+//!
+//! Fix: accept immediately into an app cache path, then after
+//! `DownloadEvent::Finished` show a parented save dialog and move the file.
+//! Pending destinations are tracked because macOS wry always reports
+//! `path: None` on finish.
 //!
 //! True Chromium-in-process (CEF) is **not** available in Tauri/Wry today.
 //! When CEF lands, it should register under the same label scheme and reuse
 //! these commands so automation clients stay compatible.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
+use std::sync::LazyLock;
 use std::time::Duration;
 
+use parking_lot::Mutex;
 use serde::Serialize;
-use tauri::webview::{DownloadEvent, WebviewBuilder};
+use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl};
 use tauri::{LogicalPosition, LogicalSize, Url};
 
 const LABEL_PREFIX: &str = "resource-browser";
 const DOWNLOAD_EVENT: &str = "side-browser://download";
+
+/// url → staging path chosen in `Requested` (macOS finish omits path).
+static PENDING_DOWNLOADS: LazyLock<Mutex<HashMap<String, PendingDownload>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static DOWNLOAD_SEQ: AtomicU64 = AtomicU64::new(1);
+
+struct PendingDownload {
+    label: String,
+    staging: PathBuf,
+    suggested: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +69,11 @@ pub struct SideBrowserDownloadPayload {
     pub path: Option<String>,
     pub success: Option<bool>,
     pub file_name: Option<String>,
+}
+
+/// Emit download status for the EmbeddedBrowser status line (HTTP + blob paths).
+pub fn emit_download_payload(app: &AppHandle, payload: SideBrowserDownloadPayload) {
+    emit_download(app, payload);
 }
 
 fn validate_label(label: &str) -> Result<(), String> {
@@ -140,10 +171,82 @@ fn suggested_download_name(destination: &Path, url: &str) -> String {
     "download".into()
 }
 
+/// Staging dir for in-progress side-browser downloads (`{app_data}/cache/side-browser-downloads`).
+fn side_browser_download_staging_dir() -> PathBuf {
+    let dir = crate::paths::app_data_root()
+        .join("cache")
+        .join("side-browser-downloads");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+/// Unique absolute staging path; wry requires an absolute destination.
+fn staging_download_path(suggested: &str) -> PathBuf {
+    let seq = DOWNLOAD_SEQ.fetch_add(1, Ordering::Relaxed);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    // Keep original basename for the eventual save dialog; prefix for uniqueness.
+    let name = format!("{stamp}-{seq}-{suggested}");
+    side_browser_download_staging_dir().join(name)
+}
+
 fn emit_download(app: &AppHandle, payload: SideBrowserDownloadPayload) {
     if let Err(e) = app.emit(DOWNLOAD_EVENT, &payload) {
         tracing::warn!(error = %e, "side-browser download emit failed");
     }
+}
+
+/// Parent save dialog to the hosting window so it paints above child webviews.
+fn save_dialog_for_webview(
+    webview: &tauri::Webview,
+    suggested: &str,
+) -> Option<PathBuf> {
+    let mut dlg = rfd::FileDialog::new()
+        .set_title("Save file / 保存文件")
+        .set_file_name(suggested);
+    // Parent when possible — sheet/modal above the side-browser child view.
+    let win = webview.window();
+    dlg = dlg.set_parent(&win);
+    dlg.save_file()
+}
+
+/// Move/copy staging file to user path; remove staging on success.
+fn finalize_download_to(staging: &Path, dest: &Path) -> Result<(), String> {
+    if let Some(parent) = dest.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::rename(staging, dest) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            std::fs::copy(staging, dest).map_err(|e| format!("copy download: {e}"))?;
+            let _ = std::fs::remove_file(staging);
+            Ok(())
+        }
+    }
+}
+
+fn take_pending(url: &str) -> Option<PendingDownload> {
+    PENDING_DOWNLOADS.lock().remove(url)
+}
+
+/// Strip staging prefix `{millis}-{seq}-` to recover the user-facing name.
+fn suggested_from_staging_name(file_name: &str) -> String {
+    let s = file_name.trim();
+    if s.is_empty() {
+        return "download".into();
+    }
+    // "{stamp}-{seq}-{rest}" — rest may contain dashes.
+    let mut parts = s.splitn(3, '-');
+    let _stamp = parts.next();
+    let _seq = parts.next();
+    if let Some(rest) = parts.next() {
+        if !rest.is_empty() {
+            return rest.to_string();
+        }
+    }
+    s.to_string()
 }
 
 /// Create (or replace) an in-app side-browser child webview with download UX.
@@ -181,51 +284,236 @@ pub fn create(
         .ok_or_else(|| format!("window not found: {win_label}"))?;
 
     let webview_label = label.clone();
+    // Polyfill blob:/data: `<a download>` (ChatCut etc.) — WKWebView skips on_download.
+    // Bridge: FileReader in-page → document.title signal → host eval pull → Downloads.
+    let polyfill = crate::side_browser_blob::blob_download_polyfill(&label);
+    let polyfill_reload = polyfill.clone();
+    let title_label = label.clone();
     let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
         .accept_first_mouse(true)
         .focused(true)
+        .initialization_script(polyfill)
+        // Re-assert after every full document load (init script can miss remote
+        // navigations). Polyfill early-returns if already installed — cheap.
+        .on_page_load(move |webview, payload| {
+            if matches!(payload.event(), PageLoadEvent::Finished) {
+                let _ = webview.eval(polyfill_reload.clone());
+            }
+        })
+        .on_document_title_changed(move |webview, title| {
+            if crate::side_browser_blob::is_download_signal_title(&title) {
+                let label = webview.label().to_string();
+                // Prefer live label; fall back to create-time label.
+                let label = if label.is_empty() {
+                    title_label.clone()
+                } else {
+                    label
+                };
+                crate::side_browser_blob::handle_title_signal(
+                    &webview.app_handle(),
+                    &label,
+                    &title,
+                );
+            }
+        })
         .on_download(move |webview, event| {
             let label = webview.label().to_string();
             match event {
                 DownloadEvent::Requested { url, destination } => {
                     let url_s = url.to_string();
                     let suggested = suggested_download_name(destination, &url_s);
+                    // Accept immediately into a unique staging path. Modal save
+                    // dialogs inside this callback frequently fail on macOS
+                    // (WebKit download decision + nested NSSavePanel), which
+                    // cancels the download with no UI.
+                    let staging = staging_download_path(&suggested);
                     tracing::info!(
                         target: "side_browser",
                         %label,
                         url = %url_s,
                         %suggested,
-                        "download requested"
+                        staging = %staging.display(),
+                        "download requested → staging"
                     );
 
-                    let app = webview.app_handle().clone();
-                    emit_download(
-                        &app,
-                        SideBrowserDownloadPayload {
-                            phase: "requested".into(),
+                    PENDING_DOWNLOADS.lock().insert(
+                        url_s.clone(),
+                        PendingDownload {
                             label: label.clone(),
-                            url: url_s.clone(),
-                            path: None,
-                            success: None,
-                            file_name: Some(suggested.clone()),
+                            staging: staging.clone(),
+                            suggested: suggested.clone(),
                         },
                     );
 
-                    // Native save dialog (blocks this download callback until
-                    // the user chooses a path or cancels). rfd is main-thread
-                    // safe on macOS when already on the UI thread.
-                    let chosen = rfd::FileDialog::new()
-                        .set_title("Save file / 保存文件")
-                        .set_file_name(&suggested)
-                        .save_file();
+                    crate::path_scope::grant_path(&staging);
+                    *destination = staging;
 
+                    emit_download(
+                        &webview.app_handle(),
+                        SideBrowserDownloadPayload {
+                            phase: "requested".into(),
+                            label,
+                            url: url_s,
+                            path: None,
+                            success: None,
+                            file_name: Some(suggested),
+                        },
+                    );
+                    true
+                }
+                DownloadEvent::Finished { url, path, success } => {
+                    let url_s = url.to_string();
+                    let pending = take_pending(&url_s);
+                    // Prefer platform path; macOS wry often yields None — use staging.
+                    let staging = path
+                        .map(|p| p.to_path_buf())
+                        .or_else(|| pending.as_ref().map(|p| p.staging.clone()));
+                    let suggested = pending
+                        .as_ref()
+                        .map(|p| p.suggested.clone())
+                        .or_else(|| {
+                            staging
+                                .as_ref()
+                                .and_then(|p| p.file_name())
+                                .and_then(|n| n.to_str())
+                                .map(suggested_from_staging_name)
+                        })
+                        .unwrap_or_else(|| "download".into());
+                    let label = pending
+                        .as_ref()
+                        .map(|p| p.label.clone())
+                        .unwrap_or(label);
+
+                    if !success {
+                        if let Some(ref s) = staging {
+                            let _ = std::fs::remove_file(s);
+                        }
+                        tracing::info!(
+                            target: "side_browser",
+                            %label,
+                            url = %url_s,
+                            "download failed"
+                        );
+                        emit_download(
+                            &webview.app_handle(),
+                            SideBrowserDownloadPayload {
+                                phase: "finished".into(),
+                                label,
+                                url: url_s,
+                                path: None,
+                                success: Some(false),
+                                file_name: Some(suggested),
+                            },
+                        );
+                        return true;
+                    }
+
+                    let Some(staging_path) = staging else {
+                        tracing::warn!(
+                            target: "side_browser",
+                            %label,
+                            url = %url_s,
+                            "download finished without path"
+                        );
+                        emit_download(
+                            &webview.app_handle(),
+                            SideBrowserDownloadPayload {
+                                phase: "finished".into(),
+                                label,
+                                url: url_s,
+                                path: None,
+                                success: Some(false),
+                                file_name: Some(suggested),
+                            },
+                        );
+                        return true;
+                    };
+
+                    if !staging_path.exists() {
+                        tracing::warn!(
+                            target: "side_browser",
+                            %label,
+                            url = %url_s,
+                            path = %staging_path.display(),
+                            "download staging missing"
+                        );
+                        emit_download(
+                            &webview.app_handle(),
+                            SideBrowserDownloadPayload {
+                                phase: "finished".into(),
+                                label,
+                                url: url_s,
+                                path: None,
+                                success: Some(false),
+                                file_name: Some(suggested),
+                            },
+                        );
+                        return true;
+                    }
+
+                    // Save dialog after bytes land — not inside Requested.
+                    let chosen = save_dialog_for_webview(&webview, &suggested);
+                    let app = webview.app_handle().clone();
                     match chosen {
-                        Some(path) => {
-                            crate::path_scope::grant_path(&path);
-                            *destination = path;
-                            true
+                        Some(dest) => {
+                            match finalize_download_to(&staging_path, &dest) {
+                                Ok(()) => {
+                                    crate::path_scope::grant_path(&dest);
+                                    let file_name = dest
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .map(|s| s.to_string())
+                                        .or(Some(suggested));
+                                    let path_s = dest.display().to_string();
+                                    tracing::info!(
+                                        target: "side_browser",
+                                        %label,
+                                        url = %url_s,
+                                        path = %path_s,
+                                        "download saved"
+                                    );
+                                    emit_download(
+                                        &app,
+                                        SideBrowserDownloadPayload {
+                                            phase: "finished".into(),
+                                            label,
+                                            url: url_s,
+                                            path: Some(path_s),
+                                            success: Some(true),
+                                            file_name,
+                                        },
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        target: "side_browser",
+                                        error = %e,
+                                        "download finalize failed"
+                                    );
+                                    let _ = std::fs::remove_file(&staging_path);
+                                    emit_download(
+                                        &app,
+                                        SideBrowserDownloadPayload {
+                                            phase: "finished".into(),
+                                            label,
+                                            url: url_s,
+                                            path: None,
+                                            success: Some(false),
+                                            file_name: Some(suggested),
+                                        },
+                                    );
+                                }
+                            }
                         }
                         None => {
+                            // User cancelled post-download save — drop staging.
+                            let _ = std::fs::remove_file(&staging_path);
+                            tracing::info!(
+                                target: "side_browser",
+                                %label,
+                                url = %url_s,
+                                "download save cancelled"
+                            );
                             emit_download(
                                 &app,
                                 SideBrowserDownloadPayload {
@@ -237,42 +525,8 @@ pub fn create(
                                     file_name: Some(suggested),
                                 },
                             );
-                            false
                         }
                     }
-                }
-                DownloadEvent::Finished { url, path, success } => {
-                    let url_s = url.to_string();
-                    let path_s = path.as_ref().map(|p| p.display().to_string());
-                    let file_name = path
-                        .as_ref()
-                        .and_then(|p| p.file_name())
-                        .and_then(|n| n.to_str())
-                        .map(|s| s.to_string());
-                    if success {
-                        if let Some(ref p) = path {
-                            crate::path_scope::grant_path(p);
-                        }
-                    }
-                    tracing::info!(
-                        target: "side_browser",
-                        %label,
-                        url = %url_s,
-                        path = ?path_s,
-                        success,
-                        "download finished"
-                    );
-                    emit_download(
-                        &webview.app_handle(),
-                        SideBrowserDownloadPayload {
-                            phase: "finished".into(),
-                            label,
-                            url: url_s,
-                            path: path_s,
-                            success: Some(success),
-                            file_name,
-                        },
-                    );
                     true
                 }
                 _ => true,
@@ -418,5 +672,28 @@ mod tests {
             suggested_download_name(&empty, "https://cdn.example.com/files/data.csv"),
             "data.csv"
         );
+    }
+
+    #[test]
+    fn staging_name_strips_prefix() {
+        assert_eq!(
+            suggested_from_staging_name("171000-3-report.zip"),
+            "report.zip"
+        );
+        assert_eq!(
+            suggested_from_staging_name("1-2-my-file.tar.gz"),
+            "my-file.tar.gz"
+        );
+        assert_eq!(suggested_from_staging_name("plain"), "plain");
+    }
+
+    #[test]
+    fn sanitize_and_staging_path_are_absolute() {
+        let p = staging_download_path("hello world.pdf");
+        assert!(p.is_absolute());
+        assert!(p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with("hello world.pdf")));
     }
 }
