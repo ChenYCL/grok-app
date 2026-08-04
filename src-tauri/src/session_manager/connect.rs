@@ -429,6 +429,34 @@ impl SessionManager {
                     )
                 };
                 let mut best: Option<(Arc<AcpClient>, String, Instant)> = None;
+                // Diagnostics: why reuse misses (only logged when nothing matches).
+                let mut rejected: Vec<String> = Vec::new();
+                let reject_reason = |alive: bool,
+                                    p_policy: PermissionPolicy,
+                                    p_effort: Option<&str>,
+                                    p_sandbox: Option<&str>,
+                                    p_custom: bool| {
+                    let mut parts = Vec::new();
+                    if !alive {
+                        parts.push("dead".into());
+                    }
+                    if p_policy != policy {
+                        parts.push(format!("policy {}≠{}", p_policy.as_str(), policy.as_str()));
+                    }
+                    if p_effort != Some(prefs.effort.as_str()) {
+                        parts.push(format!("effort {:?}≠{:?}", p_effort, Some(prefs.effort.as_str())));
+                    }
+                    if p_sandbox != Some(eff_sandbox.as_str()) {
+                        parts.push(format!("sandbox {:?}≠{:?}", p_sandbox, Some(eff_sandbox.as_str())));
+                    }
+                    if p_custom != target_custom {
+                        parts.push(format!("route custom={p_custom}≠{target_custom}"));
+                    }
+                    if parts.is_empty() {
+                        parts.push("?".into());
+                    }
+                    parts.join(", ")
+                };
                 // Prewarm is the freshest candidate — purpose-built for the next
                 // chat. Consume it first (matches are exclusive to this connect).
                 {
@@ -445,6 +473,19 @@ impl SessionManager {
                         ) {
                             best = Some((p.acp.clone(), p.process_id.clone(), p.created_at));
                             *pw = None;
+                        } else {
+                            rejected.push(format!(
+                                "prewarm: {}",
+                                reject_reason(
+                                    p.acp.is_alive(),
+                                    p.policy,
+                                    p.effort.as_deref(),
+                                    p.sandbox_profile.as_deref(),
+                                    crate::providers::is_custom_provider_id(
+                                        p.model_id.as_deref().unwrap_or(""),
+                                    ),
+                                )
+                            ));
                         }
                     }
                 }
@@ -460,6 +501,19 @@ impl SessionManager {
                                 p.model_id.as_deref().unwrap_or(""),
                             ),
                         ) {
+                            rejected.push(format!(
+                                "parked {}: {}",
+                                p.app_session_id,
+                                reject_reason(
+                                    p.acp.is_alive(),
+                                    p.policy,
+                                    p.effort.as_deref(),
+                                    p.acp.sandbox_profile().as_deref(),
+                                    crate::providers::is_custom_provider_id(
+                                        p.model_id.as_deref().unwrap_or(""),
+                                    ),
+                                )
+                            ));
                             continue;
                         }
                         let cand = (p.acp.clone(), p.process_id.clone(), p.last_activity);
@@ -480,6 +534,21 @@ impl SessionManager {
                                 s.model_id.as_deref().unwrap_or(""),
                             ),
                         ) {
+                            rejected.push(format!(
+                                "background {}: {}",
+                                s.app_session_id,
+                                reject_reason(
+                                    s.acp.as_ref().is_some_and(|c| c.is_alive()),
+                                    s.policy,
+                                    s.effort.as_deref(),
+                                    s.acp.as_ref()
+                                        .and_then(|c| c.sandbox_profile())
+                                        .as_deref(),
+                                    crate::providers::is_custom_provider_id(
+                                        s.model_id.as_deref().unwrap_or(""),
+                                    ),
+                                )
+                            ));
                             continue;
                         }
                         let cand = (
@@ -491,6 +560,18 @@ impl SessionManager {
                             best = Some(cand);
                         }
                     }
+                }
+                if best.is_none() && !rejected.is_empty() {
+                    tracing::warn!(
+                        target: "session",
+                        session = %meta.id,
+                        target_policy = %policy.as_str(),
+                        target_effort = %prefs.effort,
+                        target_sandbox = %eff_sandbox,
+                        target_custom_route = target_custom,
+                        "connect reuse rejected (cold spawn): {}",
+                        rejected.join(" | ")
+                    );
                 }
                 best.map(|(acp, pid, _)| (acp, pid))
             };
