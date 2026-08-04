@@ -145,6 +145,21 @@ describe("timelinePhases", () => {
     ).toEqual(["tool", "content"]);
   });
 
+  it("phase id stays stable while a live phase grows (no endSi churn)", () => {
+    const base: MessageSegment[] = [
+      { kind: "thought", text: "plan" },
+      tool("a", "Read a"),
+    ];
+    const p1 = buildTimelineUnits(base, { streaming: true });
+    const grown = buildTimelineUnits(
+      [...base, tool("b", "Read b"), tool("c", "Read c")],
+      { streaming: true },
+    );
+    if (p1[0]!.kind === "phase" && grown[0]!.kind === "phase") {
+      expect(p1[0]!.id).toBe(grown[0]!.id);
+    }
+  });
+
   it("failed tools set errorCount for default expand", () => {
     const units = buildTimelineUnits(
       [

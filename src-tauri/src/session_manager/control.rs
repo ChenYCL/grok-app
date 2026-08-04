@@ -336,11 +336,53 @@ impl SessionManager {
 
     /// Soft-respawn when MCP enable prefs change so the next connect injects
     /// the updated `mcpServers` set (and agent-home config is re-read).
+    ///
+    /// Prefers a hot `_x.ai/session/update_mcp_servers` swap on a live Ready
+    /// session — kills the process only when the hot path fails or the turn is
+    /// busy (mid-turn swaps are deferred to the next connect injection).
     pub async fn apply_extensions_mcp_change(&self, app: &AppHandle) {
-        let live = {
+        let (hot_sid, hot_busy, cwd) = {
             let guard = self.inner.lock();
-            guard.as_ref().map(|s| s.acp.is_some()).unwrap_or(false)
+            match guard.as_ref() {
+                Some(s) if s.acp.as_ref().is_some_and(|c| c.is_alive()) => (
+                    s.meta.agent_session_id.clone(),
+                    Self::live_session_is_busy(s),
+                    s.project_path.clone(),
+                ),
+                _ => (None, false, None),
+            }
         };
+        if let (Some(sid), false, Some(cwd)) = (hot_sid, hot_busy, cwd) {
+            let app_sid = self.inner.lock().as_ref().map(|s| s.app_session_id.clone());
+            let servers = tauri::async_runtime::spawn_blocking(move || {
+                crate::extensions::build_session_mcp_servers(Some(cwd.as_str()))
+            })
+            .await
+            .unwrap_or_else(|_| serde_json::json!([]));
+            let acp = self.inner.lock().as_ref().and_then(|s| s.acp.clone());
+            if let Some(acp) = acp {
+                match acp.update_mcp_servers(&sid, servers).await {
+                    Ok(_) => {
+                        tracing::info!(
+                            "extensions: MCP prefs changed — hot-swapped mcpServers on live agent sid={sid}"
+                        );
+                        if let Some(asid) = app_sid {
+                            let _ = app.emit(
+                                "session://mcp_hot_updated",
+                                serde_json::json!({ "sessionId": asid }),
+                            );
+                        }
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "extensions: MCP hot update failed ({e}); falling back to soft-respawn"
+                        );
+                    }
+                }
+            }
+        }
+        let live = self.inner.lock().as_ref().map(|s| s.acp.is_some()).unwrap_or(false);
         if live {
             tracing::info!("extensions: MCP prefs changed — soft-respawn live agent");
             self.soft_respawn(app).await;

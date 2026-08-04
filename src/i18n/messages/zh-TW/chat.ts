@@ -86,6 +86,8 @@ export const zhTWChat = {
   "chat.working": "工作中",
   "chat.ranSearch": "執行了 1 次搜尋",
   "chat.ranSearches": "執行了 {n} 次搜尋",
+  "chat.ranTools": "執行了 {n} 個工具",
+  "chat.runningTools": "正在執行 {n} 個工具…",
   "chat.browsed": "瀏覽了 {url}",
   "chat.browsedPrefix": "瀏覽了",
   "chat.searchedWebForPrefix": "搜尋了",

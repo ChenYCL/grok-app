@@ -26,6 +26,7 @@ import {
   isTurnPromptMessage,
   weaveToolsIntoAssistantSegments,
   type ChatMessage,
+  type MessageToolSegment,
   type SessionState,
 } from "@/lib/session";
 import {
@@ -104,6 +105,7 @@ import {
 import { EndOfTurnChip } from "./EndOfTurnChip";
 import {
   TimelineToolRow,
+  TimelineToolGroup,
   toolSegmentFromMessage,
   toolSegmentIsRunning,
 } from "./TimelineToolRow";
@@ -585,6 +587,11 @@ type TranscriptMessageRowProps = {
   activeAssistantId: string | null;
   liveTool: ReturnType<typeof pickRunningTurnTool>;
   wovenMessages: ChatMessage[];
+  /** Consecutive unwoven standalone tool_step rows → merged group info. */
+  standaloneToolGroups: ReadonlyMap<
+    string,
+    { key: string; tools: MessageToolSegment[]; first: boolean }
+  >;
   findQuery: string;
   findHitMessageIds?: ReadonlySet<string>;
   findActive: { messageId: string; occurrence: number } | null;
@@ -641,6 +648,7 @@ function transcriptRowPropsEqual(
   if (a.activeAssistantId !== b.activeAssistantId) return false;
   if (a.liveTool !== b.liveTool) return false;
   if (a.wovenMessages !== b.wovenMessages) return false;
+  if (a.standaloneToolGroups !== b.standaloneToolGroups) return false;
   if (a.findQuery !== b.findQuery) return false;
   if (a.findHitMessageIds !== b.findHitMessageIds) return false;
   if (a.findActive !== b.findActive) return false;
@@ -683,6 +691,7 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
   activeAssistantId,
   liveTool,
   wovenMessages,
+  standaloneToolGroups,
   findQuery,
   findHitMessageIds,
   findActive,
@@ -771,6 +780,34 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
           aria-hidden
         />
       ) : null;
+    }
+    // Consecutive unwoven standalone tool_step rows merge into one
+    // collapsible group (painted at the first row; the rest become
+    // zero-height spacers so virtualization stays consistent).
+    const standaloneGroup = standaloneToolGroups.get(m.id);
+    if (standaloneGroup) {
+      if (!standaloneGroup.first) {
+        return virtualized ? (
+          <div
+            key={m.id}
+            ref={measureRef(msgIndex)}
+            data-virt-index={msgIndex}
+            style={{ height: 0, overflow: "hidden" }}
+            aria-hidden
+          />
+        ) : null;
+      }
+      return wrap(
+        <div key={m.id} className="lobe-chat-assistant-timeline">
+          <div className="lobe-timeline-rail">
+            <TimelineToolGroup
+              tools={standaloneGroup.tools}
+              autoCollapse={toolStepsAutoCollapse}
+              locale={locale}
+            />
+          </div>
+        </div>,
+      );
     }
     return wrap(
       <div key={m.id} className="lobe-chat-assistant-timeline">
@@ -1889,6 +1926,54 @@ export function ConversationThread({
     [wovenMessages, transcriptFilter],
   );
 
+  /**
+   * Consecutive unwoven standalone tool_step rows merge into one collapsible
+   * group (painted at the first row; the rest become zero-height spacers).
+   * This is where “loose adjacent tool rows” come from when a turn ends with
+   * tools never woven into an assistant bubble.
+   */
+  const standaloneToolGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; tools: MessageToolSegment[]; first: boolean }
+    >();
+    let key: string | null = null;
+    let firstId: string | null = null;
+    let groupTools: MessageToolSegment[] | null = null;
+    const close = () => {
+      key = null;
+      firstId = null;
+      groupTools = null;
+    };
+    for (const row of transcriptMessages) {
+      if (isToolStepMessage(row)) {
+        const tcid =
+          (row.toolCallId || "").trim() ||
+          (row.id.startsWith("tool-") ? row.id.slice(5) : "");
+        const woven = !!tcid && isToolInlinedInAssistants(wovenMessages, tcid);
+        if (!woven) {
+          const seg = toolSegmentFromMessage(row);
+          if (seg) {
+            if (!key) {
+              key = `standalone-tools-${row.id}`;
+              firstId = row.id;
+              groupTools = [];
+            }
+            groupTools!.push(seg);
+            map.set(row.id, {
+              key,
+              tools: groupTools!,
+              first: row.id === firstId,
+            });
+            continue;
+          }
+        }
+      }
+      close();
+    }
+    return map;
+  }, [transcriptMessages, wovenMessages]);
+
   // Force-mount only what must stay in DOM. The virtualizer applies force
   // freely while pinned (blank-pin defense) but only expands nearby while
   // escaped — listing the last user/assistant here no longer mounts the
@@ -1944,6 +2029,8 @@ export function ConversationThread({
       if (!m) return 120;
       // Standalone (non-inlined) tool rows only — inlined tools are filtered out.
       if (isToolStepMessage(m)) {
+        const g = standaloneToolGroups.get(m.id);
+        if (g && !g.first) return 0;
         return estimateChatRowHeight({
           contentLength: m.content?.length ?? 0,
           role: "tool",
@@ -1982,7 +2069,7 @@ export function ConversationThread({
         collapsed: collapsedTool,
       });
     },
-    [transcriptMessages],
+    [transcriptMessages, standaloneToolGroups],
   );
 
   const {
@@ -2055,6 +2142,7 @@ export function ConversationThread({
               messageTimeFormat={messageTimeFormat}
               timeTick={relativeTick}
               showReplyLength={showReplyLength}
+              standaloneToolGroups={standaloneToolGroups}
               lastUserMessageId={lastUserMessageId}
               editingUserMessageId={editingUserMessageId}
               editSubmitting={editSubmitting}

@@ -235,7 +235,11 @@ export function buildTimelineUnits(
       const items: TimelinePhaseItem[] = buf.items.map((x) => x.item);
       out.push({
         kind: "phase",
-        id: `p-${startSi}-${endSi}`,
+        // Stable key: startSi never changes while a phase grows; endSi does
+        // (every appended segment), which used to remount the block and reset
+        // the user's expand/collapse mid-stream. Keep the key stable so
+        // manual toggles survive segment growth.
+        id: `p-${startSi}`,
         items,
         thoughts: thoughts.filter((t) => t.trim()),
         tools,

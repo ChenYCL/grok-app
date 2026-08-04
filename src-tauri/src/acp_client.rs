@@ -161,7 +161,13 @@ pub enum AcpEvent {
 /// Custom relays / 中转 often flap mid-stream; 5 was too low and left users
 /// stuck on "stream disconnected" after a few blips. Agent may advertise a
 /// higher max; we still cap here so a wedged provider cannot retry forever.
-pub const HOST_PROVIDER_MAX_RETRIES: u32 = 12;
+///
+/// Matches the CLI's own default (`xai-grok-sampler::retry::DEFAULT_MAX_RETRIES`
+/// = 15). Capping below the CLI budget aborted turns the CLI would have
+/// recovered (a relay that stabilizes between retry 12 and 15); keeping the
+/// cap ≥ CLI default means only the CLI's own Fatal classification ends a
+/// wedged turn.
+pub const HOST_PROVIDER_MAX_RETRIES: u32 = 15;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamKind {
@@ -2560,6 +2566,28 @@ impl AcpClient {
             .map(|(sid, _)| sid)
     }
 
+    /// Hot-swap MCP servers on a live session (`_x.ai/session/update_mcp_servers`).
+    ///
+    /// The CLI re-initializes the server set in-process and waits for the
+    /// handshake batch — no kill + respawn needed when only the MCP set
+    /// changed (extensions enable/disable, `grok mcp list` drift).
+    /// Falls back to the caller's soft-respawn path on any error.
+    pub async fn update_mcp_servers(
+        &self,
+        session_id: &str,
+        mcp_servers: Value,
+    ) -> Result<Value, String> {
+        self.request_timeout(
+            "_x.ai/session/update_mcp_servers",
+            json!({
+                "sessionId": session_id,
+                "mcpServers": mcp_servers,
+            }),
+            HANDSHAKE_TIMEOUT_SECS,
+        )
+        .await
+    }
+
     /// Switch model on the live agent session (`session/set_model`).
     pub async fn set_model(&self, model_id: &str) -> Result<(), String> {
         let model_id = model_id.trim();
@@ -2866,7 +2894,16 @@ pub fn wire_initialize_params() -> Value {
     json!({
         "protocolVersion": 1,
         "clientInfo": { "name": "grok-app", "version": "0.1.0" },
-        "capabilities": {}
+        "capabilities": {
+            "meta": {
+                // Long-running bash/terminal commands stream incremental
+                // output back to the client instead of sitting silent — the
+                // UI shows progress instead of looking stalled.
+                "x.ai/incrementalBashOutput": true,
+                // Bash output without ANSI color codes (cleaner line dumps).
+                "x.ai/bashOutputNoColor": true
+            }
+        }
     })
 }
 
@@ -4508,9 +4545,9 @@ mod retry_tests {
     #[test]
     fn abort_at_host_cap_even_if_agent_allows_more() {
         assert!(!should_abort_provider_retry(1, 20, "retrying"));
-        assert!(!should_abort_provider_retry(11, 20, "retrying"));
-        assert!(should_abort_provider_retry(12, 20, "retrying"));
-        assert!(should_abort_provider_retry(13, 20, "retrying"));
+        assert!(!should_abort_provider_retry(14, 20, "retrying"));
+        assert!(should_abort_provider_retry(15, 20, "retrying"));
+        assert!(should_abort_provider_retry(16, 20, "retrying"));
     }
 
     #[test]

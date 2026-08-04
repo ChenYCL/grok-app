@@ -86,6 +86,8 @@ export const enChat = {
   "chat.working": "Working",
   "chat.ranSearch": "Ran 1 search",
   "chat.ranSearches": "Ran {n} searches",
+  "chat.ranTools": "Ran {n} tools",
+  "chat.runningTools": "Running {n} tools…",
   "chat.browsed": "Browsed {url}",
   "chat.browsedPrefix": "Browsed",
   "chat.searchedWebForPrefix": "Searched web for",

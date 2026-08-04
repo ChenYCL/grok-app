@@ -166,8 +166,9 @@ export const TimelineToolRow = memo(function TimelineToolRow({
 
   useEffect(() => {
     if (running) {
-      setOpen(true);
-      userToggled.current = false;
+      // Never force-open a row the user collapsed while it kept running:
+      // manual choice wins until the next tool (userToggled reset below).
+      if (!userToggled.current) setOpen(true);
       return;
     }
     if (!userToggled.current) {
@@ -239,8 +240,8 @@ export const TimelineToolRow = memo(function TimelineToolRow({
   );
 });
 
-/** ≥3 consecutive context tools → collapsible group. */
-export function TimelineContextGroup({
+/** ≥2 consecutive tools → collapsible group (any kind). */
+export function TimelineToolGroup({
   tools,
   locale,
   autoCollapse: autoCollapseProp,
@@ -289,8 +290,8 @@ export function TimelineContextGroup({
 
   useEffect(() => {
     if (running) {
-      setOpen(true);
-      userToggled.current = false;
+      // Keep a user-collapsed group collapsed while its tools finish.
+      if (!userToggled.current) setOpen(true);
       return;
     }
     if (!userToggled.current) {
@@ -298,8 +299,8 @@ export function TimelineContextGroup({
     }
   }, [running, autoCollapse]);
 
-  // Host vision/X are normal tool steps inside the phase — do not collapse
-  // the group header into a second "识别图片内容" label.
+  // Host vision/X are normal tool steps inside the group — do not collapse
+  // the group header into a second label.
   const allSearch = tools.every((t) => {
     const id = (t.toolCallId || "").toLowerCase();
     if (
@@ -316,8 +317,8 @@ export function TimelineContextGroup({
       ? tr("chat.ranSearch")
       : tr("chat.ranSearches", { n: String(tools.length) })
     : running
-      ? tr("turnActivity.gathering", { n: tools.length })
-      : tr("turnActivity.gathered", { n: tools.length });
+      ? tr("chat.runningTools", { n: tools.length })
+      : tr("chat.ranTools", { n: tools.length });
 
   return (
     <div
@@ -327,6 +328,7 @@ export function TimelineContextGroup({
         (running ? " is-running" : "")
       }
       data-testid="timeline-tool-group"
+      data-tool-count={tools.length}
     >
       <button
         type="button"
@@ -347,6 +349,12 @@ export function TimelineContextGroup({
           </span>
         </div>
         <span className="grok-act__label">{groupLabel}</span>
+        <span
+          className={"grok-act__mini-caret" + (open ? " is-open" : "")}
+          aria-hidden
+        >
+          <IconChevronRight size={11} />
+        </span>
       </button>
       {open ? (
         <div className="lobe-timeline-tool-group__list">

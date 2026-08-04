@@ -9,7 +9,12 @@
         "name": "grok-app",
         "version": "0.1.0"
       },
-      "capabilities": {}
+      "capabilities": {
+        "meta": {
+          "x.ai/incrementalBashOutput": true,
+          "x.ai/bashOutputNoColor": true
+        }
+      }
     }
   },
   "sampleAgentResult": {

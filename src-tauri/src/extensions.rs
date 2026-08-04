@@ -20,7 +20,7 @@ use crate::paths::{agent_config_toml, ensure_app_dirs, extensions_file, resolve_
 use crate::store;
 
 const MCP_LIST_TIMEOUT_SECS: u64 = 8;
-const MCP_CACHE_TTL: Duration = Duration::from_secs(30);
+const MCP_CACHE_TTL: Duration = Duration::from_secs(300);
 
 /// App-side enable prefs for MCP servers and skills.
 /// Missing name defaults to **enabled** (opt-out).

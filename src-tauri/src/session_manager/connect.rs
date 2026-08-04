@@ -531,10 +531,11 @@ impl SessionManager {
 
         match open_result {
             Ok((agent_sid, resumed)) => {
-                // Align live agent model / product mode with active channel.
-                if let Err(e) = client.set_model(&agent_model).await {
-                    tracing::warn!("acp set_model after session open soft-fail: {e}");
-                }
+                // Cold-spawn path: the process was spawned with `--model` =
+                // active channel model, and `session/new` inherits the process
+                // default — the post-open `set_model` here was a redundant RPC
+                // on every connect. Keep `set_mode` (product mode is
+                // per-prompt in Grok Build, so the App's mode is only nudged).
                 if let Err(e) = client.set_mode(&prefs.mode).await {
                     tracing::warn!("acp set_mode after session open soft-fail: {e}");
                 }

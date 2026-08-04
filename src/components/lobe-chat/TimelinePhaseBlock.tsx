@@ -302,8 +302,9 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
 
   useEffect(() => {
     if (phaseRunning) {
-      setOpen(true);
-      userToggled.current = false;
+      // Live phases auto-open by default, but a user-collapsed phase stays
+      // collapsed while it keeps working (manual choice wins).
+      if (!userToggled.current) setOpen(true);
       return;
     }
     if (!userToggled.current) setOpen(wantOpen);
