@@ -226,6 +226,11 @@ pub(crate) struct LiveSession {
     /// keep streaming. While this is set the session can never be parked or
     /// idle-recycled, and its stream chunks are always applied.
     pub(super) prompt_in_flight: bool,
+    /// True once this visit (connect → park) dispatched a prompt. Sessions
+    /// that were only opened to look at get detached (no warm process kept)
+    /// when the user switches away — only chats that actually sent work stay
+    /// warm. Busy turns are never affected (they demote to background).
+    pub(super) sent_prompt_this_visit: bool,
     /// Coalesced stream IPC buffer (host backpressure).
     pub(super) pending_stream_emit: Option<PendingStreamEmit>,
     /// Bumped when a delayed flush is scheduled; stale tasks no-op.

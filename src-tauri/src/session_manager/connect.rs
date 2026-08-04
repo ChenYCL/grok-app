@@ -357,6 +357,7 @@ impl SessionManager {
                 tools_this_turn: 0,
                 saw_model_output: false,
                 prompt_in_flight: false,
+                sent_prompt_this_visit: false,
                 pending_stream_emit: None,
                 stream_emit_flush_gen: 0,
                 last_tool_heartbeat_emit: None,
@@ -990,6 +991,7 @@ impl SessionManager {
             saw_model_output: false,
             // The agent is mid-turn; keep it un-parkable until the turn ends.
             prompt_in_flight: true,
+            sent_prompt_this_visit: false,
             pending_stream_emit: None,
             stream_emit_flush_gen: 0,
             last_tool_heartbeat_emit: None,
@@ -1301,6 +1303,7 @@ mod connect_preserve_tests {
             tools_this_turn: 0,
             saw_model_output: false,
             prompt_in_flight: true,
+            sent_prompt_this_visit: false,
             pending_stream_emit: None,
             stream_emit_flush_gen: 0,
             last_tool_heartbeat_emit: None,

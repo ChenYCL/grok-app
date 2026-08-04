@@ -103,6 +103,7 @@ fn streaming_session(now: Instant, mut patch: impl FnMut(&mut LiveSession)) -> L
         tools_this_turn: 0,
         saw_model_output: false,
         prompt_in_flight: true,
+        sent_prompt_this_visit: false,
         pending_stream_emit: None,
         stream_emit_flush_gen: 0,
         last_tool_heartbeat_emit: None,

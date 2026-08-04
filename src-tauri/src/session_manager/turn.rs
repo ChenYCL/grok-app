@@ -93,6 +93,7 @@ impl SessionManager {
             }
             s.fsm.begin_stream().map_err(|e| e.to_string())?;
             s.prompt_in_flight = true;
+            s.sent_prompt_this_visit = true;
             Self::touch_stream_progress_locked(s);
             s.active_turn_id = Some(Uuid::new_v4().to_string());
             s.stream_message_id_locked = false;

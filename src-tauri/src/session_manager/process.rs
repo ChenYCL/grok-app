@@ -240,6 +240,37 @@ impl SessionManager {
                         return Ok(());
                     }
                 };
+                // Sessions that only got opened to look at (no prompt sent this
+                // visit) are NOT kept warm — close the connection instead of
+                // parking. Busy turns never reach here (demoted to background),
+                // so submitted-and-running chats are untouched.
+                if !s.sent_prompt_this_visit {
+                    let sid = s.app_session_id.clone();
+                    let pid = s.process_id.clone();
+                    // Shared process (other sessions still reference it): just
+                    // drop our reference; the CLI stays for co-tenants.
+                    let shared = self.parked.lock().values().any(|p| {
+                        p.process_id == pid && p.app_session_id != sid
+                    }) || self.background.lock().values().any(|b| {
+                        b.process_id == pid && b.app_session_id != sid
+                    });
+                    let _ = guard.take();
+                    drop(guard);
+                    if !shared {
+                        tracing::info!(
+                            "acp detach unsubmitted session={sid} process={pid} (viewed only, closing)"
+                        );
+                        let c = acp;
+                        tokio::spawn(async move {
+                            c.kill().await;
+                        });
+                    } else {
+                        tracing::info!(
+                            "acp detach unsubmitted session={sid} process={pid} (viewed only; shared process kept)"
+                        );
+                    }
+                    return Ok(());
+                }
                 let sandbox_profile = acp.sandbox_profile();
                 let parked = ParkedAgent {
                     process_id: s.process_id.clone(),
@@ -399,6 +430,7 @@ impl SessionManager {
             tools_this_turn: 0,
             saw_model_output: false,
             prompt_in_flight: false,
+            sent_prompt_this_visit: false,
             pending_stream_emit: None,
             stream_emit_flush_gen: 0,
             last_tool_heartbeat_emit: None,
