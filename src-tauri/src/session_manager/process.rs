@@ -247,6 +247,11 @@ impl SessionManager {
                 if !s.sent_prompt_this_visit {
                     let sid = s.app_session_id.clone();
                     let pid = s.process_id.clone();
+                    let pw_policy = s.policy;
+                    let pw_effort = s.effort.clone();
+                    let pw_model = s.model_id.clone();
+                    let pw_backend = s.backend.clone();
+                    let pw_project = s.project_path.clone();
                     // Shared process (other sessions still reference it): just
                     // drop our reference; the CLI stays for co-tenants.
                     let shared = self.parked.lock().values().any(|p| {
@@ -257,13 +262,41 @@ impl SessionManager {
                     let _ = guard.take();
                     drop(guard);
                     if !shared {
-                        tracing::info!(
-                            "acp detach unsubmitted session={sid} process={pid} (viewed only, closing)"
-                        );
-                        let c = acp;
-                        tokio::spawn(async move {
-                            c.kill().await;
-                        });
+                        // Exclusive process: do NOT kill — hand it back to the
+                        // prewarm pool so the next chat switch reuses it instead
+                        // of cold-spawning (browsing history would otherwise
+                        // detach → kill → next visit cold spawn, every time).
+                        let returned = {
+                            let mut pw = self.prewarm.lock();
+                            if pw.is_none() {
+                                *pw = Some(PrewarmedProcess {
+                                    acp: acp.clone(),
+                                    process_id: pid.clone(),
+                                    policy: pw_policy,
+                                    effort: pw_effort,
+                                    sandbox_profile: acp.sandbox_profile(),
+                                    model_id: pw_model,
+                                    created_at: Instant::now(),
+                                    backend: pw_backend,
+                                });
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        if returned {
+                            tracing::info!(
+                                "acp detach unsubmitted session={sid} process={pid} (viewed only; returned to prewarm pool)"
+                            );
+                        } else {
+                            tracing::info!(
+                                "acp detach unsubmitted session={sid} process={pid} (viewed only; prewarm busy, closing)"
+                            );
+                            let c = acp;
+                            tokio::spawn(async move {
+                                c.kill().await;
+                            });
+                        }
                     } else {
                         tracing::info!(
                             "acp detach unsubmitted session={sid} process={pid} (viewed only; shared process kept)"
