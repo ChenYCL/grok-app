@@ -960,7 +960,17 @@ impl SessionManager {
             return;
         };
         let cli_path = std::path::PathBuf::from(cli_path);
-        let prefs = store::resolve_composer_prefs(None, None);
+        // Most likely config for the next chat = the most recently used session's
+        // prefs (users keep policy/effort stable across chats). Falls back to
+        // the global defaults when no session exists yet. A global-default
+        // prewarm (policy=ask) never matched this user's always-approve(YOLO)
+        // sessions, so connect cold-spawned every time.
+        let last_sid = store::load_sessions_index()
+            .into_iter()
+            .filter(|s| !s.archived)
+            .max_by_key(|s| s.updated_at)
+            .map(|s| s.id.clone());
+        let prefs = store::resolve_composer_prefs(None, last_sid.as_deref());
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
         let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
         // Placeholder cwd — session cwd is a per-session parameter, so this
