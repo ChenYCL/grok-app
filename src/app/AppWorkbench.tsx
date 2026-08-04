@@ -2283,7 +2283,9 @@ export function AppWorkbench() {
   /** Sync gate for ensureConnected (React state alone races two rapid sends). */
   const connectingRef = useRef(false);
   /** Live provider retry progress (session://retry); cleared on success/stop/error. */
-  const [retryStatus, setRetryStatus] = useState<{
+  // Value intentionally unbound (retry chip hidden): only the setter is kept
+  // for cleanup calls. See the hidden-retry comment at the status-pill site.
+  const [, setRetryStatus] = useState<{
     attempt: number;
     maxRetries: number;
     reason: string;
@@ -16925,26 +16927,12 @@ export function AppWorkbench() {
                       {tr(connPill.labelKey as MessageKey)}
                     </span>
                   )}
-                  {/* Retry progress only — connection is silent; thinking lives in chat */}
-                  {retryStatus && (
-                    <Tip
-                      label={retryStatus.reason || tr("main.retrying", {
-                        attempt: String(retryStatus.attempt),
-                        max: String(retryStatus.maxRetries),
-                      })}
-                      disabled={!retryStatus.reason}
-                    >
-                      <span
-                        className="main__sub main__sub--retry"
-                        role="status"
-                      >
-                        {tr("main.retrying", {
-                          attempt: String(retryStatus.attempt),
-                          max: String(retryStatus.maxRetries),
-                        })}
-                      </span>
-                    </Tip>
-                  )}
+                  {/* Retry progress is intentionally NOT shown: mid-connect
+                      network retries (reqwest stream errors, transient 5xx)
+                      are normal and self-healing — surfacing them as a chip
+                      reads as a failure. Final failures surface via
+                      session://turn_error instead. setRetryStatus(null) calls
+                      stay as no-op cleanup. */}
                   {/* Codex Side Workbench chrome:
                       collapsed → open-with · env · side
                       open      → open-with · env  (side/expand on side bar) */}

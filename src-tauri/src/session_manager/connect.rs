@@ -1057,7 +1057,9 @@ impl SessionManager {
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
         let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
         // Placeholder cwd — session cwd is a per-session parameter, so this
-        // never binds the upcoming chat to a project.
+        // never binds the upcoming chat to a project. Must exist for
+        // Command::current_dir (spawn fails silently otherwise).
+        let _ = store::ensure_general_workspace_dir();
         let cwd = crate::paths::general_workspace_dir();
         let effective_sandbox =
             store::resolve_sandbox_profile(&settings.sandbox_profile, None);        let spawn_opts = crate::acp_client::SpawnOptions {
