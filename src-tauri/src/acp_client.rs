@@ -2869,6 +2869,22 @@ impl AcpClient {
             .await
     }
 
+    /// Tell the CLI to unload idle sessions to disk (actor shutdown, cloud
+    /// replica NOT finalized — still resumable via `session/load`).
+    ///
+    /// When the App detaches a viewed-only session, evicting its actor makes
+    /// the next `session/load` fast: the CLI's reload waits up to 5s for the
+    /// old session thread to finish, and an evicted (shutdown) thread finishes
+    /// immediately instead of hanging for the whole deadline.
+    pub async fn evict_sessions(&self, session_ids: &[String]) -> Result<Value, String> {
+        self.request_timeout(
+            "x.ai/internal/evict_sessions",
+            json!({ "sessionIds": session_ids }),
+            5,
+        )
+        .await
+    }
+
     /// List rewind points (one per user prompt). Grok extension `x.ai/rewind/points`.
     pub async fn rewind_points(&self) -> Result<Value, String> {
         let sid = self

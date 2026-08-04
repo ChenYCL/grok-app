@@ -247,11 +247,11 @@ impl SessionManager {
                 if !s.sent_prompt_this_visit {
                     let sid = s.app_session_id.clone();
                     let pid = s.process_id.clone();
+                    let agent_sid = s.meta.agent_session_id.clone();
                     let pw_policy = s.policy;
                     let pw_effort = s.effort.clone();
                     let pw_model = s.model_id.clone();
                     let pw_backend = s.backend.clone();
-                    let pw_project = s.project_path.clone();
                     // Shared process (other sessions still reference it): just
                     // drop our reference; the CLI stays for co-tenants.
                     let shared = self.parked.lock().values().any(|p| {
@@ -261,6 +261,7 @@ impl SessionManager {
                     });
                     let _ = guard.take();
                     drop(guard);
+                    let mut process_kept = shared;
                     if !shared {
                         // Exclusive process: do NOT kill — hand it back to the
                         // prewarm pool so the next chat switch reuses it instead
@@ -288,11 +289,12 @@ impl SessionManager {
                             tracing::info!(
                                 "acp detach unsubmitted session={sid} process={pid} (viewed only; returned to prewarm pool)"
                             );
+                            process_kept = true;
                         } else {
                             tracing::info!(
                                 "acp detach unsubmitted session={sid} process={pid} (viewed only; prewarm busy, closing)"
                             );
-                            let c = acp;
+                            let c = acp.clone();
                             tokio::spawn(async move {
                                 c.kill().await;
                             });
@@ -301,6 +303,20 @@ impl SessionManager {
                         tracing::info!(
                             "acp detach unsubmitted session={sid} process={pid} (viewed only; shared process kept)"
                         );
+                    }
+                    // Unload this session's actor to disk (keeps it resumable)
+                    // so the next session/load does not wait the CLI's 5s
+                    // old-thread drain. Only when the process survives (shared
+                    // or returned to prewarm); the kill path is moot.
+                    if process_kept {
+                        if let Some(asid) = agent_sid {
+                            let c = acp.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = c.evict_sessions(&[asid]).await {
+                                    tracing::debug!("evict session failed (soft): {e}");
+                                }
+                            });
+                        }
                     }
                     return Ok(());
                 }
