@@ -1088,7 +1088,18 @@ impl SessionManager {
                 PrewarmState::Ready(p) if p.acp.is_alive() && !force => return,
                 _ => {}
             }
-            if !force {
+            if force {
+                // Retire the old prewarm process (async kill) — otherwise
+                // every refresh leaks a CLI process.
+                if let PrewarmState::Ready(p) = std::mem::replace(
+                    &mut *pw,
+                    PrewarmState::Spawning { since: Instant::now() },
+                ) {
+                    tokio::spawn(async move {
+                        p.acp.kill().await;
+                    });
+                }
+            } else {
                 // Any warm process already covers connect — don't spawn a second.
                 if self.parked.lock().values().any(|p| p.acp.is_alive())
                     || self
@@ -1104,10 +1115,10 @@ impl SessionManager {
                 {
                     return;
                 }
+                *pw = PrewarmState::Spawning {
+                    since: Instant::now(),
+                };
             }
-            *pw = PrewarmState::Spawning {
-                since: Instant::now(),
-            };
         }
 
         let settings = store::load_settings();
