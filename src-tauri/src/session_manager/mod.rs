@@ -56,7 +56,7 @@ pub struct SessionManager {
     /// Warm Ready agents for other App sessions (keyed by app session id).
     pub(super) parked: Mutex<HashMap<String, ParkedAgent>>,
     /// Process prewarmed while the user is composing a new chat (no session yet).
-    pub(super) prewarm: Mutex<Option<PrewarmedProcess>>,
+    pub(super) prewarm: Mutex<PrewarmState>,
     /// Serialize connect / park / unpark so openSession prefetch cannot race first send.
     pub(super) connect_lock: tokio::sync::Mutex<()>,
 }
@@ -73,7 +73,7 @@ impl SessionManager {
             inner: Mutex::new(None),
             background: Mutex::new(HashMap::new()),
             parked: Mutex::new(HashMap::new()),
-            prewarm: Mutex::new(None),
+            prewarm: Mutex::new(PrewarmState::None),
             connect_lock: tokio::sync::Mutex::new(()),
         }
     }

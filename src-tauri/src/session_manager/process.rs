@@ -248,10 +248,6 @@ impl SessionManager {
                     let sid = s.app_session_id.clone();
                     let pid = s.process_id.clone();
                     let agent_sid = s.meta.agent_session_id.clone();
-                    let pw_policy = s.policy;
-                    let pw_effort = s.effort.clone();
-                    let pw_model = s.model_id.clone();
-                    let pw_backend = s.backend.clone();
                     // Shared process (other sessions still reference it): just
                     // drop our reference; the CLI stays for co-tenants.
                     let shared = self.parked.lock().values().any(|p| {
@@ -261,54 +257,26 @@ impl SessionManager {
                     });
                     let _ = guard.take();
                     drop(guard);
-                    let mut process_kept = shared;
                     if !shared {
-                        // Exclusive process: do NOT kill — hand it back to the
-                        // prewarm pool so the next chat switch reuses it instead
-                        // of cold-spawning (browsing history would otherwise
-                        // detach → kill → next visit cold spawn, every time).
-                        let returned = {
-                            let mut pw = self.prewarm.lock();
-                            if pw.is_none() {
-                                *pw = Some(PrewarmedProcess {
-                                    acp: acp.clone(),
-                                    process_id: pid.clone(),
-                                    policy: pw_policy,
-                                    effort: pw_effort,
-                                    sandbox_profile: acp.sandbox_profile(),
-                                    model_id: pw_model,
-                                    created_at: Instant::now(),
-                                    backend: pw_backend,
-                                });
-                                true
-                            } else {
-                                false
-                            }
-                        };
-                        if returned {
-                            tracing::info!(
-                                "acp detach unsubmitted session={sid} process={pid} (viewed only; returned to prewarm pool)"
-                            );
-                            process_kept = true;
-                        } else {
-                            tracing::info!(
-                                "acp detach unsubmitted session={sid} process={pid} (viewed only; prewarm busy, closing)"
-                            );
-                            let c = acp.clone();
-                            tokio::spawn(async move {
-                                c.kill().await;
-                            });
-                        }
+                        // Exclusive: kill — the CLI accumulates a session actor
+                        // per load and has no public unload API (internal evict
+                        // unavailable, close finalizes). A kept process would
+                        // make the next load of this same session wait the CLI's
+                        // 5s old-thread drain. The prewarm slot is refreshed on
+                        // the next connect with a clean process.
+                        tracing::info!(
+                            "acp detach unsubmitted session={sid} process={pid} (viewed only; closed)"
+                        );
+                        let c = acp;
+                        tokio::spawn(async move {
+                            c.kill().await;
+                        });
                     } else {
                         tracing::info!(
                             "acp detach unsubmitted session={sid} process={pid} (viewed only; shared process kept)"
                         );
-                    }
-                    // Unload this session's actor to disk (keeps it resumable)
-                    // so the next session/load does not wait the CLI's 5s
-                    // old-thread drain. Only when the process survives (shared
-                    // or returned to prewarm); the kill path is moot.
-                    if process_kept {
+                        // Best-effort actor unload (keeps session resumable) —
+                        // soft-fails on CLIs without the internal method.
                         if let Some(asid) = agent_sid {
                             let c = acp.clone();
                             tokio::spawn(async move {

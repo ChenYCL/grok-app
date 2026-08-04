@@ -464,24 +464,18 @@ impl SessionManager {
                 };
                 // Prewarm is the freshest candidate — purpose-built for the next
                 // chat. Consume it first (matches are exclusive to this connect).
-                {
-                    let mut pw = self.prewarm.lock();
-                    if let Some(p) = pw.as_ref() {
-                        if gate(
-                            p.acp.is_alive(),
-                            p.policy,
-                            p.effort.as_deref(),
-                            p.sandbox_profile.as_deref(),
-                            crate::providers::is_custom_provider_id(
-                                p.model_id.as_deref().unwrap_or(""),
-                            ),
-                        ) {
-                            best = Some((p.acp.clone(), p.process_id.clone(), p.created_at));
-                            *pw = None;
-                        } else {
-                            rejected.push(format!(
-                                "prewarm: {}",
-                                reject_reason(
+                // A Spawning prewarm (detach swapped in a fresh process) is
+                // awaited briefly — its CLI has no accumulated actors, so the
+                // session/load that follows is fast instead of the CLI's 5s
+                // old-thread drain.
+                let prewarm_wait_deadline =
+                    std::time::Instant::now() + std::time::Duration::from_millis(2500);
+                loop {
+                    let taken = {
+                        let mut pw = self.prewarm.lock();
+                        match std::mem::replace(&mut *pw, PrewarmState::None) {
+                            PrewarmState::Ready(p) => {
+                                if gate(
                                     p.acp.is_alive(),
                                     p.policy,
                                     p.effort.as_deref(),
@@ -489,10 +483,53 @@ impl SessionManager {
                                     crate::providers::is_custom_provider_id(
                                         p.model_id.as_deref().unwrap_or(""),
                                     ),
-                                )
-                            ));
+                                ) {
+                                    Some((p.acp, p.process_id, p.created_at))
+                                } else {
+                                    rejected.push(format!(
+                                        "prewarm: {}",
+                                        reject_reason(
+                                            p.acp.is_alive(),
+                                            p.policy,
+                                            p.effort.as_deref(),
+                                            p.sandbox_profile.as_deref(),
+                                            crate::providers::is_custom_provider_id(
+                                                p.model_id.as_deref().unwrap_or(""),
+                                            ),
+                                        )
+                                    ));
+                                    None
+                                }
+                            }
+                            PrewarmState::Spawning { since }
+                                if since.elapsed()
+                                    < std::time::Duration::from_millis(2500) =>
+                            {
+                                *pw = PrewarmState::Spawning { since };
+                                None
+                            }
+                            other => {
+                                *pw = other;
+                                None
+                            }
                         }
+                    };
+                    if let Some((acp, pid, at)) = taken {
+                        best = Some((acp, pid, at));
+                        break;
                     }
+                    let still_spawning = matches!(
+                        *self.prewarm.lock(),
+                        PrewarmState::Spawning { .. }
+                    );
+                    if !still_spawning
+                        || std::time::Instant::now() >= prewarm_wait_deadline
+                    {
+                        break;
+                    }
+                    // Brief yield so the prewarm task can progress (it spawns
+                    // outside connect_lock, so this cannot deadlock).
+                    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
                 }
                 if best.is_none() {
                 let parked = self.parked.lock();
@@ -635,6 +672,19 @@ impl SessionManager {
                             resumed,
                             "connect warm-reuse ok"
                         );
+                        // Refresh the prewarm slot with a FRESH process: the
+                        // one we just consumed now hosts this session's actor,
+                        // and the CLI has no public unload API — a second load
+                        // of the same session on that process would wait the
+                        // 5s old-thread drain. A clean process keeps every
+                        // session/load fast.
+                        {
+                            let mgr = Arc::clone(self);
+                            let app2 = app.clone();
+                            tokio::spawn(async move {
+                                mgr.prewarm_force(app2).await;
+                            });
+                        }
                         return Ok(snap);
                     }
                     Err(e) => {
@@ -1015,35 +1065,55 @@ impl SessionManager {
     /// process already exists (parked / background covers connect). Uses the
     /// global/default channel prefs — if the submitted session differs in
     /// policy/effort/sandbox/route, connect falls back to a cold spawn.
+    ///
+    /// `force` kills any current prewarm first (detach uses it to swap in a
+    /// fresh process whose CLI has no accumulated session actors, so the next
+    /// `session/load` does not wait the CLI's 5s old-thread drain).
     pub async fn prewarm(self: &Arc<Self>, app: AppHandle) {
-        let _guard = self.connect_lock.lock().await;
-        // Already prewarmed and alive → no-op (drop dead entries).
+        self.prewarm_inner(app, false).await;
+    }
+
+    pub async fn prewarm_force(self: &Arc<Self>, app: AppHandle) {
+        self.prewarm_inner(app, true).await;
+    }
+
+    async fn prewarm_inner(self: &Arc<Self>, app: AppHandle, force: bool) {
+        // Quick gate (no connect_lock — connect may be awaiting a Spawning
+        // prewarm; grabbing the lock here would deadlock it). The prewarm
+        // Mutex serializes concurrent prewarm calls.
         {
             let mut pw = self.prewarm.lock();
-            match pw.as_ref() {
-                Some(p) if p.acp.is_alive() => return,
-                _ => *pw = None,
+            match &*pw {
+                PrewarmState::Spawning { .. } => return,
+                PrewarmState::Ready(p) if p.acp.is_alive() && !force => return,
+                _ => {}
             }
-        }
-        // Any warm process already covers connect — don't spawn a second one.
-        if self.parked.lock().values().any(|p| p.acp.is_alive())
-            || self
-                .background
-                .lock()
-                .values()
-                .any(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
-            || self
-                .inner
-                .lock()
-                .as_ref()
-                .is_some_and(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
-        {
-            return;
+            if !force {
+                // Any warm process already covers connect — don't spawn a second.
+                if self.parked.lock().values().any(|p| p.acp.is_alive())
+                    || self
+                        .background
+                        .lock()
+                        .values()
+                        .any(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
+                    || self
+                        .inner
+                        .lock()
+                        .as_ref()
+                        .is_some_and(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
+                {
+                    return;
+                }
+            }
+            *pw = PrewarmState::Spawning {
+                since: Instant::now(),
+            };
         }
 
         let settings = store::load_settings();
         let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
         let Some(cli_path) = probe.path else {
+            *self.prewarm.lock() = PrewarmState::None;
             return;
         };
         let cli_path = std::path::PathBuf::from(cli_path);
@@ -1066,7 +1136,8 @@ impl SessionManager {
         let _ = store::ensure_general_workspace_dir();
         let cwd = crate::paths::general_workspace_dir();
         let effective_sandbox =
-            store::resolve_sandbox_profile(&settings.sandbox_profile, None);        let spawn_opts = crate::acp_client::SpawnOptions {
+            store::resolve_sandbox_profile(&settings.sandbox_profile, None);
+        let spawn_opts = crate::acp_client::SpawnOptions {
             model_id: Some(agent_model),
             effort: Some(prefs.effort.clone()),
             permission_policy: Some(prefs.permission_policy.clone()),
@@ -1078,6 +1149,7 @@ impl SessionManager {
             Ok(v) => v,
             Err(e) => {
                 tracing::warn!(code = e.code.as_str(), error = %e.message, "prewarm spawn failed");
+                *self.prewarm.lock() = PrewarmState::None;
                 return;
             }
         };
@@ -1096,9 +1168,10 @@ impl SessionManager {
         if let Err(e) = client.initialize_and_auth().await {
             tracing::warn!(code = e.code.as_str(), error = %e.message, "prewarm init failed");
             client.kill().await;
+            *self.prewarm.lock() = PrewarmState::None;
             return;
         }
-        *self.prewarm.lock() = Some(PrewarmedProcess {
+        *self.prewarm.lock() = PrewarmState::Ready(PrewarmedProcess {
             acp: client,
             process_id,
             policy,
@@ -1119,16 +1192,16 @@ impl SessionManager {
         let _ = ttl; // persistent — only dead entries are reaped
         let victim = {
             let mut pw = self.prewarm.lock();
-            match pw.as_ref() {
-                Some(p) if !p.acp.is_alive() => pw.take(),
-                _ => None,
+            match std::mem::replace(&mut *pw, PrewarmState::None) {
+                PrewarmState::Ready(p) if !p.acp.is_alive() => Some(p),
+                other => {
+                    *pw = other;
+                    None
+                }
             }
         };
         if let Some(p) = victim {
-            tracing::info!(
-                "prewarm process {} recycled (dead)",
-                p.process_id
-            );
+            tracing::info!("prewarm process {} recycled (dead)", p.process_id);
             p.acp.kill().await;
         }
     }

@@ -252,6 +252,16 @@ pub(crate) struct PrewarmedProcess {
     pub(super) backend: String,
 }
 
+/// Prewarm slot state. A process that was detached (viewed-only session) is
+/// killed and replaced so its accumulated CLI actors do not slow the next
+/// `session/load` (the CLI waits up to 5s for an old session thread).
+pub(crate) enum PrewarmState {
+    None,
+    /// initialize+auth in flight; connect may wait briefly for it.
+    Spawning { since: Instant },
+    Ready(PrewarmedProcess),
+}
+
 /// Ready agent process parked while another App session is focused (I01/I02).
 pub(crate) struct ParkedAgent {
     pub(super) process_id: ProcessId,
