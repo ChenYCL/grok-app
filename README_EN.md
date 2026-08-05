@@ -143,7 +143,7 @@ Compare the PowerShell hash against the matching line in `SHA256SUMS`.
 
 #### Windows SmartScreen
 
-Windows builds are **not code-signed** (no Authenticode certificate yet), so SmartScreen shows “Windows protected your PC / Unknown publisher” on first run. This is expected for this project’s unsigned builds: click **More info → Run anyway**. Verify the checksum above if in doubt.
+Community / unsigned Windows builds show SmartScreen “Windows protected your PC / Unknown publisher” on first run — click **More info → Run anyway** and verify the checksum above if in doubt. Release CI can Authenticode-sign installers when `WINDOWS_CERTIFICATE` + `WINDOWS_CERTIFICATE_PASSWORD` secrets are configured (see `docs/BUILD.md`); signed builds use the publisher name on the certificate.
 
 ### 2. First run
 

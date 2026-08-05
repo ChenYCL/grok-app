@@ -530,7 +530,7 @@ export function GeneralSection() {
                     </div>
                   </div>
                   <Select
-                    value={sandboxProfile || "off"}
+                    value={sandboxProfile || "workspace"}
                     onChange={(v) => onSandboxProfile(v)}
                     options={sandboxProfileSelectOptions().map((o) => ({
                       value: o.value,
@@ -538,10 +538,9 @@ export function GeneralSection() {
                     }))}
                   />
                   <div className="settings-row__desc">
-                    {t(sandboxProfileHelpKey(sandboxProfile || "off"))}
+                    {t(sandboxProfileHelpKey(sandboxProfile || "workspace"))}
                   </div>
-                  {sandboxProfile === RECOMMENDED_SANDBOX_PROFILE ||
-                  (sandboxProfile || "off") === "off" ? (
+                  {sandboxProfile === RECOMMENDED_SANDBOX_PROFILE ? (
                     <div className="settings-row__hint">
                       {t("settings.sandbox.recommendedNote")}
                     </div>

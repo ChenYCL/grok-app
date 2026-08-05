@@ -449,6 +449,10 @@ pub async fn media_video_poster_save(
 }
 
 /// Open a file or folder with the OS default application.
+///
+/// Spawn is fully detached (null stdio, no wait). Holding a pipe or waiting on
+/// the default handler used to freeze/black-out the main WebView when opening
+/// large PDFs or other slow handlers from the chat file card.
 #[tauri::command]
 pub async fn path_open(path: String) -> Result<(), String> {
     let p = normalize_fs_path(&path);
@@ -459,24 +463,44 @@ pub async fn path_open(path: String) -> Result<(), String> {
     if !pb.exists() {
         return Err(format!("path not found: {p}"));
     }
+    // Off the async runtime so a slow spawn cannot stall the IPC loop.
+    tokio::task::spawn_blocking(move || path_open_detached(&p))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn path_open_detached(p: &str) -> Result<(), String> {
+    use std::process::Stdio;
     #[cfg(target_os = "macos")]
     {
         crate::process_util::command("open")
-            .arg(&p)
+            .arg(p)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .map_err(|e| e.to_string())?;
     }
     #[cfg(target_os = "windows")]
     {
+        // Prefer ShellExecute-style open via `cmd /C start "" <path>`.
+        // Null stdio + CREATE_NO_WINDOW (via process_util::command) avoids a
+        // flash console and keeps the app UI responsive.
         crate::process_util::command("cmd")
-            .args(["/C", "start", "", &p])
+            .args(["/C", "start", "", p])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .map_err(|e| e.to_string())?;
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         crate::process_util::command("xdg-open")
-            .arg(&p)
+            .arg(p)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .map_err(|e| e.to_string())?;
     }

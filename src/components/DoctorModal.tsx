@@ -225,7 +225,7 @@ export function DoctorModal({
   onResetDone,
   onOpenReliability,
   onOpenSettings,
-  sandboxProfile = "off",
+  sandboxProfile = "workspace",
 }: DoctorModalProps) {
   // Product tree wraps Doctor in UpdaterProvider (App shell).
   const { channelInfo } = useUpdaterContext();

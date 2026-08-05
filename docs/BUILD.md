@@ -163,9 +163,22 @@ cp src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/* dist-installer
 | Secret | 用途 |
 |--------|------|
 | `APPLE_CERTIFICATE` 等 | Apple 公证 / 签名（见 [Tauri macOS signing](https://v2.tauri.app/distribute/sign/macos/)） |
+| `WINDOWS_CERTIFICATE` | **Windows Authenticode** `.pfx` 的 base64（`certutil -encode` 或 `[Convert]::ToBase64String`） |
+| `WINDOWS_CERTIFICATE_PASSWORD` | 上述 `.pfx` 的导出密码 |
 | `GROK_UPDATER_PUBLIC_KEY` | 应用内自动更新公钥（与 endpoint 一起嵌入 release 构建） |
 | `TAURI_SIGNING_PRIVATE_KEY` | Tauri updater 签名私钥（启用自动更新时必需） |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 私钥密码（可为空） |
+
+#### Windows Authenticode（正式代码签名）
+
+- **与 Tauri updater minisign 不是一回事**：`TAURI_SIGNING_PRIVATE_KEY` 只签更新包，**不能**消除 SmartScreen「未知发布者」。
+- 需要 **代码签名证书**（OV / EV；SSL 证书无效）。EV 通常立刻建立信誉；OV 可能仍短暂显示 SmartScreen，直到证书信誉积累。
+- Release CI（`windows-latest`）在两个 secret **都非空** 时会：
+  1. 把 base64 解成 `.pfx` 并 `Import-PfxCertificate` 到 `Cert:\CurrentUser\My`
+  2. 写出 `src-tauri/tauri.windows.sign.conf.json`（`certificateThumbprint` + sha256 + DigiCert 时间戳）
+  3. `tauri build --config …/tauri.windows.sign.conf.json` 让 bundler 调用 `signtool`
+- **不要**在 GitHub 填入空的 `WINDOWS_*` secrets；缺省即跳过签名，构建仍成功。
+- 本地 Windows 签名：导入 PFX 后按 [Tauri Windows signing](https://v2.tauri.app/distribute/sign/windows/) 配置 thumbprint，或复用同一 merge config。
 
 应用内自动更新详情见 [desktop-auto-update.md](./desktop-auto-update.md)。  
 Release CI 在 secrets 齐全时会生成 `tauri.release.conf.json` 并注入 `GROK_UPDATER_*`。

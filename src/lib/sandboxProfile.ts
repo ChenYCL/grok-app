@@ -23,9 +23,14 @@ export const SANDBOX_PROFILES = [
 
 export type SandboxProfileId = (typeof SANDBOX_PROFILES)[number];
 
-export const DEFAULT_SANDBOX_PROFILE: SandboxProfileId = "off";
+/**
+ * New-install / missing-field default. Matches the everyday CLI recommendation
+ * (`workspace`) so first-run agents are isolated under the project tree.
+ * Existing settings.json that already stored `"off"` keep that value.
+ */
+export const DEFAULT_SANDBOX_PROFILE: SandboxProfileId = "workspace";
 
-/** Everyday coding recommendation (CLI docs). */
+/** Everyday coding recommendation (CLI docs) — same as default. */
 export const RECOMMENDED_SANDBOX_PROFILE: SandboxProfileId = "workspace";
 
 /** Profiles that disable isolation or use a relaxed disposable layout. */
@@ -145,8 +150,9 @@ export function isDangerousSandboxProfile(profile: unknown): boolean {
 }
 
 /**
- * True when isolation is requested after resolve (default off).
- * Unknown / empty / inherit → false.
+ * True when isolation is requested after resolve.
+ * Unknown / empty / inherit → {@link DEFAULT_SANDBOX_PROFILE} (workspace → true).
+ * Explicit `"off"` → false.
  */
 export function sandboxIsolationActive(profile: unknown): boolean {
   return resolveSandboxProfile(profile, null) !== "off";

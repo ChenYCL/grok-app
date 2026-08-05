@@ -115,8 +115,10 @@ describe("sandboxIsolationActive", () => {
     expect(sandboxIsolationActive("workspace")).toBe(true);
     expect(sandboxIsolationActive("strict")).toBe(true);
     expect(sandboxIsolationActive("off")).toBe(false);
-    expect(sandboxIsolationActive(null)).toBe(false);
-    expect(sandboxIsolationActive("bogus")).toBe(false);
+    // Missing / invalid → DEFAULT_SANDBOX_PROFILE (workspace) → isolation on.
+    expect(sandboxIsolationActive(null)).toBe(true);
+    expect(sandboxIsolationActive("bogus")).toBe(true);
+    expect(sandboxIsolationActive("workspace")).toBe(true);
   });
 });
 
@@ -126,7 +128,9 @@ describe("label / help / danger keys", () => {
       expect(sandboxProfileLabelKey(p)).toBe(SANDBOX_PROFILE_LABEL_KEYS[p]);
       expect(sandboxProfileHelpKey(p)).toBe(SANDBOX_PROFILE_HELP_KEYS[p]);
     }
-    expect(sandboxProfileLabelKey("nope")).toBe(SANDBOX_PROFILE_LABEL_KEYS.off);
+    expect(sandboxProfileLabelKey("nope")).toBe(
+      SANDBOX_PROFILE_LABEL_KEYS.workspace,
+    );
   });
 
   it("danger confirm keys only for off / devbox", () => {
@@ -316,7 +320,8 @@ describe("sandboxProfileEqual", () => {
   it("normalizes before compare", () => {
     expect(sandboxProfileEqual("  WorkSpace ", "workspace")).toBe(true);
     expect(sandboxProfileEqual("strict", "off")).toBe(false);
-    expect(sandboxProfileEqual(null, "off")).toBe(true);
+    expect(sandboxProfileEqual(null, "workspace")).toBe(true);
+    expect(sandboxProfileEqual(null, "off")).toBe(false);
     expect(sandboxProfileEqual("bogus", null)).toBe(true);
   });
 });

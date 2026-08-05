@@ -94,6 +94,7 @@ import {
   resolveStreamFlushMs,
   toolEventNeedsImmediateFlush,
 } from "@/lib/streamCoalesce";
+import { shouldApplyLateStreamText } from "@/lib/streamLateToken";
 import {
   chatcutHandoffToResourceOpenTarget,
   resolveChatcutHandoffFromToolEvent,
@@ -381,34 +382,55 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
               }
               // After a turn, rehydrate any longer journal body (missed stream
               // tail) and resolve `images/N.jpg` short paths into image cards.
+              // Retry once: Host may still be flushing the final assistant row
+              // when the ready event lands (early prompt_complete race).
               if (s.state === "ready") {
                 const sid = s.sessionId;
                 if (
                   isTurnDoneReadyTransition(prevLiveState, s.state) &&
                   sid
                 ) {
-                  void api
-                    .sessionMessages(sid)
-                    .then((stored) => {
-                      if (
-                        cancelled ||
-                        c.viewingSessionIdRef.current !== sid
-                      ) {
-                        return;
-                      }
-                      const mapped = mapStoredMessagesToChat(stored);
-                      const woven = weaveToolsIntoAssistantSegments(mapped);
-                      c.setMessages((prev) => {
-                        const next = upgradeMessagesFromJournal(prev, woven);
-                        if (next !== prev) {
-                          c.messagesBySessionRef.current.set(sid, next);
+                  const rehydrateFromJournal = (attempt: number) => {
+                    void api
+                      .sessionMessages(sid)
+                      .then((stored) => {
+                        if (
+                          cancelled ||
+                          c.viewingSessionIdRef.current !== sid
+                        ) {
+                          return;
                         }
-                        return next;
+                        const mapped = mapStoredMessagesToChat(stored);
+                        const woven = weaveToolsIntoAssistantSegments(mapped);
+                        let upgraded = false;
+                        c.setMessages((prev) => {
+                          const next = upgradeMessagesFromJournal(prev, woven);
+                          if (next !== prev) {
+                            upgraded = true;
+                            c.messagesBySessionRef.current.set(sid, next);
+                          }
+                          return next;
+                        });
+                        // If body is still empty after first pass, journal may
+                        // not have flushed yet — one delayed retry.
+                        if (!upgraded && attempt === 0) {
+                          const msgs =
+                            c.messagesBySessionRef.current.get(sid) ?? [];
+                          const lastAsst = [...msgs]
+                            .reverse()
+                            .find((m) => m.role === "assistant");
+                          if (lastAsst && !(lastAsst.content ?? "").trim()) {
+                            window.setTimeout(() => {
+                              if (!cancelled) rehydrateFromJournal(1);
+                            }, 400);
+                          }
+                        }
+                      })
+                      .catch(() => {
+                        /* journal rehydrate is best-effort */
                       });
-                    })
-                    .catch(() => {
-                      /* journal rehydrate is best-effort */
-                    });
+                  };
+                  rehydrateFromJournal(0);
                 }
                 c.setMessages((prev) => {
                   const rels = collectSessionRelativeMediaRefs(prev);
@@ -613,17 +635,21 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
           if (cancelled) return;
           // Ignore empty terminal ticks that only flip done
           if (!chunk.text && !chunk.done) return;
-          // Anti-replay: only drop when the *same* focused host session is idle.
-          // Multi-session: background turns keep streaming after switch — never
-          // gate on liveHost.state alone (that monopolizes the focused chat).
+          // Anti-replay vs late answer after early ready (see streamLateToken).
+          // Busy/liveMap re-promotion stays gated via mayPromoteStreamingFromStreamChunk.
           const host = c.liveHostRef.current;
-          if (
-            chunk.text &&
-            chunk.sessionId &&
-            chunk.sessionId === host.sessionId &&
-            !isSessionLiveStreaming(host.state)
-          ) {
-            return;
+          if (chunk.text && chunk.sessionId) {
+            const msgs =
+              c.messagesBySessionRef.current.get(chunk.sessionId) ?? [];
+            if (
+              !shouldApplyLateStreamText({
+                hostLiveStreaming: isSessionLiveStreaming(host.state),
+                chunkIsForFocusedHost: chunk.sessionId === host.sessionId,
+                messages: msgs,
+              })
+            ) {
+              return;
+            }
           }
           if (
             chunk.text &&

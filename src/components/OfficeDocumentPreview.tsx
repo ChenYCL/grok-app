@@ -2,7 +2,7 @@
  * Rich local document preview:
  * - PDF  → react-pdf (pdf.js)
  * - DOCX → docx-preview (styled Word layout)
- * - XLSX → SheetJS (xlsx) multi-sheet tables
+ * - XLSX → SheetJS (xlsx ≥0.20.3) multi-sheet tables
  * - PPTX → limited text fallback + open externally
  */
 
@@ -261,6 +261,16 @@ export function OfficeDocumentPreview({
     }
   };
 
+  /**
+   * Stable react-pdf `file` prop. Inline `new Uint8Array(...)` every render
+   * remounts Document in a tight loop (GPU thrash → full-window black freeze
+   * when users open a generated PDF from chat).
+   */
+  const pdfFile = useMemo(() => {
+    if (load.status !== "ready" || kind !== "pdf") return null;
+    return { data: new Uint8Array(load.buffer) };
+  }, [load, kind]);
+
   if (load.status === "loading") {
     return (
       <div className="office-preview office-preview--center">
@@ -356,28 +366,32 @@ export function OfficeDocumentPreview({
           </div>
         </div>
         <div className="office-preview__pdf-scroll">
-          <Document
-            file={{ data: new Uint8Array(load.buffer) }}
-            onLoadSuccess={(d) => {
-              setPdfPages(d.numPages);
-              setPdfPage(1);
-            }}
-            loading={
-              <div className="office-preview__status">{tr("office.loading")}</div>
-            }
-            error={
-              <div className="office-preview__status">
-                {tr("office.renderFailed")}
-              </div>
-            }
-          >
-            <Page
-              pageNumber={pdfPage}
-              scale={pdfScale}
-              renderTextLayer
-              renderAnnotationLayer
-            />
-          </Document>
+          {pdfFile ? (
+            <Document
+              file={pdfFile}
+              onLoadSuccess={(d) => {
+                setPdfPages(d.numPages);
+                setPdfPage(1);
+              }}
+              loading={
+                <div className="office-preview__status">
+                  {tr("office.loading")}
+                </div>
+              }
+              error={
+                <div className="office-preview__status">
+                  {tr("office.renderFailed")}
+                </div>
+              }
+            >
+              <Page
+                pageNumber={pdfPage}
+                scale={pdfScale}
+                renderTextLayer
+                renderAnnotationLayer
+              />
+            </Document>
+          ) : null}
         </div>
       </div>
     );

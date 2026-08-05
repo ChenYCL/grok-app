@@ -284,7 +284,7 @@ export function SettingsPage({
   onIncludePartialMessages,
   storeApiKeysInKeychain = false,
   onStoreApiKeysInKeychain,
-  sandboxProfile = "off",
+  sandboxProfile = "workspace",
   onSandboxProfile,
   maxAgentTurns = 0,
   onMaxAgentTurns,

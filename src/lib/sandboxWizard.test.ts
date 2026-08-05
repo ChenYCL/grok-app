@@ -159,12 +159,13 @@ describe("shouldOfferSandboxWizard", () => {
         dismissed: false,
       }),
     ).toBe(true);
+    // Empty/missing resolves to DEFAULT (workspace) → already isolating → no offer.
     expect(
       shouldOfferSandboxWizard({
         justTrusted: true,
         currentProfile: "",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("skips when not just trusted, dismissed, or already isolating", () => {
@@ -292,7 +293,7 @@ describe("createSandboxWizardAnswers / choices / keys", () => {
   });
 
   it("default profile constant stays off (wizard still recommends workspace)", () => {
-    expect(DEFAULT_SANDBOX_PROFILE).toBe("off");
+    expect(DEFAULT_SANDBOX_PROFILE).toBe("workspace");
     expect(RECOMMENDED_SANDBOX_PROFILE).toBe("workspace");
   });
 });

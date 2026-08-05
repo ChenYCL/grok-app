@@ -474,7 +474,9 @@ fn default_stream_stall_seconds() -> u32 {
 }
 
 fn default_sandbox_profile() -> String {
-    "off".into()
+    // New installs + missing field: Workspace isolation (matches App DEFAULT_SANDBOX_PROFILE).
+    // Existing settings that already persist "off" are unchanged.
+    "workspace".into()
 }
 
 fn default_compaction_mode() -> String {
@@ -2320,7 +2322,7 @@ mod tests {
         assert_eq!(s.max_concurrent_agents, 8);
         assert_eq!(s.agent_idle_minutes, 30);
         assert_eq!(s.stream_stall_seconds, 180);
-        assert_eq!(s.sandbox_profile, "off");
+        assert_eq!(s.sandbox_profile, "workspace");
         assert!(!s.experimental_memory);
         assert_eq!(s.compaction_mode, "summary");
         assert_eq!(s.compaction_detail, "verbose");
@@ -2371,7 +2373,7 @@ mod tests {
             "workspace"
         );
         assert_eq!(resolve_sandbox_profile("workspace", None), "workspace");
-        assert_eq!(resolve_sandbox_profile("bogus", Some("")), "off");
+        assert_eq!(resolve_sandbox_profile("bogus", Some("")), "workspace");
         assert_eq!(
             resolve_sandbox_profile("  WorkSpace  ", Some("  DEVBOX  ")),
             "devbox"
@@ -2381,7 +2383,7 @@ mod tests {
     #[test]
     fn sandbox_profile_defaults_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
-        assert_eq!(s.sandbox_profile, "off");
+        assert_eq!(s.sandbox_profile, "workspace");
     }
 
     #[test]

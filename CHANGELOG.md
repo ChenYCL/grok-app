@@ -11,6 +11,17 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Security
+- **xlsx**: replace abandoned npm `xlsx@0.18.5` (Prototype Pollution / ReDoS) with SheetJS Community **0.20.3** from the official CDN tarball (CVE-2023-30533 / CVE-2024-22363 fixed). Drop obsolete `@types/xlsx`.
+
+### Changed
+- **Default sandbox (new installs)**: App / Host default `sandboxProfile` is now **`workspace`** (OS isolation under the project tree). Existing settings that already stored `"off"` are unchanged. Settings UI still offers off / read-only / strict / devbox.
+- **Windows Authenticode (optional CI)**: Release workflow imports `WINDOWS_CERTIFICATE` + `WINDOWS_CERTIFICATE_PASSWORD` when set, writes thumbprint merge config, and signs the Windows bundle with `signtool`. Unsigned builds remain supported without secrets. Docs: `docs/BUILD.md`.
+
+### Fixed
+- **Stream after thinking**: Host may mark the turn `ready` before the assistant body finishes (early `prompt_complete`). Late body tokens were dropped when the focused host was no longer “live streaming”, so the bubble stayed empty until restart (journal already had the text). Late tokens now apply when the turn bubble is still streaming or body-empty; pure post-turn replays still drop. Journal rehydrate retries once after 400ms if the body is still empty.
+- **PDF open freeze / black window**: `react-pdf` `Document` was given a new `Uint8Array` every render → remount loop and GPU thrash when opening a generated PDF (file card / panel). Memoize the `file` prop. `path_open` now detaches with null stdio on a blocking thread so slow default handlers cannot stall the WebView IPC loop.
+
 ## [0.2.5] - 2026-08-04
 
 > **Highlight:** Codex-style **side workbench** + redesigned **Settings → Extensions** (plugin cards, ChatCut recommend, market merge), multi-module **stream/perf isolation**, ChatCut Codex adapter + in-app MCP OAuth, and Docker mirror **QUIC → HTTP/2** fallback (#517).

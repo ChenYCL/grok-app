@@ -2134,7 +2134,7 @@ export function AppWorkbench() {
   const [backgroundWaitPolicy, setBackgroundWaitPolicy] = useState("wait");
   const [backgroundWaitTimeoutSec, setBackgroundWaitTimeoutSec] = useState(600);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
-  const [sandboxProfile, setSandboxProfile] = useState("off");
+  const [sandboxProfile, setSandboxProfile] = useState("workspace");
   /** Preferred CLI agent definition for spawn (`""` = CLI default). */
   const [preferredAgent, setPreferredAgent] = useState("");
   /** Optional `grok agent --agent-profile <PATH>` (empty = omit). */
@@ -2967,9 +2967,9 @@ export function AppWorkbench() {
       }
       setStoreApiKeysInKeychain(!!settings.storeApiKeysInKeychain);
       {
-        const sb = (settings.sandboxProfile || "off").trim().toLowerCase();
+        const sb = (settings.sandboxProfile || "workspace").trim().toLowerCase();
         const known = ["off", "workspace", "read-only", "strict", "devbox"];
-        setSandboxProfile(known.includes(sb) ? sb : "off");
+        setSandboxProfile(known.includes(sb) ? sb : "workspace");
       }
       setPreferredAgent((settings.preferredAgent || "").trim());
       setAgentProfilePath((settings.agentProfilePath || "").trim());
