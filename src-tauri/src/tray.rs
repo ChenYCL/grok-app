@@ -204,6 +204,18 @@ fn usage_status_label(tr: &TrayStrings) -> String {
 
 /// Hide main window to tray only: no Dock (macOS) / no taskbar button (Windows).
 pub fn hide_to_tray(app: &AppHandle) {
+    // Persist geometry before hide so force-kill while tray-resident still restores
+    // the last size/position on next launch (plugin also saves on process Exit).
+    {
+        use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+        let flags = StateFlags::SIZE
+            | StateFlags::POSITION
+            | StateFlags::MAXIMIZED
+            | StateFlags::FULLSCREEN;
+        if let Err(e) = app.save_window_state(flags) {
+            tracing::debug!(error = %e, "window-state save on hide-to-tray failed");
+        }
+    }
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
         // Windows: TOOLWINDOW + DeleteTab (see win_shell) so reopen can fully

@@ -278,7 +278,26 @@ pub fn run() {
         // Login-item plugin only; never auto-enable. Enable/disable is driven by
         // AppSettings.launch_at_login in setup + settings_set. Safe for `cargo test`
         // (tests never call run(); init does not touch the OS login list).
-        .plugin(tauri_plugin_autostart::Builder::new().build());
+        .plugin(tauri_plugin_autostart::Builder::new().build())
+        // Remember main window size / position / maximize across launches.
+        // Desktop-only dependency (see Cargo.toml target cfg).
+        .plugin({
+            use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
+            WindowStateBuilder::new()
+                .with_state_flags(
+                    StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN,
+                )
+                // Primary workbench only — secondary `session-*` windows keep defaults.
+                .with_filter(|label| label == "main")
+                // Do not restore VISIBLE: close-to-tray leaves the window hidden; a
+                // saved `visible:false` would make the next launch appear headless.
+                // Do not restore DECORATIONS: macOS Overlay vs Windows frameless
+                // come from platform tauri conf, not last-run chrome state.
+                .build()
+        });
 
     // Register the updater only in configured release builds; omit it locally.
 

@@ -39,6 +39,7 @@
     "core:webview:allow-webview-size",
     "core:webview:allow-get-all-webviews",
     "store:default",
+    "window-state:default",
     "updater:allow-check",
     "updater:allow-download",
     "updater:allow-install",

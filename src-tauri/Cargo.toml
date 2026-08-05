@@ -89,6 +89,9 @@ windows = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-window-state = "2"
+
 [profile.release]
 codegen-units = 1
 lto = true
