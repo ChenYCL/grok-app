@@ -1,16 +1,16 @@
 /* lobe-chat css chunk */
 
-/* Worked for 1m 2s ∨ — lighter than step text, ~14px */
+/* Worked for 1m 2s ∨ — lighter than step text, one size below body (~13px) */
 .grok-act__header {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 6px;
   margin: 0 0 2px;
   padding: 0;
   border: none;
   background: transparent;
   color: var(--grok-act-fg-dim);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
@@ -21,6 +21,19 @@
 }
 .grok-act__header:hover {
   color: var(--grok-act-fg);
+}
+.grok-act__header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--grok-act-fg);
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+.grok-act__header:hover .grok-act__header-icon {
+  opacity: 1;
 }
 .grok-act__header-text {
   min-width: 0;
@@ -78,7 +91,7 @@
   margin: 0;
   padding: 0;
   color: var(--grok-act-fg);
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.4;
   font-weight: 400;
   font-family: inherit;
@@ -153,9 +166,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 400;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.4;
   color: var(--grok-act-fg);
+}
+
+/* “Read file · main.ts” companion basename — muted, same size */
+.grok-act__label-path {
+  color: var(--grok-act-fg-dim);
 }
 
 /* “Browsed ” / “Searched web for ” same weight; url/query not bold */
@@ -210,7 +228,7 @@
   margin: 4px 0 2px;
   padding: 0;
   color: var(--grok-act-fg);
-  font-size: 15px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   font-family: inherit;
 }
@@ -267,8 +285,8 @@
   white-space: pre-wrap;
   word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--chat-text-3);
 }
 .lobe-timeline-tool__fail-hint {
@@ -285,7 +303,7 @@
 .lobe-timeline-tool-group {
   width: 100%;
   margin: 0;
-  font-size: 15px;
+  font-size: 13px;
   color: var(--chat-text-2);
 }
 .lobe-timeline-tool-group__list {
@@ -371,6 +389,76 @@
   font-size: 12.5px;
 }
 .grok-thought.is-collapsed .grok-thought__body {
+  display: none;
+}
+
+/* ── Historical turn fragments (folded progress notes) ── */
+.grok-fragments {
+  width: 100%;
+  max-width: var(--chat-content-max, 48rem);
+  margin: 2px 0 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--chat-text-2, #9ca3af) 92%, transparent);
+}
+.grok-fragments__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--chat-text-3, #9ca3af) 100%, transparent);
+  font-size: 12.5px;
+  font-weight: 400;
+  font-family: inherit;
+  line-height: 1.5;
+  cursor: pointer;
+  text-align: left;
+}
+.grok-fragments__header:hover {
+  color: var(--chat-text-2, #d1d5db);
+}
+.grok-fragments__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: color-mix(in srgb, var(--chat-text-3, #9ca3af) 100%, transparent);
+  flex-shrink: 0;
+}
+.grok-fragments__label {
+  min-width: 0;
+  font-weight: 400;
+  font-family: inherit;
+}
+.grok-fragments__caret {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.75;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+/* Secondary dig-in body (muted, scrollable) */
+.grok-fragments__body {
+  margin: 6px 0 4px 26px;
+  padding: 0 0 4px;
+  max-height: min(32vh, 220px);
+  overflow-y: auto;
+  color: color-mix(in srgb, var(--chat-text-3, #9ca3af) 95%, transparent);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.grok-fragments__body .chat-md,
+.grok-fragments__body .chat-md--muted,
+.grok-fragments__body .chat-md p,
+.grok-fragments__body .chat-md li {
+  color: color-mix(in srgb, var(--chat-text-3, #9ca3af) 98%, transparent) !important;
+  font-size: 12.5px;
+}
+.grok-fragments.is-collapsed .grok-fragments__body {
   display: none;
 }
 

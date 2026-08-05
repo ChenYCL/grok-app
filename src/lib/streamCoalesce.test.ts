@@ -53,12 +53,12 @@ describe("streamCoalesce", () => {
   });
 
   it("resolveStreamFlushMs scales with cores (Intel longer, high-core snappier)", () => {
-    expect(resolveStreamFlushMs(4)).toBe(128);
-    expect(resolveStreamFlushMs(8)).toBe(128);
+    expect(resolveStreamFlushMs(4)).toBe(104);
+    expect(resolveStreamFlushMs(8)).toBe(104);
     expect(resolveStreamFlushMs(10)).toBe(STREAM_COALESCE_FLUSH_MS);
     expect(resolveStreamFlushMs(12)).toBe(STREAM_COALESCE_FLUSH_MS);
-    expect(resolveStreamFlushMs(16)).toBe(72);
-    expect(STREAM_COALESCE_FLUSH_MS).toBe(110);
+    expect(resolveStreamFlushMs(16)).toBe(60);
+    expect(STREAM_COALESCE_FLUSH_MS).toBe(88);
   });
 
   it("default flush uses STREAM_COALESCE_FLUSH_MS (higher than historical 48)", () => {

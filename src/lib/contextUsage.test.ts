@@ -21,10 +21,15 @@ import {
   knownUsageHasSignal,
   mergeCompactTokensBefore,
   mergeKnownBucketsIntoBreakdown,
+  contextPercent,
   reduceContextUsage,
   resolveCompactNoteBody,
   resolveContextUsageDisplay,
   resolveContextUsageSurface,
+  saveSessionUsageSnapshot,
+  loadSessionUsageSnapshot,
+  clearSessionUsageSnapshot,
+  restoreContextUsageForSession,
 } from "./contextUsage";
 
 describe("formatTokenCount", () => {
@@ -60,14 +65,45 @@ describe("formatContextChipLabel", () => {
   });
 });
 
+describe("contextPercent", () => {
+  it("returns null when tokens or window is unknown", () => {
+    expect(contextPercent(null, 200_000)).toBeNull();
+    expect(contextPercent(0, 200_000)).toBeNull();
+    expect(contextPercent(1_000, null)).toBeNull();
+    expect(contextPercent(1_000, 0)).toBeNull();
+  });
+
+  it("never flattens tiny real usage to an integer 0%", () => {
+    expect(contextPercent(50, 200_000)).toBe(0.03);
+    expect(contextPercent(1, 200_000)).toBe(0.01);
+    expect(contextPercent(1, 1_000_000)).toBe(0.01);
+  });
+
+  it("keeps sub-10% decimals and whole percents", () => {
+    expect(contextPercent(1_000, 200_000)).toBe(0.5);
+    expect(contextPercent(2_000, 200_000)).toBe(1);
+    expect(contextPercent(120_000, 200_000)).toBe(60);
+    expect(contextPercent(180_000, 200_000)).toBe(90);
+  });
+
+  it("caps at 100", () => {
+    expect(contextPercent(400_000, 200_000)).toBe(100);
+  });
+});
+
 describe("estimateTokensFromText / messages", () => {
-  it("uses ceil(chars/4)", () => {
+  it("uses ceil(chars/4) for latin text", () => {
     expect(estimateTokensFromText("")).toBe(0);
     expect(estimateTokensFromText("abcd")).toBe(1);
     expect(estimateTokensFromText("abcde")).toBe(2);
   });
 
-  it("sums user/assistant only", () => {
+  it("uses ~1.5 chars/token for CJK text (not 4)", () => {
+    expect(estimateTokensFromText("你好世界")).toBe(3); // 4字 / 1.5 = 2.67 → 3
+    expect(estimateTokensFromText("我们正在排查上下文统计")).toBe(8); // 11字/1.5 = 7.33 → 8
+  });
+
+  it("sums user/assistant/tool content, skips journal chrome only", () => {
     const n = estimateTokensFromMessages([
       { id: "u", role: "user", content: "abcd" }, // 1
       { id: "a", role: "assistant", content: "efgh", thought: "ijkl" }, // 2
@@ -76,10 +112,10 @@ describe("estimateTokensFromText / messages", () => {
         role: "tool",
         content: "context_compact",
         marker: "context_compact",
-      },
-      { id: "tool", role: "tool", content: "tool_step|x", marker: "tool_step" },
+      }, // skipped chrome
+      { id: "tool", role: "tool", content: "abcd", marker: "tool_step" }, // 1 (tool content counts)
     ]);
-    expect(n).toBe(3);
+    expect(n).toBe(4);
   });
 });
 
@@ -716,5 +752,93 @@ describe("compact presets", () => {
         template: "{before} → {after}",
       }),
     ).toBeNull();
+  });
+});
+
+describe("session usage snapshot (localStorage-backed)", () => {
+  function mockStorage(): Storage {
+    const store = new Map<string, string>();
+    return {
+      get length() {
+        return store.size;
+      },
+      clear: () => store.clear(),
+      getItem: (k: string) => store.get(k) ?? null,
+      key: (i: number) => Array.from(store.keys())[i] ?? null,
+      removeItem: (k: string) => {
+        store.delete(k);
+      },
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+    } as Storage;
+  }
+
+  it("saves and loads a per-session snapshot", () => {
+    const st = mockStorage();
+    saveSessionUsageSnapshot(
+      "sess-1",
+      {
+        totalTokens: 780_341,
+        inputTokens: 775_187,
+        outputTokens: 5_000,
+        systemTokens: null,
+        toolsTokens: null,
+        historyTokens: null,
+        cachedReadTokens: 600_000,
+        costUsdTicks: null,
+        source: "turn_completed",
+      },
+      st,
+    );
+    const snap = loadSessionUsageSnapshot("sess-1", st);
+    expect(snap?.totalTokens).toBe(780_341);
+    expect(snap?.source).toBe("turn_completed");
+    expect(snap?.updatedAt).toBeGreaterThan(0);
+    // Other sessions unaffected.
+    expect(loadSessionUsageSnapshot("sess-2", st)).toBeNull();
+  });
+
+  it("overwrites on newer event and clears on demand", () => {
+    const st = mockStorage();
+    saveSessionUsageSnapshot("sess-1", { totalTokens: 100, inputTokens: null, outputTokens: null, systemTokens: null, toolsTokens: null, historyTokens: null, cachedReadTokens: null, costUsdTicks: null, source: "usage" }, st);
+    saveSessionUsageSnapshot("sess-1", { totalTokens: 250, inputTokens: null, outputTokens: null, systemTokens: null, toolsTokens: null, historyTokens: null, cachedReadTokens: null, costUsdTicks: null, source: "compact" }, st);
+    expect(loadSessionUsageSnapshot("sess-1", st)?.totalTokens).toBe(250);
+    clearSessionUsageSnapshot("sess-1", st);
+    expect(loadSessionUsageSnapshot("sess-1", st)).toBeNull();
+  });
+
+  it("restoreContextUsageForSession prefers compact markers over snapshot", () => {
+    const st = mockStorage();
+    saveSessionUsageSnapshot("sess-c", { totalTokens: 900_000, inputTokens: null, outputTokens: null, systemTokens: null, toolsTokens: null, historyTokens: null, cachedReadTokens: null, costUsdTicks: null, source: "turn_completed" }, st);
+    // Journal has a compact marker with tokensAfter=12_000 — authoritative.
+    const state = restoreContextUsageForSession(
+      "sess-c",
+      [
+        { id: "u", role: "user", content: "hi" },
+        { id: "c", role: "tool", content: "context_compact", marker: "context_compact", compactMeta: { tokensAfter: 12_000 } },
+      ],
+      st,
+    );
+    expect(state.knownTokens).toBe(12_000);
+    // Snapshot still retrievable but not used.
+    expect(loadSessionUsageSnapshot("sess-c", st)?.totalTokens).toBe(900_000);
+  });
+
+  it("restoreContextUsageForSession falls back to snapshot without compact", () => {
+    const st = mockStorage();
+    saveSessionUsageSnapshot("sess-n", { totalTokens: 456_000, inputTokens: 450_000, outputTokens: 6_000, systemTokens: null, toolsTokens: null, historyTokens: null, cachedReadTokens: 300_000, costUsdTicks: null, source: "turn_completed" }, st);
+    const state = restoreContextUsageForSession(
+      "sess-n",
+      [{ id: "u", role: "user", content: "hi" }],
+      st,
+    );
+    expect(state.knownUsage?.totalTokens).toBe(456_000);
+    expect(state.knownTokens).toBe(456_000);
+    // Display resolves to the real reported total (known, not estimate).
+    const display = resolveContextUsageDisplay(state, [{ id: "u", role: "user", content: "hi" }], "zh", 1_000_000);
+    expect(display.tokens).toBe(456_000);
+    expect(display.source).toBe("known");
+    expect(display.percent).toBe(45.6);
   });
 });

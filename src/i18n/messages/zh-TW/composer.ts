@@ -2,6 +2,7 @@
 export const zhTWComposer = {
   "composer.placeholder": "隨心輸入",
   "composer.add": "新增",
+  "composer.commandPanel": "命令面板",
   "composer.addProject": "新增專案",
   "composer.worktrees": "Git worktrees",
   "composer.worktreesEmpty": "沒有關聯的 worktree",
@@ -93,8 +94,8 @@ export const zhTWComposer = {
   "composer.voiceErr.auth": "語音驗證失敗，請在帳戶中重新登入。",
   "composer.voiceErr.timeout": "轉寫逾時，請縮短說話時長後重試。",
   "composer.voiceErr.unknown": "語音輸入失敗。",
-  "composer.draftStats": "{words} 詞 · {chars} 字",
-  "composer.draftStatsAria": "草稿長度：{words} 詞，{chars} 字",
+  "composer.draftStats": "{chars} 字",
+  "composer.draftStatsAria": "草稿長度：{chars} 字",
   "composer.clearDraft": "清空草稿",
   "composer.clearDraftConfirmTitle": "清空草稿？",
   "composer.clearDraftConfirmMessage": "將清除輸入框中的文字和附件。",

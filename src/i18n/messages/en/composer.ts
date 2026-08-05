@@ -2,6 +2,7 @@
 export const enComposer = {
   "composer.placeholder": "Type freely…",
   "composer.add": "Add",
+  "composer.commandPanel": "Command panel",
   "composer.addFiles": "Upload files",
   "composer.planMode": "Plan mode",
   "composer.planModeHint": "Turn on plan mode",
@@ -60,8 +61,8 @@ export const enComposer = {
   "composer.voiceErr.auth": "Speech auth failed. Sign in again under Account.",
   "composer.voiceErr.timeout": "Speech request timed out. Try a shorter clip.",
   "composer.voiceErr.unknown": "Voice dictation failed.",
-  "composer.draftStats": "{words} words · {chars} chars",
-  "composer.draftStatsAria": "Draft length: {words} words, {chars} characters",
+  "composer.draftStats": "{chars} chars",
+  "composer.draftStatsAria": "Draft length: {chars} characters",
   "composer.clearDraft": "Clear draft",
   "composer.clearDraftConfirmTitle": "Clear draft?",
   "composer.clearDraftConfirmMessage": "This will remove the current text and attachments from the composer.",

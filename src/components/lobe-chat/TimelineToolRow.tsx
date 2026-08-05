@@ -4,7 +4,7 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { Locale } from "@/i18n";
+import type { Locale, MessageKey } from "@/i18n";
 import { createT } from "@/i18n";
 import type { ChatMessage, MessageSegment, MessageToolSegment } from "@/lib/session";
 import {
@@ -16,7 +16,11 @@ import {
   isBrowseToolKind,
   isContextToolKind,
   isSearchToolKind,
+  classifyToolKind,
   summarizeToolDisplay,
+  toolInputDisplay,
+  toolLabelKeyFor,
+  toolPathBase,
   toolDetailTail,
 } from "@/lib/toolDisplay";
 import { normalizeTaskStatus } from "@/lib/sessionTasks";
@@ -28,10 +32,10 @@ import {
 import { extractBrowseUrl } from "@/lib/grokActivitySteps";
 import {
   IconChevronRight,
-  IconCircle,
   IconSearch,
   IconWorld,
 } from "@/components/icons";
+import { ToolBucketIcon } from "./TimelinePhaseBlock";
 
 export function toolSegmentIsRunning(seg: MessageToolSegment): boolean {
   if (seg.streaming) return true;
@@ -52,6 +56,7 @@ function toolSummary(seg: MessageToolSegment): string {
     title: seg.title,
     detail: seg.detail,
     path: seg.path,
+    input: seg.input,
   });
   return display.summary || seg.title || seg.toolKind || seg.toolCallId;
 }
@@ -85,7 +90,12 @@ function ToolKindIcon({ tool }: { tool: MessageToolSegment }) {
   if (isSearchToolKind(tool.toolKind, tool.title)) {
     return <IconSearch size={size} stroke={1.5} />;
   }
-  return <IconCircle size={size} stroke={1.5} />;
+  return (
+    <ToolBucketIcon
+      bucket={classifyToolKind(tool.toolKind, tool.title, tool.toolCallId)}
+      toolKind={tool.toolKind}
+    />
+  );
 }
 
 export const TimelineToolRow = memo(function TimelineToolRow({
@@ -116,7 +126,20 @@ export const TimelineToolRow = memo(function TimelineToolRow({
   } else if (isSearchToolKind(tool.toolKind, tool.title)) {
     summary = tr("chat.ranSearch");
   } else {
-    summary = toolSummary(tool);
+    // Typed, localized label + specific call detail — never raw output.
+    const bucket = classifyToolKind(
+      tool.toolKind,
+      tool.title,
+      tool.toolCallId,
+    );
+    summary = tr(toolLabelKeyFor(tool.toolKind, bucket) as MessageKey);
+    const specific = toolInputDisplay(tool.input, bucket);
+    if (specific) {
+      summary += ` · ${specific}`;
+    } else {
+      const pathBase = toolPathBase(tool.path);
+      if (pathBase) summary += ` · ${pathBase}`;
+    }
   }
 
   // Host tools use the same expand body as native tools (full detail / stream
@@ -194,7 +217,7 @@ export const TimelineToolRow = memo(function TimelineToolRow({
       data-tool-id={tool.toolCallId}
       data-testid="timeline-tool"
       data-expanded={hasBody ? (open ? "1" : "0") : undefined}
-      title={tool.detail || tool.path || summary}
+      title={tool.input || tool.path || tool.detail || summary}
     >
       <div className="grok-act__icon-col" aria-hidden>
         <span className="grok-act__icon">
@@ -312,6 +335,27 @@ export function TimelineToolGroup({
     }
     return isSearchToolKind(t.toolKind, t.title, t.toolCallId);
   });
+  // Dominant bucket drives the group icon (bash/read/edit/…), not a bare dot.
+  const dominantBucket = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of tools) {
+      const b = classifyToolKind(t.toolKind, t.title, t.toolCallId);
+      counts.set(b, (counts.get(b) || 0) + 1);
+    }
+    let best: string = "fallback";
+    let n = -1;
+    for (const [b, c] of counts) {
+      if (c > n) {
+        best = b;
+        n = c;
+      }
+    }
+    return best as Parameters<typeof ToolBucketIcon>[0]["bucket"];
+  }, [tools]);
+  const groupKind = useMemo(
+    () => (tools[0] ? tools[0].toolKind : null),
+    [tools],
+  );
   const groupLabel = allSearch
     ? tools.length === 1
       ? tr("chat.ranSearch")
@@ -344,7 +388,7 @@ export function TimelineToolGroup({
             {allSearch ? (
               <IconSearch size={16} stroke={1.5} />
             ) : (
-              <IconCircle size={16} stroke={1.5} />
+              <ToolBucketIcon bucket={dominantBucket} toolKind={groupKind} />
             )}
           </span>
         </div>
@@ -437,6 +481,7 @@ export function toolSegmentFromMessage(
     status,
     detail: m.toolDetail,
     path: m.toolPath,
+    input: m.toolInput,
     streaming: !!m.streaming || status === "running",
     isError: !!m.isError || status === "failed",
     createdAt: m.createdAt,

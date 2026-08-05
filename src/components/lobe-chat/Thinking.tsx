@@ -20,7 +20,6 @@ import type { Locale } from "@/i18n";
 import { COLLAPSE_ALL_ACTIVITY_EVENT } from "@/lib/collapseAllActivity";
 import {
   loadThinkingExpandPref,
-  saveThinkingExpandPref,
   thinkingDefaultOpenWhenDone,
   THINKING_PREF_EVENT,
   type ThinkingExpandPref,
@@ -36,7 +35,6 @@ export const Thinking = memo(function Thinking({
   thoughtForLabel,
   locale = "en",
   expandPref,
-  onExpandPrefChange,
   onOpenExternalLink,
 }: {
   content?: string | ReactNode;
@@ -48,8 +46,8 @@ export const Thinking = memo(function Thinking({
   doneLabel: string;
   thoughtForLabel: (seconds: string) => string;
   locale?: Locale;
+  /** Global default for finished blocks (Settings). Per-block toggles are local. */
   expandPref?: ThinkingExpandPref;
-  onExpandPrefChange?: (pref: ThinkingExpandPref) => void;
   onOpenExternalLink?: (url: string) => void;
 }) {
   const [pref, setPref] = useState<ThinkingExpandPref>(
@@ -159,14 +157,13 @@ export const Thinking = memo(function Thinking({
 
   const toggle = () => {
     if (!hasBody) return;
+    // Per-block local state only — toggling one finished thought must NOT flip
+    // the global default (that retroactively opened/collapsed every other
+    // block via THINKING_PREF_EVENT). The global pref is Settings-only and
+    // applies to blocks the user has not toggled.
     setOpen((v) => {
       const next = !v;
       userToggled.current = true;
-      if (!thinking) {
-        const p: ThinkingExpandPref = next ? "keep-open" : "auto-collapse";
-        saveThinkingExpandPref(p);
-        onExpandPrefChange?.(p);
-      }
       return next;
     });
   };

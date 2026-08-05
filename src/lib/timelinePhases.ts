@@ -291,7 +291,44 @@ export function buildTimelineUnits(
     }
   }
 
-  return coalesceAdjacentThoughts(out);
+  // One collapsible work block per assistant message — a long agent turn with
+  // interleaved think/tool bursts (no body text between) must NOT render as a
+  // stack of tiny “Worked for 1s” headers. Content still splits phases.
+  return coalesceAdjacentThoughts(mergeAdjacentPhases(out));
+}
+
+/**
+ * Merge consecutive `phase` units (nothing but work between them) into a
+ * single phase so one turn shows ONE collapsed “Worked for Ns” with the full
+ * activity rail, instead of N per-burst headers. Content units are untouched
+ * and always split phases.
+ */
+export function mergeAdjacentPhases(units: TimelineUnit[]): TimelineUnit[] {
+  const out: TimelineUnit[] = [];
+  for (const u of units) {
+    if (u.kind !== "phase") {
+      out.push(u);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    if (prev && prev.kind === "phase") {
+      // Stable key: keep the first phase's id (startSi never changes while the
+      // message grows); endSi extends so history duration spans all tools.
+      out[out.length - 1] = {
+        ...prev,
+        items: [...prev.items, ...u.items],
+        thoughts: [...prev.thoughts, ...u.thoughts],
+        tools: [...prev.tools, ...u.tools],
+        endSi: u.endSi,
+        live: prev.live || u.live,
+        errorCount: prev.errorCount + u.errorCount,
+        runningCount: prev.runningCount + u.runningCount,
+      };
+      continue;
+    }
+    out.push(u);
+  }
+  return out;
 }
 
 /**

@@ -6,7 +6,7 @@ import {
 } from "./softStreamBuffer";
 
 describe("softStreamBuffer", () => {
-  it("holds short pure text until threshold", () => {
+  it("reveals streaming text immediately (never hides a short intro)", () => {
     let state = createSoftBufferState();
     let r = stepSoftBuffer({
       state,
@@ -14,7 +14,10 @@ describe("softStreamBuffer", () => {
       streaming: true,
       nowMs: 1000,
     });
-    expect(r.displayed).toBe("");
+    // First chunk paints right away — a short intro before tool calls must
+    // not stay invisible until thresholds or tools arrive.
+    expect(r.displayed).toBe("hi");
+    expect(r.state.bypassed).toBe(true);
     const long = "x".repeat(SOFT_BUFFER_CHAR_THRESHOLD);
     r = stepSoftBuffer({
       state: r.state,

@@ -30,6 +30,7 @@ import {
   isNearBottom,
   nextStickPinState,
   shouldClampPinnedStreamDrift,
+  shouldReleaseStickOnScrollUp,
 } from "@/lib/stickToBottom";
 
 export type UseStickToBottomOptions = {
@@ -210,8 +211,19 @@ export function useStickToBottom(
       }
 
       // Clear intentional leave — escape immediately so stream growth cannot
-      // yank the reader back during the same gesture.
-      if (meaningfulUp && isPinnedRef.current) {
+      // yank the reader back during the same gesture. A scroll-up that ends
+      // parked on the absolute bottom is a browser clamp (content shrank
+      // above / viewport grew → scrollTop forced to the new max), not an
+      // intentional leave — escaping there stops mid-stream following.
+      if (
+        shouldReleaseStickOnScrollUp({
+          pinned: isPinnedRef.current,
+          scrollTop,
+          previousScrollTop: lastScrollTop,
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+        })
+      ) {
         userIntentDownRef.current = false;
         isPinnedRef.current = false;
         escapedRef.current = true;
@@ -486,6 +498,19 @@ export function useStickToBottom(
         isPinnedRef.current = true;
       }
 
+      // Defense: pin can be dropped without an intentional escape after a
+      // browser clamp / virtual remeasure race (escaped stays false). If the
+      // user is still parked on the absolute bottom, re-engage follow so the
+      // rest of the stream keeps sticking. Intentional escape blocks this
+      // (reading history is never yanked back down).
+      if (
+        !isPinnedRef.current &&
+        !escapedRef.current &&
+        isHardBottom(el.scrollTop, el.scrollHeight, el.clientHeight)
+      ) {
+        isPinnedRef.current = true;
+      }
+
       // Grow, shrink, or viewport-only resize: follow only while pinned.
       // Do NOT compensate scrollTop while escaped — stream growth is almost
       // always at the bottom; adding the full height delta would yank the
@@ -509,9 +534,6 @@ export function useStickToBottom(
       return el.scrollHeight;
     };
 
-    /** Extra throttle while stream-perf mode is on (token growth is dense). */
-    let throttleTimer = 0;
-
     const scheduleMeasure = () => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
@@ -524,18 +546,6 @@ export function useStickToBottom(
       // Coalesce multi-node notifications to one frame. Always read the
       // content column height from the DOM — viewport RO entries report
       // client box size, which is not what we want for grow/shrink.
-      // During stream-perf, further throttle to ~100ms to cut layout thrash
-      // without dropping pin-to-bottom (follow still runs on each fire).
-      if (
-        document.documentElement.getAttribute("data-stream-perf") === "1"
-      ) {
-        if (throttleTimer || raf) return;
-        throttleTimer = window.setTimeout(() => {
-          throttleTimer = 0;
-          scheduleMeasure();
-        }, 100);
-        return;
-      }
       scheduleMeasure();
     });
 
@@ -546,7 +556,6 @@ export function useStickToBottom(
 
     return () => {
       if (raf) cancelAnimationFrame(raf);
-      if (throttleTimer) window.clearTimeout(throttleTimer);
       ro.disconnect();
     };
   }, [enabled, conversationKey, applyScrollTop, followIfPinned]);

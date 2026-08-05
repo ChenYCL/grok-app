@@ -5,9 +5,9 @@
 
 import { memo, useMemo, type ReactNode } from "react";
 import {
+  IconArrowUp,
   IconClose,
   IconQueue,
-  IconSend,
   IconStop,
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
@@ -36,12 +36,10 @@ export const ComposerDraftStats = memo(function ComposerDraftStats({
     <span
       className="composer__draft-stats"
       aria-label={tr("composer.draftStatsAria", {
-        words: String(stats.words),
         chars: String(stats.chars),
       })}
     >
       {tr("composer.draftStats", {
-        words: String(stats.words),
         chars: String(stats.chars),
       })}
     </span>
@@ -150,7 +148,7 @@ export const ComposerSendCluster = memo(function ComposerSendCluster({
         onClick={onSend}
         aria-label={tr("composer.send")}
       >
-        <IconSend size={16} />
+        <IconArrowUp size={16} />
       </button>
     </Tip>
   );

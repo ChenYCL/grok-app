@@ -53,7 +53,6 @@ export type UseSendQueueOptions = {
   executeSendRef: MutableRefObject<ExecuteSendFromQueue>;
   showToast: (msg: string, ms?: number) => void;
   labels: {
-    queued: string;
     sendFailed: string;
     droppedOldest: (n: number, max: number) => string;
   };
@@ -129,8 +128,6 @@ export function useSendQueue({
       writeMap(setQueueForKey(sendQueueByKeyRef.current, key, r.queue));
       if (r.dropped > 0) {
         showToast(labels.droppedOldest(r.dropped, SEND_QUEUE_MAX), 3200);
-      } else {
-        showToast(labels.queued, 2200);
       }
       return r.dropped;
     },

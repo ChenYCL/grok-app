@@ -18,7 +18,7 @@
  */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Locale } from "@/i18n";
+import type { Locale, MessageKey } from "@/i18n";
 import { createT } from "@/i18n";
 import { COLLAPSE_ALL_ACTIVITY_EVENT } from "@/lib/collapseAllActivity";
 import type { TimelinePhase } from "@/lib/timelinePhases";
@@ -36,6 +36,10 @@ import {
   type GrokActivityStep,
 } from "@/lib/grokActivitySteps";
 import {
+  toolLabelKeyFor,
+  type ToolDisplayKind,
+} from "@/lib/toolDisplay";
+import {
   GROK_ACTIVITY_STEP_ROW_PX,
   grokActivityVirtualMaxHeightPx,
   shouldVirtualizeGrokActivitySteps,
@@ -46,8 +50,14 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconCircle,
+  IconEdit,
+  IconFileText,
+  IconFolder,
   IconGridDots,
+  IconRobot,
   IconSearch,
+  IconSkills,
+  IconTerminal,
   IconWorld,
 } from "@/components/icons";
 
@@ -67,6 +77,41 @@ function FaviconChip({ domain }: { domain: string }) {
   );
 }
 
+/** Tool-type icon — one style for live and history (typed, not a bare dot). */
+export function ToolBucketIcon({
+  bucket,
+  toolKind,
+  size = 15,
+  stroke = 1.5,
+}: {
+  bucket: ToolDisplayKind;
+  toolKind?: string | null;
+  size?: number;
+  stroke?: number;
+}) {
+  // Machine tool names give finer icons than buckets (list_dir vs read_file).
+  const k = (toolKind || "").toLowerCase();
+  if (k.includes("list_dir") || k.includes("list_directory") || k === "ls") {
+    return <IconFolder size={size} stroke={stroke} />;
+  }
+  switch (bucket) {
+    case "bash":
+      return <IconTerminal size={size} stroke={stroke} />;
+    case "read":
+      return <IconFileText size={size} stroke={stroke} />;
+    case "edit":
+      return <IconEdit size={size} stroke={stroke} />;
+    case "search":
+      return <IconSearch size={size} stroke={stroke} />;
+    case "browse":
+      return <IconWorld size={size} stroke={stroke} />;
+    case "subagent":
+      return <IconRobot size={size} stroke={stroke} />;
+    default:
+      return <IconSkills size={size} stroke={stroke} />;
+  }
+}
+
 function StepIcon({ step }: { step: GrokActivityStep }) {
   // Official icons are ~15–16px, thin stroke, muted gray
   const size = 15;
@@ -78,6 +123,10 @@ function StepIcon({ step }: { step: GrokActivityStep }) {
     // Official uses globe+search hybrid; World is closest available
     return <IconWorld size={size} stroke={stroke} />;
   if (step.type === "browse") return <IconWorld size={size} stroke={stroke} />;
+  if (step.type === "tool")
+    return (
+      <ToolBucketIcon bucket={step.bucket} toolKind={step.tool.toolKind} />
+    );
   return <IconCircle size={size} stroke={stroke} />;
 }
 
@@ -120,7 +169,19 @@ function StepMainText({
         </span>
       );
     case "tool":
-      return <span className="grok-act__label-text">{step.summary}</span>;
+      return (
+        <span className="grok-act__label-text">
+          {step.hostTitle ||
+            tr(
+              toolLabelKeyFor(step.tool.toolKind, step.bucket) as MessageKey,
+            )}
+          {step.inputLabel ? (
+            <span className="grok-act__label-path"> · {step.inputLabel}</span>
+          ) : !step.hostTitle && step.pathBase ? (
+            <span className="grok-act__label-path"> · {step.pathBase}</span>
+          ) : null}
+        </span>
+      );
   }
 }
 
@@ -419,6 +480,9 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
           setOpen((v) => !v);
         }}
       >
+        <span className="grok-act__header-icon" aria-hidden>
+          <IconGridDots size={14} stroke={1.5} />
+        </span>
         <span className="grok-act__header-text">{workedLabel}</span>
         <span className="grok-act__header-caret" aria-hidden>
           {open ? (

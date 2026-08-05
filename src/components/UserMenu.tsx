@@ -21,6 +21,7 @@ import {
   IconThemeSun,
 } from "@/components/icons";
 import type { Theme, ThemePreference } from "@/lib/theme";
+import { GrokLogo } from "@/components/GrokLogo";
 import {
   FLOATING_MENU_Z_INDEX,
   useFloatingMenu,
@@ -314,7 +315,7 @@ export function UserMenu({
             >
               <div className="user-menu__account-top">
                 <div className="account-avatar account-avatar--sm" aria-hidden>
-                  {initials}
+                  {signedIn ? <GrokLogo size={17} /> : initials}
                 </div>
                 <div className="user-menu__account-text">
                   <div className="user-menu__account-name-row">

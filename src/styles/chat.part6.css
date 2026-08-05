@@ -800,13 +800,6 @@
   color: var(--text-primary);
 }
 
-/* Wider model panel so long model ids are not clipped by 55% row-val caps. */
-.cmm--model .cmm__pop,
-.cmm--model .cmm__pop--portal {
-  min-width: min(320px, calc(100vw - 16px));
-  max-width: min(420px, calc(100vw - 16px));
-}
-
 /* Portaled to body — escapes all overflow parents */
 .cmm__pop--portal {
   position: fixed;

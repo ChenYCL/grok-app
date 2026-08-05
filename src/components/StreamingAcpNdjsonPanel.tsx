@@ -75,8 +75,7 @@ export function StreamingAcpNdjsonPanel({
     }
     setError(null);
     setSummary(summarizeAcpNdjsonText(text));
-    showToast?.(t("streamAcpNdjson.parsed"), 1600);
-  }, [text, t, showToast]);
+  }, [text]);
 
   const onClear = useCallback(() => {
     setText("");
@@ -90,11 +89,10 @@ export function StreamingAcpNdjsonPanel({
     const body = formatAcpNdjsonSummaryText(summary);
     try {
       await navigator.clipboard.writeText(body);
-      showToast?.(t("streamAcpNdjson.copied"), 1800);
     } catch {
       setError(t("streamAcpNdjson.copyFailed"));
     }
-  }, [summary, t, showToast]);
+  }, [summary]);
 
   /** Redacted NDJSON save (never writes secrets unredacted). */
   const onSaveNdjson = useCallback(() => {
@@ -108,8 +106,7 @@ export function StreamingAcpNdjsonPanel({
       result.body,
       streamSessionExportMimeType("streaming-json"),
     );
-    showToast?.(t("streamAcpNdjson.savedNdjson", { n: result.lineCount }), 1800);
-  }, [text, t, showToast]);
+  }, [text]);
 
   /** Redacted NDJSON copy. */
   const onCopyNdjson = useCallback(async () => {
@@ -120,11 +117,10 @@ export function StreamingAcpNdjsonPanel({
     }
     try {
       await navigator.clipboard.writeText(result.body);
-      showToast?.(t("streamAcpNdjson.copiedNdjson", { n: result.lineCount }), 1800);
     } catch {
       setError(t("streamAcpNdjson.copyFailed"));
     }
-  }, [text, t, showToast]);
+  }, [text]);
 
   const onImportFile = useCallback(
     (file: File | null) => {
@@ -133,12 +129,11 @@ export function StreamingAcpNdjsonPanel({
       reader.onload = () => {
         const raw = typeof reader.result === "string" ? reader.result : "";
         applyText(raw);
-        showToast?.(t("streamAcpNdjson.imported"), 1600);
       };
       reader.onerror = () => setError(t("streamAcpNdjson.importFailed"));
       reader.readAsText(file);
     },
-    [applyText, showToast, t],
+    [applyText],
   );
 
   const onProbe = useCallback(async () => {
@@ -175,7 +170,6 @@ export function StreamingAcpNdjsonPanel({
       }
       if (res.stdout.trim()) {
         applyText(res.stdout);
-        showToast?.(t("streamAcpNdjson.probeDone"), 2000);
       } else if (res.timedOut) {
         setError(t("streamAcpNdjson.probeTimeout"));
       } else {

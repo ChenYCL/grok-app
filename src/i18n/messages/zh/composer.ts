@@ -2,6 +2,7 @@
 export const zhComposer = {
   "composer.placeholder": "随心输入",
   "composer.add": "添加",
+  "composer.commandPanel": "命令面板",
   "composer.addFiles": "上传文件",
   "composer.planMode": "计划模式",
   "composer.planModeHint": "开启计划模式",
@@ -60,8 +61,8 @@ export const zhComposer = {
   "composer.voiceErr.auth": "语音鉴权失败，请在账户中重新登录。",
   "composer.voiceErr.timeout": "转写超时，请缩短说话时长后重试。",
   "composer.voiceErr.unknown": "语音输入失败。",
-  "composer.draftStats": "{words} 词 · {chars} 字",
-  "composer.draftStatsAria": "草稿长度：{words} 词，{chars} 字",
+  "composer.draftStats": "{chars} 字",
+  "composer.draftStatsAria": "草稿长度：{chars} 字",
   "composer.clearDraft": "清空草稿",
   "composer.clearDraftConfirmTitle": "清空草稿？",
   "composer.clearDraftConfirmMessage": "将清除输入框中的文字和附件。",

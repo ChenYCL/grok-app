@@ -79,13 +79,23 @@ describe("resolveWelcomeBrandKind", () => {
     expect(resolveWelcomeBrandKind(null, "heavy")).toBe("heavy");
   });
 
-  it("drops cache when account is ready and signed out", () => {
+  it("defaults to plain SuperGrok when account is ready and signed out", () => {
     expect(
       resolveWelcomeBrandKind(null, "heavy", {
         accountReady: true,
         signedIn: false,
       }),
-    ).toBeNull();
+    ).toBe("supergrok");
+  });
+
+  it("never blanks the welcome brand — final fallback is SuperGrok", () => {
+    expect(resolveWelcomeBrandKind(null, null)).toBe("supergrok");
+    expect(
+      resolveWelcomeBrandKind(null, null, {
+        accountReady: true,
+        signedIn: false,
+      }),
+    ).toBe("supergrok");
   });
 
   it("forces SuperGrok (not Heavy) on custom relay route", () => {

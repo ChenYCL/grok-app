@@ -797,9 +797,3 @@ html[data-composer-min-rows="8"] .composer__input {
 .chip--ask {
   color: var(--text-secondary);
 }
-
-/* Context usage chip (composer row) */
-.chip--context {
-  font-variant-numeric: tabular-nums;
-  max-width: 128px;
-}

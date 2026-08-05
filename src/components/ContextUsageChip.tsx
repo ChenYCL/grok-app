@@ -8,7 +8,7 @@
 
 import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { IconActivity, IconArrowsMinimize } from "@/components/icons";
+import { IconArrowsMinimize } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 import {
@@ -84,6 +84,72 @@ function formatLastCompactDetail(
   if (last.note?.trim()) return last.note.trim();
   return last.trigger === "manual" ? labels.manual : labels.auto;
 }
+
+/**
+ * Usage ring: percent-of-window arc in an icon-sized circle.
+ * Theme-aware via CSS vars. Muted "?" when the share is unknown
+ * (no window size / soft-unknown after compact).
+ * Arc starts at 12 o'clock (SVG circles default to 3 o'clock).
+ */
+const MIN_RING_ARC = 2;
+
+function ContextRing({
+  percent,
+  softUnknown,
+}: {
+  percent: number | null;
+  softUnknown: boolean;
+}) {
+  const tone =
+    softUnknown || percent == null
+      ? "muted"
+      : percent >= 85
+        ? "danger"
+        : percent >= 60
+          ? "warn"
+          : "normal";
+  // Real-but-tiny usage (0.0x%) still gets a visible sliver of progress;
+  // the popover/tooltip keep the true decimal value.
+  const arc =
+    softUnknown || percent == null || percent <= 0
+      ? 0
+      : Math.max(percent, MIN_RING_ARC);
+  return (
+    <span className={`ctx-ring ctx-ring--${tone}`} aria-hidden="true">
+      <svg className="ctx-ring__svg" viewBox="0 0 20 20">
+        <circle
+          className="ctx-ring__track"
+          cx="10"
+          cy="10"
+          r="8"
+          pathLength={100}
+        />
+        <circle
+          className="ctx-ring__arc"
+          cx="10"
+          cy="10"
+          r="8"
+          pathLength={100}
+          strokeDasharray={`${arc} ${100 - arc}`}
+          transform="rotate(-90 10 10)"
+        />
+      </svg>
+      {tone === "muted" ? <span className="ctx-ring__q">?</span> : null}
+    </span>
+  );
+}
+
+/**
+ * Percent display: whole numbers stay whole; sub-1% keeps enough decimals
+ * to stay honest (0.03%, never a misleading "0%").
+ */
+function formatPercent(p: number): string {
+  if (!Number.isFinite(p)) return "—";
+  if (p >= 10) return String(Math.round(p));
+  if (p >= 1) return String(Math.round(p * 10) / 10);
+  return String(Math.round(p * 100) / 100);
+}
+
 
 function BreakdownRows({
   breakdown,
@@ -163,11 +229,6 @@ export function ContextUsageChip({
     : null;
   const surface = resolveContextUsageSurface(display);
   const softUnknown = surface === "soft_unknown";
-  // Append "% of window" to the chip trigger when a percent is known.
-  const triggerLabel =
-    display.percent != null && display.percent > 0
-      ? `${display.label} · ${display.percent}%`
-      : display.label;
 
   // Show the chip once we have either usage data or a known context window
   // (so the window/percent rows are visible even before the first turn).
@@ -179,13 +240,7 @@ export function ContextUsageChip({
         <button
           ref={triggerRef}
           type="button"
-          className={
-            "chip chip--context" +
-            (open ? " is-open" : "") +
-            (display.source === "unknown" || softUnknown
-              ? " chip--muted"
-              : "")
-          }
+          className={"ctx-ring-btn" + (open ? " is-open" : "")}
           disabled={disabled}
           aria-haspopup="menu"
           aria-expanded={open}
@@ -193,8 +248,7 @@ export function ContextUsageChip({
           data-context-surface={surface}
           onClick={() => setOpen((v) => !v)}
         >
-          <IconActivity size={14} />
-          <span className="chip__label chip__label--nums">{triggerLabel}</span>
+          <ContextRing percent={display.percent} softUnknown={softUnknown} />
         </button>
       </Tip>
       {open &&
@@ -229,7 +283,9 @@ export function ContextUsageChip({
               <div className="ctx-chip__row">
                 <span className="ctx-chip__k">{labels.percentUsed}</span>
                 <span className="ctx-chip__v">
-                  <span className="ctx-chip__tokens">{display.percent}%</span>
+                  <span className="ctx-chip__tokens">
+                    {formatPercent(display.percent)}%
+                  </span>
                 </span>
               </div>
             ) : null}

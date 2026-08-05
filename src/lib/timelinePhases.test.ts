@@ -59,7 +59,7 @@ describe("timelinePhases", () => {
     }
   });
 
-  it("new thought after tools starts a new phase", () => {
+  it("merges adjacent think/tool bursts into ONE phase (no body between)", () => {
     const segs: MessageSegment[] = [
       { kind: "thought", text: "round1" },
       tool("t1", "Read a"),
@@ -68,15 +68,25 @@ describe("timelinePhases", () => {
       tool("t3", "Read c"),
     ];
     const units = buildTimelineUnits(segs, { streaming: false });
-    expect(units.map((u) => u.kind)).toEqual(["phase", "phase"]);
+    // A long agent turn must NOT render as a stack of “Worked for 1s” blocks.
+    expect(units.map((u) => u.kind)).toEqual(["phase"]);
     if (units[0]!.kind === "phase") {
-      expect(units[0]!.tools).toHaveLength(1);
-      expect(units[0]!.thoughts[0]).toBe("round1");
+      expect(units[0]!.tools).toHaveLength(3);
+      expect(units[0]!.thoughts).toEqual(["round1", "round2"]);
+      expect(units[0]!.items).toHaveLength(5);
     }
-    if (units[1]!.kind === "phase") {
-      expect(units[1]!.tools).toHaveLength(2);
-      expect(units[1]!.thoughts[0]).toBe("round2");
-    }
+  });
+
+  it("content still splits phases (answer boundary)", () => {
+    const segs: MessageSegment[] = [
+      { kind: "thought", text: "round1" },
+      tool("t1", "Read a"),
+      { kind: "content", text: "结论如下。" },
+      { kind: "thought", text: "round2" },
+      tool("t2", "Read b"),
+    ];
+    const units = buildTimelineUnits(segs, { streaming: false });
+    expect(units.map((u) => u.kind)).toEqual(["phase", "content", "phase"]);
   });
 
   it("trailing work stays live while streaming", () => {

@@ -19,14 +19,15 @@ export const CHAT_VIRTUALIZE_THRESHOLD_PERF = 16;
 /**
  * While streaming, re-run ReactMarkdown at most this often (ms).
  * Smooth/plain text can still update more often; only the parse is throttled.
+ * ~9×/s keeps long answers fluid without an O(n) parse per token.
  */
-export const STREAM_MARKDOWN_PARSE_MS = 160;
+export const STREAM_MARKDOWN_PARSE_MS = 110;
 
 /**
  * Non-structural content notify throttle for the transcript store (ms).
  * Full text is always stored immediately; React only re-renders on this cadence.
  */
-export const TRANSCRIPT_CONTENT_NOTIFY_MS = 100;
+export const TRANSCRIPT_CONTENT_NOTIFY_MS = 84;
 
 /**
  * Adaptive content-notify interval: longer on thermally limited laptops so
@@ -37,9 +38,9 @@ export function resolveTranscriptContentNotifyMs(
     ? navigator.hardwareConcurrency || 8
     : 8,
 ): number {
-  if (hardwareConcurrency <= 8) return 130;
+  if (hardwareConcurrency <= 8) return 110;
   if (hardwareConcurrency <= 12) return TRANSCRIPT_CONTENT_NOTIFY_MS;
-  return 72;
+  return 64;
 }
 
 /**

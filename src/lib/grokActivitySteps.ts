@@ -12,9 +12,13 @@
 import type { MessageToolSegment } from "./session";
 import { extractThinkingSummary } from "./thinkingSummary";
 import {
+  classifyToolKind,
   isBrowseToolKind,
   isSearchToolKind,
   summarizeToolDisplay,
+  toolInputDisplay,
+  toolPathBase,
+  type ToolDisplayKind,
 } from "./toolDisplay";
 
 export type GrokActivityStep =
@@ -54,6 +58,14 @@ export type GrokActivityStep =
       type: "tool";
       key: string;
       summary: string;
+      /** Display bucket (bash/read/edit/search/browse/…) → icon + i18n label. */
+      bucket: ToolDisplayKind;
+      /** Specific call detail (target file / command / query) for the label. */
+      inputLabel?: string;
+      /** File/dir base name when the tool acted on a path (companion text). */
+      pathBase?: string;
+      /** Stable Host title (vision/X side-channels) — shown verbatim. */
+      hostTitle?: string;
       failed: boolean;
       running: boolean;
       tool: MessageToolSegment;
@@ -186,6 +198,7 @@ function toolOneLine(tool: MessageToolSegment): string {
     title: tool.title,
     detail: tool.detail,
     path: tool.path,
+    input: tool.input,
     toolCallId: tool.toolCallId,
   });
   return display.summary || tool.title || tool.toolKind || tool.toolCallId;
@@ -276,6 +289,10 @@ export function buildGrokActivitySteps(
         summary:
           title ||
           (isHostVision ? "识别图片内容" : isHostX ? "搜索 X 信息" : toolOneLine(tool)),
+        bucket: classifyToolKind(tool.toolKind, tool.title, tool.toolCallId),
+        inputLabel: toolInputDisplay(tool.input, classifyToolKind(tool.toolKind, tool.title, tool.toolCallId)),
+        pathBase: toolPathBase(tool.path),
+        hostTitle: title || undefined,
         failed: toolFailed(tool),
         running: toolRunning(tool),
         tool,
@@ -368,6 +385,9 @@ export function buildGrokActivitySteps(
       type: "tool",
       key: tool.toolCallId || `tool-${i}`,
       summary: toolOneLine(tool),
+      bucket: classifyToolKind(tool.toolKind, tool.title, tool.toolCallId),
+      inputLabel: toolInputDisplay(tool.input, classifyToolKind(tool.toolKind, tool.title, tool.toolCallId)),
+      pathBase: toolPathBase(tool.path),
       failed: toolFailed(tool),
       running: toolRunning(tool),
       tool,

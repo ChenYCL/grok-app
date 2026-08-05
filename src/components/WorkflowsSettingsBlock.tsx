@@ -906,7 +906,6 @@ export function WorkflowsDiscoveryBlock({
                 clearWorkflowRunHistory();
                 setHistory([]);
                 setClearHistoryOpen(false);
-                showToast?.(t("settings.workflows.history.cleared"), 2200);
               }}
             >
               {t("settings.workflows.history.clearConfirm")}

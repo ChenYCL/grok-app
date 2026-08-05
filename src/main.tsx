@@ -108,6 +108,108 @@ if (
   installZoomHotkeys(window);
 }
 
+// Kill the native WebView right-click menu app-wide (copy/paste/reload/etc.).
+// Product menus are custom React `onContextMenu` handlers (session rows, chat
+// cards, side tabs, project list, image/video viewers, resource viewer, …)
+// that render the app's ContextMenu and call preventDefault themselves — they
+// still fire because this listener only prevents the default action and never
+// stops propagation. Runs on every document built from this bundle (incl.
+// additional webviews).
+document.addEventListener(
+  "contextmenu",
+  (e) => {
+    e.preventDefault();
+  },
+  true,
+);
+
+// macOS WKWebView quirk: right-clicking inside a `contenteditable` shows the
+// native editing menu (Cut/Copy/Paste) even when `contextmenu` is
+// preventDefault'd — the editing menu is attached by the system text-input
+// machinery (based on the element's editability at the right-click), not by
+// the DOM event default. Temporarily mark the editor non-editable from the
+// right-button mousedown (before the hit-test that decides the menu), then
+// restore editability + the user's selection right after the right-click has
+// settled. Plain `<input>`/`<textarea>` keep the native editing menu (useful
+// and expected there).
+let ctxSuppressEl: HTMLElement | null = null;
+let ctxSuppressPrev = "";
+let ctxSuppressRange: Range | null = null;
+let ctxSuppressTimer: number | null = null;
+
+function clearCtxSuppress() {
+  if (ctxSuppressTimer != null) {
+    window.clearTimeout(ctxSuppressTimer);
+    ctxSuppressTimer = null;
+  }
+  if (ctxSuppressEl) {
+    try {
+      ctxSuppressEl.contentEditable = ctxSuppressPrev || "true";
+    } catch {
+      /* element detached — ignore */
+    }
+    ctxSuppressEl = null;
+  }
+  if (ctxSuppressRange) {
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(ctxSuppressRange);
+    }
+    ctxSuppressRange = null;
+  }
+  ctxSuppressPrev = "";
+}
+
+function editableAncestorOf(
+  target: EventTarget | null,
+): HTMLElement | null {
+  if (!(target instanceof HTMLElement)) return null;
+  return target.closest(
+    '[contenteditable="true"], [contenteditable="plaintext-only"]',
+  ) as HTMLElement | null;
+}
+
+// Flip before the contextmenu event so the native menu builder sees a
+// non-editable element. Only right-button; never touches left-click editing.
+document.addEventListener(
+  "mousedown",
+  (e) => {
+    if (e.button !== 2) return;
+    const el = editableAncestorOf(e.target);
+    if (!el) return;
+    clearCtxSuppress();
+    const sel = window.getSelection();
+    if (
+      sel &&
+      sel.rangeCount > 0 &&
+      sel.anchorNode &&
+      el.contains(sel.anchorNode)
+    ) {
+      ctxSuppressRange = sel.getRangeAt(0).cloneRange();
+    }
+    ctxSuppressEl = el;
+    ctxSuppressPrev = el.contentEditable;
+    el.contentEditable = "false";
+    ctxSuppressTimer = window.setTimeout(clearCtxSuppress, 700);
+  },
+  true,
+);
+
+// Keep the editor non-editable through the contextmenu default action, then
+// restore once the right-click has settled (our custom menu owns the rest).
+document.addEventListener(
+  "contextmenu",
+  (e) => {
+    e.preventDefault();
+    if (ctxSuppressTimer != null) {
+      window.clearTimeout(ctxSuppressTimer);
+    }
+    ctxSuppressTimer = window.setTimeout(clearCtxSuppress, 350);
+  },
+  true,
+);
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <UpdaterProvider>

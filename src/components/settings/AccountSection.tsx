@@ -38,7 +38,6 @@ export function AccountSection() {
     onSwitchAccount,
     savedAccounts,
     setSectionTab,
-    showSettingsToast,
     t,
   } = s;
 
@@ -134,7 +133,6 @@ export function AccountSection() {
                 }
                 onProvidersChanged={onProvidersChanged}
                 onProviderActivated={onProviderActivated}
-                onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2800)}
               />
             ) : activeTab === "extras" ? (
               <OfficialAuxPanel
@@ -147,7 +145,6 @@ export function AccountSection() {
                   )
                 }
                 onProviderActivated={onProviderActivated}
-                onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2800)}
               />
             ) : (
           <AccountPanel

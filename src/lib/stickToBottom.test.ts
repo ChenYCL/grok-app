@@ -12,6 +12,7 @@ import {
   isNearBottom,
   nextStickPinState,
   shouldClampPinnedStreamDrift,
+  shouldReleaseStickOnScrollUp,
 } from "./stickToBottom";
 
 describe("distanceFromBottom", () => {
@@ -132,6 +133,93 @@ describe("isHardBottom", () => {
 
   it("false outside hard band", () => {
     expect(isHardBottom(597, 1000, 400, 2)).toBe(false); // distance 3
+  });
+});
+
+describe("shouldReleaseStickOnScrollUp", () => {
+  // Viewport 600 tall, content 1200 → max scrollTop = 600.
+  const sh = 1200;
+  const ch = 600;
+
+  it("escapes on a real scroll-up that lands above the hard bottom", () => {
+    // From bottom (600) up to 550 → 50px up, not clamped.
+    expect(
+      shouldReleaseStickOnScrollUp({
+        pinned: true,
+        scrollTop: 550,
+        previousScrollTop: 600,
+        scrollHeight: sh,
+        clientHeight: ch,
+      }),
+    ).toBe(true);
+  });
+
+  it("does NOT escape when a browser clamp parks the viewport on the bottom", () => {
+    // Content above the viewport shrank (tool phase auto-collapse / virtual
+    // remeasure) → browser forced scrollTop from 600 down to the new max 400
+    // (scrollHeight shrank to 1000). This is not an intentional leave and
+    // must keep following the stream.
+    expect(
+      shouldReleaseStickOnScrollUp({
+        pinned: true,
+        scrollTop: 400,
+        previousScrollTop: 600,
+        scrollHeight: 1000,
+        clientHeight: ch,
+      }),
+    ).toBe(false);
+  });
+
+  it("does NOT escape when the viewport grew and clamped to the new max", () => {
+    // clientHeight grew 600 → 800; scrollHeight 1200 → max 400. The browser
+    // pulled scrollTop 600 → 400 to keep it within bounds.
+    expect(
+      shouldReleaseStickOnScrollUp({
+        pinned: true,
+        scrollTop: 400,
+        previousScrollTop: 600,
+        scrollHeight: 1200,
+        clientHeight: 800,
+      }),
+    ).toBe(false);
+  });
+
+  it("does NOT escape on micro jitter below the escape delta", () => {
+    expect(
+      shouldReleaseStickOnScrollUp({
+        pinned: true,
+        scrollTop: 592,
+        previousScrollTop: 600,
+        scrollHeight: sh,
+        clientHeight: ch,
+      }),
+    ).toBe(false);
+  });
+
+  it("does NOT escape when pin is already released", () => {
+    expect(
+      shouldReleaseStickOnScrollUp({
+        pinned: false,
+        scrollTop: 400,
+        previousScrollTop: 600,
+        scrollHeight: sh,
+        clientHeight: ch,
+      }),
+    ).toBe(false);
+  });
+
+  it("escapes when the scroll-up ends inside the near band but above hard bottom", () => {
+    // 40px up from bottom (600 → 560) — near threshold (100) but the user
+    // genuinely left; must escape like before.
+    expect(
+      shouldReleaseStickOnScrollUp({
+        pinned: true,
+        scrollTop: 560,
+        previousScrollTop: 600,
+        scrollHeight: sh,
+        clientHeight: ch,
+      }),
+    ).toBe(true);
   });
 });
 

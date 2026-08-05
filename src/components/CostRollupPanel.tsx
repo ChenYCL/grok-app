@@ -291,10 +291,6 @@ export function CostRollupPanel({
     setProjectChip("all");
     setSessionChip("all");
     refresh();
-    onToast?.(
-      t("costRollup.clearDone", { count: clearPlan.count }),
-      2000,
-    );
   };
 
   const onCopyExport = async () => {
@@ -316,7 +312,10 @@ export function CostRollupPanel({
       copyOk,
       error,
     });
-    onToast?.(t(costRollupExportOutcomeMessageKey(outcome)), 2000);
+    const key = costRollupExportOutcomeMessageKey(outcome);
+    if (key !== "costRollup.exportCopied") {
+      onToast?.(t(key), 2000);
+    }
   };
 
   const onDownloadExport = () => {
@@ -339,7 +338,10 @@ export function CostRollupPanel({
       empty: view.empty,
       error,
     });
-    onToast?.(t(costRollupExportOutcomeMessageKey(outcome)), 2000);
+    const key = costRollupExportOutcomeMessageKey(outcome);
+    if (key !== "costRollup.exportDownloaded") {
+      onToast?.(t(key), 2000);
+    }
   };
 
   const clearScopeFilters = () => {

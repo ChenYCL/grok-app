@@ -33,6 +33,7 @@ import {
   reconcileOptimisticDuplicates,
   isClientOptimisticId,
   weaveToolsIntoAssistantSegments,
+  mergeAssistantFragments,
   filterTranscriptMessages,
   stripAnsi,
   truncateBeforeLastUser,
@@ -675,6 +676,82 @@ describe("session projection", () => {
     ]);
   });
 
+  it("mergeAssistantFragments folds per-fragment history into one message", () => {
+    const rows: ChatMessage[] = [
+      { id: "u1", role: "user", content: "做一张图" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "以素材编译并生成信息图。",
+        thought: "读技能",
+        createdAt: "2026-08-04T15:40:21.206529Z",
+      },
+      {
+        id: "tool-call-16",
+        role: "tool",
+        content: "tool_step|completed|tool|tool",
+        marker: "tool_step",
+        toolCallId: "call-16",
+      },
+      {
+        id: "a2",
+        role: "assistant",
+        content: "正在构建信息图，并渲染为图片。",
+        createdAt: "2026-08-04T15:40:21.208529Z",
+      },
+      {
+        id: "a3",
+        role: "assistant",
+        content: "检查生成图片的视觉效果与文字准确性。",
+        createdAt: "2026-08-04T15:40:21.209529Z",
+      },
+      {
+        id: "a4",
+        role: "assistant",
+        content: "中间留白偏多，收紧版式。",
+        thought: "第二段思考",
+        createdAt: "2026-08-04T15:40:21.210529Z",
+      },
+    ];
+    const merged = mergeAssistantFragments(rows);
+    const asst = merged.filter((m) => m.role === "assistant");
+    expect(asst).toHaveLength(1);
+    expect(asst[0]!.id).toBe("a4");
+    expect(asst[0]!.content).toBe("中间留白偏多，收紧版式。");
+    expect(asst[0]!.leadFragments).toEqual([
+      "以素材编译并生成信息图。",
+      "正在构建信息图，并渲染为图片。",
+      "检查生成图片的视觉效果与文字准确性。",
+    ]);
+    // Thoughts from every fragment are preserved (phases joined).
+    expect(asst[0]!.thought).toContain("读技能");
+    expect(asst[0]!.thought).toContain("第二段思考");
+    // Tool row survives (weave attaches it later).
+    expect(merged.some((m) => m.id === "tool-call-16")).toBe(true);
+    // Weaving a merged turn: tool lands on the single assistant message.
+    const woven = weaveToolsIntoAssistantSegments(rows);
+    const wAsst = woven.find((m) => m.role === "assistant")!;
+    expect(
+      wAsst.segments?.filter((s) => s.kind === "tool").length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("mergeAssistantFragments leaves live / single-row turns untouched", () => {
+    const rows: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hi" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "live answer",
+        streaming: true,
+      },
+    ];
+    const merged = mergeAssistantFragments(rows);
+    expect(merged).toHaveLength(2);
+    expect(merged[1]!.id).toBe("a1");
+    expect(merged[1]!.leadFragments).toBeUndefined();
+  });
+
   it("weaveToolsIntoAssistantSegments puts journal tools between thought and content", () => {
     // Host journal shape: U → A (final) → tools (tools ran mid-turn).
     const woven = weaveToolsIntoAssistantSegments([
@@ -1299,6 +1376,22 @@ describe("tool activity", () => {
     expect(p?.detail).toContain("@cgnot996");
     expect(p?.detail).toContain("https://x.com/cgnot996");
     expect(p?.detail?.split("\n").length).toBeGreaterThan(2);
+  });
+
+  it("parseToolStepContent reads the host input: line as the call argument", () => {
+    const body = [
+      "tool_step|completed|read_file|Read",
+      "input:/Users/me/.agents/skills/content-infographic/SKILL.md",
+      "1→---",
+      "name: content-infographic",
+    ].join("\n");
+    const p = parseToolStepContent(body);
+    expect(p?.kind).toBe("read_file");
+    expect(p?.title).toBe("Read");
+    expect(p?.input).toBe("/Users/me/.agents/skills/content-infographic/SKILL.md");
+    expect(p?.detail).toContain("name: content-infographic");
+    // input line is not part of the expand detail
+    expect(p?.detail).not.toContain("input:");
   });
 
   it("weave session b54735c8 shape: one host-x tool + full detail", () => {

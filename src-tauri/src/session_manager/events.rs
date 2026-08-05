@@ -546,15 +546,40 @@ impl SessionManager {
 
                 // Live tool activity for UI — recover identity when completed
                 // updates omit title/kind (sparse status-only payloads).
+                if !app_sid.is_empty() {
+                    remember_tool_identity(
+                        &self.tool_identities,
+                        &app_sid,
+                        &tool_call_id,
+                        &title,
+                        &kind,
+                        &raw,
+                    );
+                }
+                let (title2, kind2, name2, input2) = resolve_tool_identity(
+                    &self.tool_identities,
+                    &app_sid,
+                    &tool_call_id,
+                    &title,
+                    &kind,
+                );
                 let (kind_enriched, title_enriched) =
-                    enrich_tool_identity_from_raw(&raw, &title, &kind);
+                    enrich_tool_identity_from_raw(&raw, &title2, &kind2);
                 let kind_j = normalize_tool_kind_for_journal(&kind_enriched, &title_enriched);
                 let kind_j = if kind_j.is_empty() {
                     kind_enriched.clone()
                 } else {
                     kind_j
                 };
-                let live_title = tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
+                // Journal kind = machine tool name when known (read_file,
+                // run_terminal_command…). The UI maps names to typed icons +
+                // localized labels; bare category kinds are the fallback.
+                let kind_store = if !name2.is_empty() && !name2.eq_ignore_ascii_case("tool") {
+                    name2.clone()
+                } else {
+                    kind_j.clone()
+                };
+                let live_title = tool_journal_label(&title_enriched, &kind_store, &detail, &path_out);
                 let live_title =
                     if !live_title.is_empty() && !live_title.eq_ignore_ascii_case("tool") {
                         live_title
@@ -619,22 +644,20 @@ impl SessionManager {
                     && !app_sid.is_empty()
                     && !tool_call_id.is_empty()
                 {
-                    let label = tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
+                    let label = tool_journal_label(&title_enriched, &kind_store, &detail, &path_out);
                     let label = if label.is_empty() || label.eq_ignore_ascii_case("tool") {
                         live_title.clone()
                     } else {
                         label
                     };
-                    let kind_store = if kind_j.is_empty() {
-                        if kind_enriched.is_empty() {
-                            "tool".into()
-                        } else {
-                            kind_enriched
-                        }
-                    } else {
-                        kind_j
-                    };
                     let mut content = format!("tool_step|{st}|{kind_store}|{label}");
+                    if let Some(inp) = input2.as_deref().filter(|s| !s.trim().is_empty()) {
+                        // Call argument (target file / command / query) — the
+                        // UI shows this as the specific tool detail.
+                        content.push('\n');
+                        content.push_str("input:");
+                        content.push_str(&inp.chars().take(400).collect::<String>());
+                    }
                     if let Some(ref d) = detail {
                         content.push('\n');
                         content.push_str(&d.chars().take(400).collect::<String>());

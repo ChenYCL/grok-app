@@ -663,7 +663,6 @@ export function ProvidersPanel({
       if (effect === "soft_respawn") {
         setHint(tr(toastKey));
         setHintTone("ok");
-        onToast?.(tr(toastKey), 3200);
         try {
           // Fire-and-forget UI refresh; host already recycled agents on upsert.
           onProviderActivated?.();
@@ -679,11 +678,12 @@ export function ProvidersPanel({
       } else if (replacedExisting && effect === "saved_disk_only") {
         setHint(tr("prov.savedReplaced"));
         setHintTone("ok");
-        onToast?.(tr("prov.savedReplaced"), 3200);
       } else {
         setHint(tr(toastKey));
         setHintTone(effect === "host_only" ? "err" : "ok");
-        onToast?.(tr(toastKey), effect === "host_only" ? 4000 : 2800);
+        if (effect === "host_only") {
+          onToast?.(tr(toastKey), 4000);
+        }
       }
     } catch (e) {
       // Classified soft-fail — never invent success or leave raw Error dumps only.
@@ -777,9 +777,7 @@ export function ProvidersPanel({
       });
       setRemoteModels(r.models.map((m) => m.id));
       setModelSearch("");
-      if (r.models.length) {
-        onToast?.(tr("prov.loaded", { n: r.models.length }), 2800);
-      } else {
+      if (!r.models.length) {
         onToast?.(tr("prov.emptyList"), 2800);
       }
     } catch (e) {

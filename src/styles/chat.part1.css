@@ -791,6 +791,36 @@
   fill: #646362;
 }
 
+/* Preset provider wordmarks on the welcome composer (DeepSeek / OpenCode).
+ * DeepSeek keeps its brand blue in light mode and flips to white in dark
+ * mode; OpenCode is monochrome — black in light mode, white in dark mode. */
+.deepseek-full-mark__ink {
+  fill: #4d6bfe;
+}
+
+[data-theme="dark"] .deepseek-full-mark__ink {
+  fill: #ffffff;
+}
+
+.deepseek-full-mark {
+  display: block;
+  width: min(247px, 70vw);
+  max-width: min(364px, 94vw);
+  height: auto;
+}
+
+.opencode-wordmark {
+  display: block;
+  color: #000000;
+  width: min(299px, 75vw);
+  max-width: min(390px, 96vw);
+  height: auto;
+}
+
+[data-theme="dark"] .opencode-wordmark {
+  color: #ffffff;
+}
+
 /* Context bar + composer share width; tight gap when bar is present */
 .composer-stack {
   pointer-events: none;

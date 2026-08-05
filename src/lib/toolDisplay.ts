@@ -18,18 +18,14 @@ export interface ToolDisplayInfo {
   shortLabel: string;
   /** One-line summary for lists. */
   summary: string;
+  /** File/dir basename when the tool acted on a path (typed label companion). */
+  pathBase?: string;
   /** True when this kind is "gathering context" (read/list/search/browse). */
   isContext: boolean;
 }
 
 function lower(s: string | null | undefined): string {
   return (s || "").toLowerCase().trim().replace(/-/g, "_");
-}
-
-function basename(path: string): string {
-  const p = path.replace(/\\/g, "/");
-  const parts = p.split("/").filter(Boolean);
-  return parts[parts.length - 1] || path;
 }
 
 function clip(s: string, max = 56): string {
@@ -172,20 +168,90 @@ export function isContextToolKind(
 export function toolShortLabel(kind: ToolDisplayKind): string {
   switch (kind) {
     case "bash":
-      return "Shell";
+      return "Run command";
     case "read":
-      return "Read";
+      return "Read file";
     case "edit":
-      return "Edit";
+      return "Edit file";
     case "search":
       return "Search";
     case "browse":
       return "Browse";
     case "subagent":
-      return "Agent";
+      return "Subagent";
     default:
       return "Tool";
   }
+}
+
+/** i18n message key for a typed tool label (localized at render time). */
+export function toolBucketLabelKey(kind: ToolDisplayKind): string {
+  switch (kind) {
+    case "bash":
+      return "chat.tool.bash";
+    case "read":
+      return "chat.tool.read";
+    case "edit":
+      return "chat.tool.edit";
+    case "search":
+      return "chat.tool.search";
+    case "browse":
+      return "chat.tool.browse";
+    case "subagent":
+      return "chat.tool.agent";
+    default:
+      return "chat.tool.generic";
+  }
+}
+
+/** Label key honoring the machine tool name (folder for `list_dir`, …). */
+export function toolLabelKeyFor(
+  toolKind: string | null | undefined,
+  bucket: ToolDisplayKind,
+): string {
+  const k = (toolKind || "").toLowerCase();
+  if (k.includes("list_dir") || k.includes("list_directory") || k === "ls") {
+    return "chat.tool.list";
+  }
+  return toolBucketLabelKey(bucket);
+}
+
+/** Short base name of a tool path (for “Read file · main.ts” companion text). */
+export function toolPathBase(path?: string | null): string | undefined {
+  const p = (path || "").trim().replace(/\\/g, "/");
+  if (!p) return undefined;
+  const parts = p.split("/").filter(Boolean);
+  const last = parts[parts.length - 1] || p;
+  return last.length > 64 ? `${last.slice(0, 63)}…` : last;
+}
+
+/**
+ * Specific tool-call detail for the activity rail — derived from the recorded
+ * call argument (`input`: target file / command / query / url), with noisy
+ * bits filtered:
+ * - read / edit / list → file/dir base name
+ * - bash → first simple command, whitespace collapsed, clipped
+ * - search / browse → the query / url, clipped
+ */
+export function toolInputDisplay(
+  input: string | null | undefined,
+  bucket: ToolDisplayKind,
+): string | undefined {
+  const v = (input || "").trim();
+  if (!v) return undefined;
+  if (bucket === "bash") {
+    const first = v.split(/[;|&]\s*/)[0]?.trim() || v;
+    const one = first.replace(/\s+/g, " ").trim();
+    return one.length > 44 ? `${one.slice(0, 43)}…` : one;
+  }
+  if (bucket === "search" || bucket === "browse") {
+    return v.length > 48 ? `${v.slice(0, 47)}…` : v;
+  }
+  // Path-like (read / edit / list): last segment.
+  const p = v.replace(/\\/g, "/").replace(/\/+$/, "");
+  const parts = p.split("/").filter(Boolean);
+  const last = parts[parts.length - 1] || p;
+  return last.length > 40 ? `${last.slice(0, 39)}…` : last;
 }
 
 /**
@@ -198,53 +264,46 @@ export function summarizeToolDisplay(input: {
   detail?: string | null;
   path?: string | null;
   toolCallId?: string | null;
+  input?: string | null;
 }): ToolDisplayInfo {
   const kind =
     input.kind || inferKindFromToolCallId(input.toolCallId) || input.kind;
   const bucket = classifyToolKind(kind, input.title, input.toolCallId);
   const path = (input.path || "").trim();
-  const detail = (input.detail || "").trim();
   const title = (input.title || "").trim();
   let summary = "";
   // Strip trailing colon noise from Host titles ("Web search:", "X search:").
   const cleanTitle = title.replace(/:+\s*$/, "").trim();
-  // Prefer detail first-line when title is empty/generic ("tool").
-  const detailFirst = detail
-    ? (detail.split("\n")[0] || detail).trim()
-    : "";
   // Host side-channel: always prefer stable title over stream body / status.
   const hostSide = /host[-_]?(vision|x)/i.test(lower(input.toolCallId));
-  const statusyDetail =
-    /^(done|ok|failed|unavailable|识别完成|识别失败|搜索完成|搜索失败|\d+\s*image)/i.test(
-      detailFirst,
-    );
-  if (bucket === "bash" && detailFirst) {
-    summary = clip(detailFirst);
+  const pathBase = toolPathBase(path);
+  // Specific call detail (target file / command / query) beats the generic
+  // type label; raw tool OUTPUT stays in expand detail only.
+  const specific = toolInputDisplay(input.input, bucket);
+  if (specific) {
+    summary = specific;
+  } else if (bucket === "bash") {
+    summary = toolShortLabel(bucket);
   } else if (hostSide && cleanTitle && !/^tool$/i.test(cleanTitle)) {
     summary = clip(cleanTitle);
-  } else if (path && !/^tool$/i.test(cleanTitle || "tool")) {
-    summary = basename(path);
-  } else if (path && /^tool$/i.test(cleanTitle || "tool")) {
-    summary = basename(path);
-  } else if (cleanTitle && !/^tool$/i.test(cleanTitle) && hostSide) {
-    summary = clip(cleanTitle);
+  } else if (pathBase) {
+    summary = pathBase;
+  } else if (bucket === "read") {
+    summary = toolShortLabel(bucket);
+  } else if (bucket === "edit") {
+    summary = toolShortLabel(bucket);
+  } else if (bucket === "subagent") {
+    summary = toolShortLabel(bucket);
   } else if (
-    detailFirst &&
-    !/^tool$/i.test(detailFirst) &&
-    !(cleanTitle && statusyDetail) &&
-    !hostSide
+    cleanTitle &&
+    !/^tool$/i.test(cleanTitle) &&
+    (bucket === "search" || bucket === "browse")
   ) {
-    summary = clip(detailFirst);
+    summary = clip(cleanTitle);
   } else if (cleanTitle && !/^tool$/i.test(cleanTitle)) {
     summary = clip(cleanTitle);
-  } else if (path) {
-    summary = basename(path);
   } else if (input.kind && !/^tool$/i.test(input.kind)) {
     summary = clip(input.kind.replace(/[_./]+/g, " "));
-  } else if (bucket === "browse") {
-    summary = "Browse";
-  } else if (bucket === "search") {
-    summary = "Search";
   } else {
     summary = toolShortLabel(bucket);
   }
@@ -252,6 +311,7 @@ export function summarizeToolDisplay(input: {
     kind: bucket,
     shortLabel: toolShortLabel(bucket),
     summary,
+    pathBase,
     isContext:
       bucket === "read" || bucket === "search" || bucket === "browse",
   };

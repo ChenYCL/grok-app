@@ -15,6 +15,7 @@ import {
   useState,
   type ReactNode,
   type UIEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
@@ -54,6 +55,7 @@ import {
   mergePathMaps,
 } from "@/lib/sessionPathMap";
 import { AttachmentCard } from "@/components/AttachmentCard";
+import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { UserAttachments } from "@/components/lobe-chat/UserAttachments";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import {
@@ -61,13 +63,16 @@ import {
   IconBulb,
   IconChat,
   IconClock,
+  IconCopy,
   IconExportMd,
   IconFork,
   IconLink,
+  IconPaperclip,
   IconRename,
   IconRewind,
   IconTarget,
 } from "@/components/icons";
+import { setDraft } from "@/lib/composerDraftStore";
 import { formatMessageTime, formatRelativeTime } from "@/lib/accountUi";
 import type { MessageTimeFormat } from "@/lib/messageTimeFormatPref";
 import { computeMessageLength } from "@/lib/messageLength";
@@ -85,6 +90,7 @@ import {
 import { ChatItem } from "./ChatItem";
 import { MarkdownChat } from "./MarkdownChat";
 import { Thinking } from "./Thinking";
+import { LeadFragmentsStrip } from "./LeadFragmentsStrip";
 import { BackBottom } from "./BackBottom";
 import { InlineUserEdit } from "./InlineUserEdit";
 import { SkillChip } from "@/components/SkillChip";
@@ -1186,6 +1192,13 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
               thoughtForLabel={(n) => tr("chat.thoughtFor", { n })}
             />
           ) : null}
+          {m.leadFragments?.length ? (
+            <LeadFragmentsStrip
+              fragments={m.leadFragments}
+              locale={locale}
+              onOpenExternalLink={onOpenExternalLink}
+            />
+          ) : null}
           {(() => {
             // Running occurrence base across content segments so
             // find marks stay aligned with message-level match index.
@@ -1605,6 +1618,104 @@ export function ConversationThread({
       window.removeEventListener(TRANSCRIPT_FILTER_CHANGE_EVENT, onPref);
   }, []);
   const showToolChrome = shouldShowTranscriptToolChrome(transcriptFilter);
+
+  /**
+   * Transcript selection context menu (正文区域): right-click with text
+   * selected opens the app ContextMenu (same visual baseline as attachment
+   * cards) with Copy / Paste / Add-to-input. No selection → nothing (native
+   * menu is already suppressed globally).
+   */
+  const [selectionMenu, setSelectionMenu] = useState<{
+    x: number;
+    y: number;
+    text: string;
+  } | null>(null);
+
+  const copyText = useCallback((text: string) => {
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        } catch {
+          /* ignore */
+        }
+      }
+    })();
+  }, []);
+
+  /** Append text to the composer draft (keeps skill-chip tokens intact). */
+  const appendToComposer = useCallback((text: string) => {
+    if (!text) return;
+    setDraft((prev) => {
+      if (!prev) return text;
+      return /\s$/.test(prev) ? prev + text : prev + "\n\n" + text;
+    });
+    // Bring the composer into view with the caret at the end (stable
+    // selector, same as AppWorkbench focus helpers).
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(".composer__input");
+      if (!el || el.getAttribute("contenteditable") === "false") return;
+      el.focus({ preventScroll: false });
+      const sel = window.getSelection();
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
+  }, []);
+
+  const onTranscriptContextMenu = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      const sel = window.getSelection();
+      if (!sel) return;
+      const text = sel.toString().trim();
+      if (!text) return;
+      // Only when the selection lives inside this transcript viewport.
+      const scrollEl = scrollRef.current;
+      if (!scrollEl) return;
+      const anchor = sel.anchorNode;
+      const focus = sel.focusNode;
+      const inside =
+        (anchor != null && scrollEl.contains(anchor)) ||
+        (focus != null && scrollEl.contains(focus));
+      if (!inside) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSelectionMenu({ x: e.clientX, y: e.clientY, text });
+    },
+    [],
+  );
+
+  const selectionMenuItems = useMemo<ContextMenuItem[]>(() => {
+    if (!selectionMenu) return [];
+    const selText = selectionMenu.text;
+    return [
+      {
+        id: "sel-copy",
+        label: tr("chat.selectionCopy"),
+        icon: <IconCopy size={16} />,
+        onClick: () => copyText(selText),
+      },
+      {
+        id: "sel-add-input",
+        label: tr("chat.selectionAddToInput"),
+        icon: <IconPaperclip size={16} />,
+        onClick: () => appendToComposer(selText),
+      },
+    ];
+  }, [selectionMenu, tr, copyText, appendToComposer]);
 
   const messageNodes = useMemo(
     () => buildSessionMessageNodes(messages),
@@ -2107,6 +2218,7 @@ export function ConversationThread({
         ref={scrollRef}
         className="lobe-chat__scroll"
         onScroll={onScroll}
+        onContextMenu={onTranscriptContextMenu}
       >
         <div ref={contentRef} className="lobe-chat__inner">
           {empty && !suppressEmptyCopy ? (
@@ -2241,6 +2353,15 @@ export function ConversationThread({
         visible={backBottomVisible}
         label={tr("chat.scrollBottom")}
         onClick={() => scrollToBottom("smooth")}
+      />
+
+      {/* Selection context menu — same ContextMenu baseline as attachment cards. */}
+      <ContextMenu
+        open={!!selectionMenu}
+        x={selectionMenu?.x ?? 0}
+        y={selectionMenu?.y ?? 0}
+        onClose={() => setSelectionMenu(null)}
+        items={selectionMenuItems}
       />
     </div>
   );

@@ -182,7 +182,19 @@ fn grok_home() -> PathBuf {
 }
 
 fn auth_json_path() -> PathBuf {
-    grok_home().join("auth.json")
+    // GROK_HOME may point at a profile that holds no credentials (e.g. the App
+    // agent-home after a custom-route switch clears auth.json). Prefer it only
+    // when the file actually exists; otherwise fall back to the canonical CLI
+    // location `~/.grok/auth.json` — same rule voice_auth uses. Otherwise a
+    // missing `$GROK_HOME/auth.json` is misreported as "signed out" and the
+    // official login state (and welcome SuperGrok mark) is lost.
+    if let Ok(home) = std::env::var("GROK_HOME") {
+        let p = PathBuf::from(home).join("auth.json");
+        if p.is_file() {
+            return p;
+        }
+    }
+    cli_default_auth_json_path()
 }
 
 /// Canonical CLI auth path (`~/.grok/auth.json`), ignoring process `GROK_HOME`.
@@ -285,40 +297,51 @@ fn usage_cache_path() -> PathBuf {
 
 /// Redacted profile from CLI auth.json. Never returns tokens.
 pub fn read_auth_profile() -> AccountProfile {
-    let path = auth_json_path();
+    let primary = auth_json_path();
+    let canonical = cli_default_auth_json_path();
+    // A missing / unreadable / corrupt primary (e.g. `$GROK_HOME/auth.json`
+    // truncated mid-write or stale after a custom-route switch) must not wipe
+    // the login state while the canonical `~/.grok/auth.json` still holds
+    // valid credentials — fall back before reporting "signed out".
+    match read_auth_profile_at(&primary) {
+        Some(p) => p,
+        None if primary != canonical => {
+            read_auth_profile_at(&canonical).unwrap_or_else(signed_out_profile)
+        }
+        None => signed_out_profile(),
+    }
+}
+
+fn signed_out_profile() -> AccountProfile {
+    AccountProfile {
+        signed_in: false,
+        auth_mode: None,
+        email: None,
+        display_name: None,
+        user_id: None,
+        team_id: None,
+        principal_type: None,
+        expires_at: None,
+        expired: false,
+        has_refresh: false,
+        oidc_issuer: None,
+    }
+}
+
+/// Parse a profile from one auth.json path. `None` means the file is missing /
+/// unreadable / unparseable (caller may fall back to the canonical path). A
+/// well-formed file with no usable token still returns a profile
+/// (`signed_in=false`) — that is a real signed-out state, not an error.
+fn read_auth_profile_at(path: &std::path::Path) -> Option<AccountProfile> {
     if !path.is_file() {
-        return AccountProfile {
-            signed_in: false,
-            auth_mode: None,
-            email: None,
-            display_name: None,
-            user_id: None,
-            team_id: None,
-            principal_type: None,
-            expires_at: None,
-            expired: false,
-            has_refresh: false,
-            oidc_issuer: None,
-        };
+        return None;
     }
 
-    let raw = match fs::read_to_string(&path) {
+    let raw = match fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
             warn!("account: read auth.json failed: {e}");
-            return AccountProfile {
-                signed_in: false,
-                auth_mode: None,
-                email: None,
-                display_name: None,
-                user_id: None,
-                team_id: None,
-                principal_type: None,
-                expires_at: None,
-                expired: false,
-                has_refresh: false,
-                oidc_issuer: None,
-            };
+            return None;
         }
     };
 
@@ -326,28 +349,12 @@ pub fn read_auth_profile() -> AccountProfile {
         Ok(v) => v,
         Err(e) => {
             warn!("account: parse auth.json failed: {e}");
-            return AccountProfile {
-                signed_in: false,
-                auth_mode: None,
-                email: None,
-                display_name: None,
-                user_id: None,
-                team_id: None,
-                principal_type: None,
-                expires_at: None,
-                expired: false,
-                has_refresh: false,
-                oidc_issuer: None,
-            };
+            return None;
         }
     };
 
     // auth.json is a map of issuer::client_id → credential entry.
-    let entry = v
-        .as_object()
-        .and_then(|m| m.values().next())
-        .cloned()
-        .unwrap_or(Value::Null);
+    let entry = first_usable_auth_entry(&v).unwrap_or(Value::Null);
 
     let email = entry
         .get("email")
@@ -392,7 +399,7 @@ pub fn read_auth_profile() -> AccountProfile {
         .map(|s| !s.is_empty())
         .unwrap_or(false);
 
-    AccountProfile {
+    Some(AccountProfile {
         signed_in: has_key || has_refresh,
         auth_mode: entry
             .get("auth_mode")
@@ -420,7 +427,32 @@ pub fn read_auth_profile() -> AccountProfile {
             .get("oidc_issuer")
             .and_then(|x| x.as_str())
             .map(str::to_string),
+    })
+}
+
+/// Pick the auth.json credential entry that actually holds a usable token
+/// (`key` / `access_token` / `refresh_token`), preferring it over the literal
+/// first map value — a multi-issuer file may keep a stale first entry from an
+/// older login that would otherwise mask the valid one and fake "signed out".
+fn first_usable_auth_entry(v: &Value) -> Option<Value> {
+    let obj = v.as_object()?;
+    let mut first = None;
+    for (_key, entry) in obj {
+        let has_token = ["key", "access_token", "refresh_token"].iter().any(|f| {
+            entry
+                .get(f)
+                .and_then(|x| x.as_str())
+                .map(|s| !s.is_empty())
+                .unwrap_or(false)
+        });
+        if has_token {
+            return Some(entry.clone());
+        }
+        if first.is_none() {
+            first = Some(entry.clone());
+        }
     }
+    first
 }
 
 fn read_access_token() -> Option<String> {
@@ -432,7 +464,7 @@ fn read_access_token() -> Option<String> {
 pub fn read_access_token_from_path(path: &std::path::Path) -> Option<String> {
     let raw = fs::read_to_string(path).ok()?;
     let v: Value = serde_json::from_str(&raw).ok()?;
-    let entry = v.as_object()?.values().next()?;
+    let entry = first_usable_auth_entry(&v)?;
     entry
         .get("key")
         .or_else(|| entry.get("access_token"))

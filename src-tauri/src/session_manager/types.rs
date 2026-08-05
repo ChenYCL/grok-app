@@ -529,6 +529,160 @@ pub(super) fn normalize_tool_kind_for_journal(kind: &str, title: &str) -> String
     String::new()
 }
 
+/// Tool identity learned from the in_progress `tool_call` notification.
+///
+/// The grok CLI sends the full identity (`title`, `kind`, `toolName`, `rawInput`)
+/// only on the *start* notification; the terminal `tool_call_update` is status-only
+/// (`{toolCallId, status, content, rawOutput, locations}`) — without this map
+/// the journal would record bare `tool_step|completed|tool|tool`.
+#[derive(Debug, Clone, Default)]
+pub(super) struct ToolIdentity {
+    /// Machine tool name, e.g. `read_file` (from `toolName`).
+    pub(super) name: String,
+    /// Human title, e.g. `Read` / `Run Command`.
+    pub(super) title: String,
+    /// CLI kind category, e.g. `read` / `execute` / `search`.
+    pub(super) kind: String,
+    /// Call argument worth showing (target file / command / query / url).
+    pub(super) input: Option<String>,
+}
+
+/// Recover the tool call argument worth surfacing in the UI
+/// (`rawInput` from the start notification).
+pub(crate) fn extract_tool_input(raw: &serde_json::Value) -> Option<String> {
+    let ri = raw.get("rawInput").or_else(|| raw.get("raw_input"))?;
+    let obj = ri.as_object()?;
+    const ORDER: [&str; 10] = [
+        "target_file",
+        "target_directory",
+        "file_path",
+        "path",
+        "folder",
+        "dir",
+        "command",
+        "query",
+        "url",
+        "description",
+    ];
+    for key in ORDER {
+        if let Some(v) = obj.get(key) {
+            if let Some(s) = v.as_str() {
+                let t = s.trim();
+                if !t.is_empty() && t != "null" {
+                    return Some(t.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Remember tool identity when a notification carries any of it. Never
+/// downgrades an existing richer record with a sparse payload (terminal
+/// updates arrive after the start notification and are status-only).
+///
+/// `map`: app session id → tool call id → identity.
+pub(super) fn remember_tool_identity(
+    map: &std::sync::Mutex<HashMap<String, HashMap<String, ToolIdentity>>>,
+    app_sid: &str,
+    tool_call_id: &str,
+    title: &str,
+    kind: &str,
+    raw: &serde_json::Value,
+) {
+    if app_sid.is_empty() || tool_call_id.is_empty() {
+        return;
+    }
+    let name = raw
+        .get("toolName")
+        .or_else(|| raw.get("tool_name"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_string();
+    let t = title.trim();
+    let k = kind.trim();
+    let input = extract_tool_input(raw);
+    let sparse = t.is_empty() && k.is_empty() && name.is_empty() && input.is_none();
+    if sparse {
+        return;
+    }
+    let mut map = map.lock().expect("tool identity map poisoned");
+    let per = map.entry(app_sid.to_string()).or_default();
+    // Cap per-session entries so long-lived hosts cannot grow unboundedly.
+    if per.len() >= 2000 && !per.contains_key(tool_call_id) {
+        return;
+    }
+    let existing = per.get(tool_call_id);
+    let richer = existing.map_or(true, |e| {
+        let e_sparse = e.name.is_empty() && e.title.is_empty() && e.kind.is_empty() && e.input.is_none();
+        let mine_sparse = name.is_empty() && t.is_empty() && k.is_empty() && input.is_none();
+        !e_sparse || mine_sparse || (e.title.is_empty() && !t.is_empty())
+            || (e.kind.is_empty() && !k.is_empty())
+            || (e.name.is_empty() && !name.is_empty())
+            || (e.input.is_none() && input.is_some())
+    });
+    if richer {
+        per.insert(
+            tool_call_id.to_string(),
+            ToolIdentity {
+                name,
+                title: t.to_string(),
+                kind: k.to_string(),
+                input,
+            },
+        );
+    }
+}
+
+/// Recover identity for a sparse terminal event from the start notification.
+/// Returns `(title, kind, name, input)` — falls back to the event's own
+/// values; `name` is the machine tool name, `input` the call argument.
+pub(super) fn resolve_tool_identity(
+    map: &std::sync::Mutex<HashMap<String, HashMap<String, ToolIdentity>>>,
+    app_sid: &str,
+    tool_call_id: &str,
+    title: &str,
+    kind: &str,
+) -> (String, String, String, Option<String>) {
+    if app_sid.is_empty() || tool_call_id.is_empty() {
+        return (title.to_string(), kind.to_string(), String::new(), None);
+    }
+    let map = map.lock().expect("tool identity map poisoned");
+    let Some(id) = map
+        .get(app_sid)
+        .and_then(|m| m.get(tool_call_id))
+    else {
+        return (title.to_string(), kind.to_string(), String::new(), None);
+    };
+    let t = title.trim();
+    let k = kind.trim();
+    let title_out = if t.is_empty() || t.eq_ignore_ascii_case("tool") {
+        if !id.title.is_empty() && !id.title.eq_ignore_ascii_case("tool") {
+            id.title.clone()
+        } else if !id.name.is_empty() {
+            id.name.clone()
+        } else {
+            title.to_string()
+        }
+    } else {
+        title.to_string()
+    };
+    let kind_out = if k.is_empty() || k.eq_ignore_ascii_case("tool") {
+        if !id.kind.is_empty() && !id.kind.eq_ignore_ascii_case("tool") {
+            id.kind.clone()
+        } else if !id.name.is_empty() {
+            id.name.clone()
+        } else {
+            kind.to_string()
+        }
+    } else {
+        kind.to_string()
+    };
+    (title_out, kind_out, id.name.clone(), id.input.clone())
+}
+
 /// Recover tool kind/title when the completed `tool_call_update` is sparse
 /// (status-only payloads leave title empty → journal became `tool_step|completed||tool`).
 pub(super) fn enrich_tool_identity_from_raw(
@@ -551,6 +705,16 @@ pub(super) fn enrich_tool_identity_from_raw(
     };
 
     if title_out.is_empty() || title_out.eq_ignore_ascii_case("tool") {
+        // Top-level camelCase `toolName` (grok CLI start payloads).
+        if let Some(tn) = raw
+            .get("toolName")
+            .or_else(|| raw.get("tool_name"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            title_out = tn.to_string();
+        }
         let mcp_tool = pick_str(&["/rawOutput/tool_name", "/rawInput/tool_name"]);
         let mcp_server = pick_str(&["/rawOutput/server_name", "/rawOutput/server"]);
         let meta_name = pick_str(&["/_meta/x.ai/tool/name", "/_meta/x.ai/tool/label"]);
@@ -703,7 +867,7 @@ pub(super) fn tool_journal_label(
 }
 
 /// True if `next` journal body is richer than `prev` (do not downgrade on upsert).
-pub(super) fn tool_journal_richer(prev: &str, next: &str) -> bool {
+pub(crate) fn tool_journal_richer(prev: &str, next: &str) -> bool {
     if prev == next {
         return false;
     }

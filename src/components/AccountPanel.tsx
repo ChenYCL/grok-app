@@ -6,6 +6,7 @@
  */
 
 import { useMemo, useRef, useState } from "react";
+import { GrokLogo } from "@/components/GrokLogo";
 import type { AccountStatus, SavedAccount } from "@/lib/api";
 import {
   accountDisplayName,
@@ -537,7 +538,7 @@ export function AccountPanel({
         <div className="account-hero__top">
           <div className="account-hero__who">
             <div className="account-avatar" aria-hidden>
-              {initials}
+              {signedIn ? <GrokLogo size={26} /> : initials}
             </div>
             <div className="account-hero__id">
               <div className="account-hero__name-row">

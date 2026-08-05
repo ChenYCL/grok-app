@@ -156,7 +156,6 @@ export function ModelAuxPanel({
         };
         const next = await api.modelsAuxSet(body);
         setState(next);
-        onToast?.(tr("modelAux.saved"), 2200);
         onChanged?.();
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -184,12 +183,6 @@ export function ModelAuxPanel({
     try {
       const next = await api.modelsAuxApplySaveGrok();
       setState(next);
-      onToast?.(
-        tr("modelAux.saveGrokDone", {
-          model: next.saveGrokLabel || next.saveGrokTarget || "",
-        }),
-        3200,
-      );
       onChanged?.();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -211,7 +204,6 @@ export function ModelAuxPanel({
     try {
       const next = await api.modelsAuxResetDefaults();
       setState(next);
-      onToast?.(tr("modelAux.resetDone"), 2800);
       onChanged?.();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

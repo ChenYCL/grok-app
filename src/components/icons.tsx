@@ -12,6 +12,7 @@ import {
   IconArchive as TbArchive,
   IconArrowBackUp as TbArrowBackUp,
   IconArrowLeft as TbArrowLeft,
+  IconArrowUp as TbArrowUp,
   IconArrowsMinimize as TbArrowsMinimize,
   IconFocus2 as TbFocus2,
   IconBlockquote as TbBlockquote,
@@ -264,6 +265,8 @@ export const IconPaperclip = wrap(TbPaperclip);
 export const IconAttach = wrap(TbPaperclip);
 export const IconClose = wrap(TbX);
 export const IconSend = wrap(TbSend);
+/** Up arrow — composer send button glyph. */
+export const IconArrowUp = wrap(TbArrowUp);
 export const IconQueue = wrap(TbStack2);
 export const IconMic = wrap(TbMicrophone);
 export const IconLiveVoice = wrap(TbHeadphones);

@@ -1,6 +1,10 @@
 /**
  * Soft buffer for pure-text streaming first paint (CodePilot-style).
  * Holds initial text until word/char threshold or max wait; code fences bypass.
+ *
+ * NOTE: the hold only lasts until the *next* chunk/poll — a short intro before
+ * tool calls must never stay invisible (that made small body text vanish until
+ * the tools turned the unit non-streaming).
  */
 
 export const SOFT_BUFFER_WORD_THRESHOLD = 12;
@@ -64,9 +68,14 @@ export function stepSoftBuffer(input: {
     state = { ...state, firstContentAt: nowMs };
   }
 
+  // Reveal as soon as ANY content has arrived — streaming text must paint
+  // immediately. The thresholds below only matter for the very first chunk
+  // (already buffered): once firstContentAt is set we show the full text so
+  // a short intro before tool calls is never hidden until tools start.
   const shouldBypass =
     state.bypassed ||
     STRUCTURED_FENCE_RE.test(raw) ||
+    state.firstContentAt != null ||
     wordCount(raw) >= wordThreshold ||
     raw.length >= charThreshold ||
     (state.firstContentAt != null && nowMs - state.firstContentAt >= maxMs);

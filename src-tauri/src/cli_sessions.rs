@@ -6,6 +6,7 @@
 //!   - chat_history.jsonl — line-delimited messages
 
 #![allow(dead_code)] // residual-clippy: pick_latest helper
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -15,6 +16,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::paths::resolve_agent_grok_home;
+use crate::session_manager::{extract_tool_input, tool_journal_richer};
 use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -1085,6 +1087,65 @@ pub fn parse_chat_history_jsonl(path: &Path) -> Result<Vec<(String, String)>, St
     Ok(out)
 }
 
+/// Walk CLI `chat_history.jsonl` in stream order keeping tool rows:
+/// `(role, cleaned_content, tool_call_id)` for user / assistant / tool_result.
+///
+/// Used by reconcile to rebuild sparse tool-step journal rows at the correct
+/// position (and with real names from `events.jsonl`), not just user/assistant.
+fn parse_chat_history_rows(path: &Path) -> Result<Vec<(String, String, Option<String>)>, String> {
+    let raw = fs::read_to_string(path).map_err(|e| format!("read chat_history: {e}"))?;
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let v: Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue, // skip broken lines
+        };
+        let typ = v
+            .get("type")
+            .or_else(|| v.get("role"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("");
+        match typ {
+            "user" | "assistant" => {
+                let content = v.get("content").map(content_to_text).unwrap_or_default();
+                let content = content.trim().to_string();
+                if content.is_empty() {
+                    continue;
+                }
+                let content = extract_user_query(&content).unwrap_or(content);
+                if content.is_empty() {
+                    continue;
+                }
+                out.push((typ.to_string(), content, None));
+            }
+            "tool_result" => {
+                let call_id = v
+                    .get("tool_call_id")
+                    .or_else(|| v.get("toolCallId"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let content = v
+                    .get("content")
+                    .map(content_to_text)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+                out.push(("tool".to_string(), content, Some(call_id)));
+            }
+            _ => {}
+        }
+    }
+    if out.is_empty() {
+        return Err("no messages in chat_history.jsonl".into());
+    }
+    Ok(out)
+}
+
 fn extract_user_query(content: &str) -> Option<String> {
     let start = content.find("<user_query>")?;
     let rest = &content[start + "<user_query>".len()..];
@@ -1212,10 +1273,12 @@ pub fn backfill_user_attachments_from_agent_pairs(
 /// - Exact match or journal row contains the body (stream-concat / prefix cases).
 /// - Agent body contains a journal row only counts when the journal row is a
 ///   *prefix* of the agent body (truncated stream) — then we extend that row.
+///
+/// Every variant carries the journal row index (anchor for tool-step rebuild).
 fn journal_covers_assistant(journal: &[ChatMessageStored], agent_body: &str) -> CoverKind {
     let body = agent_body.trim();
     if body.is_empty() {
-        return CoverKind::Covered;
+        return CoverKind::Covered(usize::MAX);
     }
     let mut best_prefix: Option<usize> = None;
     for (i, m) in journal.iter().enumerate() {
@@ -1227,7 +1290,7 @@ fn journal_covers_assistant(journal: &[ChatMessageStored], agent_body: &str) -> 
             continue;
         }
         if j == body || j.contains(body) {
-            return CoverKind::Covered;
+            return CoverKind::Covered(i);
         }
         // Truncated host journal: intro-only while agent has intro+more in one
         // row, or host stopped mid-stream. Prefer extending that row.
@@ -1246,9 +1309,195 @@ fn journal_covers_assistant(journal: &[ChatMessageStored], agent_body: &str) -> 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CoverKind {
-    Covered,
+    Covered(usize),
     Missing,
     Extend(usize),
+}
+
+/// Map tool call id → machine tool name from CLI `events.jsonl`
+/// (`tool_started` / `tool_completed` rows carry `tool_name`).
+///
+/// The ACP `tool_call_update` terminal notifications are status-only, but the
+/// CLI's own event log records the name — reuse it to rebuild sparse journal
+/// `tool_step|completed|tool|tool` rows with real identities.
+fn load_tool_names_from_events(events_path: &std::path::Path) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let raw = match std::fs::read_to_string(events_path) {
+        Ok(r) => r,
+        Err(_) => return out,
+    };
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let v: Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let typ = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
+        if typ != "tool_started" && typ != "tool_completed" {
+            continue;
+        }
+        let Some(name) = v
+            .get("tool_name")
+            .or_else(|| v.get("toolName"))
+            .and_then(|x| x.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let Some(cid) = v
+            .get("tool_call_id")
+            .or_else(|| v.get("toolCallId"))
+            .and_then(|x| x.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        // Prefer a later (completed) record's name, but never overwrite a name
+        // with an empty one — both rows carry the same name in practice.
+        out.insert(cid.to_string(), name.to_string());
+    }
+    out
+}
+
+/// Rich per-call tool record from the CLI's own ACP update log
+/// (`updates.jsonl` persists the full `session/update` payloads, including
+/// `rawInput` and `_meta.x.ai/tool` — the identity the terminal ACP
+/// notifications drop).
+struct ToolCallRecord {
+    name: String,
+    label: String,
+    kind: String,
+    input: Option<String>,
+}
+
+/// Map tool call id → { name, label, kind, input } from `updates.jsonl`.
+/// Falls back to `events.jsonl` names when the update log is absent.
+fn load_tool_calls_from_updates(
+    updates_path: &Path,
+    events_path: &Path,
+) -> HashMap<String, ToolCallRecord> {
+    let mut out: HashMap<String, ToolCallRecord> = HashMap::new();
+    let raw = std::fs::read_to_string(updates_path).unwrap_or_default();
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let v: Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let params = v.get("params").and_then(|x| x.as_object());
+        let Some(up) = params
+            .and_then(|p| p.get("update"))
+            .and_then(|x| x.as_object())
+        else {
+            continue;
+        };
+        if up.get("sessionUpdate").and_then(|x| x.as_str()) != Some("tool_call") {
+            continue;
+        }
+        let Some(cid) = up
+            .get("toolCallId")
+            .and_then(|x| x.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let meta = up
+            .get("_meta")
+            .and_then(|m| m.get("x.ai/tool"))
+            .and_then(|m| m.as_object());
+        let name = meta
+            .and_then(|m| m.get("name"))
+            .or_else(|| up.get("toolName"))
+            .or_else(|| up.get("tool_name"))
+            .or_else(|| up.get("title"))
+            .and_then(|x| x.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("")
+            .to_string();
+        let label = meta
+            .and_then(|m| m.get("label"))
+            .and_then(|x| x.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| name.clone());
+        let kind = meta
+            .and_then(|m| m.get("kind"))
+            .and_then(|x| x.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_default();
+        let input = extract_tool_input(&Value::Object(up.clone()));
+        out.insert(
+            cid.to_string(),
+            ToolCallRecord {
+                name,
+                label,
+                kind,
+                input,
+            },
+        );
+    }
+    if out.is_empty() {
+        // Older CLI: only events.jsonl exists — names alone.
+        let names = load_tool_names_from_events(events_path);
+        for (cid, name) in names {
+            out.insert(
+                cid,
+                ToolCallRecord {
+                    label: name.clone(),
+                    name,
+                    kind: String::new(),
+                    input: None,
+                },
+            );
+        }
+    }
+    out
+}
+
+/// Human-readable tool label for a rebuild tool row. Prefer the tool name;
+/// terminal tools get a short content lead so the transcript reads naturally.
+fn tool_label_from_result(name: &str, content: &str) -> String {
+    if !name.is_empty() && name != "tool" {
+        return name.to_string();
+    }
+    let first = content.lines().find(|l| !l.trim().is_empty());
+    match first {
+        Some(l) if l.trim().len() > 4 => l.trim().to_string(),
+        _ => "tool".to_string(),
+    }
+}
+
+/// Strip the CLI's parallel-read numbering markers ("1→…", "2→…") from tool
+/// output so the expand detail reads as file content, not an index list.
+fn strip_numbered_markers(content: &str) -> String {
+    let mut out = String::with_capacity(content.len());
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix(|c: char| c.is_ascii_digit()) {
+            let after = rest.trim_start();
+            if let Some(body) = after.strip_prefix('→').or_else(|| after.strip_prefix("->")) {
+                out.push_str(body);
+                out.push('\n');
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.trim_end().to_string()
 }
 
 /// Merge missing assistant bodies **and** backfill user file/image cards from
@@ -1272,37 +1521,125 @@ pub fn reconcile_journal_from_chat_history(
     if !history.is_file() {
         return Ok(0);
     }
-    let pairs = match parse_chat_history_jsonl(&history) {
-        Ok(p) => p,
+    // Tool identity + call arguments from the CLI's own update log
+    // (terminal ACP updates are status-only; chat_history carries no input).
+    let tool_calls = load_tool_calls_from_updates(
+        &dir.join("updates.jsonl"),
+        &dir.join("events.jsonl"),
+    );
+    let rows = match parse_chat_history_rows(&history) {
+        Ok(r) => r,
         Err(_) => return Ok(0),
     };
+    let pairs: Vec<(String, String)> = rows
+        .iter()
+        .filter(|(role, _, _)| role == "user" || role == "assistant")
+        .map(|(role, content, _)| (role.clone(), content.clone()))
+        .collect();
     let mut journal = store::load_messages(app_session_id);
     let mut changed = 0u32;
     let now = Utc::now();
+    // Insert anchor: journal index after which the next rebuilt tool row goes,
+    // so turn-2 fragments + their tools land in stream order (not appended at
+    // the tail after later turns).
+    let mut anchor: Option<usize> = journal.len().checked_sub(1);
 
-    for (role, content) in &pairs {
-        if role != "assistant" {
+    for (role, content, tool_call_id) in &rows {
+        if role == "assistant" {
+            match journal_covers_assistant(&journal, content) {
+                CoverKind::Covered(idx) => {
+                    // usize::MAX = empty body sentinel; never a real anchor.
+                    if idx != usize::MAX {
+                        anchor = Some(idx);
+                    }
+                }
+                CoverKind::Extend(idx) => {
+                    journal[idx].content = content.clone();
+                    changed += 1;
+                    anchor = Some(idx);
+                }
+                CoverKind::Missing => {
+                    journal.push(ChatMessageStored {
+                        id: Uuid::new_v4().to_string(),
+                        role: "assistant".into(),
+                        content: content.clone(),
+                        thought: None,
+                        created_at: now + chrono::Duration::milliseconds(changed as i64),
+                        is_error: false,
+                        attachments: None,
+                        marker: None,
+                    });
+                    changed += 1;
+                    anchor = Some(journal.len() - 1);
+                }
+            }
             continue;
         }
-        match journal_covers_assistant(&journal, content) {
-            CoverKind::Covered => {}
-            CoverKind::Extend(idx) => {
-                journal[idx].content = content.clone();
+        if role != "tool" {
+            continue;
+        }
+        let Some(call_id) = tool_call_id else { continue };
+        if call_id.is_empty() {
+            continue;
+        }
+        let mid = format!("tool-{call_id}");
+        let rec = tool_calls.get(call_id);
+        let name = rec
+            .map(|r| r.name.clone())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_default();
+        let label = rec
+            .map(|r| r.label.clone())
+            .filter(|s| !s.is_empty() && s != "tool")
+            .unwrap_or_else(|| tool_label_from_result(&name, content));
+        // Strip the CLI's parallel-read numbering markers ("1→…") from detail.
+        let detail_clean = strip_numbered_markers(content);
+        let mut row_content = format!("tool_step|completed|{name}|{label}");
+        if let Some(inp) = rec
+            .and_then(|r| r.input.as_deref())
+            .filter(|s| !s.trim().is_empty())
+        {
+            // Call argument (target file / command / query) — the UI shows this
+            // as the specific tool detail.
+            row_content.push('\n');
+            row_content.push_str("input:");
+            row_content.push_str(&inp.chars().take(400).collect::<String>());
+        }
+        if !detail_clean.is_empty() {
+            row_content.push('\n');
+            row_content.push_str(&detail_clean.chars().take(400).collect::<String>());
+        }
+        if let Some(slot) = journal.iter_mut().find(|m| m.id == mid) {
+            // Upgrade sparse rows (tool_step|…|tool|tool) to named rows; never
+            // downgrade richer rows (tool_journal_richer guard).
+            if tool_journal_richer(&slot.content, &row_content) {
+                slot.content = row_content;
+                slot.marker = Some("tool_step".into());
                 changed += 1;
             }
-            CoverKind::Missing => {
-                journal.push(ChatMessageStored {
-                    id: Uuid::new_v4().to_string(),
-                    role: "assistant".into(),
-                    content: content.clone(),
-                    thought: None,
-                    created_at: now + chrono::Duration::milliseconds(changed as i64),
-                    is_error: false,
-                    attachments: None,
-                    marker: None,
-                });
-                changed += 1;
+        } else {
+            let row = ChatMessageStored {
+                id: mid,
+                role: "tool".into(),
+                content: row_content,
+                thought: None,
+                created_at: now + chrono::Duration::milliseconds(changed as i64),
+                is_error: false,
+                attachments: None,
+                marker: Some("tool_step".into()),
+            };
+            // Stream order: insert right after the preceding assistant row.
+            match anchor {
+                Some(at) => {
+                    journal.insert(at + 1, row);
+                    anchor = Some(at + 1);
+                }
+                None => {
+                    journal.push(row);
+                    anchor = Some(journal.len() - 1);
+                }
             }
+            changed += 1;
         }
     }
 
@@ -1630,6 +1967,248 @@ mod tests {
     }
 
     #[test]
+    fn load_tool_names_from_events_parses_tool_name() {
+        let dir = std::env::temp_dir().join(format!("cli-evt-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("events.jsonl");
+        let mut f = fs::File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"ts":"x","type":"tool_started","tool_name":"read_file","tool_call_id":"call-1"}}"#
+        )
+        .unwrap();
+        writeln!(
+            f,
+            r#"{{"ts":"x","type":"tool_completed","tool_name":"run_terminal_command","tool_call_id":"call-2"}}"#
+        )
+        .unwrap();
+        writeln!(f, r#"{{"ts":"x","type":"phase_changed","phase":"execute"}}"#).unwrap();
+        let names = load_tool_names_from_events(&path);
+        assert_eq!(names.get("call-1").map(String::as_str), Some("read_file"));
+        assert_eq!(
+            names.get("call-2").map(String::as_str),
+            Some("run_terminal_command")
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reconcile_rebuilds_sparse_tool_rows_with_names_in_order() {
+        let dir = std::env::temp_dir().join(format!("cli-rec-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        // chat_history: user → frag1 → tool(call-16) → frag2 → tool(call-17) → frag3
+        let mut h = fs::File::create(dir.join("chat_history.jsonl")).unwrap();
+        writeln!(
+            h,
+            r#"{{"type":"user","content":[{{"type":"text","text":"<user_query>\n做图\n</user_query>"}}]}}"#
+        )
+        .unwrap();
+        writeln!(h, r#"{{"type":"assistant","content":"先读技能。"}}"#).unwrap();
+        writeln!(
+            h,
+            r#"{{"type":"tool_result","tool_call_id":"call-16","content":"1→skill body"}}"#
+        )
+        .unwrap();
+        writeln!(
+            h,
+            r#"{{"type":"assistant","content":"正在构建信息图。"}}"#
+        )
+        .unwrap();
+        writeln!(
+            h,
+            r#"{{"type":"tool_result","tool_call_id":"call-17","content":"exit: 0\nok"}}"#
+        )
+        .unwrap();
+        writeln!(h, r#"{{"type":"assistant","content":"已定稿。"}}"#).unwrap();
+        // updates.jsonl supplies name + label + rawInput (the rich source)
+        let mut u = fs::File::create(dir.join("updates.jsonl")).unwrap();
+        writeln!(
+            u,
+            r#"{{"method":"session/update","params":{{"sessionId":"s","update":{{"sessionUpdate":"tool_call","toolCallId":"call-16","title":"read_file","rawInput":{{"target_file":"/Users/me/notes.md"}},"_meta":{{"x.ai/tool":{{"name":"read_file","label":"Read","kind":"read"}}}}}}}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            u,
+            r#"{{"method":"session/update","params":{{"sessionId":"s","update":{{"sessionUpdate":"tool_call","toolCallId":"call-17","title":"run_terminal_command","rawInput":{{"command":"ls -la","description":"List files"}},"_meta":{{"x.ai/tool":{{"name":"run_terminal_command","label":"Run Command","kind":"execute"}}}}}}}}}}"#
+        )
+        .unwrap();
+        // events.jsonl remains a fallback for name-only CLIs
+        let mut e = fs::File::create(dir.join("events.jsonl")).unwrap();
+        writeln!(
+            e,
+            r#"{{"type":"tool_completed","tool_name":"read_file","tool_call_id":"call-16"}}"#
+        )
+        .unwrap();
+        writeln!(
+            e,
+            r#"{{"type":"tool_completed","tool_name":"run_terminal_command","tool_call_id":"call-17"}}"#
+        )
+        .unwrap();
+
+        // Pre-seeded journal mirrors a live session that already has the user
+        // row, the first fragment (streamed), and a SPARSE tool row for call-16.
+        let mut journal = vec![
+            ChatMessageStored {
+                id: "u1".into(),
+                role: "user".into(),
+                content: "做图".into(),
+                thought: None,
+                created_at: Utc::now(),
+                is_error: false,
+                attachments: None,
+                marker: None,
+            },
+            ChatMessageStored {
+                id: "a1".into(),
+                role: "assistant".into(),
+                content: "先读技能。".into(),
+                thought: None,
+                created_at: Utc::now(),
+                is_error: false,
+                attachments: None,
+                marker: None,
+            },
+            ChatMessageStored {
+                id: "tool-call-16".into(),
+                role: "tool".into(),
+                content: "tool_step|completed|tool|tool".into(),
+                thought: None,
+                created_at: Utc::now(),
+                is_error: false,
+                attachments: None,
+                marker: Some("tool_step".into()),
+            },
+        ];
+        let rows = parse_chat_history_rows(&dir.join("chat_history.jsonl")).unwrap();
+        assert_eq!(rows.len(), 6);
+        let tool_calls = load_tool_calls_from_updates(
+            &dir.join("updates.jsonl"),
+            &dir.join("events.jsonl"),
+        );
+        assert_eq!(tool_calls.get("call-16").map(|r| r.name.as_str()), Some("read_file"));
+        assert_eq!(tool_calls.get("call-16").map(|r| r.label.as_str()), Some("Read"));
+        assert_eq!(
+            tool_calls.get("call-16").and_then(|r| r.input.as_deref()),
+            Some("/Users/me/notes.md")
+        );
+        assert_eq!(
+            tool_calls.get("call-17").and_then(|r| r.input.as_deref()),
+            Some("ls -la")
+        );
+
+        // Mirror the reconcile walk (fragments upsert + sparse tool upgrade +
+        // missing tool insert in stream order).
+        let mut anchor: Option<usize> = journal.len().checked_sub(1);
+        for (role, content, cid) in &rows {
+            if role == "assistant" {
+                match journal_covers_assistant(&journal, content) {
+                    CoverKind::Covered(idx) => {
+                        if idx != usize::MAX {
+                            anchor = Some(idx);
+                        }
+                    }
+                    CoverKind::Extend(idx) => {
+                        journal[idx].content = content.clone();
+                        anchor = Some(idx);
+                    }
+                    CoverKind::Missing => {
+                        journal.push(ChatMessageStored {
+                            id: Uuid::new_v4().to_string(),
+                            role: "assistant".into(),
+                            content: content.clone(),
+                            thought: None,
+                            created_at: Utc::now(),
+                            is_error: false,
+                            attachments: None,
+                            marker: None,
+                        });
+                        anchor = Some(journal.len() - 1);
+                    }
+                }
+                continue;
+            }
+            if role != "tool" {
+                continue;
+            }
+            let Some(call_id) = cid else { continue };
+            let mid = format!("tool-{call_id}");
+            let rec = tool_calls.get(call_id);
+            let name = rec
+                .map(|r| r.name.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_default();
+            let label = rec
+                .map(|r| r.label.clone())
+                .filter(|s| !s.is_empty() && s != "tool")
+                .unwrap_or_else(|| tool_label_from_result(&name, content));
+            let detail_clean = strip_numbered_markers(content);
+            let mut row_content = format!("tool_step|completed|{name}|{label}");
+            if let Some(inp) = rec
+                .and_then(|r| r.input.as_deref())
+                .filter(|s| !s.trim().is_empty())
+            {
+                row_content.push('\n');
+                row_content.push_str("input:");
+                row_content.push_str(&inp.chars().take(400).collect::<String>());
+            }
+            if !detail_clean.is_empty() {
+                row_content.push('\n');
+                row_content.push_str(&detail_clean.chars().take(400).collect::<String>());
+            }
+            if let Some(slot) = journal.iter_mut().find(|m| m.id == mid) {
+                if tool_journal_richer(&slot.content, &row_content) {
+                    slot.content = row_content;
+                }
+            } else {
+                let row = ChatMessageStored {
+                    id: mid,
+                    role: "tool".into(),
+                    content: row_content,
+                    thought: None,
+                    created_at: Utc::now(),
+                    is_error: false,
+                    attachments: None,
+                    marker: Some("tool_step".into()),
+                };
+                match anchor {
+                    Some(at) => {
+                        journal.insert(at + 1, row);
+                        anchor = Some(at + 1);
+                    }
+                    None => {
+                        journal.push(row);
+                        anchor = Some(journal.len() - 1);
+                    }
+                }
+            }
+        }
+
+        // tool-call-16 upgraded from sparse to named read_file with input.
+        let t16 = journal.iter().find(|m| m.id == "tool-call-16").unwrap();
+        assert!(t16.content.starts_with("tool_step|completed|read_file|Read"));
+        assert!(t16.content.contains("input:/Users/me/notes.md"));
+        // call-17 keeps the rich label + command input.
+        let t17 = journal.iter().find(|m| m.id == "tool-call-17").unwrap();
+        assert!(t17.content.starts_with("tool_step|completed|run_terminal_command|Run Command"));
+        assert!(t17.content.contains("input:ls -la"));
+        // call-17 inserted in stream order between its fragments.
+        let order: Vec<&str> = journal.iter().map(|m| m.id.as_str()).collect();
+        let contents: Vec<&str> = journal.iter().map(|m| m.content.as_str()).collect();
+        let i16 = order.iter().position(|x| *x == "tool-call-16").unwrap();
+        let i17 = order.iter().position(|x| *x == "tool-call-17").unwrap();
+        assert!(i16 < i17, "tools keep stream order: {order:?}");
+        assert!(
+            contents[i17 - 1].contains("正在构建信息图"),
+            "call-17 sits after its preceding fragment: {order:?}"
+        );
+        assert!(
+            contents[i17 + 1].contains("已定稿"),
+            "call-17 sits before its following fragment: {order:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn backfill_user_attachments_from_agent_pairs_fills_missing() {
         let mut journal = vec![ChatMessageStored {
             id: "u1".into(),
@@ -1672,7 +2251,7 @@ mod tests {
         }];
         assert_eq!(
             journal_covers_assistant(&journal, "基于已有调研，产出矩阵。"),
-            CoverKind::Covered
+            CoverKind::Covered(0)
         );
         assert_eq!(
             journal_covers_assistant(&journal, "# 功能对照矩阵（已出）\n\n完整版已落盘"),
@@ -1698,7 +2277,7 @@ mod tests {
         }];
         assert_eq!(
             journal_covers_assistant(&full, "基于已有调研，产出矩阵。"),
-            CoverKind::Covered
+            CoverKind::Covered(0)
         );
     }
 

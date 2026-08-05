@@ -53,6 +53,50 @@ export function isMeaningfulScrollUp(
   return previousScrollTop - scrollTop >= minDeltaPx;
 }
 
+/**
+ * Whether an upward scroll should release stick-to-bottom.
+ *
+ * Escape only when the viewport actually left the bottom **and** ended
+ * strictly above the hard bottom. A "scroll-up" that parks on the absolute
+ * bottom is a browser clamp, not an intentional leave: content above the
+ * viewport shrank (tool phase auto-collapse, virtual row remeasure,
+ * markdown reflow) or the viewport grew (composer / panel resize), so the
+ * browser forced scrollTop down to the new max. Escaping there drops pin
+ * for the rest of the turn — the answer keeps growing below the fold and the
+ * viewport never follows again ("streaming does not stick to bottom").
+ *
+ * A real user scroll-up always ends strictly above the hard bottom, so it
+ * still escapes normally.
+ */
+export function shouldReleaseStickOnScrollUp(input: {
+  /** True while auto-follow is engaged (stream / initial state). */
+  pinned: boolean;
+  scrollTop: number;
+  previousScrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  minDeltaPx?: number;
+  hardPx?: number;
+}): boolean {
+  const {
+    pinned,
+    scrollTop,
+    previousScrollTop,
+    scrollHeight,
+    clientHeight,
+  } = input;
+  if (!pinned) return false;
+  if (!isMeaningfulScrollUp(scrollTop, previousScrollTop, input.minDeltaPx)) {
+    return false;
+  }
+  // Browser clamp after shrink / resize lands exactly on the new max → the
+  // viewport ends at the hard bottom even though it "moved up".
+  if (isHardBottom(scrollTop, scrollHeight, clientHeight, input.hardPx)) {
+    return false;
+  }
+  return true;
+}
+
 export function distanceFromBottom(
   scrollTop: number,
   scrollHeight: number,

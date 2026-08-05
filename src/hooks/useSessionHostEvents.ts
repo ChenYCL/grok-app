@@ -60,6 +60,7 @@ import {
 import {
   reduceContextUsage,
   mergeCompactTokensBefore,
+  saveSessionUsageSnapshot,
 } from "@/lib/contextUsage";
 import {
   emptySessionPlan,
@@ -787,6 +788,19 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                   source: "journal_compact",
                 }),
               );
+              // Compact gives an authoritative post-compact snapshot — persist
+              // it so a reopened session shows the real context size.
+              saveSessionUsageSnapshot(sid, {
+                totalTokens: p.tokensAfter,
+                inputTokens: null,
+                outputTokens: null,
+                systemTokens: null,
+                toolsTokens: null,
+                historyTokens: null,
+                cachedReadTokens: null,
+                costUsdTicks: null,
+                source: "compact",
+              });
             }
             if (sid === c.viewingSessionIdRef.current) {
               c.setContextUsage((prev) =>
@@ -801,12 +815,10 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                 }),
               );
               const auto = !isManual;
-              c.setToast(
-                auto
-                  ? c.tr("compact.toastAuto")
-                  : c.tr("compact.toastManual"),
-              );
-              window.setTimeout(() => c.setToast(null), 3200);
+              if (auto) {
+                c.setToast(c.tr("compact.toastAuto"));
+                window.setTimeout(() => c.setToast(null), 3200);
+              }
             }
           }),
         );
@@ -845,6 +857,21 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                 source: p.source ?? "usage",
               }),
             );
+            // Persist a per-session snapshot so reopening the session can
+            // restore real usage (host journal does not store turn usage).
+            if (p.totalTokens != null) {
+              saveSessionUsageSnapshot(sid, {
+                totalTokens: p.totalTokens,
+                inputTokens: p.inputTokens ?? null,
+                outputTokens: p.outputTokens ?? null,
+                systemTokens: p.systemTokens ?? null,
+                toolsTokens: p.toolsTokens ?? null,
+                historyTokens: p.historyTokens ?? null,
+                cachedReadTokens: p.cachedReadTokens ?? null,
+                costUsdTicks: p.costUsdTicks ?? null,
+                source: p.source ?? "usage",
+              });
+            }
             if (sid !== c.viewingSessionIdRef.current) return;
             c.setContextUsage((prev) =>
               reduceContextUsage(prev, {
@@ -946,10 +973,6 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             if (sid === c.viewingSessionIdRef.current) {
               c.setTurnStartedAt(null);
               c.setStreamStall(null);
-              if (p.marker === "turn_cancelled") {
-                c.setToast(c.tr("activity.cancelledToast"));
-                window.setTimeout(() => c.setToast(null), 2800);
-              }
             }
           }),
         );
@@ -991,8 +1014,8 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
               if (cancelled || !p) return;
               // session_data_mode flip, custom provider route apply (#376), CLI upgrade, etc.
               if (p.reason === "provider_route") {
-                c.setToast(c.tr("prov.switchedHotReload"));
-                window.setTimeout(() => c.setToast(null), 3600);
+                // Model / provider switch — the picker already shows the new
+                // route; no toast needed.
                 return;
               }
               if (

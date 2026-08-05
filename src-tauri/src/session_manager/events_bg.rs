@@ -294,15 +294,39 @@ impl SessionManager {
             } => {
                 let (detail, path_hint) = extract_tool_ui_fields(&raw);
                 let path_out = path_hint.filter(|p| !p.is_empty());
+                if !app_session_id.is_empty() {
+                    remember_tool_identity(
+                        &self.tool_identities,
+                        app_session_id,
+                        &tool_call_id,
+                        &title,
+                        &kind,
+                        &raw,
+                    );
+                }
+                let (title2, kind2, name2, input2) = resolve_tool_identity(
+                    &self.tool_identities,
+                    app_session_id,
+                    &tool_call_id,
+                    &title,
+                    &kind,
+                );
                 let (kind_enriched, title_enriched) =
-                    enrich_tool_identity_from_raw(&raw, &title, &kind);
+                    enrich_tool_identity_from_raw(&raw, &title2, &kind2);
                 let kind_j = normalize_tool_kind_for_journal(&kind_enriched, &title_enriched);
                 let kind_j = if kind_j.is_empty() {
                     kind_enriched.clone()
                 } else {
                     kind_j
                 };
-                let live_title = tool_journal_label(&title_enriched, &kind_j, &detail, &path_out);
+                // Journal kind = machine tool name when known (UI maps names to
+                // typed icons + localized labels).
+                let kind_store = if !name2.is_empty() && !name2.eq_ignore_ascii_case("tool") {
+                    name2.clone()
+                } else {
+                    kind_j.clone()
+                };
+                let live_title = tool_journal_label(&title_enriched, &kind_store, &detail, &path_out);
                 let live_title = if live_title.is_empty() || live_title.eq_ignore_ascii_case("tool")
                 {
                     if !title_enriched.is_empty() {
@@ -353,16 +377,12 @@ impl SessionManager {
                         if matches!(st.as_str(), "completed" | "failed" | "error" | "cancelled")
                             && !tool_call_id.is_empty()
                         {
-                            let kind_store = if kind_j.is_empty() {
-                                if kind_enriched.is_empty() {
-                                    "tool".into()
-                                } else {
-                                    kind_enriched.clone()
-                                }
-                            } else {
-                                kind_j.clone()
-                            };
                             let mut content = format!("tool_step|{st}|{kind_store}|{live_title}");
+                            if let Some(inp) = input2.as_deref().filter(|s| !s.trim().is_empty()) {
+                                content.push('\n');
+                                content.push_str("input:");
+                                content.push_str(&inp.chars().take(400).collect::<String>());
+                            }
                             if let Some(ref d) = detail {
                                 content.push('\n');
                                 content.push_str(&d.chars().take(400).collect::<String>());

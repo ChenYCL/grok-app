@@ -19,9 +19,9 @@ export type CoalesceStreamChunk = {
 /**
  * Default stream coalesce interval (ms). Used when core count is mid-range
  * or when the caller does not pass an explicit flushMs.
- * Higher than the historical 48ms to cut React message flushes on long turns.
+ * Lowered for smoother streaming; still batches high-frequency chunks.
  */
-export const STREAM_COALESCE_FLUSH_MS = 110;
+export const STREAM_COALESCE_FLUSH_MS = 88;
 
 /**
  * Pick a stream flush interval from hardware concurrency.
@@ -33,9 +33,9 @@ export function resolveStreamFlushMs(
     ? navigator.hardwareConcurrency || 8
     : 8,
 ): number {
-  if (hardwareConcurrency <= 8) return 128;
+  if (hardwareConcurrency <= 8) return 104;
   if (hardwareConcurrency <= 12) return STREAM_COALESCE_FLUSH_MS;
-  return 72;
+  return 60;
 }
 
 /** Stable key for mergeable stream rows. */

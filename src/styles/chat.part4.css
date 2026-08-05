@@ -1,15 +1,93 @@
 /* domain CSS chunk (move-only split; selectors unchanged) */
 
 
-.chip--context .chip__label--nums {
-  font-feature-settings: "tnum";
-  letter-spacing: 0.01em;
+/* Context usage ring trigger — bare icon-sized button (no hover wash). */
+.ctx-ring-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
-.chip--context.is-open,
-.ctx-chip.is-open .chip--context {
-  background: var(--bg-active);
-  color: var(--text-primary);
+.ctx-ring-btn:hover:not(:disabled) {
+  background: transparent;
+}
+
+.ctx-ring-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Slight arc brighten on hover (no pill background around the ring). */
+.ctx-ring-btn:hover:not(:disabled) .ctx-ring__track {
+  stroke: var(--text-tertiary);
+}
+
+/* Context usage ring — icon-sized progress arc (theme-aware via CSS vars). */
+.ctx-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.ctx-ring__svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.ctx-ring__track {
+  fill: none;
+  stroke: var(--border-subtle);
+  stroke-width: 2;
+}
+
+.ctx-ring__arc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke-dasharray 160ms ease;
+}
+
+.ctx-ring__q {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+.ctx-ring--normal {
+  color: var(--accent, #5b8def);
+}
+
+.ctx-ring--warn {
+  color: var(--warning, #c9892e);
+}
+
+.ctx-ring--danger {
+  color: var(--danger, #e55);
+}
+
+.ctx-ring--muted {
+  color: var(--text-tertiary);
 }
 
 /* Session file-changes chip (composer row) — opens Resources → Changes */

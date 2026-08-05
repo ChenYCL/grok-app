@@ -97,6 +97,57 @@ describe("grokActivitySteps", () => {
     expect(steps[0]!.type).toBe("tool");
   });
 
+  it("tags typed bucket + pathBase from machine tool names (history rows)", () => {
+    const items: GrokPhaseItem[] = [
+      {
+        kind: "tool",
+        tool: tool("r1", "read_file", "read_file", {
+          detail: "1→<!DOCTYPE html>\nraw skill body…",
+          input: "/Users/me/.agents/skills/content-infographic/SKILL.md",
+        }),
+      },
+      {
+        kind: "tool",
+        tool: tool("l1", "list_dir", "list_dir", {
+          detail: "- /Users/me/proj/\n  - src",
+          input: "/Users/me/proj/workbuddy",
+        }),
+      },
+      {
+        kind: "tool",
+        tool: tool("t1", "run_terminal_command", "run_terminal_command", {
+          detail: "exit: 0\ntotal 176",
+          input: "ls -la \"/Users/me/proj\" 2>/dev/null; find \"/Users/me/proj\" -maxdepth 3 -type f",
+        }),
+      },
+      {
+        kind: "tool",
+        tool: tool("w1", "search_replace", "search_replace", {
+          detail: "The file /Users/me/proj/src/main.ts …",
+          input: "/Users/me/proj/src/main.ts",
+        }),
+      },
+    ];
+    const steps = buildGrokActivitySteps(items);
+    expect(steps.map((s) => s.type)).toEqual(["tool", "tool", "tool", "tool"]);
+    // Raw tool OUTPUT must never leak into the collapsed label.
+    for (const s of steps) {
+      expect(s.type === "tool" ? (s as any).summary : "").not.toContain(
+        "exit:",
+      );
+      expect(s.type === "tool" ? (s as any).summary : "").not.toContain(
+        "<!DOCTYPE",
+      );
+    }
+    expect(steps[0]).toMatchObject({ bucket: "read", inputLabel: "SKILL.md" });
+    expect(steps[1]).toMatchObject({ bucket: "read", inputLabel: "workbuddy" });
+    expect(steps[2]).toMatchObject({ bucket: "bash" });
+    // bash input = first simple command, clipped, whitespace collapsed
+    expect((steps[2] as any).inputLabel).toContain("ls -la");
+    expect((steps[3] as any).inputLabel).toBe("main.ts");
+    expect(steps[3]).toMatchObject({ bucket: "edit" });
+  });
+
   it("extractBrowseUrl keeps directory trailing slash like Grok web", () => {
     expect(
       extractBrowseUrl(

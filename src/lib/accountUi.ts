@@ -136,6 +136,12 @@ export function saveCachedSuperGrokBrand(
  *
  * Custom relay route: always show the plain SuperGrok mark (never Heavy).
  * Heavy is an official SuperGrok membership brand and does not apply to relays.
+ *
+ * Default fallback is the plain **SuperGrok** wordmark: official account state
+ * loss (auth.json missing/unreadable, billing blip, transient signed-out) must
+ * never blank the new-session brand surface above the composer. A confirmed
+ * Heavy tier still wins via `live`; cached Heavy is only trusted while the
+ * account is still loading.
  */
 export function resolveWelcomeBrandKind(
   live: SuperGrokBrandKind | null,
@@ -146,14 +152,15 @@ export function resolveWelcomeBrandKind(
     /** Active inference channel is a custom OpenAI-compatible provider. */
     customRoute?: boolean;
   },
-): SuperGrokBrandKind | null {
+): SuperGrokBrandKind {
   if (opts?.customRoute) {
     return "supergrok";
   }
   if (live) return live;
-  // Once we know the user is signed out, never flash a stale SuperGrok mark.
-  if (opts?.accountReady && opts.signedIn === false) return null;
-  return cached;
+  // Once we know the user is signed out, never flash a stale Heavy mark — but
+  // still default to the plain SuperGrok wordmark instead of blanking it.
+  if (opts?.accountReady && opts.signedIn === false) return "supergrok";
+  return cached ?? "supergrok";
 }
 
 export function usagePercent(billing: BillingSnapshot): number | null {

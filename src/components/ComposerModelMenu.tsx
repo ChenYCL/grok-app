@@ -296,7 +296,7 @@ export function ComposerModelMenu({
   const [windowDraft, setWindowDraft] = useState("");
   const modelSearchRef = useRef<HTMLInputElement>(null);
   /* Wider min so long custom model ids render fully in the root rows. */
-  const menu = usePortalMenu(240, 300, nested ?? "root");
+  const menu = usePortalMenu(240, 200, nested ?? "root");
   const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
   const groups = buildComposerModelGroups({
     officialModels: modelList,

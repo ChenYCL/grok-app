@@ -126,6 +126,7 @@ export function activityToolFromMessage(
     title: name,
     detail,
     path,
+    input: parseToolStepContent(m.content ?? "")?.input,
   });
   const parentId = (m.toolParentId || "").trim() || undefined;
   return {

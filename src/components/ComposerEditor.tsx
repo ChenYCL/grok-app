@@ -17,6 +17,7 @@ import {
   type CompositionEvent,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type Ref,
 } from "react";
 import {
@@ -416,6 +417,7 @@ export type ComposerEditorProps = {
   /** Browser spellcheck on the contenteditable root. Default false. */
   spellCheck?: boolean;
   onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
+  onContextMenu?: (e: MouseEvent<HTMLDivElement>) => void;
   onSlashQueryChange?: (
     q: { start: number; query: string; end: number } | null,
   ) => void;
@@ -440,6 +442,7 @@ export const ComposerEditor = memo(function ComposerEditor({
   className,
   spellCheck,
   onKeyDown,
+  onContextMenu,
   onSlashQueryChange,
   editorRef,
   onPasteFiles,
@@ -803,6 +806,7 @@ export const ComposerEditor = memo(function ComposerEditor({
         onCompositionEnd={(e: CompositionEvent<HTMLDivElement>) => {
           flushAfterIme(e.currentTarget);
         }}
+        onContextMenu={onContextMenu}
         onKeyDown={(e) => {
           const ne = e.nativeEvent;
           if (ne.isComposing || ne.keyCode === 229 || composing.current) {

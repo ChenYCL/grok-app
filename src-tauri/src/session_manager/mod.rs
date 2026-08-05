@@ -45,7 +45,10 @@ use crate::session_fsm::SessionState;
 
 use types::*;
 
-pub use types::{RewindExecuteResult, RewindPointDto, SessionSnapshot, UiPermissionRequest};
+pub(crate) use types::{
+    RewindExecuteResult, RewindPointDto, SessionSnapshot, UiPermissionRequest, extract_tool_input,
+    tool_journal_richer,
+};
 
 pub struct SessionManager {
     /// Currently focused live session (UI-bound for send).
@@ -57,6 +60,11 @@ pub struct SessionManager {
     pub(super) parked: Mutex<HashMap<String, ParkedAgent>>,
     /// Process prewarmed while the user is composing a new chat (no session yet).
     pub(super) prewarm: Mutex<PrewarmState>,
+    /// Tool identity learned from in_progress `tool_call` notifications
+    /// (terminal `tool_call_update` payloads are status-only). Keyed by
+    /// app session id → tool call id. See `remember_tool_identity`.
+    pub(super) tool_identities:
+        std::sync::Mutex<std::collections::HashMap<String, std::collections::HashMap<String, ToolIdentity>>>,
     /// Serialize connect / park / unpark so openSession prefetch cannot race first send.
     pub(super) connect_lock: tokio::sync::Mutex<()>,
 }
@@ -74,6 +82,7 @@ impl SessionManager {
             background: Mutex::new(HashMap::new()),
             parked: Mutex::new(HashMap::new()),
             prewarm: Mutex::new(PrewarmState::None),
+            tool_identities: std::sync::Mutex::new(std::collections::HashMap::new()),
             connect_lock: tokio::sync::Mutex::new(()),
         }
     }

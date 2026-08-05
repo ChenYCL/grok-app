@@ -720,7 +720,6 @@ export function SettingsPage({
       await api.memoryClear({ cwd: workspaceCwd, scope: "workspace" });
       setClearMemoryOpen(false);
       setMemoryBrowserEpoch((n) => n + 1);
-      showSettingsToast(t("settings.clearWorkspaceMemoryDone"), 3500);
     } catch (e) {
       showSettingsToast(String(e), 4500);
     } finally {

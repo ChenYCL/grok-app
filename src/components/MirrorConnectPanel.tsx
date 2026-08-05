@@ -1021,7 +1021,6 @@ export function MirrorConnectPanel({
         applyStatus(st, { syncMaxClients: true });
         // Never log token/URL — type only.
         recordMirrorWriteAudit({ type: "token_rotated" });
-        showToast?.(labels.rotateDone);
       } catch (e) {
         setErr(String(e));
       }
@@ -1095,7 +1094,6 @@ export function MirrorConnectPanel({
     if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
-      showToast(labels.copied, 1800);
     } catch {
       showToast(labels.errorGeneric, 3000);
     }
@@ -1129,7 +1127,6 @@ export function MirrorConnectPanel({
             applyStatus(st, { syncMaxClients: true });
             setErr(null);
             recordMirrorWriteAudit({ type: "host_stopped" });
-            showToast(labels.phaseStopped, 2000);
           })
           .catch((e) => setErr(String(e)))
           .finally(() => setBusy(false));

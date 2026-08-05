@@ -94,7 +94,6 @@ export function StreamingMessagesJsonPanel({
     try {
       const text = await file.text();
       applySource(text, file.name);
-      onToast?.(t("smj.imported", { name: file.name }), 2000);
     } catch {
       setError(t("smj.importFailed"));
     }
@@ -151,7 +150,6 @@ export function StreamingMessagesJsonPanel({
           version: res.cliVersion || "?",
         }) + (res.truncated ? ` · ${t("smj.truncated")}` : ""),
       );
-      onToast?.(t("smj.probeOk"), 2000);
     } catch (e) {
       setError(t("smj.probeFailed", { reason: String(e) }));
     } finally {
@@ -175,7 +173,6 @@ export function StreamingMessagesJsonPanel({
       body,
       "text/plain;charset=utf-8",
     );
-    onToast?.(t("smj.exportedPreview"), 1800);
   };
 
   const onExportNdjson = () => {
@@ -190,13 +187,12 @@ export function StreamingMessagesJsonPanel({
       result.body,
       streamSessionExportMimeType("streaming-messages-json"),
     );
-    onToast?.(t("smj.exportedNdjson"), 1800);
   };
 
   const onCopyPreview = async () => {
     if (!doc) return;
     const ok = await copyText(exportSmjPreviewText(doc));
-    onToast?.(ok ? t("smj.copied") : t("smj.copyFailed"), 1800);
+    if (!ok) onToast?.(t("smj.copyFailed"), 1800);
   };
 
   const stats = doc ? formatSmjDocumentStats(doc) : null;

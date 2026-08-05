@@ -13,14 +13,12 @@ export interface OfficialAuxPanelProps {
   officialAvailable?: boolean;
   /** Soft-respawn after inject prefs change (Host settings_set). */
   onProviderActivated?: () => void;
-  onToast?: (msg: string, ms?: number) => void;
 }
 
 export function OfficialAuxPanel({
   locale,
   officialAvailable = false,
   onProviderActivated,
-  onToast,
 }: OfficialAuxPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [loading, setLoading] = useState(true);
@@ -76,10 +74,6 @@ export function OfficialAuxPanel({
       const cur = await api.settingsGet();
       await api.settingsSet({ ...cur, officialAuxInject: on });
       setOfficialAuxInject(on);
-      onToast?.(
-        on ? tr("prov.officialAuxInjectOn") : tr("prov.officialAuxInjectOff"),
-        2800,
-      );
       onProviderActivated?.();
     } catch (e) {
       setError(String(e));

@@ -54,6 +54,8 @@ export interface MessageToolSegment {
   status: string;
   detail?: string;
   path?: string;
+  /** Call argument recorded by the host (target file / command / query). */
+  input?: string;
   streaming?: boolean;
   isError?: boolean;
   /** ISO time when the tool row was created (history duration). */
@@ -83,6 +85,12 @@ export interface ChatMessage {
    * UI renders these interleaved on the real assistant timeline.
    */
   segments?: MessageSegment[];
+  /**
+   * Historical turn folding: earlier status fragments of a merged assistant
+   * turn (grok CLI writes one row per intermediate fragment; reconcile adds
+   * them individually). Rendered as a collapsed strip — never as body text.
+   */
+  leadFragments?: string[];
   streaming?: boolean;
   toolStatus?: string;
   /** Turn failed (retries exhausted / provider error) — show as chat error record. */
@@ -100,6 +108,8 @@ export interface ChatMessage {
   toolKind?: string;
   toolDetail?: string;
   toolPath?: string;
+  /** Call argument recorded by the host (target file / command / query). */
+  toolInput?: string;
   /**
    * Parent tool call id when the host/ACP marks nested tools (e.g. subagent
    * children). Optional — Tasks panel may infer when missing.
@@ -258,6 +268,7 @@ export function toolSegmentFromFields(fields: {
   status: string;
   detail?: string;
   path?: string;
+  input?: string;
   streaming?: boolean;
   isError?: boolean;
   createdAt?: string;
@@ -270,6 +281,7 @@ export function toolSegmentFromFields(fields: {
     status: fields.status,
     detail: fields.detail,
     path: fields.path,
+    input: fields.input,
     streaming: !!fields.streaming,
     isError: !!fields.isError,
     createdAt: fields.createdAt,
@@ -419,6 +431,7 @@ function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null 
   // (App maps title-only into content and used to keep only first detail line).
   let detail = row.toolDetail;
   let path = row.toolPath;
+  let input = row.toolInput;
   const raw = (row.content || "").trim();
   if (raw.startsWith("tool_step|")) {
     const parsed = parseToolStepContent(raw);
@@ -426,6 +439,7 @@ function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null 
       detail = parsed.detail;
     }
     if (parsed?.path && !path) path = parsed.path;
+    if (parsed?.input && !input) input = parsed.input;
   }
   return toolSegmentFromFields({
     toolCallId: tcid,
@@ -434,6 +448,7 @@ function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null 
     status,
     detail,
     path,
+    input,
     streaming: false,
     isError: !!row.isError || status === "failed" || status === "error",
     createdAt: row.createdAt,
@@ -510,6 +525,10 @@ export function weaveToolsIntoAssistantSegments(
   messages: ChatMessage[],
 ): ChatMessage[] {
   if (!messages.length) return messages;
+  // History turn folding: merge per-fragment assistant rows of one turn into
+  // a single message (final fragment as body, earlier ones folded). Runs
+  // before tool weaving so multi-assistant turns become single-assistant.
+  messages = mergeAssistantFragments(messages);
   const out = messages.map((m) =>
     m.segments
       ? { ...m, segments: m.segments.map((s) => ({ ...s })) as MessageSegment[] }
@@ -606,6 +625,103 @@ export function weaveToolsIntoAssistantSegments(
     }
 
     i = turnEnd > i ? turnEnd : i + 1;
+  }
+  return out;
+}
+
+/**
+ * History turn folding: the grok CLI writes one `assistant` row per
+ * intermediate status fragment (and reconcile may add them individually), so
+ * a single logical answer can reload as several one-line bubbles. Merge every
+ * assistant row of a user turn into one message:
+ *
+ * - `content` = last non-empty fragment (the real deliverable)
+ * - `leadFragments` = earlier fragments — rendered as a collapsed strip, not
+ *   as body text (matches Claude/Cursor history folding)
+ * - thoughts from every fragment are kept (phases joined), tool rows are left
+ *   in place so `weaveToolsIntoAssistantSegments` attaches them
+ *
+ * Live streaming rows and error rows are never merged; turns with a single
+ * assistant row pass through untouched.
+ */
+export function mergeAssistantFragments(messages: ChatMessage[]): ChatMessage[] {
+  if (messages.length < 2) return messages;
+  const out: ChatMessage[] = [];
+  let i = 0;
+  while (i < messages.length) {
+    const m = messages[i]!;
+    if (m.role !== "assistant" || m.isError || m.streaming) {
+      out.push(m);
+      i += 1;
+      continue;
+    }
+    // Collect all assistant rows of this user turn (bounded by the next user
+    // row); fragments are separated by tool rows, so group by turn not run.
+    let j = i;
+    const asstIdx: number[] = [];
+    while (j < messages.length && messages[j]!.role !== "user") {
+      const mm = messages[j]!;
+      if (mm.role === "assistant" && !mm.isError && !mm.streaming) {
+        asstIdx.push(j);
+      }
+      j += 1;
+    }
+    if (asstIdx.length <= 1) {
+      out.push(m);
+      i += 1;
+      continue;
+    }
+    // Carrier = last non-empty fragment (final deliverable); fall back to the
+    // last row when everything is empty.
+    let lastNonEmpty = -1;
+    for (let k = asstIdx.length - 1; k >= 0; k--) {
+      if (messages[asstIdx[k]!]!.content.trim()) {
+        lastNonEmpty = asstIdx[k]!;
+        break;
+      }
+    }
+    const carrierIdx = lastNonEmpty >= 0 ? lastNonEmpty : asstIdx[asstIdx.length - 1]!;
+    const carrier = messages[carrierIdx]!;
+
+    const leads: string[] = [];
+    const thoughts: string[] = [];
+    const segs: MessageSegment[] = [];
+    for (const idx of asstIdx) {
+      const f = messages[idx]!;
+      if (idx !== carrierIdx && f.content.trim()) leads.push(f.content.trim());
+      if (f.thought?.trim()) thoughts.push(f.thought.trim());
+      // Keep thought segments from every fragment; drop their content segments
+      // (earlier ones are folded into leadFragments, the final one is re-added
+      // as the body). Tools are woven by weaveToolsIntoAssistantSegments.
+      const fsegs =
+        f.segments?.length
+          ? f.segments
+          : buildSegmentsFromLegacy(f.content, f.thought, f.thoughtPhases);
+      for (const s of fsegs) {
+        if (s.kind === "content") continue;
+        segs.push(s.kind === "tool" ? { ...s } : { kind: "thought", text: s.text });
+      }
+    }
+    if (carrier.content.trim()) {
+      segs.push({ kind: "content", text: carrier.content });
+    }
+    const merged: ChatMessage = {
+      ...carrier,
+      content: carrier.content,
+      leadFragments: leads,
+      thought: thoughts.length ? thoughts.join("\n\n⟪phase⟫\n\n") : carrier.thought,
+      segments: segs.length ? segs : carrier.segments,
+    };
+    out.push(merged);
+    // Re-emit the turn's remaining rows (tools, context rows…), skipping the
+    // assistant rows already folded into the carrier — tools stay in place so
+    // the weave pass attaches them in stream order.
+    for (let k = i + 1; k < j; k++) {
+      const row = messages[k]!;
+      if (row.role === "assistant" && !row.isError && !row.streaming) continue;
+      out.push(row);
+    }
+    i = j;
   }
   return out;
 }
@@ -1000,14 +1116,22 @@ export function parseToolStepContent(content: string): {
   title: string;
   detail?: string;
   path?: string;
+  input?: string;
 } | null {
   if (!content.startsWith("tool_step|")) return null;
-  const [header, ...rest] = content.split("\n");
+  let [header, ...rest] = content.split("\n");
   const parts = (header || "").split("|");
   // tool_step|status|kind|title
   const status = parts[1] || "completed";
   const kind = parts[2] || "";
   const title = parts.slice(3).join("|") || kind || "tool";
+  // Host records the call argument (target file / command / query) as a
+  // leading `input:` line — the specific tool detail for the UI.
+  let input: string | undefined;
+  if (rest.length && rest[0]?.startsWith("input:")) {
+    input = rest[0]!.slice("input:".length).trim() || undefined;
+    rest = rest.slice(1);
+  }
   // Host side-channels journal multi-line bodies (vision / X results).
   // Legacy native rows used: detail\npath (exactly 2 trailing lines, path-like).
   let detail: string | undefined;
@@ -1041,6 +1165,7 @@ export function parseToolStepContent(content: string): {
     title,
     detail,
     path,
+    input,
   };
 }
 

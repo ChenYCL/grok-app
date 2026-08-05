@@ -161,9 +161,9 @@ import {
   formatCompactBeforeAfterRange,
   formatTokenCount,
   INITIAL_CONTEXT_USAGE,
-  reduceContextUsage,
   resolveCompactNoteBody,
   resolveContextUsageDisplay,
+  restoreContextUsageForSession,
   type CompactPresetId,
   type ContextUsageState
 } from "@/lib/contextUsage";
@@ -245,7 +245,6 @@ import {
 } from "@/lib/sandboxProfile";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import {
-  archiveAgeEmptyMessageKey,
   listArchiveAgeOptionPreviews,
   planArchiveOlderThan,
   type ArchiveAgePlan
@@ -486,7 +485,6 @@ import {
   getNote as getSessionNote,
   loadSessionNotes,
   notePreview,
-  sessionNoteSaveOutcome,
   setNote as setSessionNote,
   shouldConfirmSessionNoteClear,
   shouldConfirmSessionNoteDiscard,
@@ -528,11 +526,10 @@ import {
   formatAttachErrorMessage,
   isAttachPayloadTooLarge,
   resolveAttachError,
-  resolveAttachSavedToast,
   resolveHostOnlyAttach,
   resolveNativeClipboardEmpty
 } from "@/lib/attachmentsPro";
-import { fileKey as clipboardFileKey } from "@/lib/clipboardPaste";
+import { fileKey as clipboardFileKey, readClipboardMediaFiles } from "@/lib/clipboardPaste";
 import {
   applySkillAtSlash,
   isDraftEmpty,
@@ -560,7 +557,6 @@ import {
 import {
   clampSessionTextInput,
   presentSessionPromptSoftFail,
-  sessionPromptSaveOutcome,
   shouldConfirmSessionTextDiscard,
   validateSessionTextField
 } from "@/lib/rulesPromptPro";
@@ -677,7 +673,6 @@ import {
   sanitizeWorktreeRef,
   sessionWorktreeTooltip,
   worktreeEntryForPath,
-  worktreeLabel,
   worktreeRemoveErrorSuggestsForce,
   type SessionWorktreeBadge,
   type WorktreeLayout
@@ -707,7 +702,6 @@ import {
   resolveForkAgentCheckbox,
   resolveForkAgentSession,
   resolveSessionForkSoftFail,
-  resumeRestoreSuccessToastKey,
   softFailKindFromRestoreGate
 } from "@/lib/sessionFork";
 import {
@@ -768,6 +762,7 @@ import {
   IconClock,
   IconClose,
   IconCode,
+  IconClipboardList,
   IconNewChat as IconSquarePen,
   IconNewChat,
   IconImagine,
@@ -941,6 +936,10 @@ import {
   SuperGrokMark,
   type SuperGrokBrandKind
 } from "@/components/SuperGrokMark";
+import {
+  DeepSeekFullMark,
+  OpenCodeWordmark
+} from "@/components/ProviderWelcomeMark";
 import { Tip } from "@/components/ui/tooltip";
 import {
   WindowControls,
@@ -967,7 +966,6 @@ import { useComposerController } from "@/hooks/useComposerController";
 import { useAppDialogs } from "@/hooks/useAppDialogs";
 import { useSessionHostEvents } from "@/hooks/useSessionHostEvents";
 import { createDebouncedSkillsReload } from "@/lib/skillCatalogRefresh";
-import { useStreamPerfMode } from "@/hooks/useStreamPerfMode";
 
 /** App-local plan chrome state (session-scoped via planBySessionRef). */
 type PlanState = SessionPlanState;
@@ -3269,14 +3267,8 @@ export function AppWorkbench() {
       automationAppliedRef.current.add(applyKey);
       automationAppliedRef.current.add(payloadKey);
       try {
-        const created = await api.automationCreate(input);
+        await api.automationCreate(input);
         automationSetupSessionsRef.current.delete(sessionId);
-        setToast(
-          tr("automations.createdToast", {
-            title: created.title || input.title,
-          }),
-        );
-        window.setTimeout(() => setToast(null), 4200);
       } catch {
         automationAppliedRef.current.delete(applyKey);
         automationAppliedRef.current.delete(payloadKey);
@@ -3939,12 +3931,7 @@ export function AppWorkbench() {
         return cleanText === m.content ? m : { ...m, content: cleanText };
       });
       setMessages(stripped);
-      setContextUsage(
-        reduceContextUsage(INITIAL_CONTEXT_USAGE, {
-          type: "hydrate",
-          messages: stripped,
-        }),
-      );
+      setContextUsage(restoreContextUsageForSession(s.id, stripped));
       // Backfill create if assistant still has a fence in journal (failed chat-create).
       void tryApplyAutomationFromSession(s.id);
       // Backfill scheduled flag from journal (older automation sessions).
@@ -3973,12 +3960,7 @@ export function AppWorkbench() {
       }
       const cached = messagesBySessionRef.current.get(s.id);
       setMessages(cached ?? []);
-      setContextUsage(
-        reduceContextUsage(INITIAL_CONTEXT_USAGE, {
-          type: "hydrate",
-          messages: cached ?? [],
-        }),
-      );
+      setContextUsage(restoreContextUsageForSession(s.id, cached ?? []));
     }
     if (viewingSessionIdRef.current !== s.id) {
       if (openingSessionIdRef.current === s.id) {
@@ -4282,7 +4264,6 @@ export function AppWorkbench() {
       void (async () => {
         try {
           await api.openSessionWindow(s.id, s.title || null);
-          showToast(tr("session.openInNewWindowOk"), 2200);
         } catch (e) {
           showToast(
             tr("session.openInNewWindowFailed") + ": " + String(e),
@@ -4882,8 +4863,6 @@ export function AppWorkbench() {
           source: "run_now",
           at: lastRunAt,
         });
-        setToast(tr("automations.runningToast", { title: auto.title }));
-        window.setTimeout(() => setToast(null), 3200);
         return true;
       } catch (e) {
         setLocalError(String(e));
@@ -4932,8 +4911,6 @@ export function AppWorkbench() {
           outcome: "ok",
           source: "host",
         });
-        setToast(tr("automations.runningToast", { title }));
-        window.setTimeout(() => setToast(null), 3200);
         void refreshSessions();
       }),
     );
@@ -5103,15 +5080,6 @@ export function AppWorkbench() {
         );
       }
       setLocalError(null);
-      const msg = tr("project.relocateOk", {
-        name: updated.name,
-        path: updated.path,
-      });
-      setToast(msg);
-      window.setTimeout(
-        () => setToast((cur) => (cur === msg ? null : cur)),
-        3200,
-      );
     } catch (e) {
       setLocalError(String(e));
     }
@@ -5150,25 +5118,6 @@ export function AppWorkbench() {
           });
           applyComposerPrefs(prefs, availableModels);
         }
-        const msg = next
-          ? tr("project.permissionSet", {
-              name: proj.name,
-              policy: tr(
-                (
-                  {
-                    ask: "policy.short.ask",
-                    accept_edits: "policy.short.accept_edits",
-                    allow_for_session: "policy.short.allow_for_session",
-                    auto: "policy.short.auto",
-                    dont_ask: "policy.short.dont_ask",
-                    always_approve: "policy.short.always_approve",
-                  } as const
-                )[next],
-              ),
-            })
-          : tr("project.permissionCleared", { name: proj.name });
-        setToast(msg);
-        window.setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 2800);
       } catch (e) {
         setLocalError(String(e));
       }
@@ -5231,14 +5180,6 @@ export function AppWorkbench() {
               : p,
           );
         }
-        const msg = next
-          ? tr("project.sandboxSet", {
-              name: proj.name,
-              profile: sandboxProfileLabel(next),
-            })
-          : tr("project.sandboxCleared", { name: proj.name });
-        setToast(msg);
-        window.setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 2800);
       } catch (e) {
         setLocalError(String(e));
       }
@@ -5293,21 +5234,6 @@ export function AppWorkbench() {
               : p,
           );
         }
-        const stored = normalizeProjectColor(updated.color);
-        const msg = stored
-          ? tr("project.colorSet", {
-              name: proj.name,
-              color:
-                PROJECT_COLOR_TOKENS.includes(stored as ProjectColorToken)
-                  ? projectColorLabel(stored as ProjectColorToken)
-                  : stored,
-            })
-          : tr("project.colorCleared", { name: proj.name });
-        setToast(msg);
-        window.setTimeout(
-          () => setToast((cur) => (cur === msg ? null : cur)),
-          2800,
-        );
       } catch (e) {
         setLocalError(String(e));
       }
@@ -5465,8 +5391,6 @@ export function AppWorkbench() {
       const next = appendPluginDir(s.pluginDirs, folder);
       await api.sessionSetPluginDirs(s.id, next);
       await refreshSessions();
-      setToast(tr("session.pluginDirsAdded"));
-      window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       setLocalError(String(e));
     }
@@ -5482,8 +5406,6 @@ export function AppWorkbench() {
       }
       await api.sessionSetPluginDirs(s.id, []);
       await refreshSessions();
-      setToast(tr("session.pluginDirsCleared"));
-      window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       setLocalError(String(e));
     }
@@ -5550,10 +5472,7 @@ export function AppWorkbench() {
           row.id === target.id ? { ...row, extraRules: stored } : row,
         ),
       );
-      const outcome = sessionPromptSaveOutcome("extra_rules", stored);
       forceCloseSessionRulesModal();
-      setToast(tr(outcome.toastKey));
-      window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       const soft = presentSessionPromptSoftFail(e);
       setSessionRulesError(
@@ -5583,8 +5502,6 @@ export function AppWorkbench() {
         ),
       );
       forceCloseSessionRulesModal();
-      setToast(tr("session.rulesCleared"));
-      window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       const soft = presentSessionPromptSoftFail(e);
       setSessionRulesError(
@@ -5631,12 +5548,6 @@ export function AppWorkbench() {
         ),
       );
       closeSessionMaxTurnsModal();
-      setToast(
-        stored != null
-          ? tr("session.maxTurnsSaved")
-          : tr("session.maxTurnsCleared"),
-      );
-      window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       setLocalError(String(e));
     }
@@ -5658,8 +5569,6 @@ export function AppWorkbench() {
       );
       setSessionMaxTurnsDraft("");
       closeSessionMaxTurnsModal();
-      setToast(tr("session.maxTurnsCleared"));
-      window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       setLocalError(String(e));
     }
@@ -5734,10 +5643,7 @@ export function AppWorkbench() {
             : row,
         ),
       );
-      const outcome = sessionPromptSaveOutcome("system_prompt", stored);
       forceCloseSessionSysPromptModal();
-      setToast(tr(outcome.toastKey));
-      window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       const soft = presentSessionPromptSoftFail(e);
       setSessionSysPromptError(
@@ -5769,8 +5675,6 @@ export function AppWorkbench() {
         ),
       );
       forceCloseSessionSysPromptModal();
-      setToast(tr("session.sysPromptCleared"));
-      window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       const soft = presentSessionPromptSoftFail(e);
       setSessionSysPromptError(
@@ -5817,15 +5721,6 @@ export function AppWorkbench() {
     setCtxMenu(null);
     const plan = planArchiveOlderThan(sessions, days);
     if (!plan.confirmNeeded || plan.count === 0) {
-      const kind = plan.emptyKind ?? "all_recent";
-      const key = archiveAgeEmptyMessageKey(kind);
-      setToast(
-        tr(key as MessageKey, {
-          days: String(days),
-          n: "0",
-        }),
-      );
-      window.setTimeout(() => setToast(null), 3600);
       return;
     }
     setArchiveAgeConfirm(plan);
@@ -5854,7 +5749,6 @@ export function AppWorkbench() {
       const results = await Promise.allSettled(
         rows.map((s) => api.sessionSetArchived(s.id, true)),
       );
-      const ok = results.filter((r) => r.status === "fulfilled").length;
       const firstFail = results.find(
         (r): r is PromiseRejectedResult => r.status === "rejected",
       );
@@ -5869,10 +5763,6 @@ export function AppWorkbench() {
         else await newChat(null, { switchToChat: true });
       }
 
-      if (ok > 0) {
-        setToast(tr("sidebar.archivedToast", { n: String(ok) }));
-        window.setTimeout(() => setToast(null), 3200);
-      }
       if (firstFail) {
         setLocalError(String(firstFail.reason));
       } else {
@@ -5923,7 +5813,6 @@ export function AppWorkbench() {
           const results = await Promise.allSettled(
             rows.map((s) => api.sessionSetArchived(s.id, archived)),
           );
-          const ok = results.filter((r) => r.status === "fulfilled").length;
           const firstFail = results.find(
             (r): r is PromiseRejectedResult => r.status === "rejected",
           );
@@ -5950,14 +5839,6 @@ export function AppWorkbench() {
             else await newChat(null, { switchToChat: true });
           }
 
-          if (ok > 0) {
-            setToast(
-              archived
-                ? tr("sidebar.archivedToast", { n: String(ok) })
-                : tr("sidebar.restoredToast", { n: String(ok) }),
-            );
-            window.setTimeout(() => setToast(null), 3200);
-          }
           if (firstFail) {
             setLocalError(String(firstFail.reason));
           } else {
@@ -6020,10 +5901,6 @@ export function AppWorkbench() {
             if (proj) await newChat(proj, { switchToChat: true });
             else await newChat(null, { switchToChat: true });
           }
-          if (n > 0) {
-            setToast(tr("sidebar.deletedToast", { n: String(n) }));
-            window.setTimeout(() => setToast(null), 3200);
-          }
           setLocalError(null);
         } catch (e) {
           setLocalError(String(e));
@@ -6071,7 +5948,6 @@ export function AppWorkbench() {
       toastContinueSoftFail(gate.kind);
       return;
     }
-    showToast(tr("project.continueCwdWorking"), 2000);
     try {
       const meta = await api.cliSessionContinueCwd(proj.path, {
         projectId: proj.id,
@@ -6098,12 +5974,6 @@ export function AppWorkbench() {
         (row.projectId && projects.find((p) => p.id === row.projectId)) || proj;
       setExpandedProjects((e) => ({ ...e, [openProj.id]: true }));
       await openSession(row, openProj);
-      showToast(
-        tr("project.continueCwdOk", {
-          title: row.title || meta!.title || tr("session.untitled"),
-        }),
-        2800,
-      );
     } catch (e) {
       const soft = resolveContinueCwdSoftFail(e);
       toastContinueSoftFail(soft.kind, soft.detail);
@@ -6200,22 +6070,13 @@ export function AppWorkbench() {
   }, []);
 
   const applyClearAllSessionUnread = useCallback(() => {
-    const n = clearAllSessionUnread();
+    clearAllSessionUnread();
     setUnreadSessionIds(loadUnreadSessionIds());
-    if (n > 0) {
-      setToast(tr("session.clearAllUnreadToast", { n: String(n) }));
-      window.setTimeout(() => setToast(null), 2200);
-    } else {
-      setToast(tr("session.clearAllUnreadEmpty"));
-      window.setTimeout(() => setToast(null), 1800);
-    }
-  }, [tr]);
+  }, []);
 
   const handleClearAllSessionUnread = useCallback(() => {
     const n = unreadSessionIds.size;
     if (n <= 0) {
-      setToast(tr("session.clearAllUnreadEmpty"));
-      window.setTimeout(() => setToast(null), 1800);
       return;
     }
     if (shouldConfirmClearAllUnread(n)) {
@@ -6234,22 +6095,13 @@ export function AppWorkbench() {
   }, [unreadSessionIds.size, tr, applyClearAllSessionUnread]);
 
   const applyClearAllSessionMutes = useCallback(() => {
-    const n = clearAllSessionMutes();
+    clearAllSessionMutes();
     setMutedSessionIds(loadMutedSessionIds());
-    if (n > 0) {
-      setToast(tr("session.clearAllMutesToast", { n: String(n) }));
-      window.setTimeout(() => setToast(null), 2200);
-    } else {
-      setToast(tr("session.clearAllMutesEmpty"));
-      window.setTimeout(() => setToast(null), 1800);
-    }
-  }, [tr]);
+  }, []);
 
   const handleClearAllSessionMutes = useCallback(() => {
     const n = mutedSessionIds.size;
     if (n <= 0) {
-      setToast(tr("session.clearAllMutesEmpty"));
-      window.setTimeout(() => setToast(null), 1800);
       return;
     }
     if (shouldConfirmClearAllMutes(n)) {
@@ -7228,7 +7080,6 @@ export function AppWorkbench() {
       const mergeInto = intoEdit ? setEditAttachments : setAttachments;
       try {
         let saved = 0;
-        let lastName = "";
         for (const f of withoutPath) {
           if (isAttachPayloadTooLarge(f.size)) {
             reportAttachError(
@@ -7256,7 +7107,6 @@ export function AppWorkbench() {
                 ? `paste.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`
                 : f.name || "paste.bin";
           const entry = await api.saveTempAttachment(b64, name, f.type || null);
-          lastName = entry.name;
           saved += 1;
           mergeInto((prev) =>
             mergeAttachments(prev, [
@@ -7277,18 +7127,6 @@ export function AppWorkbench() {
           return;
         }
         setLocalError(null);
-        const toast = resolveAttachSavedToast({
-          count: saved,
-          name: lastName,
-        });
-        if (toast.ok) {
-          const msg = tr(toast.messageKey as MessageKey, toast.vars);
-          setToast(msg);
-          window.setTimeout(
-            () => setToast((cur) => (cur === msg ? null : cur)),
-            2200,
-          );
-        }
       } catch (e) {
         reportAttachError(e, "paste");
       }
@@ -7320,18 +7158,6 @@ export function AppWorkbench() {
         }
         await addAttachmentsFromPaths([entry.path]);
         setLocalError(null);
-        const toast = resolveAttachSavedToast({
-          count: 1,
-          name: entry.name,
-        });
-        if (toast.ok) {
-          const msg = tr(toast.messageKey as MessageKey, toast.vars);
-          setToast(msg);
-          window.setTimeout(
-            () => setToast((cur) => (cur === msg ? null : cur)),
-            2200,
-          );
-        }
       } catch (e) {
         reportAttachError(e, "native_clipboard");
       }
@@ -7385,6 +7211,105 @@ export function AppWorkbench() {
     [],
   );
 
+  /**
+   * Composer right-click menu (Paste + Command panel). Same ContextMenu
+   * baseline as attachment cards; native menu is already suppressed.
+   */
+  const [composerCtxMenu, setComposerCtxMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const onComposerContextMenu = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setComposerCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  /**
+   * Paste into the composer from the OS clipboard (context-menu item).
+   * Text → append to draft; image → attach as attachment; empty/unusable →
+   * honest toast (never a silent no-op that leaves a native paste affordance).
+   */
+  const pasteIntoComposer = useCallback(() => {
+    void (async () => {
+      // 1. Text on the clipboard.
+      let text = "";
+      try {
+        text = ((await navigator.clipboard.readText()) ?? "").trim();
+      } catch {
+        /* not readable as text — fall through to media */
+      }
+      // Bare file:// URL(s) from copying a file in the OS — not useful as
+      // draft text; the real payload is handled by the media paths below.
+      const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+      const fileUrlOnly =
+        lines.length > 0 && lines.every((l) => /^file:\/\//i.test(l));
+      if (text && !fileUrlOnly) {
+        setDraft((prev) => {
+          if (!prev) return text;
+          return /\s$/.test(prev) ? prev + text : prev + "\n\n" + text;
+        });
+        requestComposerFocus();
+        return;
+      }
+      // 2. Image via the async Clipboard API (Chromium / some WKWebView).
+      const files = await readClipboardMediaFiles();
+      if (files.length) {
+        await addAttachmentsFromFiles(files);
+        return;
+      }
+      // 3. Native clipboard image (arboard — macOS screenshots etc.).
+      if (api.isTauri()) {
+        try {
+          const entry = await api.clipboardPasteImage();
+          if (entry?.path) {
+            await addAttachmentsFromPaths([entry.path]);
+            return;
+          }
+        } catch {
+          /* native clipboard read failed */
+        }
+      }
+      // 4. Nothing usable — honest feedback instead of a silent no-op.
+      const msg = tr("chat.selectionPasteEmpty");
+      setToast(msg);
+      window.setTimeout(
+        () => setToast((cur) => (cur === msg ? null : cur)),
+        2200,
+      );
+    })();
+  }, [
+    setDraft,
+    requestComposerFocus,
+    addAttachmentsFromFiles,
+    addAttachmentsFromPaths,
+    tr,
+    setToast,
+  ]);
+
+  const composerCtxItems = useMemo<ContextMenuItem[]>(
+    () => [
+      {
+        id: "composer-paste",
+        label: tr("chat.selectionPaste"),
+        icon: <IconClipboardList size={16} />,
+        onClick: pasteIntoComposer,
+      },
+      {
+        id: "composer-command-panel",
+        label: tr("composer.commandPanel"),
+        icon: <IconPlus size={16} />,
+        onClick: () => {
+          setComposerCtxMenu(null);
+          closeComposerMenu();
+          setShowComposerPlus(true);
+        },
+      },
+    ],
+    [tr, pasteIntoComposer, closeComposerMenu, setShowComposerPlus],
+  );
+
   const pickComposerFiles = useCallback(async () => {
     closeComposerMenu();
     if (isMirrorClient()) {
@@ -7406,29 +7331,6 @@ export function AppWorkbench() {
       }
       await addAttachmentsFromPaths(paths);
       setLocalError(null);
-      const label =
-        paths.length === 1
-          ? paths[0]!.split(/[/\\]/).pop() || paths[0]!
-          : undefined;
-      const toast = resolveAttachSavedToast({
-        count: paths.length,
-        name: label,
-      });
-      if (toast.ok) {
-        const msg =
-          paths.length === 1
-            ? tr(toast.messageKey as MessageKey, toast.vars)
-            : tr("composer.attachSaved", {
-                name: tr("composer.attachCount", {
-                  n: String(paths.length),
-                }),
-              });
-        setToast(msg);
-        window.setTimeout(
-          () => setToast((cur) => (cur === msg ? null : cur)),
-          2200,
-        );
-      }
     } catch (e) {
       const resolved = resolveAttachError(e, "pick");
       if (resolved.kind === "unsupported") {
@@ -7462,8 +7364,6 @@ export function AppWorkbench() {
           setActiveProject(list.find((p) => p.id === last!.id) ?? last);
           setExpandedProjects((e) => ({ ...e, [last!.id]: true }));
           setLocalError(null);
-          setToast(tr("composer.projectAdded", { name: last.name }));
-          window.setTimeout(() => setToast(null), 2500);
         }
       } catch (e) {
         setLocalError(String(e));
@@ -8422,18 +8322,10 @@ export function AppWorkbench() {
   const saveSessionNoteModal = useCallback(() => {
     const target = sessionNoteTarget;
     if (!target) return;
-    const stored = setSessionNote(target.id, sessionNoteDraft);
+    setSessionNote(target.id, sessionNoteDraft);
     setSessionNotesMap(loadSessionNotes());
-    const outcome = sessionNoteSaveOutcome(target.id, stored);
     forceCloseSessionNoteModal();
-    showToast(tr(outcome.toastKey), 2000);
-  }, [
-    sessionNoteTarget,
-    sessionNoteDraft,
-    forceCloseSessionNoteModal,
-    tr,
-    showToast,
-  ]);
+  }, [sessionNoteTarget, sessionNoteDraft, forceCloseSessionNoteModal]);
 
   const requestClearSessionNoteModal = useCallback(() => {
     const target = sessionNoteTarget;
@@ -8456,8 +8348,7 @@ export function AppWorkbench() {
     clearSessionNote(target.id);
     setSessionNotesMap(loadSessionNotes());
     forceCloseSessionNoteModal();
-    showToast(tr("session.noteCleared"), 2000);
-  }, [sessionNoteTarget, forceCloseSessionNoteModal, tr, showToast]);
+  }, [sessionNoteTarget, forceCloseSessionNoteModal]);
 
   /** Confirm then stop the given session ids (dashboard / multi-select). */
   const stopBusySessionsByIds = useCallback(
@@ -8496,9 +8387,7 @@ export function AppWorkbench() {
             fail += 1;
           }
         }
-        if (fail === 0) {
-          showToast(tr("tasks.activity.stopAllDone", { n: String(ok) }), 3200);
-        } else {
+        if (fail > 0) {
           showToast(
             tr("tasks.activity.stopAllPartial", {
               ok: String(ok),
@@ -8960,11 +8849,10 @@ export function AppWorkbench() {
         rpcId: null,
         userClosed: false,
       });
-      showToast(tr("plan.approvedToast"), 2500);
     } catch (e) {
       showToast(String(e), 4500);
     }
-  }, [archivePlanDecision, plan.rpcId, showToast, tr, writePlanForViewing]);
+  }, [archivePlanDecision, plan.rpcId, showToast, writePlanForViewing]);
 
   /**
    * Resolve pending plan review as "cancelled" (revise).
@@ -8991,12 +8879,11 @@ export function AppWorkbench() {
         });
         setPlanReviseOpen(false);
         setPlanReviseNote("");
-        showToast(tr("plan.reviseToast"), 2800);
       } catch (e) {
         showToast(String(e), 4500);
       }
     },
-    [plan.rpcId, showToast, tr, writePlanForViewing],
+    [plan.rpcId, showToast, writePlanForViewing],
   );
 
   /** Open optional revision-note modal, then call requestPlanChanges. */
@@ -9017,13 +8904,12 @@ export function AppWorkbench() {
         try {
           clearPlanHistory();
           setPlanHistoryPreview(null);
-          showToast(tr("plan.historyClearedToast"), 2200);
         } catch {
           /* private mode */
         }
       },
     });
-  }, [showToast, tr]);
+  }, []);
 
   /** Open the session that produced a plan history entry, if it still exists. */
   const openPlanHistorySession = useCallback(
@@ -9142,7 +9028,6 @@ export function AppWorkbench() {
 
   const sendQueueLabels = useMemo(
     () => ({
-      queued: tr("composer.queued"),
       sendFailed: tr("composer.queueSendFailed"),
       droppedOldest: (n: number, max: number) =>
         tr("composer.queueDroppedOldest", {
@@ -9213,24 +9098,15 @@ export function AppWorkbench() {
     const plan = planClearSendQueue(sendQueue.activeQueue);
     if (!plan.confirmNeeded) {
       // Empty honesty: nothing to clear (strip should already be hidden).
-      showToast(tr("composer.queueClearEmpty"), 2000);
       return;
     }
     setSendQueueClearOpen(true);
-  }, [sendQueue.activeQueue, showToast, tr]);
+  }, [sendQueue.activeQueue]);
 
   const confirmClearSendQueue = useCallback(() => {
-    const plan = sendQueue.clearQueue();
+    sendQueue.clearQueue();
     setSendQueueClearOpen(false);
-    if (plan.count > 0) {
-      showToast(
-        tr("composer.queueClearedToast", { n: String(plan.count) }),
-        2200,
-      );
-    } else {
-      showToast(tr("composer.queueClearEmpty"), 2000);
-    }
-  }, [sendQueue.clearQueue, showToast, tr]);
+  }, [sendQueue.clearQueue]);
 
   const saveQueueEdit = useCallback(() => {
     if (!queueEditItemId) return;
@@ -9751,11 +9627,9 @@ export function AppWorkbench() {
           /* soft-fail badge meta */
         }
 
-        let agentForkArmed = false;
         if (forkResolved.fork) {
           try {
             await api.sessionSetForkAgentSession(source.id, true);
-            agentForkArmed = true;
           } catch (e) {
             toastSessionForkSoftFail(e, {
               op: "resume_restore",
@@ -9780,14 +9654,6 @@ export function AppWorkbench() {
         });
         setExpandedProjects((e) => ({ ...e, [bindProject!.id]: true }));
         await openSession(row, bindProject);
-        showToast(
-          tr(
-            resumeRestoreSuccessToastKey({
-              forkedAgent: agentForkArmed,
-            }) as Parameters<typeof tr>[0],
-          ),
-          2800,
-        );
       } catch (e) {
         toastSessionForkSoftFail(e, {
           op: "resume_restore",
@@ -9876,7 +9742,6 @@ export function AppWorkbench() {
           setHistoryOpen(true);
         }
         await openSession(row, openProj);
-        showToast(tr("session.duplicateOk"), 2800);
       } catch (e) {
         showToast(tr("session.duplicateFailed") + ": " + String(e), 4500);
       } finally {
@@ -9954,9 +9819,7 @@ export function AppWorkbench() {
         setRewindTimeline(null);
         setRewindConfirm(null);
         setRewindRestoreFiles(false);
-        if (result.agentOk) {
-          showToast(tr("session.rewindOk"), 2600);
-        } else {
+        if (!result.agentOk) {
           showToast(tr("session.rewindLocalOnly"), 4200);
         }
         await refreshSessions();
@@ -10047,7 +9910,6 @@ export function AppWorkbench() {
       const idx = userPromptIndexOf(messages, msg.id);
       if (idx < 0) return;
       if (!canRewindToUserPrompt(messages, idx)) {
-        showToast(tr("session.rewindNoop"));
         return;
       }
       const preview = (msg.content || "")
@@ -10102,7 +9964,7 @@ export function AppWorkbench() {
    * it is unreliable in the WebView and blocks YOLO enable/disable.
    */
   const applyPermissionPolicy = useCallback(
-    (next: PermissionPolicyId, opts?: { toastYoloToggle?: boolean }) => {
+    (next: PermissionPolicyId) => {
       if (!isValidPolicy(next)) return;
 
       const commit = () => {
@@ -10113,14 +9975,6 @@ export function AppWorkbench() {
             sessionId: session.sessionId ?? null,
           })
           .catch((e) => showToast(String(e), 4000));
-        if (opts?.toastYoloToggle) {
-          showToast(
-            next === "always_approve"
-              ? tr("slash.yoloOn")
-              : tr("slash.yoloOff"),
-            2500,
-          );
-        }
       };
 
       if (next !== "always_approve") {
@@ -10255,7 +10109,7 @@ export function AppWorkbench() {
           case "yolo": {
             const next: PermissionPolicyId =
               policy === "always_approve" ? "ask" : "always_approve";
-            applyPermissionPolicy(next, { toastYoloToggle: true });
+            applyPermissionPolicy(next);
             return;
           }
           case "goal-clear":
@@ -10438,11 +10292,10 @@ export function AppWorkbench() {
     }
     try {
       await navigator.clipboard.writeText(last!.content);
-      showToast(tr("message.copied"));
     } catch (e) {
       showToast(String(e), 4000);
     }
-  }, [messages, showToast, tr]);
+  }, [messages, showToast]);
 
   /**
    * New empty draft only: lift composer and SuperGrok brand.
@@ -10745,6 +10598,26 @@ export function AppWorkbench() {
     [liveBrandKind, cachedBrandKind, account, customRouteActive],
   );
 
+  /**
+   * Preset provider wordmark on the welcome composer.
+   * DeepSeek → full DeepSeek wordmark; OpenCode → theme-aware wordmark;
+   * every other channel (Amux / Yun API / official) keeps the SuperGrok mark.
+   */
+  const welcomeProviderBrandNode = useMemo(() => {
+    if (!customRouteActive) return null;
+    const brand = resolveProviderBrandId({
+      providerId: activeCustomProvider?.id ?? null,
+      baseUrl: activeCustomProvider?.baseUrl ?? null,
+    });
+    if (brand === "deepseek") {
+      return <DeepSeekFullMark title="DeepSeek" />;
+    }
+    if (brand === "opencode-go") {
+      return <OpenCodeWordmark title="OpenCode" />;
+    }
+    return null;
+  }, [customRouteActive, activeCustomProvider]);
+
   // Floating composer height → chat bottom pad so messages can scroll under it.
   // ResizeObserver covers typing growth; no draft subscription (would thrash shell).
   useEffect(() => {
@@ -10944,7 +10817,7 @@ export function AppWorkbench() {
    * unbinds the folder (other sessions + general workspace cwd).
    */
   const bindSessionProject = useCallback(
-    async (proj: Project | null, opts?: { silent?: boolean }) => {
+    async (proj: Project | null) => {
       const target = proj && !isGeneralProject(proj) ? proj : null;
       const sid = session.sessionId;
       if (!sid || !api.isTauri()) {
@@ -10997,19 +10870,8 @@ export function AppWorkbench() {
         );
         if (target) {
           setExpandedProjects((e) => ({ ...e, [target.id]: true }));
-          if (!opts?.silent) {
-            showToast(
-              tr("composer.projectBound", {
-                name: projectDisplayName(target, tr),
-              }),
-              2500,
-            );
-          }
         } else {
           setHistoryOpen(true);
-          if (!opts?.silent) {
-            showToast(tr("composer.projectCleared"), 2500);
-          }
         }
         setLocalError(null);
       } catch (e) {
@@ -11204,7 +11066,6 @@ export function AppWorkbench() {
         } else {
           setActiveProject(current);
           setExpandedProjects((e) => ({ ...e, [current.id]: true }));
-          showToast(tr("composer.projectAdded", { name: current.name }), 2500);
         }
       };
 
@@ -11369,14 +11230,9 @@ export function AppWorkbench() {
           // Success panel: PR URL + Open in PR hub (do not force-close).
           const prNumber = parseGithubPrNumber(outcome.prUrl);
           setShipSuccess({ prUrl: outcome.prUrl, prNumber });
-          showToast(
-            tr("composer.worktreeShipDonePr", { url: outcome.prUrl }),
-            5000,
-          );
         } else {
           setShipOpen(false);
           setShipSuccess(null);
-          showToast(tr("composer.worktreeShipDonePush"), 4000);
         }
       } else {
         const detail = redactShipOutput(
@@ -11446,22 +11302,10 @@ export function AppWorkbench() {
     setWorktreeGcBusy(true);
     setWorktreeGcError(null);
     try {
-      const res = await api.gitWorktreeGc(
-        activeProject.path,
-        false,
-        worktreeGcForce,
-      );
       setWorktreeGcOpen(false);
       setWorktreeGcPreview(null);
       setWorktreeGcForce(false);
       await refreshGitWorktrees();
-      const n = res.prunedCount ?? 0;
-      showToast(
-        n > 0
-          ? tr("composer.worktreeGcDone", { n: String(n) })
-          : tr("composer.worktreeGcDoneNone"),
-        2800,
-      );
     } catch (e) {
       setWorktreeGcError(String(e));
     } finally {
@@ -11484,14 +11328,7 @@ export function AppWorkbench() {
       try {
         const existing = projects.find((p) => pathsEqual(p.path, path));
         if (existing) {
-          await bindSessionProject(existing, { silent: true });
-          showToast(
-            tr("composer.worktreeSwitched", {
-              name: existing.name,
-              branch: wt.branch || tr("composer.worktreeDetached"),
-            }),
-            2500,
-          );
+          await bindSessionProject(existing);
           return;
         }
         const trust = !!activeProject?.trusted;
@@ -11502,14 +11339,7 @@ export function AppWorkbench() {
         if (!proj.trusted) {
           await finalizeAddedProject(proj, { bindSession: true });
         } else {
-          await bindSessionProject(proj, { silent: true });
-          showToast(
-            tr("composer.worktreeSwitched", {
-              name: proj.name,
-              branch: wt.branch || tr("composer.worktreeDetached"),
-            }),
-            2500,
-          );
+          await bindSessionProject(proj);
         }
       } catch (e) {
         showToast(String(e), 4500);
@@ -11539,7 +11369,6 @@ export function AppWorkbench() {
         showToast(tr("composer.worktreeRemoveFailed"), 4000);
         return;
       }
-      const name = worktreeLabel(wt);
       const wasCurrent = pathsEqual(wt.path, activeProject?.path);
       try {
         await api.gitWorktreeRemove({
@@ -11586,10 +11415,6 @@ export function AppWorkbench() {
         } else {
           await refreshGitWorktrees();
         }
-        showToast(
-          tr("composer.worktreeRemoveDone", { name }),
-          2800,
-        );
       } catch (e) {
         const err = String(e);
         if (!force && worktreeRemoveErrorSuggestsForce(err)) {
@@ -11823,13 +11648,6 @@ export function AppWorkbench() {
       if (!target.trusted) {
         // Trust prompt first; bind only (chat requires trusted project).
         await finalizeAddedProject(target, { bindSession: true });
-        showToast(
-          tr("composer.worktreeCreated", {
-            name: created.name,
-            branch,
-          }),
-          2800,
-        );
         return;
       }
 
@@ -11849,28 +11667,14 @@ export function AppWorkbench() {
         });
         setExpandedProjects((e) => ({ ...e, [target!.id]: true }));
         await openSession(row, target);
-        showToast(
-          tr("composer.worktreeCreatedChat", {
-            name: created.name,
-            branch,
-          }),
-          2800,
-        );
       } else {
-        await bindSessionProject(target, { silent: true });
+        await bindSessionProject(target);
         // Tag the currently open chat when switching cwd into the new worktree.
         const liveId =
           viewingSessionIdRef.current || session.sessionId || null;
         if (liveId) {
           await markSessionWorktree(liveId, path, branch);
         }
-        showToast(
-          tr("composer.worktreeCreated", {
-            name: created.name,
-            branch,
-          }),
-          2800,
-        );
       }
     } catch (e) {
       setWorktreeCreateError(String(e));
@@ -12172,15 +11976,6 @@ export function AppWorkbench() {
         prompt: opts.prompt,
         items,
       });
-      setToast(
-        tr("batchAgents.toastDone", {
-          ok: summary.ok,
-          soft: summary.softFail,
-          err: summary.error,
-          skip: summary.skipped,
-        }),
-      );
-      window.setTimeout(() => setToast(null), 4200);
       return summary;
     },
     [projects, tr],
@@ -12749,25 +12544,6 @@ export function AppWorkbench() {
     wasStreamingRef.current = streaming;
   }, [session.state, messages, tr]);
 
-  /**
-   * Stream-perf mode: dim wallpaper / hide video / drop backdrop-filter while
-   * tokens stream (cuts Intel Retina composite thrash). Always on during stream
-   * for consistent cost; CSS is cheap on high-power GPUs.
-   */
-  const streamPerfActive = useMemo(() => {
-    if (session.state === "streaming" || isSessionLiveStreaming(liveHost.state)) {
-      return true;
-    }
-    if (messages.some((m) => m.role === "assistant" && m.streaming)) {
-      return true;
-    }
-    if (session.sessionId && busyIds.has(session.sessionId)) {
-      return true;
-    }
-    return false;
-  }, [session.state, session.sessionId, liveHost.state, messages, busyIds]);
-  useStreamPerfMode(streamPerfActive);
-
   /** Same path as Deny button / Escape / optional auto-deny timeout. */
   const resolvePermission = useCallback(
     (
@@ -13026,7 +12802,6 @@ export function AppWorkbench() {
       );
       if (!created) return;
       await refreshSessions();
-      showToast(tr("account.importChatOk", { title: created.title }), 3200);
       const list = (await api.sessionsList()) as SessionRow[];
       const hit = list.find((s) => s.id === created.id);
       if (hit) {
@@ -13297,7 +13072,6 @@ export function AppWorkbench() {
               );
               a.click();
               URL.revokeObjectURL(url);
-              showToast(tr("session.exportDoneCli"), 4200);
               setExportMdTarget(null);
               return;
             }
@@ -13316,7 +13090,6 @@ export function AppWorkbench() {
         if (mode === "copy") {
           try {
             await navigator.clipboard.writeText(md);
-            showToast(tr("session.exportCopied"));
           } catch (e) {
             const err = e instanceof Error ? e : new Error(String(e));
             (err as Error & { code?: string }).code = "clipboard";
@@ -13334,7 +13107,6 @@ export function AppWorkbench() {
             a.download = sessionExportSafeFilename("markdown", title, id);
             a.click();
             URL.revokeObjectURL(url);
-            showToast(tr("session.exportDone"));
           } catch (e) {
             const err = e instanceof Error ? e : new Error(String(e));
             (err as Error & { code?: string }).code = "write_failed";
@@ -13399,7 +13171,6 @@ export function AppWorkbench() {
           return;
         }
         await navigator.clipboard.writeText(md);
-        showToast(tr("session.copyMdDone"));
       } catch (e) {
         toastSessionExportSoftFail(e);
       }
@@ -13491,7 +13262,6 @@ export function AppWorkbench() {
         a.download = sessionExportSafeFilename("json", title, id);
         a.click();
         URL.revokeObjectURL(url);
-        showToast(tr("session.exportDone"));
       } catch (e) {
         toastSessionExportSoftFail(e);
       }
@@ -13871,7 +13641,6 @@ export function AppWorkbench() {
               throw err;
             }
           }
-          showToast(tr("session.exportImageCopied"));
         } else if (api.isTauri()) {
           const b64 = await pngBlobToBase64(blob);
           const result = await api.exportBytesSave({
@@ -13890,15 +13659,9 @@ export function AppWorkbench() {
             (err as Error & { code?: string }).code = "save_failed";
             throw err;
           }
-          showToast(
-            result.path
-              ? `${tr("session.exportImageDone")}: ${result.path}`
-              : tr("session.exportImageDone"),
-          );
         } else {
           // Browser / non-Tauri fallback.
           downloadPngBlob(blob, filename);
-          showToast(tr("session.exportImageDone"));
         }
         revokeExportImagePreview();
         exportImageMsgsSnapRef.current = null;
@@ -13998,7 +13761,6 @@ export function AppWorkbench() {
         a.download = sessionExportSafeFilename("plain", title, id);
         a.click();
         URL.revokeObjectURL(url);
-        showToast(tr("session.exportDone"));
       } catch (e) {
         toastSessionExportSoftFail(e);
       }
@@ -14087,7 +13849,6 @@ export function AppWorkbench() {
         a.download = sessionExportSafeFilename("html", title, id);
         a.click();
         URL.revokeObjectURL(url);
-        showToast(tr("session.exportDone"));
       } catch (e) {
         toastSessionExportSoftFail(e);
       }
@@ -14167,7 +13928,6 @@ export function AppWorkbench() {
         a.download = streamSessionExportFilename(format, title, id);
         a.click();
         URL.revokeObjectURL(url);
-        showToast(tr("session.exportStreamDone", { format, n: result.lineCount }));
       } catch (e) {
         showToast(`${tr("session.exportFail")}: ${String(e)}`);
       }
@@ -14194,9 +13954,7 @@ export function AppWorkbench() {
       }
       try {
         const res = await api.exportSessionBundle(id);
-        if (res?.ok && res.path) {
-          showToast(tr("session.exportBundleDone"), 4200);
-        } else {
+        if (!(res?.ok && res.path)) {
           showToast(tr("session.exportBundleFail"));
         }
       } catch (e) {
@@ -14234,13 +13992,9 @@ export function AppWorkbench() {
               typeof res.sizeBytes === "number" ? res.sizeBytes : null,
             uploaded: uploaded || null,
           });
-          if (uploaded) {
-            showToast(tr("session.exportTraceUploaded"), 4200);
-          } else if (!localOnly) {
+          if (!localOnly && !uploaded) {
             // Network allowed but CLI only wrote local (upload disabled / fallback).
             showToast(tr("session.exportTraceDoneLocalFallback"), 5000);
-          } else {
-            showToast(tr("session.exportTraceDone"), 4200);
           }
         } else {
           showToast(tr("session.exportTraceFail"));
@@ -14617,7 +14371,6 @@ export function AppWorkbench() {
         const res = await api.accountLogin(method);
         if (res.ok) {
           setLoginHint(null);
-          showToast(tr("account.loginOk"), 2800);
         } else if (res.timedOut) {
           const msg = `${tr("account.loginTimeout")} ${tr(
             "account.loginUnreachableHint",
@@ -14635,12 +14388,6 @@ export function AppWorkbench() {
           } catch {
             /* host may already open it */
           }
-          showToast(
-            [res.deviceUrl, res.deviceCode ? `code: ${res.deviceCode}` : ""]
-              .filter(Boolean)
-              .join(" · "),
-            10000,
-          );
         }
         await refreshAccount({ refreshBilling: true });
         await refreshSavedAccounts();
@@ -14683,7 +14430,6 @@ export function AppWorkbench() {
     try {
       await api.accountSaveCurrent();
       await refreshSavedAccounts();
-      showToast(tr("account.profileSaved"), 2500);
     } catch (e) {
       showToast(String(e), 4500);
     } finally {
@@ -14706,7 +14452,6 @@ export function AppWorkbench() {
       try {
         await api.accountSaveCurrent();
         await refreshSavedAccounts();
-        showToast(tr("account.profileSaved"), 1800);
       } catch (e) {
         // Still try login — user may want a fresh account even if save fails.
         showToast(String(e), 3500);
@@ -14737,7 +14482,6 @@ export function AppWorkbench() {
           /* ignore */
         }
         setSession({ ...IDLE_SNAPSHOT });
-        showToast(tr("account.profileSwitched"), 2500);
       } catch (e) {
         showToast(String(e), 4500);
       } finally {
@@ -14763,7 +14507,6 @@ export function AppWorkbench() {
           try {
             await api.accountRemove(id);
             await refreshSavedAccounts();
-            showToast(tr("account.profileRemoved"), 2200);
           } catch (e) {
             showToast(String(e), 4500);
           } finally {
@@ -16014,9 +15757,7 @@ export function AppWorkbench() {
           await refreshVoiceGate().catch(() => {
           /* soft-fail voice gate */
           });
-          setToast(tr("prov.switchedHotReload"));
-          window.setTimeout(() => setToast(null), 3200);
-          } catch (e) {
+        } catch (e) {
           setToast(
           tr("prov.savedApplyFailed", { detail: String(e) }),
           );
@@ -16701,7 +16442,9 @@ export function AppWorkbench() {
                     baseUrl: activeCustomProvider.baseUrl,
                   })
                     ? " user-avatar--logo"
-                    : "")
+                    : account?.profile?.signedIn
+                      ? " user-avatar--logo"
+                      : "")
                 }
                 aria-hidden
               >
@@ -16721,6 +16464,8 @@ export function AppWorkbench() {
                         activeCustomProvider.id,
                     )
                   )
+                ) : account?.profile?.signedIn ? (
+                  <GrokLogo size={20} />
                 ) : account?.profile ? (
                   accountInitials(account.profile)
                 ) : (
@@ -16944,10 +16689,6 @@ export function AppWorkbench() {
                         target={defaultOpenTarget || "finder"}
                         onTargetChange={persistOpenTarget}
                         onOpenError={(e) => setLocalError(e)}
-                        onCopied={() => {
-                          setToast(tr("attach.copyPath") + " ✓");
-                          window.setTimeout(() => setToast(null), 1600);
-                        }}
                         platform={platform}
                         labels={{
                           openLocation: tr("main.openLocation"),
@@ -17170,12 +16911,6 @@ export function AppWorkbench() {
                       }
                       dismissCliUpdateNotice(cliUpdateOffer.latest);
                       setCliUpdateOffer(null);
-                      showToast(
-                        tr("settings.cliUpdateDone", {
-                          version: r.version || cliUpdateOffer.latest,
-                        }),
-                        3600,
-                      );
                       try {
                         await api.agentsRecycleAll();
                       } catch {
@@ -17710,17 +17445,19 @@ export function AppWorkbench() {
           >
             {welcomeSession && welcomeBrandKind && !sideDockActive ? (
               <div className="composer-welcome-mark">
-                <SuperGrokMark
-                  kind={welcomeBrandKind}
-                  title={
-                    customRouteActive
-                      ? "SuperGrok"
-                      : account?.billing?.subscriptionTier?.trim() ||
-                        (welcomeBrandKind === "heavy"
-                          ? "SuperGrok Heavy"
-                          : "SuperGrok")
-                  }
-                />
+                {welcomeProviderBrandNode ?? (
+                  <SuperGrokMark
+                    kind={welcomeBrandKind}
+                    title={
+                      customRouteActive
+                        ? "SuperGrok"
+                        : account?.billing?.subscriptionTier?.trim() ||
+                          (welcomeBrandKind === "heavy"
+                            ? "SuperGrok Heavy"
+                            : "SuperGrok")
+                    }
+                  />
+                )}
               </div>
             ) : null}
             {perm ? (
@@ -18386,6 +18123,7 @@ export function AppWorkbench() {
                 onPasteMediaFallback={onComposerPasteMediaFallback}
                 onSlashQueryChange={onSlashQueryChange}
                 onKeyDown={onComposerKeyDown}
+                onContextMenu={onComposerContextMenu}
               />
               <div
                 className={
@@ -18980,7 +18718,6 @@ export function AppWorkbench() {
                 setRecentPromptHistory(clearRecentPromptHistory());
                 setPromptHistoryActive(0);
                 setPromptHistoryClearOpen(false);
-                showToast(tr("promptHistory.clearedToast"), 2000);
               }}
             >
               {tr("promptHistory.clearRecentConfirmAction")}
@@ -19552,15 +19289,12 @@ export function AppWorkbench() {
         onSendTranscriptAsPrompt={
           session.sessionId
             ? async (prompt) => {
-                const ok = await executeSend({
+                await executeSend({
                   storedDisplay: prompt,
                   att: [],
                   goalMode: false,
                   targetSessionId: session.sessionId,
                 });
-                if (ok) {
-                  showToast(tr("voice.transcriptSent"), 2800);
-                }
               }
             : undefined
         }
@@ -19771,7 +19505,6 @@ export function AppWorkbench() {
                     }
                     onClick={() => {
                       if (isLast) {
-                        showToast(tr("session.rewindNoop"));
                         return;
                       }
                       confirmRewindToPrompt(
@@ -20079,7 +19812,6 @@ export function AppWorkbench() {
             listAria: tr("session.tracesTitle"),
             uploadedBadge: tr("session.tracesUploadedBadge"),
           }}
-          onCopied={() => showToast(tr("session.tracesCopied"), 2000)}
           onError={(msg) => showToast(msg, 4000)}
         />
       </GlassModal>
@@ -20283,7 +20015,6 @@ export function AppWorkbench() {
                         ),
                       );
                     }
-                    showToast(tr("composer.jsonSchemaCleared"));
                   })();
                 }}
               >
@@ -20336,7 +20067,6 @@ export function AppWorkbench() {
                     showToast(tr("composer.jsonSchemaEmptySession"), 3200);
                   }
                   setShowJsonSchemaModal(false);
-                  showToast(tr("composer.jsonSchemaApplied"));
                 })();
               }}
             >
@@ -22435,7 +22165,6 @@ export function AppWorkbench() {
                         void (async () => {
                           try {
                             await navigator.clipboard.writeText(wtBadge.path);
-                            showToast(tr("session.worktreePathCopied"), 2200);
                           } catch {
                             setLocalError(wtBadge.path);
                           }
@@ -22635,7 +22364,6 @@ export function AppWorkbench() {
                       void (async () => {
                         try {
                           await navigator.clipboard.writeText(wtBadge.path);
-                          showToast(tr("session.worktreePathCopied"), 2200);
                         } catch {
                           setLocalError(wtBadge.path);
                         }
@@ -22844,6 +22572,7 @@ export function AppWorkbench() {
           }
         }
         return (
+          <>
           <ContextMenu
             open={!!ctxMenu && items.length > 0}
             x={ctxMenu?.x ?? 0}
@@ -22858,6 +22587,15 @@ export function AppWorkbench() {
                   : 240
             }
           />
+          <ContextMenu
+            open={!!composerCtxMenu}
+            x={composerCtxMenu?.x ?? 0}
+            y={composerCtxMenu?.y ?? 0}
+            onClose={() => setComposerCtxMenu(null)}
+            items={composerCtxItems}
+            estimatedHeight={88}
+          />
+          </>
         );
       })()}
 
