@@ -11,23 +11,57 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-08-05
+
+> **Highlight:** Chat white-screen on older macOS WebKit (#526), Plan mode resume honesty, sticky Streaming/permission gates (#522–#525), window geometry restore, and xlsx security bump.
+>
+> **中文 · 亮点：** 修复旧版 macOS WebKit 聊天白屏（#526）；Plan 模式恢复与审批门闸更稳；Streaming/权限卡死（#522–#525）；记住窗口尺寸位置；xlsx 安全升级。
+
 ### Security
 - **xlsx**: replace abandoned npm `xlsx@0.18.5` (Prototype Pollution / ReDoS) with SheetJS Community **0.20.3** from the official CDN tarball (CVE-2023-30533 / CVE-2024-22363 fixed). Drop obsolete `@types/xlsx`.
+
+### Added
+- **Remember main window geometry**: persist size, position, maximize, and fullscreen across launches (`tauri-plugin-window-state` for the primary workbench only; skip visible/decorations so close-to-tray and platform chrome stay correct). Also save on hide-to-tray.
 
 ### Changed
 - **Default sandbox (new installs)**: App / Host default `sandboxProfile` is now **`workspace`** (OS isolation under the project tree). Existing settings that already stored `"off"` are unchanged. Settings UI still offers off / read-only / strict / devbox.
 - **Windows Authenticode (optional CI)**: Release workflow imports `WINDOWS_CERTIFICATE` + `WINDOWS_CERTIFICATE_PASSWORD` when set, writes thumbprint merge config, and signs the Windows bundle with `signtool`. Unsigned builds remain supported without secrets. Docs: `docs/BUILD.md`.
+- **Stream stall default**: product default soft-stall raised to **10 minutes** (migrate prior 120/180 once; keep deliberate custom values). Long tools/workflows often go quiet without being stuck.
+- **Themed boot shell**: paint a Grok logo boot shell using Host `settings.theme` (UI dual-write); finish setup gate without blocking on media server, keychain, or full list hydrate.
 
 ### Fixed
+- **#526 chat view white-screen on older macOS (WebKit)**: media path scan used a negative lookbehind regex (`(?<!…)`) that throws `Invalid regular expression: invalid group specifier name` on Safari/WKWebView before lookbehind support (e.g. macOS 12). Chat `UiErrorBoundary` then replaced the whole transcript. Rewrite with a post-match previous-char boundary check (no lookbehind).
 - **Plan mode gate disconnect**: Host no longer drops live `exit_plan_mode` / `ask_user_question` reverse-RPCs as session/load replay (Build re-parks approval after resume with no prompt in flight). Background demoted turns surface Plan + AskUser; process exit / recycle invalidate plan rpcIds so Approve cannot write to a dead agent; UI keeps plan body read-only and reopens on a new rpcId. Background plan-ready toast when another chat awaits review.
 - **Plan mode resume (P1)**: persist plan chrome under the app session (`plan_chrome.json`); on open, restore body + closed flags and merge agent `plan_mode.json` / `plan.md` when `awaiting_plan_approval`; sticky bar shows reconnect/re-park hint until a live reverse-RPC returns.
 - **Plan pending sidebar badge**: sessions awaiting plan review (live gate or restored re-park) show a non-interactive plan chip on the session row; open / busy spinner / select / pin actions unchanged.
+- **Window geometry flash**: create the main window at the cached size before show; skip plugin auto-restore on ready and apply saved size/position synchronously in setup, then show and focus.
 - **Stream after thinking**: Host may mark the turn `ready` before the assistant body finishes (early `prompt_complete`). Late body tokens were dropped when the focused host was no longer “live streaming”, so the bubble stayed empty until restart (journal already had the text). Late tokens now apply when the turn bubble is still streaming or body-empty; pure post-turn replays still drop. Journal rehydrate retries once after 400ms if the body is still empty.
+- **Multi-session turn routing**: drop parked co-tenant load/orphan traffic on shared agent processes so `session/load` cannot rewrite another chat’s journal. Enlarge in-chat image cards (≤150px, timeline pathMap); lightbox fits the stage then supports drag-pan when zoomed past the viewport.
 - **PDF open freeze / black window**: `react-pdf` `Document` was given a new `Uint8Array` every render → remount loop and GPU thrash when opening a generated PDF (file card / panel). Memoize the `file` prop. `path_open` now detaches with null stdio on a blocking thread so slow default handlers cannot stall the WebView IPC loop.
 - **#522 sticky Streaming busy after successful turn**: `session/prompt` Ok now always emits authoritative `PromptComplete` (compat `stopReason` / `stop_reason` / default `end_turn`); stamp prompt RPC with agent session id for multi-session routing; Host force-clears `prompt_in_flight` if still set after Ok.
 - **#523 permission Allow for session rejected by CLI**: fallback wire `optionId`s aligned with Grok Build CLI (`allow-once`, `always-allow`, `reject-once`, plus `allow-always-command|mcp|domain`); Host + UI no longer send underscore / non-existent `allow-always`.
 - **#524 stale permission bar after recycle**: track pending permission RPC per session; `recycle_all_agents` emits `session://permissions_invalidated` and clears gates; `resolve_permission` refuses dead agents.
 - **#525 multi-project “re-login”**: prefer signed-in `~/.grok/auth.json` over stale signed-out agent-home profile; sync agent-home auth by **content**, not mtime only, so custom-route clear cannot block official restore on next project connect.
+
+**中文 · 安全**
+- **xlsx**：弃用 npm `xlsx@0.18.5`，改用官方 CDN 的 SheetJS Community **0.20.3**（修复 CVE-2023-30533 / CVE-2024-22363）；移除过时 `@types/xlsx`。
+
+**中文 · 新增**
+- **记住主窗口几何**：跨启动保存尺寸、位置、最大化与全屏（仅主工作台；隐藏到托盘时也会落盘）。
+
+**中文 · 变更**
+- **默认沙箱（新安装）**：默认 `sandboxProfile` 改为 **`workspace`**；已存 `"off"` 的用户设置不变。
+- **Windows 可选 Authenticode**：Release CI 在配置证书密钥时用 `signtool` 签名；无密钥仍可出未签名包。
+- **流式静默默认**：产品默认软静默阈值升至 **10 分钟**（旧 120/180 一次性迁移；用户自定义保留）。
+- **主题启动壳**：按 Host `settings.theme` 绘制 Grok logo 启动壳；setup 门闸不再被媒体服务 / 钥匙串 / 全量列表拖住。
+
+**中文 · 修复**
+- **#526 旧版 macOS 聊天白屏**：媒体路径扫描使用负向 lookbehind，在无 lookbehind 的 WKWebView（如 macOS 12）上抛 `invalid group specifier name`，聊天 Error Boundary 整页灰屏。改为匹配后再检查前一字符边界。
+- **Plan 门闸断连 / 恢复 / 侧栏徽章**：断连与 recycle 后审批 RPC 诚实；持久化 plan chrome；待审会话侧栏 plan 芯片。
+- **窗口几何闪烁**：show 前同步恢复缓存尺寸位置。
+- **思考后正文丢字 / 多会话路由 / 图卡与 lightbox**：late token 与 journal 再水合；共享 agent 不再改写其它会话；图卡放大与缩放拖拽。
+- **PDF 打开卡死黑屏**：memoize `react-pdf` file；`path_open` 脱离 WebView IPC 循环。
+- **#522–#525**：Streaming 卡 busy、权限 optionId、recycle 后权限条、多项目「重新登录」。
 
 ## [0.2.5] - 2026-08-04
 

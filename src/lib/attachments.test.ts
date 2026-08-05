@@ -110,6 +110,27 @@ also /tmp/other.png and /tmp/clip.mp4 and not a file.`;
     ).toBeNull();
   });
 
+  it("does not re-match mid-path media segments inside a longer absolute", () => {
+    // Without a non-path boundary, bareSimple could also hit
+    // `/com.grokapp/.../images/1.jpg` mid-string (WebKit lookbehind rewrite).
+    const atts = extractMediaPathsFromContent(
+      "path /data/workspace/Support/com.grokapp/agent-home/images/1.jpg end",
+    );
+    expect(atts.map((a) => a.path)).toEqual([
+      "/data/workspace/Support/com.grokapp/agent-home/images/1.jpg",
+    ]);
+  });
+
+  it("extracts bare absolute media after CJK glue without lookbehind", () => {
+    const atts = extractMediaPathsFromContent(
+      "路径：/workspace/out/card.png 和 ~/shots/v1.mp4",
+    );
+    expect(atts.map((a) => a.path).sort()).toEqual([
+      "/workspace/out/card.png",
+      "~/shots/v1.mp4",
+    ].sort());
+  });
+
   it("mergeMessageAttachments combines stored + text paths", () => {
     const out = mergeMessageAttachments(
       [{ path: "/a.png", name: "a.png", isDir: false }],

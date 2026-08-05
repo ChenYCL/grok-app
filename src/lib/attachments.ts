@@ -257,12 +257,23 @@ function extractBareAbsoluteMedia(
   // Simple bare paths without spaces. Require a non-path boundary so we never
   // re-match mid-path (`…/Support/com.grokapp/…/images/1.jpg` → false `/com…`).
   // Allows CJK glue: `路径：/tmp/a.png` and `换成/Users/…/a.png`.
+  //
+  // No lookbehind (`(?<!…)`) — Safari/WKWebView throws
+  // "Invalid regular expression: invalid group specifier name" and white-screens
+  // the chat UiErrorBoundary. Check the previous char after each match instead.
   const bareSimpleRe = new RegExp(
-    `(?<![A-Za-z0-9_./-])((?:\\/(?!images?\\/|static\\/|assets?\\/|public\\/|uploads?\\/)[^\\s\`"'<>|*?]+|~\\/[^\\s\`"'<>|*?]+|[A-Za-z]:[\\\\/][^\\s\`"'<>|*?]+)\\.(?:${MEDIA_EXT_RE}))\\b`,
+    `((?:\\/(?!images?\\/|static\\/|assets?\\/|public\\/|uploads?\\/)[^\\s\`"'<>|*?]+|~\\/[^\\s\`"'<>|*?]+|[A-Za-z]:[\\\\/][^\\s\`"'<>|*?]+)\\.(?:${MEDIA_EXT_RE}))\\b`,
     "gi",
   );
   let m: RegExpExecArray | null;
-  while ((m = bareSimpleRe.exec(content)) !== null) push(m[1] || "");
+  while ((m = bareSimpleRe.exec(content)) !== null) {
+    const path = m[1] || "";
+    if (!path) continue;
+    if (m.index > 0 && /[A-Za-z0-9_./-]/.test(content[m.index - 1]!)) {
+      continue;
+    }
+    push(path);
+  }
 }
 
 /** @deprecated use extractMediaPathsFromContent */
