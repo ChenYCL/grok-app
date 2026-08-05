@@ -49,6 +49,7 @@ import {
 } from "@/lib/doctorFindings";
 import { CliUpdateRow } from "@/components/CliUpdateRow";
 import { detectAppPlatform } from "@/lib/appPlatform";
+import { DEFAULT_SANDBOX_PROFILE } from "@/lib/sandboxProfile";
 import {
   buildDoctorPlatformMatrix,
   doctorPlatformCellStatusKey,
@@ -225,7 +226,7 @@ export function DoctorModal({
   onResetDone,
   onOpenReliability,
   onOpenSettings,
-  sandboxProfile = "workspace",
+  sandboxProfile = DEFAULT_SANDBOX_PROFILE,
 }: DoctorModalProps) {
   // Product tree wraps Doctor in UpdaterProvider (App shell).
   const { channelInfo } = useUpdaterContext();

@@ -234,6 +234,79 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
 
     void (async () => {
       try {
+        /**
+         * Heal missed stream tail from Host journal after early ready.
+         * Upgrade is pure against the session cache; React state is set from
+         * the same result. One 400ms retry if the body is still empty.
+         */
+        const scheduleJournalRehydrate = (
+          sid: string,
+          attempt: number,
+          opts?: { clearStreaming?: boolean },
+        ) => {
+          void api
+            .sessionMessages(sid)
+            .then((stored) => {
+              if (cancelled || c.viewingSessionIdRef.current !== sid) return;
+              const woven = weaveToolsIntoAssistantSegments(
+                mapStoredMessagesToChat(stored),
+              );
+              const cached: ChatMessage[] =
+                c.messagesBySessionRef.current.get(sid) ?? [];
+              const base = opts?.clearStreaming
+                ? cached.map((m) =>
+                    m.streaming ? { ...m, streaming: false } : m,
+                  )
+                : cached;
+              // When cache is empty, still need React prev — fall back to
+              // functional update so we never wipe a live transcript.
+              if (cached.length === 0) {
+                c.setMessages((reactPrev: ChatMessage[]) => {
+                  const from = opts?.clearStreaming
+                    ? reactPrev.map((m) =>
+                        m.streaming ? { ...m, streaming: false } : m,
+                      )
+                    : reactPrev;
+                  const next = upgradeMessagesFromJournal(from, woven);
+                  c.messagesBySessionRef.current.set(sid, next);
+                  if (
+                    attempt === 0 &&
+                    next === from &&
+                    next.some(
+                      (m) =>
+                        m.role === "assistant" && !(m.content ?? "").trim(),
+                    )
+                  ) {
+                    window.setTimeout(() => {
+                      if (!cancelled) {
+                        scheduleJournalRehydrate(sid, 1, opts);
+                      }
+                    }, 400);
+                  }
+                  return next;
+                });
+                return;
+              }
+              const next = upgradeMessagesFromJournal(base, woven);
+              const upgraded = next !== base;
+              c.messagesBySessionRef.current.set(sid, next);
+              c.setMessages(next);
+              if (!upgraded && attempt === 0) {
+                const lastAsst = [...next]
+                  .reverse()
+                  .find((m) => m.role === "assistant");
+                if (lastAsst && !(lastAsst.content ?? "").trim()) {
+                  window.setTimeout(() => {
+                    if (!cancelled) scheduleJournalRehydrate(sid, 1, opts);
+                  }, 400);
+                }
+              }
+            })
+            .catch(() => {
+              /* journal rehydrate is best-effort */
+            });
+        };
+
         // Populated before stream/tool listeners; flushed on turn end for honesty.
         let streamCoalescer: StreamCoalescer | null = null;
         let toolEventCoalescer: TimedBatchQueue<{
@@ -390,47 +463,7 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                   isTurnDoneReadyTransition(prevLiveState, s.state) &&
                   sid
                 ) {
-                  const rehydrateFromJournal = (attempt: number) => {
-                    void api
-                      .sessionMessages(sid)
-                      .then((stored) => {
-                        if (
-                          cancelled ||
-                          c.viewingSessionIdRef.current !== sid
-                        ) {
-                          return;
-                        }
-                        const mapped = mapStoredMessagesToChat(stored);
-                        const woven = weaveToolsIntoAssistantSegments(mapped);
-                        let upgraded = false;
-                        c.setMessages((prev) => {
-                          const next = upgradeMessagesFromJournal(prev, woven);
-                          if (next !== prev) {
-                            upgraded = true;
-                            c.messagesBySessionRef.current.set(sid, next);
-                          }
-                          return next;
-                        });
-                        // If body is still empty after first pass, journal may
-                        // not have flushed yet — one delayed retry.
-                        if (!upgraded && attempt === 0) {
-                          const msgs =
-                            c.messagesBySessionRef.current.get(sid) ?? [];
-                          const lastAsst = [...msgs]
-                            .reverse()
-                            .find((m) => m.role === "assistant");
-                          if (lastAsst && !(lastAsst.content ?? "").trim()) {
-                            window.setTimeout(() => {
-                              if (!cancelled) rehydrateFromJournal(1);
-                            }, 400);
-                          }
-                        }
-                      })
-                      .catch(() => {
-                        /* journal rehydrate is best-effort */
-                      });
-                  };
-                  rehydrateFromJournal(0);
+                  scheduleJournalRehydrate(sid, 0);
                 }
                 c.setMessages((prev) => {
                   const rels = collectSessionRelativeMediaRefs(prev);
@@ -512,30 +545,9 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                 s.state === "ready" &&
                 isTurnDoneReadyTransition(prevLiveState, s.state)
               ) {
-                const sid = s.sessionId;
-                void api
-                  .sessionMessages(sid)
-                  .then((stored) => {
-                    if (
-                      cancelled ||
-                      c.viewingSessionIdRef.current !== sid
-                    ) {
-                      return;
-                    }
-                    const mapped = mapStoredMessagesToChat(stored);
-                    const woven = weaveToolsIntoAssistantSegments(mapped);
-                    c.setMessages((prev) => {
-                      const cleared = prev.map((m) =>
-                        m.streaming ? { ...m, streaming: false } : m,
-                      );
-                      const next = upgradeMessagesFromJournal(cleared, woven);
-                      c.messagesBySessionRef.current.set(sid, next);
-                      return next;
-                    });
-                  })
-                  .catch(() => {
-                    /* best-effort */
-                  });
+                scheduleJournalRehydrate(s.sessionId, 0, {
+                  clearStreaming: true,
+                });
               }
               if (
                 s.state !== "streaming" &&

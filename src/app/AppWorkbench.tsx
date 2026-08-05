@@ -236,6 +236,7 @@ import {
 } from "@/lib/goalOrch";
 import * as api from "@/lib/api";
 import {
+  DEFAULT_SANDBOX_PROFILE,
   SANDBOX_PROFILES,
   isDangerousSandboxProfile,
   normalizeSandboxProfile,
@@ -2134,7 +2135,7 @@ export function AppWorkbench() {
   const [backgroundWaitPolicy, setBackgroundWaitPolicy] = useState("wait");
   const [backgroundWaitTimeoutSec, setBackgroundWaitTimeoutSec] = useState(600);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
-  const [sandboxProfile, setSandboxProfile] = useState("workspace");
+  const [sandboxProfile, setSandboxProfile] = useState(DEFAULT_SANDBOX_PROFILE);
   /** Preferred CLI agent definition for spawn (`""` = CLI default). */
   const [preferredAgent, setPreferredAgent] = useState("");
   /** Optional `grok agent --agent-profile <PATH>` (empty = omit). */
@@ -2967,9 +2968,12 @@ export function AppWorkbench() {
       }
       setStoreApiKeysInKeychain(!!settings.storeApiKeysInKeychain);
       {
-        const sb = (settings.sandboxProfile || "workspace").trim().toLowerCase();
-        const known = ["off", "workspace", "read-only", "strict", "devbox"];
-        setSandboxProfile(known.includes(sb) ? sb : "workspace");
+        const sb = (settings.sandboxProfile || DEFAULT_SANDBOX_PROFILE)
+          .trim()
+          .toLowerCase();
+        setSandboxProfile(
+          normalizeSandboxProfile(sb) ?? DEFAULT_SANDBOX_PROFILE,
+        );
       }
       setPreferredAgent((settings.preferredAgent || "").trim());
       setAgentProfilePath((settings.agentProfilePath || "").trim());

@@ -28,6 +28,7 @@ import {
   type ThinkingExpandPref,
 } from "@/lib/thinkingPref";
 import type { ThemePreference } from "@/lib/theme";
+import { DEFAULT_SANDBOX_PROFILE } from "@/lib/sandboxProfile";
 import {
   deriveThemeScheduleHonesty,
   type ThemeScheduleConfig,
@@ -284,7 +285,7 @@ export function SettingsPage({
   onIncludePartialMessages,
   storeApiKeysInKeychain = false,
   onStoreApiKeysInKeychain,
-  sandboxProfile = "workspace",
+  sandboxProfile = DEFAULT_SANDBOX_PROFILE,
   onSandboxProfile,
   maxAgentTurns = 0,
   onMaxAgentTurns,

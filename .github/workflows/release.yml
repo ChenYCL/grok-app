@@ -188,11 +188,23 @@ jobs:
           $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
           [IO.File]::WriteAllBytes("$pwd/certificate/certificate.pfx", $bytes)
           $secure = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
-          $cert = Import-PfxCertificate -FilePath "$pwd/certificate/certificate.pfx" `
-            -CertStoreLocation Cert:\CurrentUser\My -Password $secure
-          $thumb = $cert.Thumbprint
-          if ([string]::IsNullOrEmpty($thumb)) {
-            Write-Error "Imported certificate has empty thumbprint"
+          # PFX may include the full chain — pick the leaf with a private key
+          # (prefer Code Signing EKU) so thumbprint is a single 40-hex string.
+          $imported = @(Import-PfxCertificate -FilePath "$pwd/certificate/certificate.pfx" `
+            -CertStoreLocation Cert:\CurrentUser\My -Password $secure)
+          $withKey = @($imported | Where-Object { $_.HasPrivateKey })
+          $code = @($withKey | Where-Object {
+            -not $_.EnhancedKeyUsageList -or
+            ($_.EnhancedKeyUsageList | ForEach-Object { $_.FriendlyName }) -contains 'Code Signing'
+          }) | Select-Object -First 1
+          if (-not $code) { $code = $withKey | Select-Object -First 1 }
+          if (-not $code) {
+            Write-Error "No certificate with private key found in WINDOWS_CERTIFICATE PFX"
+            exit 1
+          }
+          $thumb = [string]$code.Thumbprint
+          if ($thumb -notmatch '^[0-9A-Fa-f]{40}$') {
+            Write-Error "Unexpected certificate thumbprint format: $thumb"
             exit 1
           }
           Write-Host "Imported Windows code signing cert thumbprint=$thumb"
@@ -206,6 +218,7 @@ jobs:
             }
           } | ConvertTo-Json -Depth 6
           Set-Content -Path "src-tauri/tauri.windows.sign.conf.json" -Value $cfg -Encoding utf8
+          Remove-Item -Recurse -Force certificate -ErrorAction SilentlyContinue
           "enabled=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       # NOTE: Do NOT pass empty APPLE_* secrets.

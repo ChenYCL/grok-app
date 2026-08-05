@@ -292,7 +292,7 @@ describe("createSandboxWizardAnswers / choices / keys", () => {
     );
   });
 
-  it("default profile constant stays off (wizard still recommends workspace)", () => {
+  it("default profile is workspace (matches recommended)", () => {
     expect(DEFAULT_SANDBOX_PROFILE).toBe("workspace");
     expect(RECOMMENDED_SANDBOX_PROFILE).toBe("workspace");
   });

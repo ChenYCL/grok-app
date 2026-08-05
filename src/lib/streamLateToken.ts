@@ -13,6 +13,8 @@ export type LateTokenMessage = {
   marker?: string | null;
   streaming?: boolean;
   content?: string | null;
+  /** Joined thought text when known (live segments may leave content empty). */
+  thought?: string | null;
 };
 
 /**
@@ -47,8 +49,16 @@ export function shouldApplyLateStreamText(opts: {
     }
   }
 
-  const stillStreamingBubble = !!turnAsst?.streaming;
-  const bodyEmpty = !((turnAsst?.content ?? "").trim());
-  // Admit when we still have a live bubble or only thinking landed so far.
-  return stillStreamingBubble || bodyEmpty;
+  // No assistant yet → first body/thought chunk after early ready.
+  if (!turnAsst) return true;
+
+  if (turnAsst.streaming) return true;
+
+  const bodyEmpty = !((turnAsst.content ?? "").trim());
+  const hasThought = !((turnAsst.thought ?? "").trim() === "");
+  // Thinking landed, body still empty (host may have cleared streaming on ready).
+  if (bodyEmpty && hasThought) return true;
+
+  // Settled with body already present, or tool-only empty final → drop replays.
+  return false;
 }

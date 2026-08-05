@@ -30,6 +30,7 @@ describe("shouldApplyLateStreamText", () => {
 
   it("applies late body after thinking when host already ready", () => {
     // User report: thinking finished, host ready, answer tokens still arrive.
+    // Ready path may clear streaming=false while thought is already present.
     expect(
       shouldApplyLateStreamText({
         hostLiveStreaming: false,
@@ -38,8 +39,9 @@ describe("shouldApplyLateStreamText", () => {
           { role: "user", content: "write pdf" },
           {
             role: "assistant",
-            streaming: true,
-            content: "", // thought only in segments; body empty
+            streaming: false,
+            content: "",
+            thought: "planning the pdf…",
           },
         ],
       }),
@@ -67,6 +69,24 @@ describe("shouldApplyLateStreamText", () => {
         messages: [
           { role: "user", content: "q" },
           { role: "assistant", streaming: false, content: "final answer" },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("drops settled tool-only empty body (no thought)", () => {
+    expect(
+      shouldApplyLateStreamText({
+        hostLiveStreaming: false,
+        chunkIsForFocusedHost: true,
+        messages: [
+          { role: "user", content: "q" },
+          {
+            role: "assistant",
+            streaming: false,
+            content: "",
+            thought: "",
+          },
         ],
       }),
     ).toBe(false);

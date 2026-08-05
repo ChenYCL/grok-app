@@ -266,10 +266,11 @@ export function OfficeDocumentPreview({
    * remounts Document in a tight loop (GPU thrash → full-window black freeze
    * when users open a generated PDF from chat).
    */
+  const pdfBuffer = load.status === "ready" ? load.buffer : null;
   const pdfFile = useMemo(() => {
-    if (load.status !== "ready" || kind !== "pdf") return null;
-    return { data: new Uint8Array(load.buffer) };
-  }, [load, kind]);
+    if (!pdfBuffer || kind !== "pdf") return null;
+    return { data: new Uint8Array(pdfBuffer) };
+  }, [pdfBuffer, kind]);
 
   if (load.status === "loading") {
     return (

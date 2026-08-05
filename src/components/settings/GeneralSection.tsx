@@ -28,6 +28,7 @@ import {
 } from "@/lib/allowedTools";
 import { detectAppPlatform } from "@/lib/appPlatform";
 import {
+  DEFAULT_SANDBOX_PROFILE,
   RECOMMENDED_SANDBOX_PROFILE,
   SANDBOX_MIN_CLI,
   childNetworkRestrictApplies,
@@ -530,7 +531,7 @@ export function GeneralSection() {
                     </div>
                   </div>
                   <Select
-                    value={sandboxProfile || "workspace"}
+                    value={sandboxProfile || DEFAULT_SANDBOX_PROFILE}
                     onChange={(v) => onSandboxProfile(v)}
                     options={sandboxProfileSelectOptions().map((o) => ({
                       value: o.value,
@@ -538,7 +539,11 @@ export function GeneralSection() {
                     }))}
                   />
                   <div className="settings-row__desc">
-                    {t(sandboxProfileHelpKey(sandboxProfile || "workspace"))}
+                    {t(
+                      sandboxProfileHelpKey(
+                        sandboxProfile || DEFAULT_SANDBOX_PROFILE,
+                      ),
+                    )}
                   </div>
                   {sandboxProfile === RECOMMENDED_SANDBOX_PROFILE ? (
                     <div className="settings-row__hint">
