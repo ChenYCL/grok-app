@@ -387,6 +387,7 @@ impl SessionManager {
                         let mut guard = self.inner.lock();
                         if let Some(s) = guard.as_mut() {
                             s.pending_permission_rpc_id = Some(rpc_id);
+                            s.pending_permission_options = Some(options.clone());
                         }
                     }
                     let req = UiPermissionRequest {

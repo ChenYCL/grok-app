@@ -11,6 +11,9 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- **Permission “Allow for session” cancels shell turn**: Host now stores the ACP `options` list with each pending permission and re-coerces the wire `optionId` on resolve. UI generic fallbacks (`always-allow` / `allow-always`) are rewritten to tool-scoped ids such as `allow-always-command` so Grok Build no longer returns `unknown permission option` and `permission_rejected` mid-turn. Also maps CLI `allow_always_bash` kind in the permission bar.
+
 ## [0.2.6] - 2026-08-05
 
 > **Highlight:** Chat white-screen on older macOS WebKit (#526), Plan mode resume honesty, sticky Streaming/permission gates (#522–#525), window geometry restore, and xlsx security bump.

@@ -221,6 +221,7 @@ impl SessionManager {
     pub(super) fn take_pending_gate_invalidation(s: &mut LiveSession) -> Option<serde_json::Value> {
         let row = Self::pending_gate_invalidation_row(s)?;
         s.pending_permission_rpc_id = None;
+        s.pending_permission_options = None;
         s.pending_plan_rpc_id = None;
         s.pending_ask_user_rpc_id = None;
         Some(row)
@@ -277,6 +278,7 @@ impl SessionManager {
                 s.pending_plan_rpc_id = None;
                 s.pending_ask_user_rpc_id = None;
                 s.pending_permission_rpc_id = None;
+                s.pending_permission_options = None;
                 s.provider_retry_attempt = 0;
                 s.provider_retry_aborted = false;
                 // Leave AwaitingPermission / Streaming so UI busy clears after recycle.
@@ -313,6 +315,7 @@ impl SessionManager {
             }
             Self::maybe_flush_stream_journal(&mut s, true, false);
             s.pending_permission_rpc_id = None;
+            s.pending_permission_options = None;
             s.pending_plan_rpc_id = None;
             s.pending_ask_user_rpc_id = None;
             s.prompt_in_flight = false;
@@ -545,7 +548,7 @@ impl SessionManager {
         session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let target = self.resolve_target_session(session_id)?;
-        let (acp, empty_run, project_path) = self
+        let (acp, empty_run, project_path, pending_options) = self
             .with_session_mut(&target, |s| {
                 Self::touch_activity_locked(s);
                 // "allow_session" decision caches scope_key for H05 (works under Ask chip too)
@@ -559,7 +562,10 @@ impl SessionManager {
                 }
                 // Permission cleared — may finish a deferred prompt_complete (#52).
                 let empty = Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten();
-                (s.acp.clone(), empty, s.project_path.clone())
+                let opts = s.pending_permission_options.clone().unwrap_or_else(|| {
+                    serde_json::json!([])
+                });
+                (s.acp.clone(), empty, s.project_path.clone(), opts)
             })
             .ok_or("no session")?;
 
@@ -573,24 +579,34 @@ impl SessionManager {
             }
             let outcome = match decision.as_str() {
                 "cancel" => PermissionOutcome::Cancelled,
-                "deny" => PermissionOutcome::Selected {
-                    // CLI wire id (#523)
-                    option_id: option_id.unwrap_or_else(|| {
-                        crate::permission::FALLBACK_REJECT_ONCE.into()
-                    }),
-                },
-                _ => PermissionOutcome::Selected {
-                    // Prefer client-supplied optionId from Agent options list
-                    option_id: option_id.unwrap_or_else(|| {
-                        crate::permission::FALLBACK_ALLOW_ONCE.into()
-                    }),
-                },
+                other => {
+                    // Re-pick from the ACP options list when the UI sends a
+                    // generic fallback not published for this tool (e.g.
+                    // `always-allow` vs shell `allow-always-command`).
+                    // Otherwise CLI returns "unknown permission option" and
+                    // cancels the turn (session f4f2b156 / #523 follow-up).
+                    let wire = crate::permission::coerce_wire_option_id(
+                        other,
+                        option_id.as_deref(),
+                        &pending_options,
+                    );
+                    if option_id.as_deref() != Some(wire.as_str()) {
+                        tracing::info!(
+                            decision = %other,
+                            client = ?option_id,
+                            wire = %wire,
+                            "permission optionId coerced to CLI wire id"
+                        );
+                    }
+                    PermissionOutcome::Selected { option_id: wire }
+                }
             };
             acp.respond_permission(rpc_id, outcome).await?;
             // Clear pending tracker after a successful resolve.
             let _ = self.with_session_mut(&target, |s| {
                 if s.pending_permission_rpc_id == Some(rpc_id) {
                     s.pending_permission_rpc_id = None;
+                    s.pending_permission_options = None;
                 }
             });
         } else {

@@ -257,6 +257,7 @@ impl SessionManager {
                         let mut bg = self.background.lock();
                         if let Some(s) = bg.get_mut(app_session_id) {
                             s.pending_permission_rpc_id = Some(rpc_id);
+                            s.pending_permission_options = Some(options.clone());
                         }
                     }
                     let req = UiPermissionRequest {

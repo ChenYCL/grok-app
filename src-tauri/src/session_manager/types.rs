@@ -198,6 +198,10 @@ pub(crate) struct LiveSession {
     /// Pending `session/request_permission` JSON-RPC id for this session (#524).
     /// Cleared on resolve or when the owning agent process is recycled/killed.
     pub(super) pending_permission_rpc_id: Option<u64>,
+    /// ACP `options` list for the pending permission (used to coerce wire
+    /// optionIds so UI fallbacks like `always-allow` never override a
+    /// tool-scoped id such as `allow-always-command`).
+    pub(super) pending_permission_options: Option<serde_json::Value>,
     /// Last user/agent activity (send, stream, permission, connect).
     pub(super) last_activity: Instant,
     /// Last stream chunk or tool event (I06 stall watchdog). Permission waits do not update this.

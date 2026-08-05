@@ -605,7 +605,138 @@ pub fn resolve_always_allow_option_id(options: &serde_json::Value) -> String {
         .or_else(|| pick_option_id(options, "allow-always-mcp"))
         .or_else(|| pick_option_id(options, "allow-always-domain"))
         .or_else(|| pick_option_id(options, "always_allow_all_sessions"))
+        // Shell / bash often use kind `allow_always_bash` with wire id
+        // `allow-always-command` — exact kind match above misses the suffix.
+        .or_else(|| pick_session_scoped_option_id(options))
         .unwrap_or_else(|| FALLBACK_ALWAYS_ALLOW.into())
+}
+
+/// Scan options for session-scoped allow kinds/ids (`allow_always*`, `allow-always-*`).
+fn pick_session_scoped_option_id(options: &serde_json::Value) -> Option<String> {
+    let arr = options.as_array()?;
+    let extract_id = |o: &serde_json::Value| {
+        o.get("optionId")
+            .or_else(|| o.get("id"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    };
+    for o in arr {
+        let kind = o
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let kn = norm_perm_token(kind);
+        // allowalways / allowalwaysbash / allowalwayscommand — not allowonce
+        if kn.starts_with("allowalways") {
+            if let Some(id) = extract_id(o) {
+                return Some(id);
+            }
+        }
+        if let Some(id) = extract_id(o) {
+            let id_l = id.to_ascii_lowercase();
+            if id_l.starts_with("allow-always-")
+                || id_l.starts_with("allow_always_")
+                || id_l == "always-allow"
+                || id_l == "always_allow"
+            {
+                return Some(id);
+            }
+        }
+    }
+    None
+}
+
+/// True when `option_id` matches an entry in the ACP options list (exact or
+/// hyphen/underscore-normalized).
+pub fn option_id_in_list(options: &serde_json::Value, option_id: &str) -> bool {
+    let Some(arr) = options.as_array() else {
+        return false;
+    };
+    let want = norm_perm_token(option_id);
+    if want.is_empty() {
+        return false;
+    }
+    for o in arr {
+        let id = o
+            .get("optionId")
+            .or_else(|| o.get("id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !id.is_empty() && (id == option_id || norm_perm_token(id) == want) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Prefer the **wire** optionId from the list when the client id only matches
+/// after underscore/hyphen normalization.
+pub fn wire_option_id_from_list(options: &serde_json::Value, option_id: &str) -> Option<String> {
+    let arr = options.as_array()?;
+    let want = norm_perm_token(option_id);
+    if want.is_empty() {
+        return None;
+    }
+    for o in arr {
+        let id = o
+            .get("optionId")
+            .or_else(|| o.get("id"))
+            .and_then(|v| v.as_str())?;
+        if id == option_id || norm_perm_token(id) == want {
+            return Some(id.to_string());
+        }
+    }
+    None
+}
+
+/// Coerce a UI decision + client optionId into a wire id the CLI will accept.
+///
+/// When the client sends a generic fallback (`always-allow`) but the tool only
+/// published `allow-always-command`, CLI rejects with
+/// `unknown permission option` and cancels the turn. Prefer the client id when
+/// it is on the options list; otherwise re-pick by decision from the list.
+pub fn coerce_wire_option_id(
+    decision: &str,
+    client_option_id: Option<&str>,
+    options: &serde_json::Value,
+) -> String {
+    let client = client_option_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let has_list = options
+        .as_array()
+        .map(|a| !a.is_empty())
+        .unwrap_or(false);
+
+    if let Some(ref id) = client {
+        if !has_list {
+            // No options to validate against — keep client / legacy fallbacks.
+            return id.clone();
+        }
+        if let Some(wire) = wire_option_id_from_list(options, id) {
+            return wire;
+        }
+        // Client id not in list (empty UI options → always-allow fallback, etc.)
+        // Re-pick from the real ACP list for this decision.
+    }
+
+    match decision {
+        "deny" => resolve_reject_option_id(options),
+        "allow_session" | "allow_for_session" | "allow_always" | "allow-always" => {
+            resolve_always_allow_option_id(options)
+        }
+        "allow_once" | "allow-once" | "allow" => resolve_allow_once_option_id(options),
+        // Default allow path (unknown decision strings from older UI).
+        _ => {
+            if let Some(id) = client {
+                id
+            } else {
+                resolve_allow_once_option_id(options)
+            }
+        }
+    }
 }
 
 /// Resolve reject / deny wire id.
@@ -971,6 +1102,55 @@ mod tests {
         assert_eq!(
             resolve_always_allow_option_id(&bash),
             "allow-always-command"
+        );
+    }
+
+    #[test]
+    fn resolve_always_allow_matches_allow_always_bash_kind() {
+        let bash = serde_json::json!([
+            {"optionId": "allow-once", "kind": "allow_once"},
+            {"optionId": "allow-always-command", "kind": "allow_always_bash"},
+            {"optionId": "reject-once", "kind": "reject_once"}
+        ]);
+        assert_eq!(
+            resolve_always_allow_option_id(&bash),
+            "allow-always-command"
+        );
+    }
+
+    #[test]
+    fn coerce_rewrites_generic_always_allow_to_shell_command_id() {
+        // UI fallback when options were empty/missing → always-allow, but CLI
+        // shell only lists allow-always-command → unknown permission option.
+        let bash = serde_json::json!([
+            {"optionId": "allow-once", "kind": "allow_once"},
+            {"optionId": "allow-always-command", "kind": "allow_always"},
+            {"optionId": "reject-once", "kind": "reject_once"}
+        ]);
+        assert_eq!(
+            coerce_wire_option_id("allow_session", Some("always-allow"), &bash),
+            "allow-always-command"
+        );
+        assert_eq!(
+            coerce_wire_option_id("allow_session", Some("allow-always"), &bash),
+            "allow-always-command"
+        );
+        // Valid client id passes through as the wire form from the list.
+        assert_eq!(
+            coerce_wire_option_id(
+                "allow_session",
+                Some("allow-always-command"),
+                &bash
+            ),
+            "allow-always-command"
+        );
+        assert_eq!(
+            coerce_wire_option_id("allow_once", Some("allow-once"), &bash),
+            "allow-once"
+        );
+        assert_eq!(
+            coerce_wire_option_id("deny", Some("reject-once"), &bash),
+            "reject-once"
         );
     }
 

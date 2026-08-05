@@ -44,6 +44,20 @@ describe("mapPermissionButtons (shipped)", () => {
     expect(buttons[1]!.optionId).toBe("allow-always-command");
   });
 
+  it("maps allow_always_bash kind + bash name copy to session button", () => {
+    const buttons = mapPermissionButtons([
+      { optionId: "allow-once", kind: "allow_once" },
+      {
+        optionId: "allow-always-command",
+        kind: "allow_always_bash",
+        name: "Yes, and don't ask again for bash commands",
+      },
+      { optionId: "reject-once", kind: "reject_once" },
+    ]);
+    expect(buttons[1]!.decision).toBe("allow_session");
+    expect(buttons[1]!.optionId).toBe("allow-always-command");
+  });
+
   it("prefers short i18n labels over long agent names", () => {
     const buttons = mapPermissionButtons(
       [{ optionId: "allow-once", name: "Allow this bash command once", kind: "allow_once" }],

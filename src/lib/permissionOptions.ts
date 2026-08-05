@@ -85,10 +85,15 @@ export function mapPermissionButtons(
     find((o) => nameOf(o).includes("once") && nameOf(o).includes("allow")) ||
     find((o) => kindOf(o).includes("allow") && !kindOf(o).includes("always"));
 
-  // Session allow: kind allow_always, or CLI wire ids always-allow /
-  // allow-always-command|mcp|domain (#523).
+  // Session allow: kind allow_always / allow_always_bash, or CLI wire ids
+  // always-allow / allow-always-command|mcp|domain (#523 + shell follow-up).
   const always =
-    find((o) => kindOf(o) === "allow_always") ||
+    find(
+      (o) =>
+        kindOf(o) === "allow_always" ||
+        kindOf(o).startsWith("allow_always") ||
+        kindOf(o).startsWith("allow-always"),
+    ) ||
     find((o) => {
       const id = idOf(o);
       return (
@@ -99,7 +104,14 @@ export function mapPermissionButtons(
         id.startsWith("allow_always_")
       );
     }) ||
-    find((o) => nameOf(o).includes("always") || nameOf(o).includes("session"));
+    find(
+      (o) =>
+        nameOf(o).includes("always") ||
+        nameOf(o).includes("session") ||
+        // CLI bash copy: "don't ask again for bash commands"
+        (nameOf(o).includes("don't ask again") && nameOf(o).includes("bash")) ||
+        (nameOf(o).includes("dont ask again") && nameOf(o).includes("bash")),
+    );
 
   const reject =
     find((o) => kindOf(o) === "reject_once" || kindOf(o) === "reject_always") ||
