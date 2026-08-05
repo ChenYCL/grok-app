@@ -27,100 +27,96 @@ impl SessionManager {
         session_id: Option<&str>,
         ev: AcpEvent,
     ) {
-        // Multi-session safety: when the CLI stamps the owning session on a
-        // turn event, route strictly to the App session that owns that agent
-        // session on this process. A reused process may still flush an
-        // orphaned session's tail — writing it into another chat would
-        // corrupt the journal, so unmatched events are dropped (never
-        // cross-routed). `None` (process-scoped events like State / stderr /
-        // ProcessExited) falls through to the legacy process_id routing.
-        if let Some(sid) = session_id {
-            let live_ok = self.inner.lock().as_ref().is_some_and(|s| {
-                s.process_id == process_id
-                    && s.meta.agent_session_id.as_deref() == Some(sid)
+        // Process death is process-scoped: always scrub co-tenants first, then
+        // deliver to live if this process is the focused shell.
+        if let AcpEvent::ProcessExited { code } = &ev {
+            let exit_code = *code;
+            {
+                let mut parked = self.parked.lock();
+                parked.retain(|_, p| p.process_id != process_id);
+            }
+            // Background mid-turn shells need their own cancel path.
+            let bg_ids: Vec<String> = self
+                .background
+                .lock()
+                .iter()
+                .filter(|(_, s)| s.process_id == process_id)
+                .map(|(id, _)| id.clone())
+                .collect();
+            for bg_id in bg_ids {
+                self.handle_acp_event_on_background(
+                    app,
+                    &bg_id,
+                    AcpEvent::ProcessExited { code: exit_code },
+                )
+                .await;
+            }
+            let is_live = self
+                .inner
+                .lock()
+                .as_ref()
+                .is_some_and(|s| s.process_id == process_id);
+            if !is_live {
+                return;
+            }
+            // Fall through to live ProcessExited handling below.
+        } else {
+            // Multi-session safety (P0): route by agent sessionId when present;
+            // never rescue a parked co-tenant into a fake mid-turn (that wrote
+            // foreign session/load replay into the wrong App journal).
+            let live_hint = self.inner.lock().as_ref().map(|s| SessionRouteHint {
+                app_session_id: s.app_session_id.clone(),
+                process_id: s.process_id.clone(),
+                agent_session_id: s.meta.agent_session_id.clone(),
+                prompt_in_flight: s.prompt_in_flight,
             });
-            if !live_ok {
-                let bg_sid = self
-                    .background
-                    .lock()
-                    .iter()
-                    .find(|(_, s)| {
-                        s.process_id == process_id
-                            && s.meta.agent_session_id.as_deref() == Some(sid)
-                    })
-                    .map(|(id, _)| id.clone());
-                if let Some(bg) = bg_sid {
-                    self.handle_acp_event_on_background(app, &bg, ev).await;
+            let bg_hints: Vec<SessionRouteHint> = self
+                .background
+                .lock()
+                .values()
+                .map(|s| SessionRouteHint {
+                    app_session_id: s.app_session_id.clone(),
+                    process_id: s.process_id.clone(),
+                    agent_session_id: s.meta.agent_session_id.clone(),
+                    prompt_in_flight: s.prompt_in_flight,
+                })
+                .collect();
+            let parked_hints: Vec<SessionRouteHint> = self
+                .parked
+                .lock()
+                .values()
+                .map(|p| SessionRouteHint {
+                    app_session_id: p.app_session_id.clone(),
+                    process_id: p.process_id.clone(),
+                    agent_session_id: p.meta.agent_session_id.clone(),
+                    prompt_in_flight: false,
+                })
+                .collect();
+            match resolve_turn_event_route(
+                process_id,
+                session_id,
+                live_hint.as_ref(),
+                &bg_hints,
+                &parked_hints,
+            ) {
+                TurnEventRoute::Background(bg_sid) => {
+                    self.handle_acp_event_on_background(app, &bg_sid, ev)
+                        .await;
                     return;
                 }
-                let parked_owns = self.parked.lock().iter().any(|(_, p)| {
-                    p.process_id == process_id
-                        && p.meta.agent_session_id.as_deref() == Some(sid)
-                });
-                if parked_owns {
-                    // Parked but still emitting (should not happen now that
-                    // `prompt_in_flight` blocks parking) — rescue to background.
-                    if let Some(rsid) = self.rescue_parked_to_background(process_id) {
-                        self.handle_acp_event_on_background(app, &rsid, ev).await;
+                TurnEventRoute::Drop => {
+                    if Self::event_carries_turn_output(&ev) {
+                        tracing::debug!(
+                            "acp event dropped: no apply target process={process_id} agent_sid={session_id:?} ev={}",
+                            Self::event_kind_name(&ev)
+                        );
                     }
                     return;
                 }
-                tracing::debug!(
-                    "acp event dropped: no owner for session={sid} process={process_id} ev={}",
-                    Self::event_kind_name(&ev)
-                );
-                return;
-            }
-        }
-        // Route events to the focused live session **or** a background busy session
-        // (multi-session parallel streaming). Idle parked agents should not emit.
-        let is_live = self
-            .inner
-            .lock()
-            .as_ref()
-            .map(|s| s.process_id == process_id)
-            .unwrap_or(false);
-        let bg_sid = if !is_live {
-            self.background
-                .lock()
-                .iter()
-                .find(|(_, s)| s.process_id == process_id)
-                .map(|(id, _)| id.clone())
-        } else {
-            None
-        };
-
-        if !is_live {
-            if let Some(sid) = bg_sid {
-                self.handle_acp_event_on_background(app, &sid, ev).await;
-                return;
-            }
-            if let AcpEvent::ProcessExited { .. } = &ev {
-                let mut parked = self.parked.lock();
-                parked.retain(|_, p| p.process_id != process_id);
-                let mut bg = self.background.lock();
-                bg.retain(|_, s| s.process_id != process_id);
-                return;
-            }
-            // Still talking but parked (should be impossible now that
-            // `prompt_in_flight` blocks parking — keep the recovery anyway).
-            if Self::event_carries_turn_output(&ev) {
-                if let Some(sid) = self.rescue_parked_to_background(process_id) {
-                    self.handle_acp_event_on_background(app, &sid, ev).await;
-                    return;
+                TurnEventRoute::Live => {
+                    // Fall through to live match below.
                 }
-                // Expected drops: session/load history replay and orphaned
-                // tails arrive on a process before/after any App session owns
-                // it (the App keeps its own journal). Sid-routed turn events
-                // are handled above — reaching here means no live/background/
-                // parked owner, so a real in-turn chunk cannot be truncated
-                // without first dropping through the sid match.
-                tracing::debug!(
-                    "acp event dropped: no session owns process={process_id} ev={}",
-                    Self::event_kind_name(&ev)
-                );
             }
-            return;
         }
 
         match ev {
@@ -877,6 +873,9 @@ impl SessionManager {
             AcpEvent::Stderr { line } => {
                 // Always land agent stderr in the diagnostic log (post-mortem).
                 tracing::warn!(target: "acp_stderr", "{line}");
+                // CLI MCP worker fatals with AuthRequired when OAuth is missing/
+                // expired — suppress re-inject of that host on the next session open.
+                crate::extensions::note_mcp_auth_required_from_stderr(&line);
                 let _ = app.emit("session://stderr", serde_json::json!({ "line": line }));
             }
             AcpEvent::HookActivity {

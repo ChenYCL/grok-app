@@ -338,6 +338,10 @@ pub struct AppSettings {
     /// Sidebar project folders the user collapsed (ids). Missing id ⇒ expanded.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sidebar_collapsed_project_ids: Vec<String>,
+    /// Sidebar “Other sessions” (orphan) section expanded. Default **true**
+    /// (matches historical cold-start behavior). Missing field ⇒ open.
+    #[serde(default = "default_true")]
+    pub sidebar_other_sessions_open: bool,
     /// One-shot: flipped product default so launch opens a draft new chat
     /// (reopen-last-session defaulted to false). Existing installs run this once.
     #[serde(default)]
@@ -565,6 +569,7 @@ impl Default for AppSettings {
             last_session_id: None,
             last_project_id: None,
             sidebar_collapsed_project_ids: Vec::new(),
+            sidebar_other_sessions_open: true,
             // Fresh defaults already match the new-chat-on-launch product rule.
             startup_new_chat_default_migrated: true,
             plan_enabled: default_plan_enabled(),
@@ -2536,6 +2541,18 @@ mod tests {
         let d = AppSettings::default();
         assert!(d.notify_on_turn_done);
         assert!(d.notify_on_permission);
+    }
+
+    #[test]
+    fn sidebar_other_sessions_open_defaults_true_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(s.sidebar_other_sessions_open);
+        assert!(AppSettings::default().sidebar_other_sessions_open);
+        let closed: AppSettings = serde_json::from_str(
+            r#"{"theme":"system","locale":"en","sessionDataMode":"independent","permissionPolicy":"ask","mode":"agent","onboardingDone":false,"setupSkipped":false,"sidebarOtherSessionsOpen":false}"#,
+        )
+        .expect("deserialize closed");
+        assert!(!closed.sidebar_other_sessions_open);
     }
 
     #[test]

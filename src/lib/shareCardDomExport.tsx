@@ -10,11 +10,13 @@ import { useEffect, useMemo } from "react";
 import { toBlob } from "html-to-image";
 import { MarkdownChat } from "@/components/lobe-chat/MarkdownChat";
 import { AttachmentCard } from "@/components/AttachmentCard";
+import { ImageUi, imageUiLabels } from "@/components/ImageUi";
 import {
   buildInlineMediaPathMap,
   filterAttachmentsNotInlined,
   isImagePath,
   isMediaPath,
+  pathBasename,
   type Attachment,
 } from "@/lib/attachments";
 import { mergePathMaps } from "@/lib/sessionPathMap";
@@ -79,16 +81,21 @@ function ShareMessageBody({
     [content, attachments],
   );
 
-  const galleryPaths = useMemo(
-    () =>
-      (bottomAtts ?? [])
-        .filter((x) => !x.isDir && isImagePath(x.path))
-        .map((x) => x.path),
-    [bottomAtts],
-  );
+  const { bottomImages, bottomFiles, galleryPaths } = useMemo(() => {
+    const list = bottomAtts ?? [];
+    const images = list.filter((x) => !x.isDir && isImagePath(x.path));
+    const files = list.filter((x) => x.isDir || !isImagePath(x.path));
+    return {
+      bottomImages: images,
+      bottomFiles: files,
+      galleryPaths: images.map((x) => x.path),
+    };
+  }, [bottomAtts]);
+
+  const imageLabels = useMemo(() => imageUiLabels(locale), [locale]);
 
   const hasBody = !!(content || "").trim();
-  const hasAtts = !!(bottomAtts && bottomAtts.length);
+  const hasAtts = bottomImages.length > 0 || bottomFiles.length > 0;
   if (!hasBody && !hasAtts) return null;
 
   return (
@@ -107,23 +114,46 @@ function ShareMessageBody({
           </MarkdownChat>
         </div>
       ) : null}
-      {hasAtts ? (
+      {bottomImages.length > 0 ? (
+        <div
+          className="share-card-export__atts share-card-export__atts--images"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            marginTop: hasBody ? 10 : 0,
+            alignItems: "flex-start",
+          }}
+        >
+          {bottomImages.map((a) => (
+            <ImageUi
+              key={a.path}
+              className="md-body__img md-body__img--card"
+              src={a.path}
+              alt={a.name || pathBasename(a.path)}
+              path={a.path}
+              gallery={galleryPaths}
+              labels={imageLabels}
+            />
+          ))}
+        </div>
+      ) : null}
+      {bottomFiles.length > 0 ? (
         <div
           className="share-card-export__atts"
           style={{
             display: "flex",
             flexWrap: "wrap",
             gap: 8,
-            marginTop: hasBody ? 10 : 0,
+            marginTop: hasBody || bottomImages.length ? 10 : 0,
           }}
         >
-          {bottomAtts!.map((a) => (
+          {bottomFiles.map((a) => (
             <AttachmentCard
               key={a.path}
               attachment={a}
               variant={!a.isDir && isMediaPath(a.path) ? "card" : "chip"}
               labels={attachLabels}
-              galleryPaths={galleryPaths}
             />
           ))}
         </div>

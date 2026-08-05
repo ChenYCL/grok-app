@@ -630,13 +630,58 @@ export function weaveToolsIntoAssistantSegments(
 }
 
 /**
+ * Pick which assistant fragment becomes the visible body for a multi-row turn.
+ *
+ * Default product rule: last non-empty fragment is the deliverable (CLI status
+ * notes → final answer). Override when a richer earlier row supersedes the
+ * last — common after mid-turn journal reconcile injects a short mid-status
+ * row while the host stream buffer already holds the full concatenated answer.
+ * Without this, end-of-turn UI shows only "正在生成…" while the real answer is
+ * collapsed into leadFragments (or only appears after a session remount).
+ */
+export function pickAssistantFragmentCarrierIdx(
+  messages: ChatMessage[],
+  asstIdx: number[],
+): number {
+  let lastNonEmpty = -1;
+  let longest = -1;
+  let longestLen = -1;
+  for (let k = asstIdx.length - 1; k >= 0; k--) {
+    const idx = asstIdx[k]!;
+    const c = (messages[idx]?.content ?? "").trim();
+    if (!c) continue;
+    if (lastNonEmpty < 0) lastNonEmpty = idx;
+    if (c.length > longestLen) {
+      longestLen = c.length;
+      longest = idx;
+    }
+  }
+  const fallback =
+    lastNonEmpty >= 0 ? lastNonEmpty : asstIdx[asstIdx.length - 1]!;
+  if (longest < 0 || longest === fallback) return fallback;
+
+  const lastC = (messages[fallback]?.content ?? "").trim();
+  const longC = (messages[longest]?.content ?? "").trim();
+  // Longest already contains the last note, or is substantially richer (full
+  // stream buffer vs a short mid-status reconcile row).
+  if (
+    (lastC.length > 0 && longC.includes(lastC)) ||
+    longC.length >= lastC.length + 80
+  ) {
+    return longest;
+  }
+  return fallback;
+}
+
+/**
  * History turn folding: the grok CLI writes one `assistant` row per
  * intermediate status fragment (and reconcile may add them individually), so
  * a single logical answer can reload as several one-line bubbles. Merge every
  * assistant row of a user turn into one message:
  *
- * - `content` = last non-empty fragment (the real deliverable)
- * - `leadFragments` = earlier fragments — rendered as a collapsed strip, not
+ * - `content` = best fragment body (last non-empty, unless a richer earlier
+ *   row supersedes it — see {@link pickAssistantFragmentCarrierIdx})
+ * - `leadFragments` = other fragments — rendered as a collapsed strip, not
  *   as body text (matches Claude/Cursor history folding)
  * - thoughts from every fragment are kept (phases joined), tool rows are left
  *   in place so `weaveToolsIntoAssistantSegments` attaches them
@@ -671,24 +716,21 @@ export function mergeAssistantFragments(messages: ChatMessage[]): ChatMessage[] 
       i += 1;
       continue;
     }
-    // Carrier = last non-empty fragment (final deliverable); fall back to the
-    // last row when everything is empty.
-    let lastNonEmpty = -1;
-    for (let k = asstIdx.length - 1; k >= 0; k--) {
-      if (messages[asstIdx[k]!]!.content.trim()) {
-        lastNonEmpty = asstIdx[k]!;
-        break;
-      }
-    }
-    const carrierIdx = lastNonEmpty >= 0 ? lastNonEmpty : asstIdx[asstIdx.length - 1]!;
+    const carrierIdx = pickAssistantFragmentCarrierIdx(messages, asstIdx);
     const carrier = messages[carrierIdx]!;
+    const carrierBody = (carrier.content ?? "").trim();
 
     const leads: string[] = [];
     const thoughts: string[] = [];
     const segs: MessageSegment[] = [];
     for (const idx of asstIdx) {
       const f = messages[idx]!;
-      if (idx !== carrierIdx && f.content.trim()) leads.push(f.content.trim());
+      const body = (f.content ?? "").trim();
+      // Skip lead notes that are already fully present in the carrier body
+      // (stream-concat row often already includes mid-status lines).
+      if (idx !== carrierIdx && body && !carrierBody.includes(body)) {
+        leads.push(body);
+      }
       if (f.thought?.trim()) thoughts.push(f.thought.trim());
       // Keep thought segments from every fragment; drop their content segments
       // (earlier ones are folded into leadFragments, the final one is re-added
@@ -708,7 +750,7 @@ export function mergeAssistantFragments(messages: ChatMessage[]): ChatMessage[] 
     const merged: ChatMessage = {
       ...carrier,
       content: carrier.content,
-      leadFragments: leads,
+      leadFragments: leads.length ? leads : undefined,
       thought: thoughts.length ? thoughts.join("\n\n⟪phase⟫\n\n") : carrier.thought,
       segments: segs.length ? segs : carrier.segments,
     };
@@ -1964,12 +2006,35 @@ export function preferSessionMessages(
 }
 
 /**
+ * Last non-error assistant after the last user prompt (current turn body).
+ */
+function lastTurnAssistantIndex(messages: ChatMessage[]): number {
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role === "user" && m.marker !== "interjection") {
+      lastUser = i;
+      break;
+    }
+  }
+  for (let i = messages.length - 1; i > lastUser; i--) {
+    const m = messages[i]!;
+    if (m.role === "assistant" && !m.isError) return i;
+  }
+  return -1;
+}
+
+/**
  * After a turn ends, lift any longer body/thought/attachments from the journal
- * into the live UI list (same id).
+ * into the live UI list (same id, or last-turn id-mismatch heal).
  *
  * Host stream coalesce can leave the bubble short of the journal when the last
  * IPC batch is dropped on force-end — reopening already recovered via disk;
  * this heals the open chat without a full remount.
+ *
+ * Cross-id heal: mid-turn reconcile can mint a new assistant UUID while the
+ * live bubble still uses the stream id. Match the last turn's richest journal
+ * body onto the UI's last assistant when it is strictly longer.
  */
 export function upgradeMessagesFromJournal(
   ui: ChatMessage[],
@@ -2035,6 +2100,80 @@ export function upgradeMessagesFromJournal(
     }
     return out;
   });
+
+  // Last-turn cross-id heal (after per-id pass).
+  const uiAsstIdx = lastTurnAssistantIndex(next);
+  const jAsstIdx = lastTurnAssistantIndex(journal);
+  if (uiAsstIdx >= 0 && jAsstIdx >= 0) {
+    const uiAsst = next[uiAsstIdx]!;
+    const jAsst = journal[jAsstIdx]!;
+    // Prefer the richest journal assistant in the same turn (not only the
+    // last row — mid-status reconcile can trail a full stream row).
+    let bestJ = jAsst;
+    {
+      let lastUser = -1;
+      for (let i = journal.length - 1; i >= 0; i--) {
+        const m = journal[i];
+        if (m?.role === "user" && m.marker !== "interjection") {
+          lastUser = i;
+          break;
+        }
+      }
+      for (let i = lastUser + 1; i < journal.length; i++) {
+        const m = journal[i]!;
+        if (m.role !== "assistant" || m.isError) continue;
+        if ((m.content ?? "").length > (bestJ.content ?? "").length) {
+          bestJ = m;
+        }
+      }
+    }
+    const uiContent = uiAsst.content ?? "";
+    const jContent = bestJ.content ?? "";
+    if (jContent.length > uiContent.length) {
+      changed = true;
+      let out: ChatMessage = {
+        ...uiAsst,
+        content: jContent,
+        thought:
+          (bestJ.thought ?? "").length > (uiAsst.thought ?? "").length
+            ? bestJ.thought
+            : uiAsst.thought,
+        leadFragments: bestJ.leadFragments ?? uiAsst.leadFragments,
+        streaming: false,
+      };
+      const hasLiveTools = out.segments?.some((s) => s.kind === "tool");
+      if (!hasLiveTools) {
+        out = {
+          ...out,
+          segments: buildSegmentsFromLegacy(
+            out.content,
+            out.thought,
+            out.thoughtPhases,
+          ),
+        };
+      } else {
+        const segs = (out.segments ?? []).map((s) =>
+          s.kind === "content" || s.kind === "thought" || s.kind === "tool"
+            ? { ...s }
+            : s,
+        ) as MessageSegment[];
+        let found = false;
+        for (let i = segs.length - 1; i >= 0; i--) {
+          if (segs[i]!.kind === "content") {
+            segs[i] = { kind: "content", text: jContent };
+            found = true;
+            break;
+          }
+        }
+        if (!found && jContent) {
+          segs.push({ kind: "content", text: jContent });
+        }
+        out = { ...out, segments: segs };
+      }
+      next[uiAsstIdx] = out;
+    }
+  }
+
   return changed ? next : ui;
 }
 

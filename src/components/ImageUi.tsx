@@ -54,7 +54,7 @@ export interface ImageUiLabels {
 }
 
 /**
- * - `card` — chat inline cards (max 280×280, ratio-aware).
+ * - `card` — chat inline cards (max height 150px, ratio-aware).
  * - `pane` — resource sidebar: full pane width, natural ratio, no chat caps.
  */
 export type ImageUiLayout = "card" | "pane";
@@ -81,9 +81,13 @@ interface ImageUiProps {
   layout?: ImageUiLayout;
 }
 
-/** Chat card outer cap (px). */
-const CARD_MAX_W = 280;
-const CARD_MAX_H = 280;
+/**
+ * Chat card outer caps (px). Height stays ≤150 so multi-image turns do not
+ * dominate the virtual list / stick-to-bottom; width follows natural ratio.
+ * Exported for virtual-row height estimates (must stay in sync with CSS).
+ */
+export const CHAT_IMAGE_CARD_MAX_W = 240;
+export const CHAT_IMAGE_CARD_MAX_H = 150;
 /** Placeholder ratio before natural size is known. */
 const DEFAULT_AR = 4 / 3;
 
@@ -118,11 +122,11 @@ function readCachedAr(src: string, path?: string): number | null {
 /** Fit natural ratio into max box; returns width px + aspect ratio. */
 function fitCardBox(ar: number): { widthPx: number; ar: number } {
   const ratio = ar > 0 && Number.isFinite(ar) ? ar : DEFAULT_AR;
-  // Prefer full card width; shrink width if height would exceed cap.
-  let widthPx = CARD_MAX_W;
+  // Prefer full card width; shrink width if height would exceed 150px cap.
+  let widthPx = CHAT_IMAGE_CARD_MAX_W;
   let heightPx = widthPx / ratio;
-  if (heightPx > CARD_MAX_H) {
-    heightPx = CARD_MAX_H;
+  if (heightPx > CHAT_IMAGE_CARD_MAX_H) {
+    heightPx = CHAT_IMAGE_CARD_MAX_H;
     widthPx = heightPx * ratio;
   }
   return { widthPx, ar: ratio };
@@ -396,7 +400,7 @@ export function ImageUi({
       ? aspectRatio
       : DEFAULT_AR;
 
-  // Chat cards: cap at 280×280. Resource pane: fill width, natural ratio.
+  // Chat cards: cap at 240×150. Resource pane: fill width, natural ratio.
   const frameStyle: CSSProperties =
     layout === "pane"
       ? {

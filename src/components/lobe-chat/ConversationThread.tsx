@@ -49,12 +49,14 @@ import {
   filterAttachmentsNotInlined,
   isImagePath,
   isMediaPath,
+  pathBasename,
 } from "@/lib/attachments";
 import {
   buildSessionFilePathMap,
   mergePathMaps,
 } from "@/lib/sessionPathMap";
 import { AttachmentCard } from "@/components/AttachmentCard";
+import { ImageUi, imageUiLabels } from "@/components/ImageUi";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { UserAttachments } from "@/components/lobe-chat/UserAttachments";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
@@ -172,10 +174,24 @@ function useStableSessionPathMap(
  * Assistant markdown + attachment cards.
  * Memoized so parent re-renders (showBack, live tool pulse, etc.) do not
  * rebuild imagePathMap / remount ImageUi frames mid-scroll.
+ *
+ * Path map is available on every content segment so `images/N.jpg` renders
+ * inline at the stream position. Bottom strip only on the last segment, and
+ * only for media not already cited in the full turn body.
  */
 const AssistantMessageBody = memo(function AssistantMessageBody({
   content,
   attachments,
+  /**
+   * When false, still resolve pathMap from attachments for inline ImageUi,
+   * but do not paint the bottom leftover strip (earlier timeline segments).
+   */
+  showBottomAttachments = true,
+  /**
+   * Full assistant body used to decide which attachments are already inlined
+   * anywhere in the turn (not just this segment).
+   */
+  fullContentForInlineFilter,
   streaming,
   locale,
   projectPath,
@@ -191,6 +207,8 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
 }: {
   content: string;
   attachments?: Attachment[];
+  showBottomAttachments?: boolean;
+  fullContentForInlineFilter?: string;
   streaming?: boolean;
   locale: Locale;
   projectPath?: string | null;
@@ -212,26 +230,43 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
     () => buildInlineMediaPathMap(attachments),
     [attachments],
   );
-  const bottomAtts = useMemo(
-    () =>
-      filterAttachmentsNotInlined(displayContent || content, attachments),
-    [displayContent, content, attachments],
-  );
+  const bottomAtts = useMemo(() => {
+    if (!showBottomAttachments) return undefined;
+    const filterBody =
+      fullContentForInlineFilter?.trim() ||
+      displayContent ||
+      content ||
+      "";
+    return filterAttachmentsNotInlined(filterBody, attachments);
+  }, [
+    showBottomAttachments,
+    fullContentForInlineFilter,
+    displayContent,
+    content,
+    attachments,
+  ]);
   const pathMapProp = useMemo(() => {
     // Session tool paths first so short relatives (04-正文/正文.md) beat media
     // basename collisions; media map fills in image/video short tokens.
     const merged = mergePathMaps(imagePathMap, sessionPathMap);
     return Object.keys(merged).length ? merged : undefined;
   }, [imagePathMap, sessionPathMap]);
-  const galleryPaths = useMemo(
-    () =>
-      (bottomAtts ?? [])
-        .filter((x) => !x.isDir && isImagePath(x.path))
-        .map((x) => x.path),
-    [bottomAtts],
-  );
+  const imageLabels = useMemo(() => imageUiLabels(locale), [locale]);
+  const { bottomImages, bottomFiles, galleryPaths } = useMemo(() => {
+    const list = bottomAtts ?? [];
+    const images = list.filter((x) => !x.isDir && isImagePath(x.path));
+    const files = list.filter((x) => x.isDir || !isImagePath(x.path));
+    return {
+      bottomImages: images,
+      bottomFiles: files,
+      galleryPaths: images.map((x) => x.path),
+    };
+  }, [bottomAtts]);
 
-  if (!(displayContent || "").trim() && !(bottomAtts && bottomAtts.length)) {
+  if (
+    !(displayContent || "").trim() &&
+    !(bottomImages.length || bottomFiles.length)
+  ) {
     return null;
   }
 
@@ -252,15 +287,29 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
           {displayContent}
         </MarkdownChat>
       ) : null}
-      {bottomAtts && bottomAtts.length > 0 ? (
+      {bottomImages.length > 0 ? (
+        <div className="lobe-chat-atts lobe-chat-atts--images">
+          {bottomImages.map((a) => (
+            <ImageUi
+              key={a.path}
+              className="md-body__img md-body__img--card"
+              src={a.path}
+              alt={a.name || pathBasename(a.path)}
+              path={a.path}
+              gallery={galleryPaths}
+              labels={imageLabels}
+            />
+          ))}
+        </div>
+      ) : null}
+      {bottomFiles.length > 0 ? (
         <div className="lobe-chat-atts">
-          {bottomAtts.map((a) => (
+          {bottomFiles.map((a) => (
             <AttachmentCard
               key={a.path}
               attachment={a}
               variant={!a.isDir && isMediaPath(a.path) ? "card" : "chip"}
               labels={attachLabels}
-              galleryPaths={galleryPaths}
               onAddToComposer={onAddAttachmentToComposer}
             />
           ))}
@@ -1292,11 +1341,12 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
                 <AssistantMessageBody
                   key={`${m.id}-c-${unit.si}`}
                   content={unit.text}
-                  attachments={
-                    unit.si === lastContentSi
-                      ? m.attachments
-                      : undefined
-                  }
+                  // Always pass attachments so every content segment can
+                  // resolve `images/N.jpg` → ImageUi at stream position.
+                  attachments={m.attachments}
+                  // Bottom leftover strip only once (end of turn body).
+                  showBottomAttachments={unit.si === lastContentSi}
+                  fullContentForInlineFilter={m.content}
                   streaming={unit.streaming}
                   locale={locale}
                   projectPath={projectPath}
@@ -1323,6 +1373,8 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
             <AssistantMessageBody
               content=""
               attachments={m.attachments}
+              showBottomAttachments
+              fullContentForInlineFilter={m.content}
               streaming={!!m.streaming}
               locale={locale}
               projectPath={projectPath}
@@ -2148,6 +2200,27 @@ export function ConversationThread({
         });
       }
       const body = m.content || "";
+      const atts = m.attachments ?? [];
+      const imageFromAtts = atts.filter(
+        (a) => !a.isDir && isImagePath(a.path),
+      ).length;
+      const fileFromAtts = atts.length - imageFromAtts;
+      // Rough count of path-cited images in the body (inline ImageUi).
+      // Prefer max with attachment images so we do not double-count when
+      // the same files are both cited and attached (bottom strip filters).
+      const imageFromBody =
+        m.role === "assistant"
+          ? (body.match(
+              /\.(?:png|jpe?g|gif|webp|bmp|avif|heic)(?:\b|`|\)|\s|$)/gi,
+            )?.length ?? 0)
+          : 0;
+      const imageCardCount =
+        m.role === "assistant"
+          ? Math.max(imageFromAtts, imageFromBody)
+          : 0;
+      // User strip keeps compact 36px chips for all attachments.
+      const attachmentCount =
+        m.role === "user" ? atts.length : fileFromAtts;
       const hasVideoCard =
         m.role === "assistant" &&
         (/\.(mp4|webm|mov|mkv)(\b|$)/i.test(body) ||
@@ -2175,7 +2248,8 @@ export function ConversationThread({
         contentLength: body.length,
         thoughtLength: m.thought?.length ?? 0,
         role: m.role,
-        attachmentCount: m.attachments?.length ?? 0,
+        attachmentCount,
+        imageCardCount,
         hasVideoCard,
         collapsed: collapsedTool,
       });

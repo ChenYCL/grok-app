@@ -1448,7 +1448,10 @@ export function AppWorkbench() {
   /** Avoid writing collapse prefs before settings hydrate on launch. */
   const expandedProjectsHydratedRef = useRef(false);
   const [projectsOpen, setProjectsOpen] = useState(true);
+  /** Orphan / “Other sessions” tree section. Hydrated from AppSettings. */
   const [historyOpen, setHistoryOpen] = useState(true);
+  /** Avoid writing other-sessions collapse before settings hydrate on launch. */
+  const historyOpenHydratedRef = useRef(false);
   /** Sidebar multi-select: archive / restore several sessions at once. */
   const [sessionSelectMode, setSessionSelectMode] = useState(false);
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(
@@ -3142,6 +3145,12 @@ export function AppWorkbench() {
         ),
       );
       expandedProjectsHydratedRef.current = true;
+      // Restore “Other sessions” section (missing / undefined ⇒ open).
+      // Only hydrate once so later refreshLists does not clobber in-session toggles.
+      if (!historyOpenHydratedRef.current) {
+        setHistoryOpen(settings.sidebarOtherSessionsOpen !== false);
+        historyOpenHydratedRef.current = true;
+      }
     } catch (e) {
       setLocalError(String(e));
       // Still surface setup if Tauri partially works
@@ -4112,6 +4121,24 @@ export function AppWorkbench() {
       })
       .catch(() => {});
   }, [expandedProjects]);
+
+  // Persist sidebar “Other sessions” expand/collapse after hydrate.
+  useEffect(() => {
+    if (!historyOpenHydratedRef.current) return;
+    if (!api.isTauri()) return;
+    void api
+      .settingsGet()
+      .then((s) => {
+        // Treat missing as open (legacy default) so we still write explicit false.
+        const prev = s.sidebarOtherSessionsOpen !== false;
+        if (prev === historyOpen) return;
+        return api.settingsSet({
+          ...s,
+          sidebarOtherSessionsOpen: historyOpen,
+        });
+      })
+      .catch(() => {});
+  }, [historyOpen]);
 
   /** Apply a saved project draft (or empty) into the composer UI. */
   const applyComposerProjectDraft = useCallback(

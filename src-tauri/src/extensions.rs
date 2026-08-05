@@ -185,12 +185,333 @@ fn env_map_to_named_array(map: Option<&HashMap<String, String>>) -> Vec<Value> {
 }
 
 /// Build the ACP `mcpServers` JSON array from defs + prefs.
+///
+/// Remote HTTP/SSE servers that would hit CLI `AuthRequired` (missing or
+/// expired OAuth bearer) are **skipped** so the MCP worker does not fatal and
+/// spam session stderr. Stdio servers are unaffected.
 pub fn build_acp_mcp_servers(defs: &[McpServerDef], prefs: &ExtensionsPrefs) -> Value {
+    let now = mcp_auth_now_secs();
     let arr: Vec<Value> = filter_enabled_mcp(defs, prefs)
         .into_iter()
-        .filter_map(mcp_def_to_acp)
+        .filter_map(|def| mcp_def_to_acp_for_session(def, now))
         .collect();
     Value::Array(arr)
+}
+
+// ── Session inject auth gate (skip AuthRequired) ─────────────────────────────
+
+/// Clock skew: treat tokens as expired this many seconds early.
+const MCP_CRED_EXPIRY_SKEW_SECS: u64 = 60;
+
+/// How long a stderr AuthRequired rejection suppresses re-inject for a host.
+const MCP_AUTH_REJECT_TTL: Duration = Duration::from_secs(30 * 60);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpInjectAuthDecision {
+    /// Not a remote HTTP/SSE server — inject as usual.
+    NotRemote,
+    /// Has a usable bearer (header and/or non-expired credentials).
+    Usable,
+    /// OAuth-required remote with no bearer at all.
+    Missing,
+    /// Credentials (or matching header) past `expires_at`.
+    Expired,
+    /// Host previously saw CLI `AuthRequired` (stderr cache).
+    Rejected,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpCredentialEntry {
+    pub access_token: String,
+    pub expires_at: Option<u64>,
+}
+
+/// Parsed credential entry for `server` from `mcp_credentials.json` root.
+pub fn parse_mcp_credential_entry(root: &Value, server: &str) -> Option<McpCredentialEntry> {
+    let key = server.trim();
+    if key.is_empty() {
+        return None;
+    }
+    let entry = root
+        .get("servers")
+        .and_then(|s| s.get(key))
+        .or_else(|| root.get(key))?;
+    let token = entry
+        .get("access_token")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?
+        .to_string();
+    let expires_at = entry
+        .get("expires_at")
+        .and_then(|v| v.as_u64())
+        .or_else(|| entry.get("expires_at").and_then(|v| v.as_i64()).map(|n| n as u64));
+    Some(McpCredentialEntry {
+        access_token: token,
+        expires_at,
+    })
+}
+
+/// True when `expires_at` is present and not after `now + skew`.
+pub fn mcp_credential_is_expired(entry: &McpCredentialEntry, now_secs: u64) -> bool {
+    match entry.expires_at {
+        Some(exp) => exp <= now_secs.saturating_add(MCP_CRED_EXPIRY_SKEW_SECS),
+        None => false,
+    }
+}
+
+/// Remote HTTP/SSE MCP that typically needs OAuth (ChatCut, prior credentials, …).
+pub fn mcp_remote_likely_needs_oauth(def: &McpServerDef) -> bool {
+    if !mcp_def_is_remote_http(def) {
+        return false;
+    }
+    let name = def.name.to_ascii_lowercase();
+    let url = def.url.as_deref().unwrap_or("").to_ascii_lowercase();
+    if name.contains("chatcut") || url.contains("chatcut.io") || url.contains("chatcut.com") {
+        return true;
+    }
+    // Already configured with Authorization → was OAuth/API-key gated.
+    if mcp_def_authorization_header(def).is_some() {
+        return true;
+    }
+    false
+}
+
+fn mcp_def_is_remote_http(def: &McpServerDef) -> bool {
+    def.url
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|u| !u.is_empty())
+}
+
+/// Case-insensitive Authorization header value (trimmed), if non-empty.
+pub fn mcp_def_authorization_header(def: &McpServerDef) -> Option<&str> {
+    let headers = def.headers.as_ref()?;
+    headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+        .map(|(_, v)| v.as_str().trim())
+        .filter(|v| !v.is_empty())
+}
+
+/// Pure gate used by inject + unit tests.
+pub fn decide_mcp_inject_auth(
+    def: &McpServerDef,
+    cred: Option<&McpCredentialEntry>,
+    now_secs: u64,
+    host_rejected: bool,
+) -> McpInjectAuthDecision {
+    if !mcp_def_is_remote_http(def) {
+        return McpInjectAuthDecision::NotRemote;
+    }
+    if host_rejected {
+        return McpInjectAuthDecision::Rejected;
+    }
+    let header = mcp_def_authorization_header(def);
+    let cred_expired = cred.is_some_and(|c| mcp_credential_is_expired(c, now_secs));
+    if cred_expired {
+        // Stale credentials only block inject when the header still carries the
+        // same token (config not re-authed). A different header bearer wins.
+        let same_as_header = match (header, cred) {
+            (Some(h), Some(c)) => {
+                let htok = h
+                    .strip_prefix("Bearer ")
+                    .or_else(|| h.strip_prefix("bearer "))
+                    .unwrap_or(h)
+                    .trim();
+                htok == c.access_token.trim()
+            }
+            (None, Some(_)) => true,
+            _ => false,
+        };
+        if same_as_header {
+            return McpInjectAuthDecision::Expired;
+        }
+    }
+    let cred_usable = cred.is_some_and(|c| {
+        !c.access_token.trim().is_empty() && !mcp_credential_is_expired(c, now_secs)
+    });
+    if header.is_some() || cred_usable {
+        return McpInjectAuthDecision::Usable;
+    }
+    if mcp_remote_likely_needs_oauth(def) || cred.is_some() {
+        return McpInjectAuthDecision::Missing;
+    }
+    // Public remote MCP (no OAuth signal) — still inject.
+    McpInjectAuthDecision::Usable
+}
+
+fn mcp_auth_now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn load_mcp_credential_for_server(server: &str) -> Option<McpCredentialEntry> {
+    let settings = store::load_settings();
+    let homes = [
+        resolve_agent_grok_home(&settings.session_data_mode),
+        crate::process_util::user_home().join(".grok"),
+    ];
+    for home in &homes {
+        let path = home.join("mcp_credentials.json");
+        let Ok(raw) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(root) = serde_json::from_str::<Value>(&raw) else {
+            continue;
+        };
+        if let Some(entry) = parse_mcp_credential_entry(&root, server) {
+            return Some(entry);
+        }
+    }
+    None
+}
+
+fn mcp_url_host(url: &str) -> Option<String> {
+    let u = url.trim();
+    // Minimal parse: scheme://host[:port]/path
+    let rest = u
+        .strip_prefix("https://")
+        .or_else(|| u.strip_prefix("http://"))?;
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("").trim();
+    let host = host.split('@').next_back().unwrap_or(host);
+    let host = host.split(':').next().unwrap_or(host).trim();
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_ascii_lowercase())
+    }
+}
+
+fn mcp_auth_rejects() -> &'static Mutex<HashMap<String, Instant>> {
+    use std::sync::OnceLock;
+    static MAP: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+    MAP.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Record CLI `AuthRequired` so the next session open skips that host.
+/// Extracts host from `resource_metadata="https://…"` when present.
+pub fn note_mcp_auth_required_from_stderr(line: &str) {
+    if !line.contains("AuthRequired") && !line.to_ascii_lowercase().contains("authrequired") {
+        return;
+    }
+    let host = extract_auth_required_host(line);
+    let Some(host) = host else {
+        tracing::debug!("mcp inject: AuthRequired stderr (no host parsed)");
+        return;
+    };
+    if let Ok(mut g) = mcp_auth_rejects().lock() {
+        g.insert(host.clone(), Instant::now());
+    }
+    tracing::warn!(
+        target: "mcp_inject",
+        host = %host,
+        "skip future inject for host after AuthRequired (re-auth or wait TTL)"
+    );
+}
+
+/// Pure: host from AuthRequired / resource_metadata text.
+pub fn extract_auth_required_host(line: &str) -> Option<String> {
+    // resource_metadata="https://api.chatcut.io/.well-known/..."
+    for needle in [
+        "resource_metadata=\"",
+        "resource_metadata='",
+        "resource_metadata=",
+    ] {
+        if let Some(i) = line.find(needle) {
+            let rest = &line[i + needle.len()..];
+            let rest = rest.trim_start_matches(['"', '\'']);
+            let url: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_graphic() && *c != '"' && *c != '\'')
+                .collect();
+            if let Some(h) = mcp_url_host(&url) {
+                return Some(h);
+            }
+        }
+    }
+    // Fallback: first https URL host in the line.
+    if let Some(i) = line.find("https://") {
+        let rest = &line[i..];
+        let url: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_graphic() && *c != '"' && *c != '\'')
+            .collect();
+        return mcp_url_host(&url);
+    }
+    None
+}
+
+fn mcp_host_is_auth_rejected(url: &str) -> bool {
+    let Some(host) = mcp_url_host(url) else {
+        return false;
+    };
+    let Ok(mut g) = mcp_auth_rejects().lock() else {
+        return false;
+    };
+    // Drop expired entries opportunistically.
+    g.retain(|_, at| at.elapsed() < MCP_AUTH_REJECT_TTL);
+    g.contains_key(&host)
+}
+
+/// Clear AuthRequired suppressions (e.g. after OAuth success / cache invalidate).
+pub fn clear_mcp_auth_rejects() {
+    if let Ok(mut g) = mcp_auth_rejects().lock() {
+        g.clear();
+    }
+}
+
+/// Map def → ACP entry for session inject, applying the auth gate.
+fn mcp_def_to_acp_for_session(def: &McpServerDef, now_secs: u64) -> Option<Value> {
+    let cred = if mcp_def_is_remote_http(def) {
+        load_mcp_credential_for_server(&def.name)
+    } else {
+        None
+    };
+    let rejected = def
+        .url
+        .as_deref()
+        .is_some_and(mcp_host_is_auth_rejected);
+    let decision = decide_mcp_inject_auth(def, cred.as_ref(), now_secs, rejected);
+    match decision {
+        McpInjectAuthDecision::NotRemote | McpInjectAuthDecision::Usable => {}
+        McpInjectAuthDecision::Missing
+        | McpInjectAuthDecision::Expired
+        | McpInjectAuthDecision::Rejected => {
+            tracing::info!(
+                target: "mcp_inject",
+                server = %def.name,
+                decision = ?decision,
+                "skip mcpServers inject (would AuthRequired)"
+            );
+            return None;
+        }
+    }
+
+    let mut entry = mcp_def_to_acp(def)?;
+    // Merge non-expired credentials into Authorization when header is absent.
+    if mcp_def_is_remote_http(def) && mcp_def_authorization_header(def).is_none() {
+        if let Some(c) = cred.as_ref() {
+            if !mcp_credential_is_expired(c, now_secs) {
+                let bearer = format!("Bearer {}", c.access_token.trim());
+                if let Some(obj) = entry.as_object_mut() {
+                    let mut headers = obj
+                        .get("headers")
+                        .and_then(|h| h.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+                    headers.push(json!({
+                        "name": "Authorization",
+                        "value": bearer,
+                    }));
+                    obj.insert("headers".into(), Value::Array(headers));
+                }
+            }
+        }
+    }
+    Some(entry)
 }
 
 // ── Persistence ──────────────────────────────────────────────────────────────
@@ -595,6 +916,8 @@ pub fn invalidate_mcp_cache() {
     if let Ok(mut guard) = MCP_CACHE.lock() {
         *guard = None;
     }
+    // Config / OAuth may have changed — allow re-inject after AuthRequired skip.
+    clear_mcp_auth_rejects();
 }
 
 fn fetch_mcp_list_json(project_cwd: Option<&str>) -> Option<Vec<McpServerDef>> {
@@ -1929,15 +2252,158 @@ x-chatcut-mcp-surface = "codex"
             .and_then(|h| h.get("x-chatcut-mcp-surface"))
             .map(|s| s.as_str());
         assert_eq!(surface, Some("codex"));
-        let prefs = ExtensionsPrefs::default();
-        let arr = build_acp_mcp_servers(&defs, &prefs);
-        let entry = arr.as_array().unwrap().iter().next().unwrap();
-        assert_eq!(entry["type"], "http");
-        assert_eq!(entry["url"], "https://api.chatcut.io/api/external-mcp/mcp");
-        let headers = entry["headers"].as_array().unwrap();
+        // Parse still preserves headers for doctor/UI. Inject gate (pure) skips
+        // unauthenticated ChatCut so CLI does not fatal with AuthRequired.
+        // (build_acp_mcp_servers also loads on-disk credentials — covered via
+        // decide_mcp_inject_auth unit tests, not against the developer's agent-home.)
+        assert_eq!(
+            decide_mcp_inject_auth(&defs[0], None, 1_000_000, false),
+            McpInjectAuthDecision::Missing
+        );
+        let mapped = mcp_def_to_acp(&defs[0]).unwrap();
+        assert_eq!(mapped["type"], "http");
+        assert_eq!(mapped["url"], "https://api.chatcut.io/api/external-mcp/mcp");
+        let headers = mapped["headers"].as_array().unwrap();
         assert!(headers
             .iter()
-            .any(|h| { h["name"] == "x-chatcut-mcp-surface" && h["value"] == "codex" }));
+            .any(|h| h["name"] == "x-chatcut-mcp-surface" && h["value"] == "codex"));
+    }
+
+    #[test]
+    fn decide_mcp_inject_auth_chatcut_and_expiry() {
+        let chatcut = McpServerDef {
+            name: "chatcut".into(),
+            command: None,
+            args: None,
+            env: None,
+            url: Some("https://api.chatcut.io/api/external-mcp/mcp".into()),
+            headers: Some(HashMap::from([(
+                "x-chatcut-mcp-surface".into(),
+                "codex".into(),
+            )])),
+            transport: Some("http".into()),
+            enabled: Some(true),
+            scope: None,
+        };
+        assert_eq!(
+            decide_mcp_inject_auth(&chatcut, None, 1_000_000, false),
+            McpInjectAuthDecision::Missing
+        );
+
+        let expired = McpCredentialEntry {
+            access_token: "tok".into(),
+            expires_at: Some(500),
+        };
+        assert_eq!(
+            decide_mcp_inject_auth(&chatcut, Some(&expired), 1_000_000, false),
+            McpInjectAuthDecision::Expired
+        );
+
+        let fresh = McpCredentialEntry {
+            access_token: "tok".into(),
+            expires_at: Some(2_000_000),
+        };
+        assert_eq!(
+            decide_mcp_inject_auth(&chatcut, Some(&fresh), 1_000_000, false),
+            McpInjectAuthDecision::Usable
+        );
+
+        let with_header = McpServerDef {
+            headers: Some(HashMap::from([(
+                "Authorization".into(),
+                "Bearer abc".into(),
+            )])),
+            ..chatcut.clone()
+        };
+        assert_eq!(
+            decide_mcp_inject_auth(&with_header, None, 1_000_000, false),
+            McpInjectAuthDecision::Usable
+        );
+        // Same bearer in header + expired credentials → skip.
+        let expired_same = McpCredentialEntry {
+            access_token: "abc".into(),
+            expires_at: Some(500),
+        };
+        assert_eq!(
+            decide_mcp_inject_auth(&with_header, Some(&expired_same), 1_000_000, false),
+            McpInjectAuthDecision::Expired
+        );
+        // Header bearer differs from expired credentials → keep header (re-authed).
+        assert_eq!(
+            decide_mcp_inject_auth(&with_header, Some(&expired), 1_000_000, false),
+            McpInjectAuthDecision::Usable
+        );
+        assert_eq!(
+            decide_mcp_inject_auth(&with_header, Some(&fresh), 1_000_000, true),
+            McpInjectAuthDecision::Rejected
+        );
+
+        let public = McpServerDef {
+            name: "public-tools".into(),
+            command: None,
+            args: None,
+            env: None,
+            url: Some("https://mcp.example.com/mcp".into()),
+            headers: None,
+            transport: Some("http".into()),
+            enabled: None,
+            scope: None,
+        };
+        assert_eq!(
+            decide_mcp_inject_auth(&public, None, 1_000_000, false),
+            McpInjectAuthDecision::Usable
+        );
+
+        let stdio = McpServerDef {
+            name: "local".into(),
+            command: Some("npx".into()),
+            args: None,
+            env: None,
+            url: None,
+            headers: None,
+            transport: Some("stdio".into()),
+            enabled: None,
+            scope: None,
+        };
+        assert_eq!(
+            decide_mcp_inject_auth(&stdio, None, 0, false),
+            McpInjectAuthDecision::NotRemote
+        );
+    }
+
+    #[test]
+    fn extract_auth_required_host_from_cli_stderr() {
+        let line = r#"worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { www_authenticate_header: "Bearer resource_metadata=\"https://api.chatcut.io/.well-known/oauth-protected-resource/api/external-mcp/mcp\"" })"#;
+        assert_eq!(
+            extract_auth_required_host(line).as_deref(),
+            Some("api.chatcut.io")
+        );
+        assert!(extract_auth_required_host("unrelated stderr").is_none());
+    }
+
+    #[test]
+    fn parse_mcp_credential_entry_shapes() {
+        let flat = json!({
+            "chatcut": {
+                "access_token": "abc",
+                "expires_at": 1_000
+            }
+        });
+        let e = parse_mcp_credential_entry(&flat, "chatcut").unwrap();
+        assert_eq!(e.access_token, "abc");
+        assert_eq!(e.expires_at, Some(1_000));
+        // Skew = 60s: expired when expires_at <= now + 60.
+        assert!(mcp_credential_is_expired(&e, 1_000));
+        assert!(!mcp_credential_is_expired(&e, 0));
+
+        let nested = json!({
+            "servers": {
+                "chatcut": { "access_token": "xyz" }
+            }
+        });
+        let e2 = parse_mcp_credential_entry(&nested, "chatcut").unwrap();
+        assert_eq!(e2.access_token, "xyz");
+        assert!(!mcp_credential_is_expired(&e2, 9_999_999));
     }
 
     #[test]

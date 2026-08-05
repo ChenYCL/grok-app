@@ -218,7 +218,7 @@
  *
  * Frame always has a non-zero size (default 4:3, then natural ratio from JS)
  * so scrollHeight never collapses to 0 mid-decode. Width/height follow the
- * image; max 280×280. Inline style sets width + aspect-ratio per image.
+ * image; max height 150px (width ≤240). Inline style sets width + aspect-ratio.
  */
 .md-body__img-frame {
   display: block;
@@ -233,14 +233,14 @@
 }
 
 .md-body__img-frame--card {
-  max-width: min(100%, 280px);
-  max-height: 280px;
+  max-width: min(100%, 240px);
+  max-height: 150px;
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
 }
 
-/* Resource sidebar / full-width previews — no chat 280 cap */
+/* Resource sidebar / full-width previews — no chat card cap */
 .md-body__img-frame--pane {
   width: 100%;
   max-width: 100%;

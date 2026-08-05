@@ -119,6 +119,7 @@ mod integration {
         assert!(!factory.reopen_last_session);
         assert!(factory.last_session_id.is_none());
         assert!(factory.sidebar_collapsed_project_ids.is_empty());
+        assert!(factory.sidebar_other_sessions_open);
         // Disk load + save same content must not corrupt
         let s = load_settings();
         save_settings(&s).expect("save");

@@ -60,6 +60,13 @@ export function collectAbsolutePathsFromMessage(m: ChatMessage): string[] {
   };
 
   push(m.toolPath);
+  // Media / file cards attached to the message (image_gen, drops, etc.)
+  // so short tokens like `images/1.jpg` resolve in every content segment.
+  if (m.attachments?.length) {
+    for (const a of m.attachments) {
+      if (!a.isDir) push(a.path);
+    }
+  }
   if (m.marker === "tool_step" || m.content?.startsWith("tool_step|")) {
     const parsed = parseToolStepContent(m.content || "");
     push(parsed?.path);

@@ -165,6 +165,11 @@ export interface AppSettings {
   lastProjectId?: string | null;
   /** Sidebar project folder ids the user collapsed (missing ⇒ expanded). */
   sidebarCollapsedProjectIds?: string[];
+  /**
+   * Sidebar “Other sessions” section expanded. Default true (open).
+   * Missing / undefined ⇒ open (legacy installs before this pref).
+   */
+  sidebarOtherSessionsOpen?: boolean;
   voiceId?: string;
   voiceDictationAutoSend?: boolean;
   voiceKeepAgentsOnEnd?: boolean;

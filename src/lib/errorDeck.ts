@@ -397,6 +397,17 @@ export function classifyErrorMessage(raw: string | null | undefined): ErrorDeckC
     s.includes("unauthorized") ||
     s.includes("401") ||
     s.includes("invalid api key") ||
+    s.includes("incorrect api key") ||
+    // xAI often returns HTTP 400 + "Incorrect API key provided" (no "auth"/"401").
+    (s.includes("api key") &&
+      (s.includes("incorrect") ||
+        s.includes("invalid") ||
+        s.includes("missing") ||
+        s.includes("provided"))) ||
+    s.includes("invalid or expired credentials") ||
+    s.includes("bad-credentials") ||
+    s.includes("bad credentials") ||
+    s.includes("no auth context") ||
     s.includes("not logged in") ||
     s.includes("authentication") ||
     s.includes("login required")

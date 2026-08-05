@@ -26,6 +26,86 @@ use crate::turn_complete::{
 
 use super::*;
 
+/// Snapshot used by pure multi-session event routing (no locks).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SessionRouteHint {
+    pub app_session_id: String,
+    pub process_id: String,
+    pub agent_session_id: Option<String>,
+    /// Only meaningful for live/background. Parked is always idle Ready.
+    pub prompt_in_flight: bool,
+}
+
+/// Where an ACP event for `process_id` should be delivered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum TurnEventRoute {
+    /// Focused live shell (caller still gates load-replay via `prompt_in_flight`).
+    Live,
+    /// Background app session id (caller still gates load-replay).
+    Background(String),
+    /// Drop — never rewrite a journal (foreign load / parked co-tenant / orphan).
+    Drop,
+}
+
+/// P0 multi-session routing.
+///
+/// **Invariant:** a parked co-tenant on a shared process must never receive
+/// `session/load` replay (or unstamped process traffic) as a live turn. That
+/// path forced `prompt_in_flight=true` via rescue and wrote another chat's
+/// history into the parked journal (user report: c955c700 polluted by
+/// 0044e74a load on the same process).
+///
+/// Parked means idle Ready (`prompt_in_flight` blocks parking). App journal
+/// is the source of truth for resume — drop load/orphan tails.
+pub(crate) fn resolve_turn_event_route(
+    process_id: &str,
+    agent_session_id: Option<&str>,
+    live: Option<&SessionRouteHint>,
+    backgrounds: &[SessionRouteHint],
+    parked: &[SessionRouteHint],
+) -> TurnEventRoute {
+    if let Some(sid) = agent_session_id {
+        if live.is_some_and(|l| {
+            l.process_id == process_id && l.agent_session_id.as_deref() == Some(sid)
+        }) {
+            return TurnEventRoute::Live;
+        }
+        if let Some(bg) = backgrounds.iter().find(|b| {
+            b.process_id == process_id && b.agent_session_id.as_deref() == Some(sid)
+        }) {
+            return TurnEventRoute::Background(bg.app_session_id.clone());
+        }
+        // Matched a parked agent session: do **not** rescue-and-write.
+        // Idle park + load/orphan must not mutate the App journal.
+        if parked.iter().any(|p| {
+            p.process_id == process_id && p.agent_session_id.as_deref() == Some(sid)
+        }) {
+            return TurnEventRoute::Drop;
+        }
+        return TurnEventRoute::Drop;
+    }
+
+    // Unstamped (process-scoped):
+    // 1) Prefer a *unique mid-turn* background shell (real concurrent turn
+    //    on a shared process must not lose chunks to a connecting peer).
+    // 2) Else the live shell that owns this process (connect binds
+    //    process_id before session/load; prompt_in_flight=false → drop).
+    // 3) Never rescue parked co-tenants (idle Ready) for unstamped traffic.
+    let busy_bg: Vec<&SessionRouteHint> = backgrounds
+        .iter()
+        .filter(|b| b.process_id == process_id && b.prompt_in_flight)
+        .collect();
+    match busy_bg.as_slice() {
+        [one] => return TurnEventRoute::Background(one.app_session_id.clone()),
+        [] => {}
+        _ => return TurnEventRoute::Drop,
+    }
+    if live.is_some_and(|l| l.process_id == process_id) {
+        return TurnEventRoute::Live;
+    }
+    TurnEventRoute::Drop
+}
+
 impl SessionManager {
     pub(super) fn touch_activity_locked(s: &mut LiveSession) {
         s.last_activity = Instant::now();

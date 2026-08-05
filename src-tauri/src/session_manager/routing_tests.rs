@@ -194,6 +194,75 @@ fn session_load_replay_gate_matches_prompt_in_flight() {
     assert!(!SessionManager::is_session_load_replay(true));
 }
 
+fn hint(app: &str, process: &str, agent: Option<&str>, pif: bool) -> SessionRouteHint {
+    SessionRouteHint {
+        app_session_id: app.into(),
+        process_id: process.into(),
+        agent_session_id: agent.map(|s| s.into()),
+        prompt_in_flight: pif,
+    }
+}
+
+#[test]
+fn route_stamped_foreign_load_never_hits_parked_co_tenant() {
+    // P0: chat B session/load on shared process P while A is parked on P.
+    // Events stamped with B's agent id must not rescue/write A.
+    let live = hint("chat-b", "proc-p", Some("agent-b"), false);
+    let parked = [hint("chat-a", "proc-p", Some("agent-a"), false)];
+    assert_eq!(
+        resolve_turn_event_route("proc-p", Some("agent-b"), Some(&live), &[], &parked),
+        TurnEventRoute::Live
+    );
+    // Orphan / load tail stamped for parked A → Drop (never rescue).
+    assert_eq!(
+        resolve_turn_event_route("proc-p", Some("agent-a"), Some(&live), &[], &parked),
+        TurnEventRoute::Drop
+    );
+}
+
+#[test]
+fn route_unstamped_load_on_shared_process_does_not_rescue_parked() {
+    // Before fix: unstamped load replay → rescue parked A with pif=true → journal poison.
+    let live = hint("chat-b", "proc-p", Some("agent-b"), false);
+    let parked = [hint("chat-a", "proc-p", Some("agent-a"), false)];
+    assert_eq!(
+        resolve_turn_event_route("proc-p", None, Some(&live), &[], &parked),
+        TurnEventRoute::Live
+    );
+    // Live not yet bound to process, only parked co-tenant → Drop.
+    assert_eq!(
+        resolve_turn_event_route("proc-p", None, None, &[], &parked),
+        TurnEventRoute::Drop
+    );
+}
+
+#[test]
+fn route_unstamped_prefers_unique_busy_background_over_connecting_live() {
+    let live = hint("chat-b", "proc-p", Some("agent-b"), false);
+    let bg = [hint("chat-a", "proc-p", Some("agent-a"), true)];
+    assert_eq!(
+        resolve_turn_event_route("proc-p", None, Some(&live), &bg, &[]),
+        TurnEventRoute::Background("chat-a".into())
+    );
+}
+
+#[test]
+fn route_stamped_mid_turn_background() {
+    let live = hint("chat-b", "proc-other", Some("agent-b"), false);
+    let bg = [hint("chat-a", "proc-p", Some("agent-a"), true)];
+    assert_eq!(
+        resolve_turn_event_route("proc-p", Some("agent-a"), Some(&live), &bg, &[]),
+        TurnEventRoute::Background("chat-a".into())
+    );
+}
+
+#[test]
+fn rescue_parked_never_forces_prompt_in_flight() {
+    // Safety net if rescue is ever called again: must not invent a mid-turn.
+    let mgr = SessionManager::new();
+    assert!(mgr.rescue_parked_to_background("no-such-process").is_none());
+}
+
 #[test]
 fn empty_run_skips_when_saw_model_output_even_if_buf_cleared() {
     let mut s = sample_live_for_empty_run("", "", 0, "agent");

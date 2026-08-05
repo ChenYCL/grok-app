@@ -328,6 +328,20 @@
   align-items: center;
 }
 
+/* Assistant leftover image gallery — ratio-aware ImageUi cards (≤150px tall).
+ * Not the 36px user/composer chip strip. */
+.lobe-chat-atts--images {
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.lobe-chat-atts--images .md-body__img-frame {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
 /* User strip: pack horizontally up to ~70% chat width, then wrap.
  * (Avoid the old 360px cap that stacked cards while the row still had room.) */
 .lobe-chat-atts--user {

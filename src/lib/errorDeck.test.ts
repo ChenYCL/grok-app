@@ -100,6 +100,23 @@ describe("buildErrorDeck", () => {
     expect(classifyErrorMessage("agent process exited")).toBe("AGENT_CRASHED");
   });
 
+  it("classifies xAI Incorrect API key (HTTP 400) as AUTH_FAILED, not crash", () => {
+    // CharlieLam support 2026-08-05: host previously mapped this to AGENT_CRASHED.
+    const xai400 =
+      'Internal error (code -32603, data: {"http_status":400,"message":"API error (status 400 Bad Request): invalid-argument: Incorrect API key provided. You can obtain an API key from https://console.x.ai."})';
+    expect(classifyErrorMessage(xai400)).toBe("AUTH_FAILED");
+    expect(classifyErrorMessage("Incorrect API key provided")).toBe(
+      "AUTH_FAILED",
+    );
+    expect(
+      classifyErrorMessage(
+        "Invalid or expired credentials (auth_kind=bearer, reason=no auth context)",
+      ),
+    ).toBe("AUTH_FAILED");
+    expect(classifyErrorMessage("bad-credentials")).toBe("AUTH_FAILED");
+    expect(resolveErrorDeckCode(null, xai400)).toBe("AUTH_FAILED");
+  });
+
   it("classifies App project-gate and MCP/permission strings", () => {
     expect(classifyErrorMessage('Trust project "Demo" first.')).toBe(
       "WORKSPACE_UNTRUSTED",

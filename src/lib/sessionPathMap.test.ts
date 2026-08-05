@@ -70,6 +70,24 @@ describe("sessionPathMap", () => {
     expect(map["正文.md"]).toBe(ARTICLE);
   });
 
+  it("collects image attachments so images/1.jpg maps in every segment", () => {
+    const abs =
+      "/Users/me/Library/Application Support/com.grokapp.grok-app/agent-home/sessions/abc/images/1.jpg";
+    const messages: ChatMessage[] = [
+      {
+        id: "a",
+        role: "assistant",
+        content: "封面：`images/1.jpg`",
+        attachments: [{ path: abs, name: "1.jpg", isDir: false }],
+      },
+    ];
+    const paths = collectAbsolutePathsFromMessage(messages[0]!);
+    expect(paths).toContain(abs);
+    const map = buildSessionFilePathMap(messages, null);
+    expect(map["images/1.jpg"]).toBe(abs);
+    expect(map["1.jpg"]).toBe(abs);
+  });
+
   it("mergePathMaps prefers later maps", () => {
     const m = mergePathMaps(
       { "a.md": "/tmp/a.md" },

@@ -34,6 +34,7 @@ import {
   isClientOptimisticId,
   weaveToolsIntoAssistantSegments,
   mergeAssistantFragments,
+  pickAssistantFragmentCarrierIdx,
   filterTranscriptMessages,
   stripAnsi,
   truncateBeforeLastUser,
@@ -750,6 +751,82 @@ describe("session projection", () => {
     expect(merged).toHaveLength(2);
     expect(merged[1]!.id).toBe("a1");
     expect(merged[1]!.leadFragments).toBeUndefined();
+  });
+
+  it("mergeAssistantFragments prefers full stream buffer over trailing mid-status", () => {
+    // Session export f2789928: host stream row holds the full answer; mid-turn
+    // reconcile injects a short "正在生成…" row after tools. Last-non-empty
+    // would bury the real answer in leadFragments.
+    const mid =
+      "已识别画面：宇航员站在异星山脊，凝望巨大类木星。正在生成约 6 秒的电影感动画。";
+    const full =
+      `你要用图片生成视频。${mid}视频已生成完成。\n\n**文件位置：** [videos/1.mp4](videos/1.mp4)\n\n**效果说明：** 电影感缓慢推进。`;
+    const rows: ChatMessage[] = [
+      { id: "u1", role: "user", content: "使用这张图片生成视频" },
+      {
+        id: "a-full",
+        role: "assistant",
+        content: full,
+        createdAt: "2026-08-05T05:00:43.090984Z",
+      },
+      {
+        id: "tool-1",
+        role: "tool",
+        content: "tool_step|completed|image_to_video|Generate Video",
+        marker: "tool_step",
+        toolCallId: "call-vid",
+      },
+      {
+        id: "a-mid",
+        role: "assistant",
+        content: mid,
+        createdAt: "2026-08-05T05:00:36.746052Z",
+      },
+    ];
+    expect(pickAssistantFragmentCarrierIdx(rows, [1, 3])).toBe(1);
+    const merged = mergeAssistantFragments(rows);
+    const asst = merged.filter((m) => m.role === "assistant");
+    expect(asst).toHaveLength(1);
+    expect(asst[0]!.id).toBe("a-full");
+    expect(asst[0]!.content).toBe(full);
+    // Mid-status already inside full body — not duplicated as a lead note.
+    expect(asst[0]!.leadFragments ?? []).toEqual([]);
+  });
+
+  it("upgradeMessagesFromJournal heals last-turn body across different ids", () => {
+    const ui: ChatMessage[] = [
+      { id: "u1", role: "user", content: "生成视频" },
+      {
+        id: "stream-id",
+        role: "assistant",
+        content: "已识别画面：正在生成…",
+        streaming: false,
+      },
+    ];
+    const journal: ChatMessage[] = [
+      { id: "u1", role: "user", content: "生成视频" },
+      {
+        id: "stream-id",
+        role: "assistant",
+        content: "已识别画面：正在生成…",
+      },
+      {
+        id: "reconcile-mid",
+        role: "assistant",
+        content: "短状态",
+      },
+      {
+        id: "other",
+        role: "assistant",
+        content:
+          "已识别画面：正在生成…视频已生成完成。\n\n文件位置：videos/1.mp4",
+      },
+    ];
+    // Weave folds fragments; upgrade still sees journal list with longer row.
+    const out = upgradeMessagesFromJournal(ui, journal);
+    expect(out.find((m) => m.id === "stream-id")?.content).toContain(
+      "视频已生成完成",
+    );
   });
 
   it("weaveToolsIntoAssistantSegments puts journal tools between thought and content", () => {

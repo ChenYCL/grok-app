@@ -4340,12 +4340,27 @@ fn classify_rpc_error(e: &str) -> AgentError {
     {
         return AgentError::new(AgentErrorCode::ConnectFailed, e);
     }
+    // Auth / credentials. xAI often returns HTTP *400* with
+    // "Incorrect API key provided" (not 401, and the string has no "auth"),
+    // which previously fell through to AgentCrashed and showed the crash deck.
     if lower.contains("401")
         || lower.contains("auth")
         || lower.contains("unauthor")
         || lower.contains("login")
         || lower.contains("access denied")
         || lower.contains("authentication code")
+        || lower.contains("incorrect api key")
+        || lower.contains("invalid api key")
+        || lower.contains("invalid or expired credentials")
+        || lower.contains("bad-credentials")
+        || lower.contains("bad credentials")
+        || lower.contains("no auth context")
+        || (lower.contains("api key")
+            && (lower.contains("incorrect")
+                || lower.contains("invalid")
+                || lower.contains("missing")
+                || lower.contains("not provided")
+                || lower.contains("provided")))
     {
         return AgentError::new(AgentErrorCode::AuthFailed, e);
     }
@@ -4380,6 +4395,61 @@ fn classify_rpc_error(e: &str) -> AgentError {
         AgentError::new(AgentErrorCode::CliNotFound, e)
     } else {
         AgentError::new(AgentErrorCode::AgentCrashed, e)
+    }
+}
+
+#[cfg(test)]
+mod classify_rpc_error_tests {
+    use super::*;
+
+    #[test]
+    fn xai_incorrect_api_key_http_400_is_auth_not_crash() {
+        // Support: CharlieLam 2026-08-05 — xAI returns 400 + "Incorrect API key"
+        // (no "auth" / "401" substring). Must not land on AgentCrashed.
+        let msg = r#"Internal error (code -32603, data: {"http_status":400,"message":"API error (status 400 Bad Request): invalid-argument: Incorrect API key provided. You can obtain an API key from https://console.x.ai."})"#;
+        let err = classify_rpc_error(msg);
+        assert_eq!(err.code, AgentErrorCode::AuthFailed, "msg={msg}");
+    }
+
+    #[test]
+    fn invalid_or_expired_credentials_is_auth() {
+        let msg = "cli-proxy HTTP 401: Invalid or expired credentials (auth_kind=bearer, x_xai_token_auth=none, upstream=PermissionDenied, reason=no auth context)";
+        assert_eq!(
+            classify_rpc_error(msg).code,
+            AgentErrorCode::AuthFailed
+        );
+        assert_eq!(
+            classify_rpc_error("WKE=unauthenticated:bad-credentials").code,
+            AgentErrorCode::AuthFailed
+        );
+    }
+
+    #[test]
+    fn stream_closed_eof_is_network_not_crash() {
+        assert_eq!(
+            classify_rpc_error("Agent stream closed (EOF)").code,
+            AgentErrorCode::NetworkProvider
+        );
+    }
+
+    #[test]
+    fn process_exit_wording_still_crashes() {
+        // Bare process-exit strings without network keywords stay crash.
+        assert_eq!(
+            classify_rpc_error("Agent process exited").code,
+            AgentErrorCode::AgentCrashed
+        );
+    }
+
+    #[test]
+    fn provider_502_is_network() {
+        assert_eq!(
+            classify_rpc_error(
+                "API error (status 502 Bad Gateway): upstream_error: Upstream service temporarily unavailable"
+            )
+            .code,
+            AgentErrorCode::NetworkProvider
+        );
     }
 }
 

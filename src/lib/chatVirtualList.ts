@@ -49,20 +49,36 @@ export const CHAT_PIN_OVERSCAN_MAX_PX = 2400;
 export const CHAT_FORCE_EXPAND_MAX_GAP = 12;
 
 /**
+ * Chat ImageUi card max height (must match ImageUi CHAT_IMAGE_CARD_MAX_H).
+ * Used for virtual-row pre-estimates so multi-image turns do not under-scroll.
+ */
+export const CHAT_IMAGE_CARD_ESTIMATE_H = 160; // 150px card + gap
+/** Typical images per wrapping row in the assistant body (~240px cards). */
+export const CHAT_IMAGE_CARDS_PER_ROW = 3;
+
+/**
  * Content-aware row estimate so tall assistant answers (diagrams, tables)
  * are not first measured as ~120px (that underestimates scrollHeight and
  * makes mid-document look "near bottom" → stick bounce).
  *
- * Media: fixed-size attachment chips (~36px) and inline video cards (~240px)
- * are not reflected in `contentLength` — include them so first paint is closer
- * to final height (fewer remeasure snaps near the bottom).
+ * Media: chip attachments (~36px), ratio-aware image cards (≤150px), and
+ * inline video cards (~240px) are not reflected in `contentLength` — include
+ * them so first paint is closer to final height (fewer remeasure snaps).
  */
 export function estimateChatRowHeight(input: {
   contentLength?: number;
   thoughtLength?: number;
   role?: string;
-  /** Message attachment cards (images/files under the bubble). */
+  /**
+   * Non-image attachment chips (file/folder under the bubble), or user-strip
+   * 36px thumbs when role is user.
+   */
   attachmentCount?: number;
+  /**
+   * Assistant image cards (inline path tokens + leftover bottom gallery).
+   * Each card is up to ~150px tall; several wrap per row.
+   */
+  imageCardCount?: number;
   /** True when body likely embeds a local video card. */
   hasVideoCard?: boolean;
   /**
@@ -76,12 +92,14 @@ export function estimateChatRowHeight(input: {
   const content = Math.max(0, input.contentLength ?? 0);
   const thought = Math.max(0, input.thoughtLength ?? 0);
   const role = (input.role ?? "assistant").toLowerCase();
+  const imageCards = Math.max(0, input.imageCardCount ?? 0);
   // Empty tool journal rows must not inflate the pin window (blank transcript).
   if (
     role === "tool" &&
     content === 0 &&
     thought === 0 &&
     !(input.attachmentCount && input.attachmentCount > 0) &&
+    imageCards === 0 &&
     !input.hasVideoCard
   ) {
     return 0;
@@ -95,8 +113,14 @@ export function estimateChatRowHeight(input: {
   const slots = atts > 3 ? 4 : atts;
   const attRows = slots > 0 ? Math.ceil(slots / 6) : 0;
   const attBoost = attRows * 44;
+  // Image cards wrap; ~3 per row at chat width, each ≤150px + margin.
+  const imgRows =
+    imageCards > 0
+      ? Math.ceil(imageCards / CHAT_IMAGE_CARDS_PER_ROW)
+      : 0;
+  const imgBoost = imgRows * CHAT_IMAGE_CARD_ESTIMATE_H;
   const videoBoost = input.hasVideoCard ? 260 : 0;
-  const raw = chrome + lines * 20 + attBoost + videoBoost;
+  const raw = chrome + lines * 20 + attBoost + imgBoost + videoBoost;
   // Tool rows are compact; do not floor them at the assistant default (120px).
   const floor = role === "tool" ? 0 : CHAT_DEFAULT_ROW_ESTIMATE_PX;
   return Math.min(CHAT_MAX_ROW_ESTIMATE_PX, Math.max(floor, raw));

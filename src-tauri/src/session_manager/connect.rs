@@ -390,8 +390,9 @@ impl SessionManager {
         // process and agent sessions are shared, so switching back later is a
         // plain unpark (session still live on the process) — both directions
         // of a chat switch stay free of cold spawns. Tail events carry their
-        // own sessionId and are routed by sid (events.rs), so cross-chat
-        // leakage is impossible.
+        // own sessionId and are routed by sid (events.rs). Load-replay must
+        // never rewrite a parked co-tenant journal (bind process_id before
+        // open; drop parked/unstamped turn traffic — see resolve_turn_event_route).
         if !pending_fork {
             let eff_sandbox = {
                 let project_sandbox = meta.project_id.as_deref().and_then(|pid| {
@@ -638,6 +639,32 @@ impl SessionManager {
                     reused_from = ?reused_from,
                     "connect warm-process reuse (shared, no spawn)"
                 );
+                // P0: bind the live shell to the reused process *before*
+                // session/load. Load replays stream/tool notifications while
+                // open awaits; if live still held a temporary process_id,
+                // unstamped process traffic used to rescue the parked
+                // co-tenant with prompt_in_flight=true and corrupt its journal.
+                {
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_mut() {
+                        s.acp = Some(acp.clone());
+                        s.process_id = reused_process.clone();
+                        if let Some(ref rid) = resume_agent_sid {
+                            let t = rid.trim();
+                            if !t.is_empty() {
+                                s.meta.agent_session_id = Some(t.to_string());
+                            }
+                        }
+                        // Connect is not a user turn — load replay must drop.
+                        s.prompt_in_flight = false;
+                        s.model_id = Some(prefs.model_id.clone());
+                        s.effort = Some(prefs.effort.clone());
+                        s.product_mode = Some(prefs.mode.clone());
+                        s.policy = policy;
+                        s.project_path = project_path.clone();
+                        Self::touch_activity_locked(s);
+                    }
+                }
                 let cwd_str = cwd.to_string_lossy().to_string();
                 let open_result = acp
                     .open_session_at(resume_agent_sid.as_deref(), false, &cwd_str)
@@ -658,6 +685,7 @@ impl SessionManager {
                                 s.policy = policy;
                                 s.project_path = project_path.clone();
                                 s.needs_history_bootstrap = need_bootstrap;
+                                s.prompt_in_flight = false;
                                 Self::touch_activity_locked(s);
                                 meta = s.meta.clone();
                             }
@@ -689,7 +717,19 @@ impl SessionManager {
                     }
                     Err(e) => {
                         // Reuse failed (session id lost / process wedged):
-                        // kill and fall through to the cold spawn path.
+                        // detach our early bind, then kill and fall through
+                        // to the cold spawn path.
+                        {
+                            let mut guard = self.inner.lock();
+                            if let Some(s) = guard.as_mut() {
+                                if s.process_id == reused_process {
+                                    s.acp = None;
+                                    // Restore the connect-local process id so the
+                                    // cold path event pump tags match this shell.
+                                    s.process_id = process_id.clone();
+                                }
+                            }
+                        }
                         tracing::warn!(
                             target: "session",
                             session = %meta.id,
@@ -983,11 +1023,15 @@ impl SessionManager {
         }
     }
 
-    /// Move a parked agent back into `background` because its process is still
-    /// emitting turn events. Parked means "idle Ready, safe to reclaim" — an
-    /// agent that is still talking must never sit there, or its output is
-    /// dropped (parked agents get no event routing) while the turn completes
-    /// agent-side. Returns true when the session is now in `background`.
+    /// Legacy helper: move a parked agent into `background`.
+    ///
+    /// **Must not** be used to apply turn events. Parked is always idle Ready;
+    /// rescuing with `prompt_in_flight=true` caused P0 cross-session journal
+    /// corruption when another chat's `session/load` ran on the shared process.
+    /// Event routing now **drops** parked/unstamped load traffic instead
+    /// (`resolve_turn_event_route`). Kept for diagnostics / rare recovery only
+    /// and always sets `prompt_in_flight=false` so apply gates drop replay.
+    #[allow(dead_code)]
     pub(super) fn rescue_parked_to_background(&self, process_id: &str) -> Option<String> {
         let key = {
             let parked = self.parked.lock();
@@ -998,7 +1042,7 @@ impl SessionManager {
         }?;
         let p = self.parked.lock().remove(&key)?;
         tracing::warn!(
-            "acp rescue: parked session still streaming → background sid={} process={}",
+            "acp rescue: parked session → background (idle; prompt_in_flight=false) sid={} process={}",
             p.app_session_id,
             p.process_id
         );
@@ -1043,8 +1087,8 @@ impl SessionManager {
             deferred_prompt_complete: None,
             tools_this_turn: 0,
             saw_model_output: false,
-            // The agent is mid-turn; keep it un-parkable until the turn ends.
-            prompt_in_flight: true,
+            // Never invent a mid-turn: load/orphan must hit the replay gate.
+            prompt_in_flight: false,
             sent_prompt_this_visit: false,
             pending_stream_emit: None,
             stream_emit_flush_gen: 0,

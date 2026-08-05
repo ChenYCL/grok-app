@@ -248,6 +248,22 @@ describe("estimateChatRowHeight", () => {
       estimateChatRowHeight({ role: "tool", contentLength: 20 }),
     ).toBeLessThan(50);
   });
+
+  it("image cards boost height more than 36px chips (virtual scroll)", () => {
+    const chips = estimateChatRowHeight({
+      contentLength: 80,
+      role: "assistant",
+      attachmentCount: 6,
+    });
+    const images = estimateChatRowHeight({
+      contentLength: 80,
+      role: "assistant",
+      imageCardCount: 6,
+    });
+    expect(images).toBeGreaterThan(chips);
+    // 6 cards → 2 rows × ~160px
+    expect(images - chips).toBeGreaterThanOrEqual(200);
+  });
 });
 
 describe("shouldCommitRowHeight", () => {

@@ -237,7 +237,12 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
         /**
          * Heal missed stream tail from Host journal after early ready.
          * Upgrade is pure against the session cache; React state is set from
-         * the same result. One 400ms retry if the body is still empty.
+         * the same result.
+         *
+         * Always one delayed retry: Host may still be force-flushing the final
+         * assistant row when the first ready event lands (partial body already
+         * painted). Empty-body-only retry left mid-status text stuck until the
+         * user switched sessions and remounted from disk.
          */
         const scheduleJournalRehydrate = (
           sid: string,
@@ -269,14 +274,7 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                     : reactPrev;
                   const next = upgradeMessagesFromJournal(from, woven);
                   c.messagesBySessionRef.current.set(sid, next);
-                  if (
-                    attempt === 0 &&
-                    next === from &&
-                    next.some(
-                      (m) =>
-                        m.role === "assistant" && !(m.content ?? "").trim(),
-                    )
-                  ) {
+                  if (attempt === 0) {
                     window.setTimeout(() => {
                       if (!cancelled) {
                         scheduleJournalRehydrate(sid, 1, opts);
@@ -288,18 +286,12 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                 return;
               }
               const next = upgradeMessagesFromJournal(base, woven);
-              const upgraded = next !== base;
               c.messagesBySessionRef.current.set(sid, next);
               c.setMessages(next);
-              if (!upgraded && attempt === 0) {
-                const lastAsst = [...next]
-                  .reverse()
-                  .find((m) => m.role === "assistant");
-                if (lastAsst && !(lastAsst.content ?? "").trim()) {
-                  window.setTimeout(() => {
-                    if (!cancelled) scheduleJournalRehydrate(sid, 1, opts);
-                  }, 400);
-                }
+              if (attempt === 0) {
+                window.setTimeout(() => {
+                  if (!cancelled) scheduleJournalRehydrate(sid, 1, opts);
+                }, 400);
               }
             })
             .catch(() => {

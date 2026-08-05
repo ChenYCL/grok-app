@@ -279,6 +279,8 @@ export function UserMenu({
                   aria-checked={selected}
                   onClick={() => {
                     onTheme(pref);
+                    setThemeSubOpen(false);
+                    onClose();
                   }}
                 >
                   <span className="user-menu__check" aria-hidden>

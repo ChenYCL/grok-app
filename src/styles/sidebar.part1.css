@@ -46,6 +46,40 @@ button:disabled {
   z-index: 14000 !important;
 }
 
+/*
+ * Lightbox images: fill the stage with object-fit contain.
+ * YARL defaults only set max-width/max-height to natural px, so small images
+ * stay tiny; ImageViewer also sets logical width/height + imageProps — this
+ * CSS is the durable fallback if props are stripped.
+ */
+.yarl__slide_image {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* Avoid browser native image drag interfering with zoom pan. */
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* Zoomed past fit: drag to pan (YARL adds this class when zoom > 1). */
+.yarl__slide_wrapper_interactive {
+  cursor: grab;
+}
+
+.yarl__slide_wrapper_interactive:active {
+  cursor: grabbing;
+}
+
+.yarl__slide_wrapper_interactive .yarl__slide_image {
+  cursor: grab;
+}
+
+.yarl__slide_wrapper_interactive:active .yarl__slide_image {
+  cursor: grabbing;
+}
+
 /* ── Codex-style tip (replaces native title= tooltips) ── */
 .ui-tip {
   position: fixed;

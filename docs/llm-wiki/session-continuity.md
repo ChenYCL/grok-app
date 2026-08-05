@@ -46,6 +46,16 @@ Live turns (`prompt_in_flight == true`) still apply stream + tools normally.
 See crash investigation notes: ungated tool_call replay on open could thrash
 Host/UI/disk and correlate with dual-process SIGABRT.
 
+**Shared-process multi-session (P0):** warm reuse keeps co-tenant shells on one
+CLI process. Host must **never** write load-replay / unstamped process traffic
+into a **parked** co-tenant journal:
+
+1. Bind live `process_id` (+ known `agentSessionId`) **before** `session/load`.  
+2. Route by stamped agent session id; parked match → **drop** (no rescue).  
+3. Unstamped turn events: unique mid-turn background → else live → else drop.  
+   Never `rescue_parked` with fake `prompt_in_flight=true` (that caused
+   cross-chat journal pollution + sticky “in progress”).
+
 ### 2. Fallback — journal bootstrap (reasonable turns)
 
 When a **new** agent session is created but the App journal already has turns:
