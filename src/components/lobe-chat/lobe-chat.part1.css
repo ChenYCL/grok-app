@@ -755,11 +755,15 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   --grok-act-fg: color-mix(in srgb, var(--chat-text-2, #737373) 100%, transparent);
   --grok-act-fg-dim: color-mix(in srgb, var(--chat-text-3, #a3a3a3) 100%, transparent);
   --grok-act-rail: color-mix(in srgb, var(--chat-border, #e5e5e5) 85%, transparent);
+  /* Shared activity chrome metrics — keep thought / step / working aligned */
+  --grok-act-icon: 16px;
+  --grok-act-gap: 8px;
+  --grok-act-font: 13px;
   width: 100%;
   max-width: var(--chat-content-max, 48rem);
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   color: var(--grok-act-fg);
-  font-size: 15px;
+  font-size: var(--grok-act-font);
   line-height: 1.4;
   font-weight: 400;
   font-family: inherit;

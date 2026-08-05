@@ -139,6 +139,28 @@ describe("timelinePhases", () => {
     }
   });
 
+  it("turn end clears runningCount even when tools still claim running", () => {
+    // Real bug: tool_call_update never sent "completed", so status stayed
+    // in_progress after the assistant finished — UI showed "工作中 8m…".
+    const segs: MessageSegment[] = [
+      { kind: "thought", text: "The video analysis is running" },
+      tool("t1", "Read file", "in_progress"),
+      tool("t2", "Edit file", "running"),
+      { kind: "content", text: "分析完成" },
+    ];
+    const live = buildTimelineUnits(segs, { streaming: true });
+    expect(live[0]!.kind).toBe("phase");
+    if (live[0]!.kind === "phase") {
+      expect(live[0]!.runningCount).toBe(2);
+    }
+    const done = buildTimelineUnits(segs, { streaming: false });
+    expect(done[0]!.kind).toBe("phase");
+    if (done[0]!.kind === "phase") {
+      expect(done[0]!.live).toBe(false);
+      expect(done[0]!.runningCount).toBe(0);
+    }
+  });
+
   it("single thought or single tool stays bare (not a phase chip)", () => {
     expect(
       buildTimelineUnits(

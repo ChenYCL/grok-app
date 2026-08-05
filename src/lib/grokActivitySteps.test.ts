@@ -65,6 +65,29 @@ describe("grokActivitySteps", () => {
     expect(steps[0]).toMatchObject({ type: "search-group", count: 4 });
   });
 
+  it("does not mark tools running when the message is no longer streaming", () => {
+    const items: GrokPhaseItem[] = [
+      {
+        kind: "tool",
+        tool: tool("t1", "read_file", "Read", {
+          status: "in_progress",
+          streaming: true,
+        }),
+      },
+      {
+        kind: "tool",
+        tool: tool("t2", "edit_file", "Edit", {
+          status: "running",
+          streaming: true,
+        }),
+      },
+    ];
+    const live = buildGrokActivitySteps(items, { messageStreaming: true });
+    expect(live.every((s) => "running" in s && s.running)).toBe(true);
+    const done = buildGrokActivitySteps(items, { messageStreaming: false });
+    expect(done.every((s) => "running" in s && !s.running)).toBe(true);
+  });
+
   it("emits Searched web for when each search has a query", () => {
     const items: GrokPhaseItem[] = [
       {

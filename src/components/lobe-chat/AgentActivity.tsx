@@ -29,10 +29,10 @@ export const LiveToolText = memo(function LiveToolText({
   if (!title) return null;
 
   const kind = message.toolKind;
-  let icon = <IconCircle size={16} stroke={1.5} />;
-  if (isBrowseToolKind(kind, title)) icon = <IconWorld size={16} stroke={1.5} />;
+  let icon = <IconCircle size={15} stroke={1.5} />;
+  if (isBrowseToolKind(kind, title)) icon = <IconWorld size={15} stroke={1.5} />;
   else if (isSearchToolKind(kind, title))
-    icon = <IconSearch size={16} stroke={1.5} />;
+    icon = <IconSearch size={15} stroke={1.5} />;
 
   return (
     <div

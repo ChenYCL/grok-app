@@ -83,7 +83,8 @@ function toolExpandBody(seg: MessageToolSegment, failed: boolean): {
 }
 
 function ToolKindIcon({ tool }: { tool: MessageToolSegment }) {
-  const size = 16;
+  // Match TimelinePhaseBlock / Thought chrome (15px glyph in 16px box).
+  const size = 15;
   if (isBrowseToolKind(tool.toolKind, tool.title)) {
     return <IconWorld size={size} stroke={1.5} />;
   }

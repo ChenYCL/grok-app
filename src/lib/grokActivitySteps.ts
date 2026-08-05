@@ -82,6 +82,17 @@ function toolRunning(t: MessageToolSegment): boolean {
   return s === "in_progress" || s === "pending" || s === "running";
 }
 
+/**
+ * Step pulse only while the assistant turn is still streaming. After turn end,
+ * stuck wire statuses must not keep individual steps animated as running.
+ */
+function stepRunning(
+  t: MessageToolSegment,
+  messageStreaming: boolean,
+): boolean {
+  return messageStreaming && toolRunning(t);
+}
+
 function toolFailed(t: MessageToolSegment): boolean {
   if (t.isError) return true;
   const s = (t.status || "").toLowerCase();
@@ -294,7 +305,7 @@ export function buildGrokActivitySteps(
         pathBase: toolPathBase(tool.path),
         hostTitle: title || undefined,
         failed: toolFailed(tool),
-        running: toolRunning(tool),
+        running: stepRunning(tool, messageStreaming),
         tool,
       });
       i += 1;
@@ -308,7 +319,7 @@ export function buildGrokActivitySteps(
         key: tool.toolCallId || `browse-${i}`,
         url: extractBrowseUrl(tool),
         failed: toolFailed(tool),
-        running: toolRunning(tool),
+        running: stepRunning(tool, messageStreaming),
       });
       i += 1;
       continue;
@@ -322,7 +333,7 @@ export function buildGrokActivitySteps(
       // Peek consecutive
       let count = 1;
       let failed = toolFailed(tool);
-      let running = toolRunning(tool);
+      let running = stepRunning(tool, messageStreaming);
       let j = i + 1;
       const queries: string[] = query ? [query] : [];
       while (j < items.length) {
@@ -336,7 +347,7 @@ export function buildGrokActivitySteps(
         const q = extractSearchQuery(n.tool);
         if (q) queries.push(q);
         if (toolFailed(n.tool)) failed = true;
-        if (toolRunning(n.tool)) running = true;
+        if (stepRunning(n.tool, messageStreaming)) running = true;
         j += 1;
       }
 
@@ -355,7 +366,7 @@ export function buildGrokActivitySteps(
             resultCount: extractSearchResultCount(t),
             resultDomains: extractResultDomains(t),
             failed: toolFailed(t),
-            running: toolRunning(t),
+            running: stepRunning(t, messageStreaming),
           });
         }
       } else if (count === 1 && query) {
@@ -389,7 +400,7 @@ export function buildGrokActivitySteps(
       inputLabel: toolInputDisplay(tool.input, classifyToolKind(tool.toolKind, tool.title, tool.toolCallId)),
       pathBase: toolPathBase(tool.path),
       failed: toolFailed(tool),
-      running: toolRunning(tool),
+      running: stepRunning(tool, messageStreaming),
       tool,
     });
     i += 1;

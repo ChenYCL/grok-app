@@ -186,7 +186,7 @@ export const Thinking = memo(function Thinking({
         disabled={!hasBody}
       >
         <span className="grok-thought__icon" aria-hidden>
-          <IconBulb size={16} stroke={1.5} />
+          <IconBulb size={15} stroke={1.5} />
         </span>
         <span
           className={cn(
@@ -199,9 +199,9 @@ export const Thinking = memo(function Thinking({
         {hasBody ? (
           <span className="grok-thought__caret" aria-hidden>
             {open ? (
-              <IconChevronDown size={14} stroke={1.75} />
+              <IconChevronDown size={12} stroke={2} />
             ) : (
-              <IconChevronRight size={14} stroke={1.75} />
+              <IconChevronRight size={12} stroke={2} />
             )}
           </span>
         ) : null}

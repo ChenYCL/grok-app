@@ -356,7 +356,11 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
     };
   }, [autoCollapseProp]);
 
-  const phaseRunning = phase.live || phase.runningCount > 0;
+  // Live chrome only while the assistant turn is still open. Wire statuses
+  // can stick on "running" after tools finish without a final update — those
+  // must not keep "Working for …" forever once the turn is done.
+  const phaseRunning =
+    !!messageStreaming && (phase.live || phase.runningCount > 0);
   const wantOpen = toolStepDefaultOpen(phaseRunning, autoCollapse);
   const [open, setOpen] = useState(wantOpen);
   const userToggled = useRef(false);
@@ -455,7 +459,7 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
         <GrokActivitySteps steps={stepsResolved} tr={tr} live />
         <div className="grok-act__working" role="status" aria-live="polite">
           <span className="grok-act__working-icon" aria-hidden>
-            <IconGridDots size={14} stroke={1.5} />
+            <IconGridDots size={15} stroke={1.5} />
           </span>
           <span className="grok-act__working-label">{workingLabel}</span>
         </div>
@@ -481,14 +485,14 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
         }}
       >
         <span className="grok-act__header-icon" aria-hidden>
-          <IconGridDots size={14} stroke={1.5} />
+          <IconGridDots size={15} stroke={1.5} />
         </span>
         <span className="grok-act__header-text">{workedLabel}</span>
         <span className="grok-act__header-caret" aria-hidden>
           {open ? (
-            <IconChevronDown size={13} stroke={2} />
+            <IconChevronDown size={12} stroke={2} />
           ) : (
-            <IconChevronRight size={13} stroke={2} />
+            <IconChevronRight size={12} stroke={2} />
           )}
         </span>
       </button>

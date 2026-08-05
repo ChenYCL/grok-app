@@ -247,7 +247,9 @@ export function buildTimelineUnits(
         endSi,
         live,
         errorCount: stats.errorCount,
-        runningCount: stats.runningCount,
+        // After the turn ends, ignore stuck wire "running" statuses so the UI
+        // never keeps a finished message on "Working for …".
+        runningCount: streaming ? stats.runningCount : 0,
       });
     } else {
       emitBare(buf, live);
