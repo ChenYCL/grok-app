@@ -226,9 +226,12 @@ pub struct AppSettings {
     /// Keeps a deliberate small pool from being lifted again on every launch.
     #[serde(default)]
     pub pool_size_migrated: bool,
-    /// Pure stream silence before cancel prompt (I06). Default 120 seconds.
+    /// Pure stream silence before Keep waiting / End turn (I06). Default 600s (10 min).
     #[serde(default = "default_stream_stall_seconds")]
     pub stream_stall_seconds: u32,
+    /// True once the stream-stall default migration (120/180 → 600) has run.
+    #[serde(default)]
+    pub stream_stall_default_migrated: bool,
     /// Store App API keys in the OS keychain (macOS Keychain / Win Cred / Secret Service).
     /// Default **false**: keys stay in `secrets.json` (0600) so cold start does not
     /// trigger system password prompts. Official CLI login still uses `auth.json`.
@@ -547,6 +550,7 @@ impl Default for AppSettings {
             // Fresh installs already start on the current default.
             pool_size_migrated: true,
             stream_stall_seconds: default_stream_stall_seconds(),
+            stream_stall_default_migrated: true,
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
             experimental_memory: false,
@@ -728,6 +732,25 @@ pub fn load_settings() -> AppSettings {
         let _ = write_json(&settings_file(), &s);
     } else if !s.pool_size_migrated {
         s.pool_size_migrated = true;
+        let _ = write_json(&settings_file(), &s);
+    }
+    // One-time: stream stall soft window 120/180 → 600 (10 min). Installs that
+    // only ever stored the product default must not keep false-stalling; a
+    // deliberate custom value is left alone (flag still set so we do not re-ask).
+    if let Some(next) = crate::stream_stall::migrate_stream_stall_seconds(
+        s.stream_stall_seconds,
+        s.stream_stall_default_migrated,
+    ) {
+        tracing::info!(
+            "settings migration: streamStallSeconds {} → {}",
+            s.stream_stall_seconds,
+            next
+        );
+        s.stream_stall_seconds = next;
+        s.stream_stall_default_migrated = true;
+        let _ = write_json(&settings_file(), &s);
+    } else if !s.stream_stall_default_migrated {
+        s.stream_stall_default_migrated = true;
         let _ = write_json(&settings_file(), &s);
     }
     // One-time: product default is draft new-chat on launch (not restore last).
@@ -2326,7 +2349,8 @@ mod tests {
         assert_eq!(s.locale, "en");
         assert_eq!(s.max_concurrent_agents, 8);
         assert_eq!(s.agent_idle_minutes, 30);
-        assert_eq!(s.stream_stall_seconds, 180);
+        assert_eq!(s.stream_stall_seconds, 600);
+        assert!(s.stream_stall_default_migrated);
         assert_eq!(s.sandbox_profile, "workspace");
         assert!(!s.experimental_memory);
         assert_eq!(s.compaction_mode, "summary");

@@ -277,7 +277,7 @@ export function SettingsPage({
   lastProcessLimit = null,
   agentIdleMinutes = 30,
   onAgentIdleMinutes,
-  streamStallSeconds = 180,
+  streamStallSeconds = 600,
   onStreamStallSeconds,
   auditLedgerRetentionDays = 0,
   onAuditLedgerRetentionDays,

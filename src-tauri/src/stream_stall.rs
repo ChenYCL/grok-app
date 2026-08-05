@@ -15,8 +15,24 @@
 use std::time::{Duration, Instant};
 
 /// Soft silence window default (settings `streamStallSeconds`).
-/// Raised from 120 → 180 to reduce false stalls on long tool / workflow gaps.
-pub const DEFAULT_STREAM_STALL_SECONDS: u32 = 180;
+/// 10 minutes — long tools / workflows often go quiet for several minutes
+/// without being stuck; 180s false-stalled too often.
+pub const DEFAULT_STREAM_STALL_SECONDS: u32 = 600;
+
+/// Prior product defaults (120 then 180). Used only for one-shot settings migration.
+pub const LEGACY_STREAM_STALL_SECONDS: &[u32] = &[120, 180];
+
+/// Lift a stored *legacy default* to the current default once.
+/// Deliberate custom values (not in [`LEGACY_STREAM_STALL_SECONDS`]) are kept.
+pub fn migrate_stream_stall_seconds(stored: u32, already_migrated: bool) -> Option<u32> {
+    if already_migrated {
+        return None;
+    }
+    if LEGACY_STREAM_STALL_SECONDS.contains(&stored) {
+        return Some(DEFAULT_STREAM_STALL_SECONDS);
+    }
+    None
+}
 
 /// Hard clamp for settings (avoid 0 / absurd values).
 pub const MIN_STREAM_STALL_SECONDS: u32 = 15;
@@ -324,9 +340,27 @@ mod tests {
 
     #[test]
     fn defaults_match_spec() {
-        assert_eq!(DEFAULT_STREAM_STALL_SECONDS, 180);
+        assert_eq!(DEFAULT_STREAM_STALL_SECONDS, 600);
         assert_eq!(MIN_STREAM_STALL_SECONDS, 15);
         assert!(MAX_SOFT_STALL_EMITS_PER_TURN >= 8);
+        assert!(LEGACY_STREAM_STALL_SECONDS.contains(&180));
+    }
+
+    #[test]
+    fn migrate_lifts_legacy_default_only() {
+        assert_eq!(migrate_stream_stall_seconds(180, false), Some(600));
+        assert_eq!(migrate_stream_stall_seconds(120, false), Some(600));
+        assert_eq!(migrate_stream_stall_seconds(180, true), None);
+        // User deliberately set 90s — leave alone.
+        assert_eq!(migrate_stream_stall_seconds(90, false), None);
+        // Already at new default — no rewrite.
+        assert_eq!(migrate_stream_stall_seconds(600, false), None);
+    }
+
+    #[test]
+    fn hard_for_ten_minute_soft() {
+        // soft 600 → 3× = 1800 (30 min cap is 1800).
+        assert_eq!(hard_stall_seconds(600), 1800);
     }
 
     #[test]

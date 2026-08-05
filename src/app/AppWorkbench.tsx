@@ -2127,7 +2127,7 @@ export function AppWorkbench() {
   const [lastProcessLimit, setLastProcessLimit] =
     useState<ProcessLimitEvent | null>(null);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
-  const [streamStallSeconds, setStreamStallSeconds] = useState(180);
+  const [streamStallSeconds, setStreamStallSeconds] = useState(600);
   /** Tool audit ledger retention days: 7 | 30 | 90 | 0 = unlimited. */
   const [auditLedgerRetentionDays, setAuditLedgerRetentionDays] = useState(0);
   /** Headless partial stream events (CLI 0.2.117+). */
