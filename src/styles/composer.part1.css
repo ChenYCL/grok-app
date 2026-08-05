@@ -24,35 +24,155 @@
   min-width: 0;
 }
 
-/* Model root row: show full request model id (panel min-width grows with content). */
-.cmm--model .cmm__row-val {
-  max-width: none;
-  flex: 1 1 auto;
-  justify-content: flex-end;
-  overflow: visible;
+/*
+ * Model menu is portaled to body — styles must target `.cmm__pop--model`
+ * (panel), not `.cmm--model` (trigger root outside the portal).
+ * Width follows content (max-content); only clamp to viewport.
+ */
+.cmm__pop--model {
+  width: max-content;
+  /* Beat default --menu-max-width (360px); inline floating style also clamps. */
+  max-width: min(720px, calc(100vw - 16px));
 }
 
-.cmm--model .cmm__row-val-text {
+/* Root row: show full model id — panel grows with the longest value. */
+.cmm__pop--model .cmm__row {
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.cmm__pop--model .cmm__row-val {
+  max-width: none;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  overflow: visible;
+  min-width: 0;
+}
+
+.cmm__pop--model .cmm__row-val-text {
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
 }
 
 /* Nested option titles: wrap long ids instead of clipping mid-token. */
-.cmm--model .cmm__opt-title {
+.cmm__pop--model .cmm__opt-title {
   overflow-wrap: anywhere;
   word-break: break-word;
   white-space: normal;
 }
 
-.cmm--model .cmm__opt-desc {
+.cmm__pop--model .cmm__opt-desc {
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* Nested list still fills the content-sized panel. */
+.cmm__pop--model .cmm__nested,
+.cmm__pop--model .cmm__opt,
+.cmm__pop--model .cmm__search,
+.cmm__pop--model .cmm__back {
+  min-width: 100%;
+  box-sizing: border-box;
 }
 
 .cmm__row--sub {
   padding-left: 20px;
   font-size: 12px;
+}
+
+/*
+ * Access menu (mode | permission) — dual-column sheet.
+ * Portaled panel class `.cmm__pop--access` (not trigger `.cmm--access`).
+ * Double class beats `.cmm__pop { max-width: var(--menu-max-width) }`.
+ */
+.cmm__pop.cmm__pop--access {
+  width: min(560px, calc(100vw - 16px));
+  min-width: min(480px, calc(100vw - 16px));
+  max-width: min(600px, calc(100vw - 16px));
+  padding: 6px 8px 10px;
+}
+
+.cmm__pop--access .cmm__header {
+  padding: 6px 10px 8px;
+}
+
+.cmm__pop--access .cmm__header-title {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.cmm__access-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 0;
+  align-items: start;
+}
+
+.cmm__access-col {
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.cmm__access-col + .cmm__access-col {
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 8px;
+}
+
+.cmm__pop--access .cmm__section {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+
+/* Compact option rows for dual columns */
+.cmm__opt--access {
+  gap: 8px;
+  padding: 8px 8px;
+  border-radius: 10px;
+}
+
+.cmm__opt--access .cmm__opt-icon {
+  margin-top: 2px;
+}
+
+.cmm__opt--access .cmm__opt-title {
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.25;
+}
+
+.cmm__opt--access .cmm__opt-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
+.cmm__opt--access .cmm__opt-check {
+  margin-top: 2px;
+}
+
+/* Narrow viewports: stack mode above permission */
+@media (max-width: 520px) {
+  .cmm__pop.cmm__pop--access {
+    width: min(360px, calc(100vw - 16px));
+    min-width: min(280px, calc(100vw - 16px));
+  }
+
+  .cmm__access-cols {
+    grid-template-columns: 1fr;
+  }
+
+  .cmm__access-col + .cmm__access-col {
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
+    margin-top: 4px;
+    padding-top: 6px;
+    padding-left: 4px;
+  }
 }
 
 .cmm__nested {

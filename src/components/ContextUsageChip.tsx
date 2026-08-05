@@ -230,9 +230,10 @@ export function ContextUsageChip({
   const surface = resolveContextUsageSurface(display);
   const softUnknown = surface === "soft_unknown";
 
-  // Show the chip once we have either usage data or a known context window
-  // (so the window/percent rows are visible even before the first turn).
-  if (!hasContextUsageData(display) && display.windowSize == null) return null;
+  // New / empty sessions stay hidden — do not flash a "?" ring just because
+  // the model catalog knows a context window size. Soft-fail after compact
+  // and real known/estimated totals still surface via hasContextUsageData.
+  if (!hasContextUsageData(display)) return null;
 
   return (
     <div ref={rootRef} className={`ctx-chip${open ? " is-open" : ""}`}>
