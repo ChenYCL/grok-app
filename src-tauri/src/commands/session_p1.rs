@@ -184,8 +184,45 @@ pub async fn session_resolve_plan(
     rpc_id: Option<u64>,
     session_id: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.resolve_plan(app, decision, feedback, rpc_id, session_id)
-        .await
+    let target = session_id.clone().filter(|s| !s.trim().is_empty());
+    let result = mgr
+        .resolve_plan(app, decision.clone(), feedback, rpc_id, session_id)
+        .await;
+    if result.is_ok() {
+        if let Some(sid) = target.or_else(|| {
+            mgr.snapshot()
+                .session_id
+                .filter(|s| !s.trim().is_empty())
+        }) {
+            crate::plan_chrome::apply_decision(&sid, &decision, true);
+        }
+    }
+    result
+}
+
+/// Load persisted plan chrome for an app session (P1 resume).
+#[tauri::command]
+pub fn session_plan_chrome_get(
+    session_id: String,
+) -> Result<Option<crate::plan_chrome::PlanChromeStored>, String> {
+    Ok(crate::plan_chrome::load_plan_chrome_for_ui(&session_id))
+}
+
+/// Save plan chrome from the UI (hard dismiss / soft hide).
+#[tauri::command]
+pub fn session_plan_chrome_set(
+    session_id: String,
+    chrome: crate::plan_chrome::PlanChromeStored,
+) -> Result<(), String> {
+    crate::plan_chrome::save_plan_chrome(&session_id, &chrome)
+}
+
+/// Read agent-side plan_mode.json + plan.md for the app session (resume UI).
+#[tauri::command]
+pub fn session_agent_plan_snapshot(
+    session_id: String,
+) -> Result<crate::plan_chrome::AgentPlanSnapshot, String> {
+    Ok(crate::plan_chrome::load_agent_plan_snapshot(&session_id))
 }
 
 /// Answer or dismiss pending `_x.ai/ask_user_question`.

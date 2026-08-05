@@ -306,6 +306,11 @@ select,
 .platform-other .app-shell,
 .has-custom-chrome.app-shell {
   background: var(--bg-app);
+  /* Frameless opaque windows are square — the CSS 12px radius above would
+     leave dark corner wedges between the inner radius and the square window
+     edge (webview background shows through). Square corners match the
+     window; macOS keeps the radius because its window is transparent. */
+  border-radius: 0;
 }
 
 .platform-win .workbench,

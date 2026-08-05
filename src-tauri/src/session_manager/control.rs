@@ -157,6 +157,11 @@ impl SessionManager {
             invalidated.len()
         );
         if !invalidated.is_empty() {
+            for row in &invalidated {
+                if let Some(sid) = row.get("sessionId").and_then(|v| v.as_str()) {
+                    crate::plan_chrome::mark_gate_stale(sid);
+                }
+            }
             let _ = app.emit(
                 "session://permissions_invalidated",
                 serde_json::json!({
@@ -182,18 +187,9 @@ impl SessionManager {
     pub(super) fn collect_pending_gate_invalidations(&self) -> Vec<serde_json::Value> {
         let mut out = Vec::new();
         let push = |out: &mut Vec<serde_json::Value>, s: &LiveSession| {
-            if s.pending_permission_rpc_id.is_none()
-                && s.pending_plan_rpc_id.is_none()
-                && s.pending_ask_user_rpc_id.is_none()
-            {
-                return;
+            if let Some(row) = Self::pending_gate_invalidation_row(s) {
+                out.push(row);
             }
-            out.push(serde_json::json!({
-                "sessionId": s.app_session_id,
-                "permissionRpcId": s.pending_permission_rpc_id,
-                "planRpcId": s.pending_plan_rpc_id,
-                "askUserRpcId": s.pending_ask_user_rpc_id,
-            }));
         };
         if let Some(s) = self.inner.lock().as_ref() {
             push(&mut out, s);
@@ -202,6 +198,50 @@ impl SessionManager {
             push(&mut out, s);
         }
         out
+    }
+
+    /// One session's pending human-gate snapshot (permission / plan / ask_user).
+    pub(super) fn pending_gate_invalidation_row(s: &LiveSession) -> Option<serde_json::Value> {
+        if s.pending_permission_rpc_id.is_none()
+            && s.pending_plan_rpc_id.is_none()
+            && s.pending_ask_user_rpc_id.is_none()
+        {
+            return None;
+        }
+        Some(serde_json::json!({
+            "sessionId": s.app_session_id,
+            "permissionRpcId": s.pending_permission_rpc_id,
+            "planRpcId": s.pending_plan_rpc_id,
+            "askUserRpcId": s.pending_ask_user_rpc_id,
+        }))
+    }
+
+    /// Clear pending human gates on a session and return the invalidation row
+    /// (if any) so UI can drop Approve / plan review / ask_user chrome.
+    pub(super) fn take_pending_gate_invalidation(s: &mut LiveSession) -> Option<serde_json::Value> {
+        let row = Self::pending_gate_invalidation_row(s)?;
+        s.pending_permission_rpc_id = None;
+        s.pending_plan_rpc_id = None;
+        s.pending_ask_user_rpc_id = None;
+        Some(row)
+    }
+
+    /// Emit `session://permissions_invalidated` for one or more sessions.
+    pub(super) fn emit_gates_invalidated(
+        app: &AppHandle,
+        reason: &str,
+        sessions: Vec<serde_json::Value>,
+    ) {
+        if sessions.is_empty() {
+            return;
+        }
+        let _ = app.emit(
+            "session://permissions_invalidated",
+            serde_json::json!({
+                "reason": reason,
+                "sessions": sessions,
+            }),
+        );
     }
 
     /// Take live ACP + all background/parked agents out of maps (no kill).

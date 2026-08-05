@@ -9,6 +9,7 @@ import { SidebarSessionRelativeTime } from "@/components/SidebarSessionRelativeT
 
 const labels: SidebarSessionRowLabels = {
   unreadAria: "Unread",
+  planPendingAria: "Plan awaiting review",
   pinned: "Pinned",
   muted: "Muted",
   noteAria: "Note",
@@ -83,6 +84,38 @@ describe("SidebarSessionRow", () => {
     );
     expect(html).toContain("tree-l3--orphan");
     expect(html).toContain("tree-l3--working");
+  });
+
+  it("shows plan-pending badge without changing working/unread chrome", () => {
+    const html = renderToString(
+      React.createElement(SidebarSessionRow, {
+        session: { id: "s3", title: "Needs plan review" },
+        variant: "project",
+        active: false,
+        working: false,
+        unread: false,
+        planPending: true,
+        checked: false,
+        selectMode: false,
+        muted: false,
+        noteTitle: null,
+        worktreeBadge: null,
+        labels,
+        locale: "en",
+        showRelativeTime: false,
+        onOpen: vi.fn(),
+        onContextMenu: vi.fn(),
+        onToggleSelect: vi.fn(),
+        onPin: vi.fn(),
+        onArchive: vi.fn(),
+        onMenu: vi.fn(),
+      }),
+    );
+    expect(html).toContain("tree-l3--plan-pending");
+    expect(html).toContain("sidebar-session-plan-pending");
+    expect(html).toContain("Plan awaiting review");
+    // Actions stay available (not replaced by spinner) when not working.
+    expect(html).toContain("tree-l3__actions");
   });
 });
 

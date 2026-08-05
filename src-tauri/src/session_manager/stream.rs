@@ -115,13 +115,50 @@ impl SessionManager {
     ///
     /// `session/load` (and similar resume paths) replay history while no prompt
     /// RPC is in flight. UI history must come only from the App journal — any
-    /// turn side-effect event (`tool_call`, plan, stream, …) must be dropped.
+    /// turn side-effect event (`tool_call`, stream, …) must be dropped.
     ///
     /// Gate on `prompt_in_flight` (not the FSM): early `prompt_complete` Readies
     /// the FSM while the agent may still stream live output.
+    ///
+    /// **Human gates are different:** `exit_plan_mode` / `ask_user_question` are
+    /// live reverse-RPCs that Grok Build may re-issue after resume with **no**
+    /// prompt in flight (`RestorePlanApproval`). Use
+    /// [`Self::should_drop_plan_event`] / [`Self::should_drop_ask_user_event`]
+    /// for those — never this helper alone.
     #[inline]
     pub(super) fn is_session_load_replay(prompt_in_flight: bool) -> bool {
         !prompt_in_flight
+    }
+
+    /// Whether to drop an `AcpEvent::Plan` (progress update and/or exit_plan_mode).
+    ///
+    /// Accept when:
+    /// - `rpc_id` is set (live reverse-RPC, including resume re-park), or
+    /// - a plan gate is already pending (progress while waiting for approve), or
+    /// - a prompt is in flight (mid-turn plan drafting updates).
+    ///
+    /// Drop only historical plan *notifications* during idle load-replay with
+    /// no open gate (no rpc, no pending, no prompt).
+    #[inline]
+    pub(super) fn should_drop_plan_event(
+        prompt_in_flight: bool,
+        pending_plan: bool,
+        has_rpc_id: bool,
+    ) -> bool {
+        if has_rpc_id || pending_plan || prompt_in_flight {
+            return false;
+        }
+        true
+    }
+
+    /// Whether to drop an `ask_user_question` reverse-RPC.
+    ///
+    /// These always carry a JSON-RPC id and block the agent; never treat as
+    /// session/load transcript replay. (Permission uses auto-allow on replay
+    /// instead; ask_user has no safe auto answer.)
+    #[inline]
+    pub(super) fn should_drop_ask_user_event(_prompt_in_flight: bool) -> bool {
+        false
     }
 
     /// Soft signal when a non-ask turn ends with **no user-visible answer** and

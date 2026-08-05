@@ -715,18 +715,34 @@ impl SessionManager {
                 let app_sid = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
-                        if Self::is_session_load_replay(s.prompt_in_flight) {
-                            tracing::debug!("acp plan dropped: no prompt in flight (replay)");
+                        // Do not use bare is_session_load_replay: Build re-parks
+                        // exit_plan_mode after session/load with no prompt in flight.
+                        if Self::should_drop_plan_event(
+                            s.prompt_in_flight,
+                            s.pending_plan_rpc_id.is_some(),
+                            rpc_id.is_some(),
+                        ) {
+                            tracing::debug!(
+                                "acp plan dropped: idle load-replay (no rpc, no pending gate)"
+                            );
                             return;
                         }
                         if let Some(id) = rpc_id {
                             s.pending_plan_rpc_id = Some(id);
+                            Self::touch_activity_locked(s);
                         }
                         s.app_session_id.clone()
                     } else {
                         return;
                     }
                 };
+                crate::plan_chrome::upsert_from_plan_event(
+                    &app_sid,
+                    &entries,
+                    &body,
+                    rpc_id,
+                    &tool_call_id,
+                );
                 let _ = app.emit(
                     "session://plan",
                     serde_json::json!({
@@ -748,11 +764,12 @@ impl SessionManager {
                 let app_sid = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
-                        if Self::is_session_load_replay(s.prompt_in_flight) {
-                            tracing::debug!("acp ask_user dropped: no prompt in flight (replay)");
+                        // Live reverse-RPC — never drop as session/load replay.
+                        if Self::should_drop_ask_user_event(s.prompt_in_flight) {
                             return;
                         }
                         s.pending_ask_user_rpc_id = Some(rpc_id);
+                        Self::touch_activity_locked(s);
                         s.app_session_id.clone()
                     } else {
                         return;
@@ -785,14 +802,18 @@ impl SessionManager {
                 Self::emit_state(app, &self.snapshot());
             }
             AcpEvent::ProcessExited { .. } => {
+                let mut gate_invalidations: Vec<serde_json::Value> = Vec::new();
                 {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         let st = s.fsm.state();
-                        if matches!(
-                            st,
-                            SessionState::Streaming | SessionState::AwaitingPermission
-                        ) {
+                        // Busy includes pending plan / ask_user (not only Streaming FSM).
+                        let was_busy = Self::live_session_is_busy(s)
+                            || matches!(
+                                st,
+                                SessionState::Streaming | SessionState::AwaitingPermission
+                            );
+                        if was_busy {
                             // I04: flush partial assistant before cancel marker.
                             Self::maybe_flush_stream_journal(s, true, false);
                             let mid = Uuid::new_v4().to_string();
@@ -821,6 +842,11 @@ impl SessionManager {
                                 }),
                             );
                         }
+                        // Drop human gates so UI cannot Approve into a dead process.
+                        if let Some(row) = Self::take_pending_gate_invalidation(s) {
+                            crate::plan_chrome::mark_gate_stale(&s.app_session_id);
+                            gate_invalidations.push(row);
+                        }
                         // During Connecting, leave error to initialize/connect_failed
                         // (fail_all_pending already surfaces a richer stderr-backed message).
                         let has_err = s.fsm.last_error().is_some();
@@ -847,6 +873,7 @@ impl SessionManager {
                 }
                 // Also drop any parked entry with this process id (defensive).
                 self.parked.lock().retain(|_, p| p.process_id != process_id);
+                Self::emit_gates_invalidated(app, "agent_exit", gate_invalidations);
                 Self::emit_state(app, &self.snapshot());
             }
             AcpEvent::State {

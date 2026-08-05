@@ -14,6 +14,7 @@ import {
   IconNotes,
   IconPin,
   IconPinOff,
+  IconPlan,
 } from "@/components/icons";
 import { Spinner } from "@/components/ui/spinner";
 import { Tip } from "@/components/ui/tooltip";
@@ -42,6 +43,8 @@ export type SidebarSessionWorktreeBadgeProp = {
 /** Plain strings already translated by the parent (row does not call tr()). */
 export type SidebarSessionRowLabels = {
   unreadAria: string;
+  /** Plan review / re-park pending — decorative only. */
+  planPendingAria: string;
   pinned: string;
   muted: string;
   noteAria: string;
@@ -60,6 +63,11 @@ export type SidebarSessionRowProps = {
   active: boolean;
   working: boolean;
   unread: boolean;
+  /**
+   * Plan awaiting user approve / re-park. Pure badge — does not change row
+   * click, busy spinner, or select-mode behavior.
+   */
+  planPending?: boolean;
   checked: boolean;
   selectMode: boolean;
   muted: boolean;
@@ -84,6 +92,7 @@ function SidebarSessionRowInner({
   active,
   working,
   unread,
+  planPending = false,
   checked,
   selectMode,
   muted,
@@ -105,6 +114,7 @@ function SidebarSessionRowInner({
     (variant === "project" && session.archived ? " tree-l3--archived" : "") +
     (working ? " tree-l3--working" : "") +
     (unread ? " tree-l3--unread" : "") +
+    (planPending ? " tree-l3--plan-pending" : "") +
     (selectMode ? " tree-l3--select-mode" : "") +
     (checked ? " tree-l3--checked" : "");
 
@@ -169,6 +179,16 @@ function SidebarSessionRowInner({
             title={labels.unreadAria}
             aria-label={labels.unreadAria}
           />
+        ) : null}
+        {planPending ? (
+          <span
+            className="tree-l3__plan-pending"
+            title={labels.planPendingAria}
+            aria-label={labels.planPendingAria}
+            data-testid="sidebar-session-plan-pending"
+          >
+            <IconPlan size={12} aria-hidden />
+          </span>
         ) : null}
         {session.pinned ? (
           <span
@@ -306,6 +326,7 @@ function sidebarSessionRowPropsEqual(
     prev.active === next.active &&
     prev.working === next.working &&
     prev.unread === next.unread &&
+    prev.planPending === next.planPending &&
     prev.checked === next.checked &&
     prev.selectMode === next.selectMode &&
     prev.muted === next.muted &&

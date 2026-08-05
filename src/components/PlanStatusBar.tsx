@@ -16,6 +16,7 @@ export type PlanStatusBarLabels = {
   progress: string;
   review: string;
   done: string;
+  resume: string;
   fraction: string;
   current: string;
   approve: string;
@@ -33,6 +34,8 @@ export type PlanStatusBarProps = {
   planVisible: boolean;
   planWaiting: boolean;
   planRpcId?: number | null;
+  /** Restored chrome waiting for Build re-park / reconnect. */
+  planNeedsResume?: boolean;
   entries: unknown[];
   labels: PlanStatusBarLabels;
   onApprove?: () => void;
@@ -57,6 +60,8 @@ function headlineFor(model: PlanBarModel, labels: PlanStatusBarLabels): string {
       return labels.review;
     case "planBar.done":
       return labels.done;
+    case "planBar.resume":
+      return labels.resume;
     default:
       return labels.planMode;
   }
@@ -68,6 +73,7 @@ export function PlanStatusBar({
   planVisible,
   planWaiting,
   planRpcId = null,
+  planNeedsResume = false,
   entries,
   labels,
   onApprove,
@@ -84,9 +90,10 @@ export function PlanStatusBar({
         planVisible,
         planWaiting,
         planRpcId,
+        planNeedsResume,
         entries,
       }),
-    [goalMode, mode, planVisible, planWaiting, planRpcId, entries],
+    [goalMode, mode, planVisible, planWaiting, planRpcId, planNeedsResume, entries],
   );
 
   if (!shouldShowPlanBar(model)) return null;

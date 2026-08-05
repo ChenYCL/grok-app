@@ -181,8 +181,12 @@ import {
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import {
+  applyPlanPendingMembership,
   closedSessionPlan,
   emptySessionPlan,
+  invalidatePlanGate,
+  planStateToStored,
+  restorePlanFromPersistence,
   type SessionPlanState
 } from "@/lib/planSession";
 import {
@@ -1048,6 +1052,21 @@ export function AppWorkbench() {
     return () =>
       window.removeEventListener(SESSION_UNREAD_CHANGE_EVENT, onChange);
   }, []);
+  /**
+   * Sessions with an open plan review gate (or restored re-park wait).
+   * Sidebar badge only — does not change open/busy/select interactions.
+   */
+  const [planPendingSessionIds, setPlanPendingSessionIds] = useState<
+    Set<string>
+  >(() => new Set());
+  const markPlanPendingBadge = useCallback(
+    (sessionId: string | null | undefined, plan: SessionPlanState) => {
+      setPlanPendingSessionIds((prev) =>
+        applyPlanPendingMembership(prev, sessionId, plan),
+      );
+    },
+    [],
+  );
   const {
     appDialog,
     setAppDialog,
@@ -2005,15 +2024,6 @@ export function AppWorkbench() {
   const pendingAskUserBySessionRef = useRef<Map<string, AskUserPayload>>(
     new Map(),
   );
-  /** Drop a session's stored gates (answered, cancelled, or turn ended). */
-  const clearPendingGates = useCallback((sessionId?: string | null) => {
-    if (!sessionId) return;
-    pendingPermBySessionRef.current.delete(sessionId);
-    pendingAskUserBySessionRef.current.delete(sessionId);
-  }, []);
-  /** Stable handle for the once-mounted event listeners. */
-  const clearPendingGatesRef = useRef(clearPendingGates);
-  clearPendingGatesRef.current = clearPendingGates;
   /** Polite SR announce for stream start/stop (not every token). */
   const [streamA11yNote, setStreamA11yNote] = useState("");
   const wasStreamingRef = useRef(false);
@@ -2028,6 +2038,34 @@ export function AppWorkbench() {
    * Hard-dismiss sets `userClosed` so reopen stays empty until a new plan cycle.
    */
   const planBySessionRef = useRef(new Map<string, PlanState>());
+  /**
+   * Drop a session's stored gates (answered, cancelled, turn ended, process dead).
+   * Also clears plan review rpcId so Approve cannot target a dead reverse-RPC.
+   */
+  const clearPendingGates = useCallback((sessionId?: string | null) => {
+    if (!sessionId) return;
+    pendingPermBySessionRef.current.delete(sessionId);
+    pendingAskUserBySessionRef.current.delete(sessionId);
+    const cached = planBySessionRef.current.get(sessionId);
+    if (cached && cached.rpcId != null) {
+      const next = invalidatePlanGate(cached);
+      planBySessionRef.current.set(sessionId, next);
+      markPlanPendingBadge(sessionId, next);
+      if (sessionId === viewingSessionIdRef.current) {
+        setPlan(next);
+      }
+    } else if (sessionId === viewingSessionIdRef.current) {
+      setPlan((prev) => {
+        if (prev.rpcId == null) return prev;
+        const next = invalidatePlanGate(prev);
+        markPlanPendingBadge(sessionId, next);
+        return next;
+      });
+    }
+  }, [markPlanPendingBadge]);
+  /** Stable handle for the once-mounted event listeners. */
+  const clearPendingGatesRef = useRef(clearPendingGates);
+  clearPendingGatesRef.current = clearPendingGates;
   const [localePreference, setLocalePreference] =
     useState<LocalePreference>("en");
   const [locale, setLocale] = useState<Locale>(() =>
@@ -2805,12 +2843,64 @@ export function AppWorkbench() {
       return;
     }
     try {
-      const [p, s, settings, cli, modelsRes] = await Promise.all([
-        api.projectsList(),
-        api.sessionsList(),
-        api.settingsGet(),
-        api.probeCli(),
-        api.modelsListAvailable().catch(() => null),
+      // Boot is two-phase so the full-screen "detecting" gate is not blocked by
+      // lists / models / keychain / catalog — only settings + CLI probe decide
+      // loading → setup | ready. Everything else hydrates after the shell paints.
+      const settingsP = api.settingsGet();
+      const cliP = api.probeCli();
+      const projectsP = api.projectsList();
+      const sessionsP = api.sessionsList();
+      const modelsP = api.modelsListAvailable().catch(() => null);
+
+      const [settings, cli] = await Promise.all([settingsP, cliP]);
+
+      {
+        const pref = parseLocalePreference(settings.locale);
+        setLocalePreference(pref);
+        setLocale(resolveLocalePreference(pref));
+      }
+      setManualCliPath(settings.manualCliPath || cli.path || "");
+      setCliInfo({
+        found: cli.found,
+        path: cli.path,
+        version: cli.version,
+        source: cli.source || "",
+        cliAuthPresent: !!cli.cliAuthPresent,
+      });
+      const cliSeed: SetupCliInfo = {
+        found: cli.found,
+        path: cli.path,
+        version: cli.version,
+        source: cli.source || "",
+        cliAuthPresent: !!cli.cliAuthPresent,
+      };
+      setSetupCliSeed(cliSeed);
+      if (isCliVersionUnsupported(cli.versionSupported)) {
+        setLocalError(
+          formatCliTooOldDetail({
+            version: cli.version,
+            minVersion: cli.minVersion,
+          }),
+        );
+      }
+
+      // SETUP-GATE-PRO: leave loading as soon as CLI + wizard flags are known.
+      const wizardCompleted = !!settings.setupWizardCompleted;
+      const legacyDone =
+        !!settings.onboardingDone || !!settings.setupSkipped;
+      const gate = resolveSetupGateBoot({
+        cliFound: !!cli.found,
+        wizardCompleted,
+        legacyDone,
+        isMirror: isMirrorClient(),
+      });
+      setAppGate(gate.phase);
+
+      // Phase 2 — workbench data (does not block gate chrome).
+      const [p, s, modelsRes] = await Promise.all([
+        projectsP,
+        sessionsP,
+        modelsP,
       ]);
       setProjects(mapProjectsList(p as Project[]));
       setSessions(
@@ -2823,11 +2913,6 @@ export function AppWorkbench() {
         .then((path) => setGeneralWorkspacePath(path || null))
         .catch(() => {});
       void api.trayRefresh();
-      {
-        const pref = parseLocalePreference(settings.locale);
-        setLocalePreference(pref);
-        setLocale(resolveLocalePreference(pref));
-      }
       const catalog: ModelOption[] =
         modelsRes?.models?.length
           ? modelsRes.models.map((m) => {
@@ -2894,20 +2979,11 @@ export function AppWorkbench() {
           );
         }
       }
-      if (isCliVersionUnsupported(cli.versionSupported)) {
-        setLocalError(
-          formatCliTooOldDetail({
-            version: cli.version,
-            minVersion: cli.minVersion,
-          }),
-        );
-      }
       setSessionDataMode(settings.sessionDataMode || "independent");
       setDefaultOpenTarget(
         (settings as { defaultOpenTarget?: string }).defaultOpenTarget ||
           "finder",
       );
-      setManualCliPath(settings.manualCliPath || cli.path || "");
       setAcpServerAddr(settings.acpServerAddr || "");
       {
         const st = settings as {
@@ -2955,12 +3031,12 @@ export function AppWorkbench() {
         );
       }
       {
-        const p = (settings.backgroundWaitPolicy || "wait")
+        const pol = (settings.backgroundWaitPolicy || "wait")
           .trim()
           .toLowerCase()
           .replace(/-/g, "_");
         setBackgroundWaitPolicy(
-          p === "no_wait" || p === "timeout" ? p : "wait",
+          pol === "no_wait" || pol === "timeout" ? pol : "wait",
         );
         const ts = settings.backgroundWaitTimeoutSec;
         setBackgroundWaitTimeoutSec(
@@ -3059,61 +3135,33 @@ export function AppWorkbench() {
             })),
           );
         });
-      setCliInfo({
-        found: cli.found,
-        path: cli.path,
-        version: cli.version,
-        source: cli.source || "",
-        cliAuthPresent: !!cli.cliAuthPresent,
-      });
-      const masked = await api.secretsGetMasked();
+
+      // Keychain can be slow on first access — never block the gate on it.
+      const masked = await api.secretsGetMasked().catch(() => null);
       const authOk =
         !!cli.cliAuthPresent ||
-        masked.hasOfficialKey ||
-        masked.hasRelayKey;
+        !!masked?.hasOfficialKey ||
+        !!masked?.hasRelayKey;
       setSetup({
         cli: cli.found,
         auth: authOk,
         project: p.some((x) => (x as Project).trusted) || p.length > 0,
       });
 
-      // ── Setup gate: CLI is hard-required; account may be deferred ──
-      const cliSeed: SetupCliInfo = {
-        found: cli.found,
-        path: cli.path,
-        version: cli.version,
-        source: cli.source || "",
-        cliAuthPresent: !!cli.cliAuthPresent,
-      };
-      setSetupCliSeed(cliSeed);
-
-      // SETUP-GATE-PRO: pure decision — CLI hard-required; account never blocks.
-      const wizardCompleted = !!settings.setupWizardCompleted;
-      const legacyDone =
-        !!settings.onboardingDone || !!settings.setupSkipped;
-      const gate = resolveSetupGateBoot({
-        cliFound: !!cli.found,
-        wizardCompleted,
-        legacyDone,
-        isMirror: isMirrorClient(),
-      });
       if (gate.shouldMigrateLegacy) {
         // Older installs that finished the account modal before setupWizardCompleted.
         const flags = buildAuthDeferredFlags({
           authDeferred: !!settings.setupSkipped,
           authOk,
         });
-        try {
-          await api.settingsSet({
+        void api
+          .settingsSet({
             ...settings,
             setupWizardCompleted: true,
             authSetupDeferred: flags.authSetupDeferred,
-          });
-        } catch {
-          /* ignore */
-        }
+          })
+          .catch(() => {});
       }
-      setAppGate(gate.phase);
 
       // One-shot: corrupt store JSON was renamed aside on load (shared-mode safety).
       void api
@@ -3478,35 +3526,39 @@ export function AppWorkbench() {
     };
   }, [asideClampOpts, phoneLayout]);
 
-  // Cold start once: if panes restored open and chat would be crushed, grow once.
-  // Pane open/close is handled by openSidebarPane / openAsidePane only — do not
-  // re-fit on every collapse toggle (that stacked with open handlers and flickered).
+  // Cold start once: if panes restored open, clamp aside to the *current*
+  // window only. Do NOT grow the OS window here — geometry was restored before
+  // show; a post-show setSize flashes size (large↔small). Pane open handlers
+  // still call fitWindowThenClampAside when the user opens a rail.
   useEffect(() => {
     if (phoneLayout || !api.isDesktopHost()) return;
     let cancelled = false;
     const t = window.setTimeout(() => {
       if (cancelled) return;
       const l = layoutRef.current;
-      void fitWindowThenClampAside({
-        sidebarCollapsed: l.sidebarCollapsed,
-        sidebarWidth: l.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
-        asideCollapsed: l.asideCollapsed,
-        asideWidth: l.asideWidth,
-      }).then((width) => {
-        if (cancelled || l.asideCollapsed) return;
-        setLayout((prev) => {
-          if (prev.asideCollapsed || prev.asideWidth === width) return prev;
-          const n = { ...prev, asideWidth: width };
-          saveLayout(localStorage, n);
-          return n;
-        });
+      if (l.asideCollapsed) return;
+      const opts = {
+        ...asideClampOpts(),
+        viewportWidth:
+          typeof window !== "undefined" ? window.innerWidth : undefined,
+        sidebarOccupiedWidth: l.sidebarCollapsed
+          ? 0
+          : l.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+      };
+      const width = clampAsideWidth(l.asideWidth, opts);
+      if (width === l.asideWidth) return;
+      setLayout((prev) => {
+        if (prev.asideCollapsed || prev.asideWidth === width) return prev;
+        const n = { ...prev, asideWidth: width };
+        saveLayout(localStorage, n);
+        return n;
       });
     }, 200);
     return () => {
       cancelled = true;
       window.clearTimeout(t);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only cold fit
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only cold clamp
   }, [phoneLayout]);
 
   // Keep composer above the soft keyboard via visualViewport inset.
@@ -3611,6 +3663,7 @@ export function AppWorkbench() {
     setPlan,
     setPlanFocusKey,
     planBySessionRef,
+    markPlanPendingBadge,
     planOpenedAsideRef,
     planCompletedRecordedRef,
     openAsidePane,
@@ -3795,11 +3848,40 @@ export function AppWorkbench() {
     viewingSessionIdRef.current = s.id;
     // Opening/viewing clears the sidebar unread dot for this chat.
     clearSessionUnread(s.id);
-    // Swap plan chrome to this session (or hide if none / not yet streamed).
+    // Swap plan chrome to this session (memory cache first; Host restore below).
     setPlan(
       planBySessionRef.current.get(s.id) ??
         emptySessionPlan(trRef.current("plan.ready")),
     );
+    // P1: restore plan chrome from disk + agent plan_mode.json / plan.md.
+    void (async () => {
+      const openId = s.id;
+      try {
+        const [chrome, agentSnap] = await Promise.all([
+          api.sessionPlanChromeGet(openId),
+          api.sessionAgentPlanSnapshot(openId),
+        ]);
+        if (viewingSessionIdRef.current !== openId) return;
+        // Live map with a live rpcId wins over stale disk (session still warm).
+        const mem = planBySessionRef.current.get(openId);
+        if (mem && mem.rpcId != null) return;
+        const restored = restorePlanFromPersistence(
+          chrome,
+          agentSnap,
+          trRef.current("plan.ready"),
+        );
+        if (!restored.visible && !restored.userClosed && !restored.body) {
+          return;
+        }
+        planBySessionRef.current.set(openId, restored);
+        markPlanPendingBadge(openId, restored);
+        if (viewingSessionIdRef.current === openId) {
+          setPlan(restored);
+        }
+      } catch {
+        /* soft-fail restore */
+      }
+    })();
     setEditingUserMessageId(null);
     setEditAttachments([]);
     setSessionJsonSchema(
@@ -6081,6 +6163,7 @@ export function AppWorkbench() {
   const sidebarSessionLabels = useMemo<SidebarSessionRowLabels>(
     () => ({
       unreadAria: tr("session.unreadAria"),
+      planPendingAria: tr("session.planPendingAria"),
       pinned: tr("session.pinned"),
       muted: tr("session.muted"),
       noteAria: tr("session.noteAria"),
@@ -8823,9 +8906,16 @@ export function AppWorkbench() {
 
   const writePlanForViewing = useCallback((next: PlanState) => {
     const sid = viewingSessionIdRef.current;
-    if (sid) planBySessionRef.current.set(sid, next);
+    if (sid) {
+      planBySessionRef.current.set(sid, next);
+      markPlanPendingBadge(sid, next);
+      // Soft-persist plan chrome so App restart can restore body / closed flags.
+      void api.sessionPlanChromeSet(sid, planStateToStored(next)).catch(() => {
+        /* private / host soft-fail */
+      });
+    }
     setPlan(next);
-  }, []);
+  }, [markPlanPendingBadge]);
 
   /** Archive a plan decision to localStorage (preview only; no secrets). */
   const archivePlanDecision = useCallback(
@@ -16246,6 +16336,8 @@ export function AppWorkbench() {
                                     const checked =
                                       selectedSessionIds.has(s.id);
                                     const unread = unreadSessionIds.has(s.id);
+                                    const planPending =
+                                      planPendingSessionIds.has(s.id);
                                     const noteRaw =
                                       sessionNotesMap[s.id]?.trim() || "";
                                     return (
@@ -16255,6 +16347,7 @@ export function AppWorkbench() {
                                         active={session.sessionId === s.id}
                                         working={working}
                                         unread={unread}
+                                        planPending={planPending}
                                         checked={checked}
                                         selectMode={sessionSelectMode}
                                         muted={mutedSessionIds.has(s.id)}
@@ -16337,6 +16430,8 @@ export function AppWorkbench() {
                           const working = busyIds.has(s.id);
                           const checked = selectedSessionIds.has(s.id);
                           const unread = unreadSessionIds.has(s.id);
+                          const planPending =
+                            planPendingSessionIds.has(s.id);
                           const noteRaw =
                             sessionNotesMap[s.id]?.trim() || "";
                           return (
@@ -16346,6 +16441,7 @@ export function AppWorkbench() {
                               active={session.sessionId === s.id}
                               working={working}
                               unread={unread}
+                              planPending={planPending}
                               checked={checked}
                               selectMode={sessionSelectMode}
                               muted={mutedSessionIds.has(s.id)}
@@ -17111,6 +17207,11 @@ export function AppWorkbench() {
               planVisible={plan.visible}
               planWaiting={plan.waiting}
               planRpcId={plan.rpcId}
+              planNeedsResume={
+                plan.visible &&
+                plan.rpcId == null &&
+                (plan.gateStale || plan.awaitingAgentApproval)
+              }
               entries={plan.entries}
               labels={{
                 goal: tr("planBar.goal"),
@@ -17118,6 +17219,7 @@ export function AppWorkbench() {
                 progress: tr("planBar.progress"),
                 review: tr("planBar.review"),
                 done: tr("planBar.done"),
+                resume: tr("planBar.resume"),
                 fraction: tr("planBar.fraction"),
                 current: tr("planBar.current"),
                 approve: tr("plan.approve"),

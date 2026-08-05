@@ -249,6 +249,38 @@ export async function sessionResolvePlan(args: {
   });
 }
 
+/** Host-persisted plan chrome for an app session (survives restart). */
+export async function sessionPlanChromeGet(
+  sessionId: string,
+): Promise<import("@/lib/planSession").PlanChromeStored | null> {
+  if (!sessionId?.trim()) return null;
+  if (!isTauri() && !isMirrorClient()) return null;
+  return invoke("session_plan_chrome_get", { sessionId });
+}
+
+/** Save plan chrome from the UI (dismiss / soft hide). */
+export async function sessionPlanChromeSet(
+  sessionId: string,
+  chrome: import("@/lib/planSession").PlanChromeStored,
+): Promise<void> {
+  if (!sessionId?.trim()) return;
+  if (!isTauri() && !isMirrorClient()) return;
+  await invoke("session_plan_chrome_set", { sessionId, chrome });
+}
+
+/** Agent plan_mode.json + plan.md snapshot for resume UI. */
+export async function sessionAgentPlanSnapshot(
+  sessionId: string,
+): Promise<import("@/lib/planSession").AgentPlanSnapshot> {
+  if (!sessionId?.trim()) {
+    return { found: false };
+  }
+  if (!isTauri() && !isMirrorClient()) {
+    return { found: false };
+  }
+  return invoke("session_agent_plan_snapshot", { sessionId });
+}
+
 /** Answer or dismiss pending `_x.ai/ask_user_question`. */
 export async function sessionResolveAskUser(args: {
   decision: "accepted" | "cancelled" | string;

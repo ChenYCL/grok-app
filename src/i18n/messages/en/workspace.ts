@@ -296,6 +296,7 @@ export const enWorkspace = {
   "planBar.progress": "Plan in progress",
   "planBar.review": "Plan ready for review",
   "planBar.done": "Plan complete",
+  "planBar.resume": "Plan restored — reconnect or send a message so approval can reappear",
   "planBar.fraction": "{n}",
   "planBar.current": "Now",
   "planBar.expand": "Open in resources",

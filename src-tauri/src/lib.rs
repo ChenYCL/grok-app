@@ -106,6 +106,8 @@ mod path_scope;
 
 mod paths;
 
+mod plan_chrome;
+
 mod permission;
 
 #[cfg(test)]
@@ -295,8 +297,8 @@ pub fn run() {
                 // Do NOT auto-restore on window-ready: that runs deferred on the main
                 // thread (after the window is already shown), so the default 1200×800
                 // frame flashes first and then snaps to the saved bounds. The main
-                // window starts hidden (visible:false in tauri conf) and setup restores
-                // the geometry synchronously before showing — see setup below.
+                // window starts hidden (visible:false in tauri conf) and setup creates
+                // it at the saved geometry — see setup below.
                 .skip_initial_state("main")
                 // Do not restore VISIBLE: close-to-tray leaves the window hidden; a
                 // saved `visible:false` would make the next launch appear headless.
@@ -414,152 +416,162 @@ pub fn run() {
 
             use tauri::Manager;
 
+            // ── 1) Main window first so the WebView starts loading the UI while
+            // host services (media/relay/tray/prewarm) come up in parallel.
+            // create:false + baked geometry; never flash default size then snap.
+            let saved_geometry = load_restored_main_geometry(app);
+            let scale = scale_factor_for_saved(app, saved_geometry.as_ref());
+            let on_monitor = saved_geometry
+                .as_ref()
+                .and_then(|g| saved_on_monitor(app, g));
+            let mut main_cfg = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .cloned()
+                .ok_or_else(|| "main window config missing".to_string())?;
+            main_cfg.visible = false;
+            main_cfg.focus = false;
+            if let Some(g) = &saved_geometry {
+                let (mut w, mut h) = (g.width as f64 / scale, g.height as f64 / scale);
+                if let Some(min_w) = main_cfg.min_width {
+                    w = w.max(min_w);
+                }
+                if let Some(min_h) = main_cfg.min_height {
+                    h = h.max(min_h);
+                }
+                main_cfg.width = w;
+                main_cfg.height = h;
+                let (px, py) = if g.maximized {
+                    (g.prev_x as f64 / scale, g.prev_y as f64 / scale)
+                } else {
+                    (g.x as f64 / scale, g.y as f64 / scale)
+                };
+                if on_monitor.is_some() {
+                    main_cfg.x = Some(px);
+                    main_cfg.y = Some(py);
+                    main_cfg.center = false;
+                } else {
+                    main_cfg.x = None;
+                    main_cfg.y = None;
+                    main_cfg.center = true;
+                }
+                main_cfg.maximized = false;
+                main_cfg.fullscreen = g.fullscreen;
+            } else {
+                main_cfg.center = true;
+            }
+            // Concrete light|dark for boot shell + window chrome (from AppSettings.theme).
+            let boot_theme = resolve_boot_theme(&store::load_settings().theme);
+            let boot_theme_script = format!(
+                r#"(function(){{try{{Object.defineProperty(window,"__GROK_BOOT_THEME__",{{value:{theme:?},writable:false,configurable:false}});var d=document.documentElement;if(d)d.setAttribute("data-theme",{theme:?});}}catch(e){{}}}})();"#,
+                theme = boot_theme
+            );
+            let window = tauri::WebviewWindowBuilder::from_config(app, &main_cfg)?
+                .visible(false)
+                .initialization_script(&boot_theme_script)
+                .build()?;
+
+            #[cfg(target_os = "macos")]
+            {
+                // Transparent for vibrancy; CSS / boot shell paints the surface.
+                let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+                if let Err(e) = apply_vibrancy(
+                    &window,
+                    NSVisualEffectMaterial::Sidebar,
+                    None,
+                    Some(16.0),
+                ) {
+                    tracing::warn!("window vibrancy: {e}");
+                }
+                // Lock native chrome to the same resolved theme so the first frame
+                // matches (system preference is resolved above when theme=system).
+                let _ = window.set_theme(Some(if boot_theme == "light" {
+                    tauri::Theme::Light
+                } else {
+                    tauri::Theme::Dark
+                }));
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            {
+                // Match tokens --bg-app (dark #0d0d0d / light #f4f4f6).
+                let (r, g, b) = if boot_theme == "light" {
+                    (244, 244, 246)
+                } else {
+                    (13, 13, 13)
+                };
+                let _ = window.set_background_color(Some(tauri::window::Color(r, g, b, 255)));
+            }
+
+            #[cfg(windows)]
+            win_shell::ensure_main_window_shell_integration(&window);
+
+            let want_maximized = saved_geometry
+                .as_ref()
+                .map(|g| g.maximized)
+                .unwrap_or(false);
+            if want_maximized {
+                // Maximize is async on macOS — one main-loop tick while hidden so
+                // the first visible frame is already full-size.
+                let _ = window.maximize();
+                let w = window.clone();
+                let _ = window.run_on_main_thread(move || {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                });
+            } else {
+                // Show immediately — do not block_on host services first (that
+                // freezes the main loop and delays WebView paint).
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+
+            // ── 2) Non-UI host work off the critical path (WebView already open).
+
             // Editors / terminals / git GUIs: non-blocking background scan + cache.
-
-            // UI menus read cache immediately; never wait on icon extraction here.
-
             editors::start_background_scan_on_launch(app.handle().clone());
 
-
-
-            // Loopback media HTTP (token-gated Range streaming). Primary path for
-
-            // local <img>/<video>/fetch — frontend no longer depends on media://.
-
-            match tauri::async_runtime::block_on(media_server::start()) {
-
-                Ok(handle) => {
-
-                    tracing::info!(
-
-                        base_url = %handle.endpoint.base_url,
-
-                        "media server ready"
-
-                    );
-
-                    app.manage(handle);
-
-                }
-
-                Err(e) => {
-
-                    tracing::error!(error = %e, "media server failed to start — local media previews may break");
-
-                }
-
-            }
-
-
-
-            // OpenCode Zen Go etc. append non-OpenAI SSE trailers (missing `id`)
-
-            // that fatal Grok Build — sanitize via loopback reverse proxy and
-
-            // rewrite affected provider base_url in agent-home config.toml.
-
+            // Media HTTP + relay proxy: never block setup/show. Frontend uses
+            // try_state / soft-fail until ready (ensureMediaEndpoint retries).
             {
-
-                if let Err(e) =
-
-                    tauri::async_runtime::block_on(relay_stream_proxy::ensure_started())
-
-                {
-
-                    tracing::warn!(error = %e, "relay stream proxy failed to start");
-
-                }
-
-                if let Err(e) = relay_stream_proxy::repair_sanitize_proxy_bases() {
-
-                    tracing::warn!(error = %e, "relay stream proxy base_url repair failed");
-
-                }
-
-            }
-
-            if let Some(window) = app.get_webview_window("main") {
-
-                #[cfg(target_os = "macos")]
-
-                {
-
-                    // Transparent layers so CSS backdrop-filter / native vibrancy show through.
-
-                    let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
-
-                    // Frosted glass under transparent regions (sidebar). Solid main CSS covers the rest.
-
-                    use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
-
-                    if let Err(e) = apply_vibrancy(
-
-                        &window,
-
-                        NSVisualEffectMaterial::Sidebar,
-
-                        None,
-
-                        Some(16.0),
-
-                    ) {
-
-                        tracing::warn!("window vibrancy: {e}");
-
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    match media_server::start().await {
+                        Ok(h) => {
+                            tracing::info!(
+                                base_url = %h.endpoint.base_url,
+                                "media server ready"
+                            );
+                            handle.manage(h);
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                error = %e,
+                                "media server failed to start — local media previews may break"
+                            );
+                        }
                     }
-
-                }
-
-                // Windows / others: solid base matching dark theme (avoids white flash / WebView2 glitches).
-
-                #[cfg(not(target_os = "macos"))]
-
-                {
-
-                    let _ = window.set_background_color(Some(tauri::window::Color(13, 13, 13, 255)));
-
-                }
-
-                // Windows: frameless + tray skip_taskbar can leave the HWND out of
-
-                // Explorer's Show Desktop set when it is the only visible window.
-
-                #[cfg(windows)]
-
-                win_shell::ensure_main_window_shell_integration(&window);
-
-                // Reveal the workbench only AFTER its saved geometry is applied.
-                // The window starts hidden (visible:false in tauri conf) and the
-                // plugin's auto-restore is skipped for "main", so this synchronous
-                // restore + show never flashes the default frame first.
-                {
-                    use tauri_plugin_window_state::{StateFlags, WindowExt};
-                    let flags = StateFlags::SIZE
-                        | StateFlags::POSITION
-                        | StateFlags::MAXIMIZED
-                        | StateFlags::FULLSCREEN;
-                    if let Err(e) = window.restore_state(flags) {
-                        tracing::warn!(error = %e, "window-state restore failed — showing defaults");
+                    if let Err(e) = relay_stream_proxy::ensure_started().await {
+                        tracing::warn!(error = %e, "relay stream proxy failed to start");
                     }
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                    if let Err(e) = relay_stream_proxy::repair_sanitize_proxy_bases() {
+                        tracing::warn!(error = %e, "relay stream proxy base_url repair failed");
+                    }
+                });
             }
 
             // Menu-bar / system tray — logo.svg tray icon (not dock app icon)
-
             if let Err(e) = tray::setup_tray(app.handle()) {
-
                 tracing::warn!("tray setup: {e}");
-
             }
 
             // I03: recycle idle agent processes; session metadata stays on disk.
-
             // I06: surface cancel UI when a stream is pure-silent for too long.
-
             {
-
                 use tauri::Manager;
 
                 let mgr = app.state::<Arc<SessionManager>>().inner().clone();
@@ -568,36 +580,26 @@ pub fn run() {
 
                 mgr.start_stream_stall_watchdog(app.handle().clone());
 
-                // Prewarm one CLI process on launch (spawn + init + auth, no
-                // session): the first connect then reuses it instead of
-                // cold-spawning (~1.5s initialize + network auth). Best-effort —
-                // no CLI / no auth / existing warm process all skip it.
+                // Prewarm competes with frontend probeCli (`grok --version`) if
+                // both spawn at t=0. Delay so first paint + gate probe win.
                 {
                     let mgr = Arc::clone(&mgr);
                     let app_handle = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
                         mgr.prewarm(app_handle).await;
                     });
                 }
 
                 // Scheduled automations: host tick works while window is in tray
-
                 // (and with --start-in-tray / keep_tray_for_schedules). No daemon.
-
                 // One-shot `--fire-due-schedules`: fire at most one due task then exit
-
                 // (honest helper — not KeepAlive continuous daemon).
-
                 if automation_runner::wants_fire_due_schedules() {
-
                     automation_runner::start_oneshot(app.handle().clone(), mgr);
-
                 } else {
-
                     automation_runner::start(app.handle().clone(), mgr);
-
                 }
-
             }
 
             // LaunchAgent / helper / oneshot: open into tray so schedules fire without focus steal.
@@ -718,6 +720,12 @@ pub fn run() {
             commands::session_resolve_permission,
 
             commands::session_resolve_plan,
+
+            commands::session_plan_chrome_get,
+
+            commands::session_plan_chrome_set,
+
+            commands::session_agent_plan_snapshot,
 
             commands::session_resolve_ask_user,
 
@@ -1384,4 +1392,153 @@ pub fn run() {
             let _ = (app, &event);
 
         });
+}
+
+/// Resolve AppSettings.theme (`system` | `light` | `dark`) to a concrete
+/// boot theme for the static shell and native chrome before React loads.
+fn resolve_boot_theme(pref: &str) -> &'static str {
+    match pref.trim().to_ascii_lowercase().as_str() {
+        "light" => "light",
+        "dark" => "dark",
+        // system / empty / unknown
+        _ => {
+            if os_prefers_dark() {
+                "dark"
+            } else {
+                "light"
+            }
+        }
+    }
+}
+
+/// Best-effort OS dark/light probe (no extra deps).
+fn os_prefers_dark() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        // AppleInterfaceStyle is set only in dark mode; missing → light.
+        let out = std::process::Command::new("defaults")
+            .args(["read", "-g", "AppleInterfaceStyle"])
+            .output();
+        if let Ok(o) = out {
+            let s = String::from_utf8_lossy(&o.stdout).to_ascii_lowercase();
+            return s.contains("dark");
+        }
+        return true;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // AppsUseLightTheme DWORD: 0 = dark apps, 1 = light.
+        let out = std::process::Command::new("reg")
+            .args([
+                "query",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                "/v",
+                "AppsUseLightTheme",
+            ])
+            .output();
+        if let Ok(o) = out {
+            let s = String::from_utf8_lossy(&o.stdout);
+            for line in s.lines() {
+                if !line.contains("AppsUseLightTheme") {
+                    continue;
+                }
+                // line ends like "0x0" or "0x1"
+                if line.contains("0x0") {
+                    return true;
+                }
+                if line.contains("0x1") {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        // GNOME etc. — soft default dark when unknown
+        true
+    }
+}
+
+/// Saved main-window bounds from the window-state plugin's file (physical px).
+struct RestoredMainGeometry {
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    /// Position before maximize (plugin uses this when restoring a maximized window).
+    prev_x: i32,
+    prev_y: i32,
+    maximized: bool,
+    fullscreen: bool,
+}
+
+/// Read the saved main-window geometry written by tauri-plugin-window-state.
+/// Returns None on first launch or when the file is missing/unparseable.
+fn load_restored_main_geometry(app: &tauri::App) -> Option<RestoredMainGeometry> {
+    use tauri::Manager;
+    let bytes = std::fs::read(app.path().app_config_dir().ok()?.join(".window-state.json")).ok()?;
+    let root: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let m = root.get("main")?;
+    let width = m.get("width")?.as_u64()? as u32;
+    let height = m.get("height")?.as_u64()? as u32;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let x = m.get("x")?.as_i64()? as i32;
+    let y = m.get("y")?.as_i64()? as i32;
+    Some(RestoredMainGeometry {
+        width,
+        height,
+        x,
+        y,
+        prev_x: m
+            .get("prev_x")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32)
+            .unwrap_or(x),
+        prev_y: m
+            .get("prev_y")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32)
+            .unwrap_or(y),
+        maximized: m.get("maximized").and_then(|b| b.as_bool()).unwrap_or(false),
+        fullscreen: m.get("fullscreen").and_then(|b| b.as_bool()).unwrap_or(false),
+    })
+}
+
+/// The monitor intersecting the saved bounds, if any — mirrors the plugin's
+/// monitor-intersection guard so a disconnected display cannot strand the
+/// window off-screen.
+fn saved_on_monitor(app: &tauri::App, g: &RestoredMainGeometry) -> Option<tauri::Monitor> {
+    let monitors = app.available_monitors().ok()?;
+    monitors.into_iter().find(|m| {
+        let p = m.position();
+        let s = m.size();
+        let (left, top) = (p.x, p.y);
+        let (right, bottom) = (p.x + s.width as i32, p.y + s.height as i32);
+        [
+            (g.x, g.y),
+            (g.x + g.width as i32, g.y),
+            (g.x, g.y + g.height as i32),
+            (g.x + g.width as i32, g.y + g.height as i32),
+        ]
+        .into_iter()
+        .any(|(x, y)| x >= left && x < right && y >= top && y < bottom)
+    })
+}
+
+/// Scale factor to convert saved physical bounds into the logical pixels the
+/// window builder expects — prefers the monitor the window will land on.
+fn scale_factor_for_saved(app: &tauri::App, g: Option<&RestoredMainGeometry>) -> f64 {
+    if let Some(g) = g {
+        if let Some(m) = saved_on_monitor(app, g) {
+            return m.scale_factor();
+        }
+    }
+    app.primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0)
 }

@@ -18,6 +18,7 @@ import {
   applyThemeToDocument,
   getSystemTheme,
   loadThemePreference,
+  parseThemePreference,
   saveThemePreference,
   subscribeSystemTheme,
   type Theme,
@@ -88,6 +89,22 @@ export type ThemeShellValue = {
 };
 
 const ThemeShellContext = createContext<ThemeShellValue | null>(null);
+
+/** Persist theme preference into AppSettings (Host) for next cold-start paint. */
+async function persistThemeToHostSettings(
+  preference: ThemePreference,
+): Promise<void> {
+  try {
+    const { isDesktopHost } = await import("@/lib/api");
+    if (!isDesktopHost()) return;
+    const { settingsGet, settingsSet } = await import("@/lib/api/settings");
+    const s = await settingsGet();
+    if (s.theme === preference) return;
+    await settingsSet({ ...s, theme: preference });
+  } catch {
+    /* non-Tauri / store busy — localStorage still holds the choice */
+  }
+}
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
@@ -193,6 +210,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     (next: ThemePreference) => {
       saveThemePreference(localStorage, next);
       setThemePreference(next);
+      // Dual-write Host settings so the next cold start can paint the boot
+      // shell + native chrome before React loads (see resolve_boot_theme).
+      void persistThemeToHostSettings(next);
       if (next === "system" && themeSchedule.enabled) {
         const resolved = resolveThemeWithSchedule(
           next,
@@ -213,6 +233,47 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     },
     [themeSchedule],
   );
+
+  // One-shot: migrate localStorage theme → Host when Host still has the
+  // factory default "system" while the user already chose light/dark locally.
+  // After dual-write is live, Host is source of truth on subsequent boots.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { isDesktopHost } = await import("@/lib/api");
+        if (!isDesktopHost()) return;
+        const { settingsGet, settingsSet } = await import("@/lib/api/settings");
+        const s = await settingsGet();
+        if (cancelled) return;
+        const host = parseThemePreference(s.theme);
+        const local = loadThemePreference(localStorage);
+        if (host === "system" && local !== "system") {
+          await settingsSet({ ...s, theme: local });
+          return;
+        }
+        if (host !== local) {
+          // Host wins (written by a previous dual-write / other client).
+          saveThemePreference(localStorage, host);
+          if (!cancelled) {
+            setThemePreference(host);
+            void applyThemePreference(host, {
+              onResolved: (resolved, system) => {
+                if (!cancelled) {
+                  setSystemTheme(host === "system" ? resolved : system);
+                }
+              },
+            });
+          }
+        }
+      } catch {
+        /* browser / offline */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const applyThemeScheduleChoice = useCallback(
     (next: ThemeScheduleConfig) => {

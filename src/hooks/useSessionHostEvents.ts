@@ -64,7 +64,9 @@ import {
 } from "@/lib/contextUsage";
 import {
   emptySessionPlan,
+  invalidatePlanGate,
   mergePlanFromEvent,
+  planStateToStored,
 } from "@/lib/planSession";
 import { planDisplayMarkdown } from "@/lib/planBody";
 import { computePlanProgress, parsePlanEntries } from "@/lib/planStatus";
@@ -1058,25 +1060,57 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             },
           ),
         );
-        // #524: agent recycled while a permission bar was open — drop stale UI
-        // so Approve is not written to a dead stdin.
+        // #524 + plan gates: agent recycled / exited while a human gate was open —
+        // drop stale Approve (permission / plan / ask_user) so UI never writes to
+        // a dead stdin. Host payload includes planRpcId / askUserRpcId.
         await track(
           api.listen<{
             reason?: string;
             sessions?: Array<{
               sessionId?: string;
               permissionRpcId?: number | null;
+              planRpcId?: number | null;
+              askUserRpcId?: number | null;
             }>;
           }>("session://permissions_invalidated", (p) => {
             if (cancelled || !p) return;
             const sessions = Array.isArray(p.sessions) ? p.sessions : [];
+            const viewing = c.viewingSessionIdRef.current;
+            const planMap = c.planBySessionRef?.current as
+              | Map<string, import("@/lib/planSession").SessionPlanState>
+              | undefined;
+
+            const dropPlanGate = (sid: string) => {
+              if (!planMap) return;
+              if (sid === viewing) {
+                c.setPlan(
+                  (prev: import("@/lib/planSession").SessionPlanState) => {
+                    const next = invalidatePlanGate(prev);
+                    planMap.set(sid, next);
+                    c.markPlanPendingBadge?.(sid, next);
+                    return next;
+                  },
+                );
+                return;
+              }
+              const base = planMap.get(sid);
+              if (!base) return;
+              const next = invalidatePlanGate(base);
+              planMap.set(sid, next);
+              c.markPlanPendingBadge?.(sid, next);
+            };
+
             for (const row of sessions) {
               const sid = row?.sessionId;
               if (!sid) continue;
               c.pendingPermBySessionRef.current.delete(sid);
               c.pendingAskUserBySessionRef.current.delete(sid);
-              if (sid === c.viewingSessionIdRef.current) {
+              // Session listed ⇒ process/gates gone; drop plan Approve even if
+              // planRpcId was already taken in Host before emit.
+              dropPlanGate(sid);
+              if (sid === viewing) {
                 c.setPerm(null);
+                c.setAskUser?.(null);
                 c.clearPendingGatesRef.current?.(sid);
               }
             }
@@ -1084,7 +1118,10 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             // the payload omitted session ids (older hosts).
             if (!sessions.length) {
               c.pendingPermBySessionRef.current.clear();
+              c.pendingAskUserBySessionRef.current.clear();
               c.setPerm(null);
+              c.setAskUser?.(null);
+              if (viewing) dropPlanGate(viewing);
             }
           }),
         );
@@ -1525,7 +1562,35 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                 composerMode,
               );
               c.planBySessionRef.current.set(p.sessionId, next);
+              c.markPlanPendingBadge?.(p.sessionId, next);
               planJustCompleted(prev, next, p.sessionId);
+              void api
+                .sessionPlanChromeSet(p.sessionId, planStateToStored(next))
+                .catch(() => {});
+              // exit_plan_mode gate on a demoted turn — nudge like permission bar.
+              const becameReview =
+                next.rpcId != null &&
+                (prev.rpcId == null || !prev.visible) &&
+                next.visible &&
+                !next.userClosed;
+              if (becameReview) {
+                c.setToast(c.trRef.current("session.backgroundPlan"));
+                window.setTimeout(() => c.setToast(null), 4200);
+                if (
+                  shouldShowDesktopNotify(
+                    "permission",
+                    c.notifyPrefsRef.current,
+                  )
+                ) {
+                  showDesktopNotification({
+                    title: c.trRef.current("plan.ready"),
+                    body: c.trRef.current("session.backgroundPlan"),
+                    tag: `plan-bg-${p.sessionId}-${next.rpcId}`,
+                    force: true,
+                    sessionId: p.sessionId,
+                  });
+                }
+              }
               return;
             }
 
@@ -1554,7 +1619,11 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
               }
               if (targetSid) {
                 c.planBySessionRef.current.set(targetSid, next);
+                c.markPlanPendingBadge?.(targetSid, next);
                 planJustCompleted(prev, next, targetSid);
+                void api
+                  .sessionPlanChromeSet(targetSid, planStateToStored(next))
+                  .catch(() => {});
               }
               return next;
             });

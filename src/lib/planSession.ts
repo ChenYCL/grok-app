@@ -38,6 +38,44 @@ export type SessionPlanState = {
    * the review panel after the user confirmed close.
    */
   closedRpcId: number | null;
+  /**
+   * Host process died while a gate was open (or chrome reloaded after restart).
+   * Approve is disabled until a live re-park rpcId arrives.
+   */
+  gateStale: boolean;
+  /**
+   * Agent `plan_mode.json` reports `awaiting_plan_approval` — Build will re-park
+   * exit_plan_mode after session/load. UI shows resume chrome without a live rpcId.
+   */
+  awaitingAgentApproval: boolean;
+};
+
+/** Host-persisted plan chrome (camelCase wire). */
+export type PlanChromeStored = {
+  title?: string;
+  body?: string;
+  entries?: unknown;
+  waiting?: boolean;
+  visible?: boolean;
+  rpcId?: number | null;
+  toolCallId?: string | null;
+  barDismissed?: boolean;
+  userClosed?: boolean;
+  closedToolCallId?: string | null;
+  closedRpcId?: number | null;
+  gateStale?: boolean;
+  awaitingAgentApproval?: boolean;
+  updatedAt?: string;
+};
+
+/** Agent-side plan_mode.json + plan.md snapshot. */
+export type AgentPlanSnapshot = {
+  found?: boolean;
+  awaitingPlanApproval?: boolean;
+  planModeState?: string | null;
+  planBody?: string | null;
+  planPath?: string | null;
+  agentSessionId?: string | null;
 };
 
 export type PlanEventPayload = {
@@ -63,6 +101,8 @@ export function emptySessionPlan(
     userClosed: false,
     closedToolCallId: null,
     closedRpcId: null,
+    gateStale: false,
+    awaitingAgentApproval: false,
   };
 }
 
@@ -79,6 +119,175 @@ export function closedSessionPlan(
     closedRpcId,
     barDismissed: true,
   };
+}
+
+/**
+ * Agent process died / recycled while a plan gate was open.
+ * Drop Approve / request-changes (dead rpcId) but keep body/entries as
+ * read-only so the user can still open Resources → Plan history of the draft.
+ * Does **not** set `userClosed` — a resume re-park with a **new** rpcId may reopen.
+ */
+export function invalidatePlanGate(prev: SessionPlanState): SessionPlanState {
+  // Only an open exit_plan_mode reverse-RPC can Approve into a dead process.
+  // Default empty chrome uses waiting=true without rpcId — leave it alone.
+  if (prev.rpcId == null && !prev.awaitingAgentApproval) {
+    return prev;
+  }
+  const hasBody = !!(prev.body && prev.body.trim()) || prev.entries.length > 0;
+  return {
+    ...prev,
+    rpcId: null,
+    waiting: false,
+    gateStale: true,
+    awaitingAgentApproval: prev.awaitingAgentApproval,
+    // Keep chrome visible when there is content to browse; otherwise hide.
+    visible: hasBody ? prev.visible : false,
+    barDismissed: hasBody ? prev.barDismissed : true,
+  };
+}
+
+/**
+ * Restore plan chrome after App restart / session open.
+ * Host chrome is authoritative for userClosed; agent snapshot fills body +
+ * awaiting_plan_approval when Build still has a parked approval.
+ * Never restores a live rpcId (reverse-RPC dies with the process).
+ */
+export function restorePlanFromPersistence(
+  chrome: PlanChromeStored | null | undefined,
+  agent: AgentPlanSnapshot | null | undefined,
+  readyTitle: string,
+): SessionPlanState {
+  const base = emptySessionPlan(readyTitle);
+  if (!chrome && !agent?.found && !agent?.planBody && !agent?.awaitingPlanApproval) {
+    return base;
+  }
+
+  const entries = Array.isArray(chrome?.entries)
+    ? (chrome!.entries as unknown[])
+    : [];
+  let body = (chrome?.body ?? "").trim();
+  if (!body && agent?.planBody) {
+    body = String(agent.planBody).trim();
+  }
+
+  const userClosed = !!chrome?.userClosed;
+  const awaitingAgent =
+    !!agent?.awaitingPlanApproval || !!chrome?.awaitingAgentApproval;
+  const gateStale =
+    !!chrome?.gateStale ||
+    (awaitingAgent && !userClosed) ||
+    (!!chrome?.rpcId && !userClosed);
+
+  if (userClosed && !awaitingAgent) {
+    return {
+      ...closedSessionPlan(
+        readyTitle,
+        chrome?.closedToolCallId ?? chrome?.toolCallId ?? null,
+        chrome?.closedRpcId ?? null,
+      ),
+      body: body || "",
+      entries,
+      gateStale: false,
+      awaitingAgentApproval: false,
+    };
+  }
+
+  const hasContent = !!body || entries.length > 0;
+  if (!hasContent && !awaitingAgent) {
+    return base;
+  }
+
+  return {
+    title: (chrome?.title || "").trim() || readyTitle,
+    body,
+    entries,
+    waiting: !awaitingAgent,
+    visible: !userClosed && (hasContent || awaitingAgent),
+    rpcId: null,
+    toolCallId: chrome?.toolCallId != null ? String(chrome.toolCallId) : null,
+    barDismissed: !!chrome?.barDismissed && !awaitingAgent,
+    userClosed: false,
+    closedToolCallId: null,
+    closedRpcId: null,
+    gateStale: gateStale || awaitingAgent,
+    awaitingAgentApproval: awaitingAgent,
+  };
+}
+
+/** Serialize UI plan state for Host plan_chrome.json. */
+export function planStateToStored(plan: SessionPlanState): PlanChromeStored {
+  return {
+    title: plan.title,
+    body: plan.body,
+    entries: plan.entries,
+    waiting: plan.waiting,
+    visible: plan.visible,
+    rpcId: plan.rpcId,
+    toolCallId: plan.toolCallId,
+    barDismissed: plan.barDismissed,
+    userClosed: plan.userClosed,
+    closedToolCallId: plan.closedToolCallId,
+    closedRpcId: plan.closedRpcId,
+    gateStale: plan.gateStale,
+    awaitingAgentApproval: plan.awaitingAgentApproval,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** True when UI should show “waiting for agent re-park / reconnect” copy. */
+export function planNeedsResumeHint(
+  plan: Pick<
+    SessionPlanState,
+    "rpcId" | "gateStale" | "awaitingAgentApproval" | "visible" | "userClosed"
+  >,
+): boolean {
+  if (plan.userClosed || plan.rpcId != null) return false;
+  return (
+    plan.visible &&
+    (plan.gateStale || plan.awaitingAgentApproval)
+  );
+}
+
+/**
+ * Sidebar / dashboard badge: session needs human plan review.
+ * Live exit_plan_mode rpcId, or restored awaiting re-park chrome.
+ * Does not affect click / busy spinner / approve handlers.
+ */
+export function sessionHasPendingPlanReview(
+  plan: Pick<
+    SessionPlanState,
+    | "rpcId"
+    | "visible"
+    | "userClosed"
+    | "gateStale"
+    | "awaitingAgentApproval"
+  > | null | undefined,
+): boolean {
+  if (!plan || plan.userClosed) return false;
+  if (plan.rpcId != null) return true;
+  return planNeedsResumeHint(plan);
+}
+
+/**
+ * Update a session-id set used for sidebar badges without forcing a new Set
+ * when membership is unchanged (keeps memoized rows stable).
+ */
+export function applyPlanPendingMembership(
+  prev: ReadonlySet<string>,
+  sessionId: string | null | undefined,
+  plan: Parameters<typeof sessionHasPendingPlanReview>[0],
+): Set<string> {
+  const sid = sessionId?.trim();
+  if (!sid) return prev instanceof Set ? prev : new Set(prev);
+  const pending = sessionHasPendingPlanReview(plan);
+  const had = prev.has(sid);
+  if (pending === had) {
+    return prev instanceof Set ? prev : new Set(prev);
+  }
+  const next = new Set(prev);
+  if (pending) next.add(sid);
+  else next.delete(sid);
+  return next;
 }
 
 function normalizeToolCallId(
@@ -172,6 +381,7 @@ export function mergePlanFromEvent(
           ? (prev.toolCallId ?? null)
           : null;
 
+  const liveRpc = rpcId != null;
   return {
     title: readyTitle,
     body: displayBody || (prev.visible && !prev.userClosed ? prev.body : ""),
@@ -181,7 +391,7 @@ export function mergePlanFromEvent(
         : prev.visible && !prev.userClosed
           ? prev.entries
           : [],
-    waiting: rpcId == null,
+    waiting: rpcId == null && !prev.awaitingAgentApproval,
     visible: true,
     rpcId,
     toolCallId,
@@ -189,5 +399,8 @@ export function mergePlanFromEvent(
     userClosed: false,
     closedToolCallId: null,
     closedRpcId: null,
+    // Fresh reverse-RPC clears stale/resume flags.
+    gateStale: liveRpc ? false : prev.gateStale,
+    awaitingAgentApproval: liveRpc ? false : prev.awaitingAgentApproval,
   };
 }

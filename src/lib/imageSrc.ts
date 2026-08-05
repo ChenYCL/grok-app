@@ -130,13 +130,20 @@ export async function ensureMediaEndpoint(): Promise<MediaServerEndpoint | null>
   mediaEndpointPromise = (async () => {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      const ep = await invoke<MediaServerEndpoint>("media_server_endpoint");
-      if (ep?.baseUrl && ep?.token) {
-        setMediaEndpoint(ep);
-        return ep;
+      // Host starts the media server async after first paint — brief retries
+      // cover the cold-start race without blocking UI boot.
+      for (let attempt = 0; attempt < 8; attempt++) {
+        try {
+          const ep = await invoke<MediaServerEndpoint>("media_server_endpoint");
+          if (ep?.baseUrl && ep?.token) {
+            setMediaEndpoint(ep);
+            return ep;
+          }
+        } catch {
+          /* not managed yet */
+        }
+        await new Promise((r) => setTimeout(r, 40 + attempt * 30));
       }
-      return null;
-    } catch {
       return null;
     } finally {
       mediaEndpointPromise = null;

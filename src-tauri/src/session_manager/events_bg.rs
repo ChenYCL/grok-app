@@ -511,6 +511,7 @@ impl SessionManager {
                 }
             }
             AcpEvent::ProcessExited { .. } => {
+                let mut gate_invalidations: Vec<serde_json::Value> = Vec::new();
                 let mut bg = self.background.lock();
                 if let Some(mut s) = bg.remove(app_session_id) {
                     let busy = Self::live_session_is_busy(&s)
@@ -550,6 +551,10 @@ impl SessionManager {
                             s.app_session_id
                         );
                     }
+                    if let Some(row) = Self::take_pending_gate_invalidation(&mut s) {
+                        crate::plan_chrome::mark_gate_stale(&s.app_session_id);
+                        gate_invalidations.push(row);
+                    }
                     let _ = s.fsm.crash("Agent process exited (background)");
                     s.acp = None;
                     s.open_tool_ids.clear();
@@ -564,6 +569,8 @@ impl SessionManager {
                     snap.state = SessionState::Disconnected;
                     Self::emit_runtime(app, &snap);
                 }
+                drop(bg);
+                Self::emit_gates_invalidated(app, "agent_exit", gate_invalidations);
                 Self::emit_state(app, &self.snapshot());
             }
             AcpEvent::Error { error } => {
@@ -654,8 +661,104 @@ impl SessionManager {
                     }),
                 );
             }
+            // Human gates must work off-focus: demoted turns raise exit_plan_mode /
+            // ask_user_question on the background pump. Ignoring them left the agent
+            // wedged on reverse-RPC with no UI (plan mode disconnect class of bugs).
+            AcpEvent::Plan {
+                entries,
+                body,
+                rpc_id,
+                tool_call_id,
+            } => {
+                {
+                    let mut bg = self.background.lock();
+                    let Some(s) = bg.get_mut(app_session_id) else {
+                        return;
+                    };
+                    if Self::should_drop_plan_event(
+                        s.prompt_in_flight,
+                        s.pending_plan_rpc_id.is_some(),
+                        rpc_id.is_some(),
+                    ) {
+                        tracing::debug!(
+                            "background plan dropped: idle after turn close sid={app_session_id}"
+                        );
+                        return;
+                    }
+                    if let Some(id) = rpc_id {
+                        s.pending_plan_rpc_id = Some(id);
+                        Self::touch_activity_locked(s);
+                    }
+                }
+                crate::plan_chrome::upsert_from_plan_event(
+                    app_session_id,
+                    &entries,
+                    &body,
+                    rpc_id,
+                    &tool_call_id,
+                );
+                let _ = app.emit(
+                    "session://plan",
+                    serde_json::json!({
+                        "sessionId": app_session_id,
+                        "entries": entries,
+                        "body": body,
+                        "rpcId": rpc_id,
+                        "toolCallId": tool_call_id,
+                        "waiting": rpc_id.is_none(),
+                    }),
+                );
+                let bg_snap = self
+                    .background
+                    .lock()
+                    .get(app_session_id)
+                    .map(Self::snapshot_from_live);
+                if let Some(snap) = bg_snap {
+                    Self::emit_runtime(app, &snap);
+                }
+            }
+            AcpEvent::AskUserQuestion {
+                rpc_id,
+                tool_call_id,
+                questions,
+                raw: _,
+            } => {
+                {
+                    let mut bg = self.background.lock();
+                    let Some(s) = bg.get_mut(app_session_id) else {
+                        return;
+                    };
+                    if Self::should_drop_ask_user_event(s.prompt_in_flight) {
+                        return;
+                    }
+                    s.pending_ask_user_rpc_id = Some(rpc_id);
+                    Self::touch_activity_locked(s);
+                }
+                let _ = app.emit(
+                    "session://ask_user",
+                    serde_json::json!({
+                        "rpcId": rpc_id,
+                        "sessionId": app_session_id,
+                        "toolCallId": tool_call_id,
+                        "questions": questions,
+                    }),
+                );
+                // Same signal as background permission — toast / sidebar attention.
+                let _ = app.emit(
+                    "session://background_permission",
+                    serde_json::json!({ "sessionId": app_session_id, "kind": "ask_user" }),
+                );
+                let bg_snap = self
+                    .background
+                    .lock()
+                    .get(app_session_id)
+                    .map(Self::snapshot_from_live);
+                if let Some(snap) = bg_snap {
+                    Self::emit_runtime(app, &snap);
+                }
+            }
             _ => {
-                // ask_user / plan / stderr / retry — still forward with session id when possible
+                // stderr / retry / other variants — log only
                 tracing::debug!("background acp event ignored variant for sid={app_session_id}");
             }
         }

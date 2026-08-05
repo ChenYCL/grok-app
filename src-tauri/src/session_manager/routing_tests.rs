@@ -189,10 +189,32 @@ fn empty_run_skips_ask_mode_and_tool_turns() {
 
 #[test]
 fn session_load_replay_gate_matches_prompt_in_flight() {
-    // session/load replay: no prompt RPC → drop stream/tool/plan side effects.
+    // session/load replay: no prompt RPC → drop stream/tool side effects.
     assert!(SessionManager::is_session_load_replay(false));
     // Live turn (prompt in flight): apply all side effects.
     assert!(!SessionManager::is_session_load_replay(true));
+}
+
+#[test]
+fn plan_event_gate_accepts_resume_repark_without_prompt() {
+    // Grok Build re-issues exit_plan_mode after session/load with no prompt.
+    assert!(!SessionManager::should_drop_plan_event(
+        /* prompt_in_flight */ false,
+        /* pending_plan */ false,
+        /* has_rpc_id */ true,
+    ));
+    // Progress while a gate is already open (prompt may have completed early).
+    assert!(!SessionManager::should_drop_plan_event(false, true, false));
+    // Mid-turn drafting updates.
+    assert!(!SessionManager::should_drop_plan_event(true, false, false));
+    // Idle load-replay plan notification only.
+    assert!(SessionManager::should_drop_plan_event(false, false, false));
+}
+
+#[test]
+fn ask_user_event_never_dropped_as_load_replay() {
+    assert!(!SessionManager::should_drop_ask_user_event(false));
+    assert!(!SessionManager::should_drop_ask_user_event(true));
 }
 
 fn hint(app: &str, process: &str, agent: Option<&str>, pif: bool) -> SessionRouteHint {

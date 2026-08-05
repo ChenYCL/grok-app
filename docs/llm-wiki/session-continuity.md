@@ -35,12 +35,31 @@ On `session_connect` for an existing App session:
 5. On failure → **`session/new`**, then mark **history bootstrap**.
 
 **Replay gate (Host):** `session/load` replays history as ACP notifications
-(`agent_message_chunk`, `tool_call`, plan, …). While **no** `session/prompt` is
-in flight (`prompt_in_flight == false`), the Host **drops** those side effects:
+(`agent_message_chunk`, `tool_call`, plan entries, …). While **no**
+`session/prompt` is in flight (`prompt_in_flight == false`), the Host **drops**
+stream / tool / journal side effects:
 
 - no re-typing into the UI stream  
-- no `session://tool` / plan / ask_user storms  
+- no `session://tool` storms  
 - **no journal rewrites** (`messages.json` stays the UI source of truth)
+
+**Human gates are not load-replay.** Grok Build may re-issue
+`_x.ai/exit_plan_mode` after resume (`RestorePlanApproval` /
+`awaiting_plan_approval`) with **no** prompt in flight. Host accepts Plan
+events when `rpc_id` is set, or a plan gate is already pending, or a prompt is
+in flight; only idle plan *notifications* without an open gate are dropped.
+`ask_user_question` reverse-RPCs are never dropped as replay. Background
+(demoted) turns handle Plan / AskUser the same way as live (emit + store
+pending ids). Process exit / recycle clears pending gates and emits
+`session://permissions_invalidated` (incl. `planRpcId`) so the UI drops ghost
+Approve buttons.
+
+**Plan chrome persistence (P1):** App session dir stores `plan_chrome.json`
+(body, entries, closed flags, gate_stale). Host upserts on every live plan
+event; UI also saves on dismiss/approve. On session open the UI loads chrome +
+`session_agent_plan_snapshot` (agent `plan_mode.json` + `plan.md`). Restored
+state never carries a live `rpcId` — Approve waits for Build re-park. Sticky
+bar uses `planBar.resume` while `gateStale` / `awaitingAgentApproval`.
 
 Live turns (`prompt_in_flight == true`) still apply stream + tools normally.
 See crash investigation notes: ungated tool_call replay on open could thrash

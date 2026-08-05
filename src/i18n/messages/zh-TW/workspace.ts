@@ -296,6 +296,7 @@ export const zhTWWorkspace = {
   "planBar.progress": "計劃進行中",
   "planBar.review": "計劃待審閱",
   "planBar.done": "計劃已完成",
+  "planBar.resume": "計劃已恢復 — 請重新連線或傳送訊息以重新出現核准入口",
   "planBar.fraction": "{n}",
   "planBar.current": "目前",
   "planBar.expand": "在資源中開啟",

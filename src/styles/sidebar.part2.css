@@ -271,6 +271,20 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
   font-weight: 600;
 }
 
+/* Plan pending review / re-park — decorative chip; does not change row hit targets. */
+.tree-l3__plan-pending {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--warning, #e8a838) 92%, var(--text-primary));
+  background: color-mix(in srgb, var(--warning, #e8a838) 16%, transparent);
+  pointer-events: none;
+}
+
 /* Muted desktop-notify badge — soft pill so it stays readable next to unread. */
 .tree-l3__muted {
   color: var(--text-tertiary);

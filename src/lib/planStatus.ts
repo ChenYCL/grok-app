@@ -41,7 +41,8 @@ export type PlanBarModel = {
     | "planBar.planMode"
     | "planBar.progress"
     | "planBar.review"
-    | "planBar.done";
+    | "planBar.done"
+    | "planBar.resume";
   currentLabel: string;
   showActions: boolean;
 };
@@ -151,6 +152,8 @@ export function resolvePlanBarModel(input: {
   planWaiting: boolean;
   planRpcId?: number | null;
   entries: unknown[];
+  /** Process died / App restart; waiting for Build re-park. */
+  planNeedsResume?: boolean;
 }): PlanBarModel {
   const parsed = parsePlanEntries(input.entries);
   const progress = computePlanProgress(parsed);
@@ -165,6 +168,17 @@ export function resolvePlanBarModel(input: {
       headlineKey: "planBar.review",
       currentLabel: progress.current?.content ?? "",
       showActions: true,
+    };
+  }
+
+  // Restored draft without live reverse-RPC (reconnect / re-park pending).
+  if (input.planVisible && input.planNeedsResume) {
+    return {
+      kind: "plan_progress",
+      progress,
+      headlineKey: "planBar.resume",
+      currentLabel: progress.current?.content ?? "",
+      showActions: false,
     };
   }
 
