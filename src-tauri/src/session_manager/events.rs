@@ -11,8 +11,8 @@ use crate::acp_client::{
 use crate::error::{AgentError, AgentErrorCode};
 use crate::journal_throttle::is_paragraph_break;
 use crate::permission::{
-    extract_path_target, extract_shell_command, may_auto_allow, may_auto_deny, pick_option_id,
-    scope_key,
+    extract_path_target, extract_shell_command, may_auto_allow, may_auto_deny,
+    resolve_allow_once_option_id, resolve_reject_option_id, scope_key,
 };
 use crate::session_fsm::SessionState;
 use crate::store::{self, ChatMessageStored};
@@ -269,9 +269,8 @@ impl SessionManager {
                     })
                 };
                 if let Some(acp) = replay_acp {
-                    let option_id = pick_option_id(&options, "allow_once")
-                        .or_else(|| pick_option_id(&options, "allow"))
-                        .unwrap_or_else(|| "allow_once".into());
+                    // CLI wire optionIds are hyphenated (#523).
+                    let option_id = resolve_allow_once_option_id(&options);
                     tracing::debug!(
                         "acp permission auto-resolved during load replay tool={tool_name}"
                     );
@@ -321,15 +320,10 @@ impl SessionManager {
                 if auto {
                     let acp = self.inner.lock().as_ref().and_then(|s| s.acp.clone());
                     if let Some(acp) = acp {
-                        // Grok Build shell prompts use underscore optionIds (allow_once /
-                        // allow_command_always / reject). Hyphenated ACP-style fallbacks
-                        // are rejected as "unknown permission option".
-                        let option_id = pick_option_id(&options, "allow_once")
-                            .or_else(|| pick_option_id(&options, "allow_always"))
-                            .or_else(|| pick_option_id(&options, "allow_command_always"))
-                            .or_else(|| pick_option_id(&options, "always_allow_all_sessions"))
-                            .or_else(|| pick_option_id(&options, "allow"))
-                            .unwrap_or_else(|| "allow_once".into());
+                        // Grok Build CLI publishes hyphenated wire optionIds
+                        // (`allow-once`, `always-allow`, …). Underscore fallbacks
+                        // are rejected as "unknown permission option" (#523).
+                        let option_id = resolve_allow_once_option_id(&options);
                         let _ = acp
                             .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                             .await;
@@ -356,11 +350,7 @@ impl SessionManager {
                 } else if auto_deny {
                     let acp = self.inner.lock().as_ref().and_then(|s| s.acp.clone());
                     if let Some(acp) = acp {
-                        let option_id = pick_option_id(&options, "reject_once")
-                            .or_else(|| pick_option_id(&options, "reject_always"))
-                            .or_else(|| pick_option_id(&options, "reject"))
-                            .or_else(|| pick_option_id(&options, "deny"))
-                            .unwrap_or_else(|| "reject".into());
+                        let option_id = resolve_reject_option_id(&options);
                         let _ = acp
                             .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                             .await;
@@ -391,6 +381,14 @@ impl SessionManager {
                         &tool_name,
                         Some(&title),
                     );
+                    // Track pending permission + process generation so recycle
+                    // can invalidate stale UI bars (#524).
+                    {
+                        let mut guard = self.inner.lock();
+                        if let Some(s) = guard.as_mut() {
+                            s.pending_permission_rpc_id = Some(rpc_id);
+                        }
+                    }
                     let req = UiPermissionRequest {
                         rpc_id,
                         session_id,

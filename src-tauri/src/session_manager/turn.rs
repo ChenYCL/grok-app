@@ -382,35 +382,63 @@ impl SessionManager {
                     ))
                 }
             };
-            if let Err(e) = outcome {
-                // Route by session id: this chat may have been demoted to
-                // background while the prompt ran, and the live slot now holds
-                // someone else's turn — recording the error there would blame
-                // the wrong chat.
-                let mut record_error = false;
-                mgr.with_session_mut(&turn_sid, |s| {
-                    // The RPC failed, so no authoritative PromptComplete will
-                    // arrive. Release the turn or the chat stays un-parkable
-                    // and refuses further sends.
-                    s.prompt_in_flight = false;
-                    // Stall heal / user stop already force-ended (Ready) with
-                    // journal kept — do not clobber with fail_with when
-                    // cancel/abort unblocks this waiter.
-                    if !matches!(
-                        s.fsm.state(),
-                        SessionState::Streaming | SessionState::AwaitingPermission
-                    ) {
-                        return;
+            match outcome {
+                Err(e) => {
+                    // Route by session id: this chat may have been demoted to
+                    // background while the prompt ran, and the live slot now holds
+                    // someone else's turn — recording the error there would blame
+                    // the wrong chat.
+                    let mut record_error = false;
+                    mgr.with_session_mut(&turn_sid, |s| {
+                        // The RPC failed, so no authoritative PromptComplete will
+                        // arrive. Release the turn or the chat stays un-parkable
+                        // and refuses further sends.
+                        s.prompt_in_flight = false;
+                        // Stall heal / user stop already force-ended (Ready) with
+                        // journal kept — do not clobber with fail_with when
+                        // cancel/abort unblocks this waiter.
+                        if !matches!(
+                            s.fsm.state(),
+                            SessionState::Streaming | SessionState::AwaitingPermission
+                        ) {
+                            return;
+                        }
+                        // Skip if host already recorded a retry-exhausted error this turn.
+                        if !s.provider_retry_aborted {
+                            SessionManager::record_turn_error(s, &app2, &e);
+                            let _ = s.fsm.fail_with(e);
+                            record_error = true;
+                        }
+                    });
+                    if record_error {
+                        mgr.emit_for_session(&app2, &turn_sid);
                     }
-                    // Skip if host already recorded a retry-exhausted error this turn.
-                    if !s.provider_retry_aborted {
-                        SessionManager::record_turn_error(s, &app2, &e);
-                        let _ = s.fsm.fail_with(e);
-                        record_error = true;
+                }
+                Ok(()) => {
+                    // #522: even if PromptComplete events were dropped/raced,
+                    // a successful session/prompt must release the busy gate.
+                    let mut need_emit = false;
+                    mgr.with_session_mut(&turn_sid, |s| {
+                        if s.prompt_in_flight {
+                            tracing::warn!(
+                                target: "session",
+                                session = %turn_sid,
+                                "prompt RPC Ok but prompt_in_flight still true — force-clear (#522)"
+                            );
+                            s.prompt_in_flight = false;
+                            if s.deferred_prompt_complete.is_none() {
+                                s.deferred_prompt_complete = Some("end_turn".into());
+                            }
+                            need_emit = SessionManager::try_finish_deferred_prompt_complete(
+                                s,
+                                Some(&app2),
+                            )
+                            .is_some();
+                        }
+                    });
+                    if need_emit {
+                        mgr.emit_for_session(&app2, &turn_sid);
                     }
-                });
-                if record_error {
-                    mgr.emit_for_session(&app2, &turn_sid);
                 }
             }
         });

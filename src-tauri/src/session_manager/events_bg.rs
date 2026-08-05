@@ -8,8 +8,8 @@ use uuid::Uuid;
 use crate::acp_client::{AcpEvent, PermissionOutcome, StreamKind};
 use crate::journal_throttle::is_paragraph_break;
 use crate::permission::{
-    extract_path_target, extract_shell_command, may_auto_allow, may_auto_deny, pick_option_id,
-    scope_key,
+    extract_path_target, extract_shell_command, may_auto_allow, may_auto_deny,
+    resolve_allow_once_option_id, resolve_reject_option_id, scope_key,
 };
 use crate::session_fsm::SessionState;
 use crate::store::{self, ChatMessageStored};
@@ -207,9 +207,8 @@ impl SessionManager {
                 };
                 if auto {
                     if let Some(acp) = acp {
-                        let option_id = pick_option_id(&options, "allow_once")
-                            .or_else(|| pick_option_id(&options, "allow"))
-                            .unwrap_or_else(|| "allow_once".into());
+                        // Hyphenated CLI wire optionIds (#523).
+                        let option_id = resolve_allow_once_option_id(&options);
                         let _ = acp
                             .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                             .await;
@@ -229,9 +228,7 @@ impl SessionManager {
                     }
                 } else if auto_deny {
                     if let Some(acp) = acp {
-                        let option_id = pick_option_id(&options, "reject_once")
-                            .or_else(|| pick_option_id(&options, "reject"))
-                            .unwrap_or_else(|| "reject".into());
+                        let option_id = resolve_reject_option_id(&options);
                         let _ = acp
                             .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                             .await;
@@ -256,6 +253,12 @@ impl SessionManager {
                         &tool_name,
                         Some(&title),
                     );
+                    {
+                        let mut bg = self.background.lock();
+                        if let Some(s) = bg.get_mut(app_session_id) {
+                            s.pending_permission_rpc_id = Some(rpc_id);
+                        }
+                    }
                     let req = UiPermissionRequest {
                         rpc_id,
                         session_id: session_id.clone(),

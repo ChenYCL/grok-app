@@ -77,17 +77,38 @@ export function mapPermissionButtons(
 
   const find = (pred: (o: AcpPermissionOption) => boolean) => arr.find(pred);
 
+  const idOf = (o: AcpPermissionOption) => oid(o).toLowerCase();
+
   const once =
     find((o) => kindOf(o) === "allow_once") ||
+    find((o) => idOf(o) === "allow-once" || idOf(o) === "allow_once") ||
     find((o) => nameOf(o).includes("once") && nameOf(o).includes("allow")) ||
     find((o) => kindOf(o).includes("allow") && !kindOf(o).includes("always"));
 
+  // Session allow: kind allow_always, or CLI wire ids always-allow /
+  // allow-always-command|mcp|domain (#523).
   const always =
     find((o) => kindOf(o) === "allow_always") ||
+    find((o) => {
+      const id = idOf(o);
+      return (
+        id === "always-allow" ||
+        id === "allow-always" ||
+        id === "allow_always" ||
+        id.startsWith("allow-always-") ||
+        id.startsWith("allow_always_")
+      );
+    }) ||
     find((o) => nameOf(o).includes("always") || nameOf(o).includes("session"));
 
   const reject =
     find((o) => kindOf(o) === "reject_once" || kindOf(o) === "reject_always") ||
+    find(
+      (o) =>
+        idOf(o) === "reject-once" ||
+        idOf(o) === "reject-always" ||
+        idOf(o) === "reject",
+    ) ||
     find((o) => nameOf(o).includes("reject") || nameOf(o).includes("deny"));
 
   const L = {
@@ -98,6 +119,8 @@ export function mapPermissionButtons(
 
   // Always show short i18n labels (agent option names are often long English).
   // optionId still comes from the real ACP option when present.
+  // CLI wire ids are hyphenated (`allow-once`, `always-allow`, `reject-once`);
+  // underscore fallbacks are rejected as "unknown permission option" (#523).
   const out: MappedPermButton[] = [];
   if (once && oid(once)) {
     out.push({
@@ -108,11 +131,12 @@ export function mapPermissionButtons(
   } else {
     out.push({
       decision: "allow_once",
-      optionId: "allow_once",
+      optionId: "allow-once",
       label: L.allowOnce,
     });
   }
-  // Map "Allow for session" to allow_always kind when present (session scope in our Host)
+  // Map "Allow for session" to allow_always kind when present (session scope in our Host).
+  // CLI generic session id is `always-allow` (word order reversed from allow-always-*).
   if (always && oid(always)) {
     out.push({
       decision: "allow_session",
@@ -122,7 +146,7 @@ export function mapPermissionButtons(
   } else {
     out.push({
       decision: "allow_session",
-      optionId: "allow_always",
+      optionId: "always-allow",
       label: L.allowSession,
     });
   }
@@ -133,7 +157,7 @@ export function mapPermissionButtons(
       label: L.deny,
     });
   } else {
-    out.push({ decision: "deny", optionId: "reject", label: L.deny });
+    out.push({ decision: "deny", optionId: "reject-once", label: L.deny });
   }
   return out;
 }

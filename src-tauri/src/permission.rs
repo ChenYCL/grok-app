@@ -520,22 +520,50 @@ pub fn effective_permission_policy(
     }
 }
 
-/// Pick optionId from ACP permission options by preferred kind.
+/// Wire `optionId` values published by Grok Build CLI (`prompter.rs` / ACP).
+/// Host internal decision names stay snake_case (`allow_once`); only the
+/// JSON-RPC payload must use these hyphenated ids (#523).
+pub const FALLBACK_ALLOW_ONCE: &str = "allow-once";
+/// Generic "allow for session" / always-allow chip (not `allow-always`).
+pub const FALLBACK_ALWAYS_ALLOW: &str = "always-allow";
+pub const FALLBACK_REJECT_ONCE: &str = "reject-once";
+
+/// Normalize kind / optionId tokens so `allow_once` and `allow-once` match.
+fn norm_perm_token(s: &str) -> String {
+    s.trim().to_ascii_lowercase().replace(['_', '-'], "")
+}
+
+/// Pick optionId from ACP permission options by preferred kind (or id).
+///
+/// Prefer matching `kind` (underscore forms like `allow_once`), then exact
+/// `optionId` / `id`, then fuzzy name. Returns the **wire** optionId from the
+/// option object when present — never invents underscore ids for CLI.
 pub fn pick_option_id(options: &serde_json::Value, prefer: &str) -> Option<String> {
     let arr = options.as_array()?;
-    let prefer = prefer.to_lowercase();
+    let prefer_norm = norm_perm_token(prefer);
+    if prefer_norm.is_empty() {
+        return None;
+    }
+    let extract_id = |o: &serde_json::Value| {
+        o.get("optionId")
+            .or_else(|| o.get("id"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    };
     for o in arr {
         let kind = o
             .get("kind")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_lowercase();
-        if kind == prefer {
-            return o
-                .get("optionId")
-                .or_else(|| o.get("id"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+            .unwrap_or("");
+        if !kind.is_empty() && norm_perm_token(kind) == prefer_norm {
+            return extract_id(o);
+        }
+    }
+    for o in arr {
+        if let Some(id) = extract_id(o) {
+            if norm_perm_token(&id) == prefer_norm {
+                return Some(id);
+            }
         }
     }
     for o in arr {
@@ -545,15 +573,50 @@ pub fn pick_option_id(options: &serde_json::Value, prefer: &str) -> Option<Strin
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_lowercase();
-        if name.contains(&prefer) || name.contains(&prefer.replace('_', " ")) {
-            return o
-                .get("optionId")
-                .or_else(|| o.get("id"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+        let prefer_lower = prefer.to_lowercase();
+        if name.contains(&prefer_lower)
+            || name.contains(&prefer_lower.replace('_', " "))
+            || name.contains(&prefer_lower.replace('_', "-"))
+            || name.contains(&prefer_lower.replace('-', " "))
+        {
+            return extract_id(o);
         }
     }
     None
+}
+
+/// Resolve allow-once wire id: real option list first, else CLI fallback.
+pub fn resolve_allow_once_option_id(options: &serde_json::Value) -> String {
+    pick_option_id(options, "allow_once")
+        .or_else(|| pick_option_id(options, "allow-once"))
+        .or_else(|| pick_option_id(options, "allow"))
+        .unwrap_or_else(|| FALLBACK_ALLOW_ONCE.into())
+}
+
+/// Resolve session / always-allow wire id (CLI uses `always-allow`, plus
+/// tool-scoped `allow-always-command` / `allow-always-mcp` / `allow-always-domain`).
+pub fn resolve_always_allow_option_id(options: &serde_json::Value) -> String {
+    pick_option_id(options, "allow_always")
+        .or_else(|| pick_option_id(options, "always_allow"))
+        .or_else(|| pick_option_id(options, "always-allow"))
+        .or_else(|| pick_option_id(options, "allow-always"))
+        .or_else(|| pick_option_id(options, "allow_command_always"))
+        .or_else(|| pick_option_id(options, "allow-always-command"))
+        .or_else(|| pick_option_id(options, "allow-always-mcp"))
+        .or_else(|| pick_option_id(options, "allow-always-domain"))
+        .or_else(|| pick_option_id(options, "always_allow_all_sessions"))
+        .unwrap_or_else(|| FALLBACK_ALWAYS_ALLOW.into())
+}
+
+/// Resolve reject / deny wire id.
+pub fn resolve_reject_option_id(options: &serde_json::Value) -> String {
+    pick_option_id(options, "reject_once")
+        .or_else(|| pick_option_id(options, "reject-once"))
+        .or_else(|| pick_option_id(options, "reject_always"))
+        .or_else(|| pick_option_id(options, "reject-always"))
+        .or_else(|| pick_option_id(options, "reject"))
+        .or_else(|| pick_option_id(options, "deny"))
+        .unwrap_or_else(|| FALLBACK_REJECT_ONCE.into())
 }
 
 #[derive(Debug, Default)]
@@ -876,7 +939,7 @@ mod tests {
     fn pick_option_id_prefers_kind() {
         let opts = serde_json::json!([
             {"optionId": "allow-once", "name": "Allow once", "kind": "allow_once"},
-            {"optionId": "allow-always", "name": "Allow always", "kind": "allow_always"},
+            {"optionId": "always-allow", "name": "Allow always", "kind": "allow_always"},
             {"optionId": "reject-once", "name": "Reject", "kind": "reject_once"}
         ]);
         assert_eq!(
@@ -886,6 +949,28 @@ mod tests {
         assert_eq!(
             pick_option_id(&opts, "reject_once").as_deref(),
             Some("reject-once")
+        );
+        assert_eq!(
+            pick_option_id(&opts, "allow_always").as_deref(),
+            Some("always-allow")
+        );
+    }
+
+    #[test]
+    fn fallback_wire_ids_are_hyphenated_cli_tokens() {
+        let empty = serde_json::json!([]);
+        assert_eq!(resolve_allow_once_option_id(&empty), "allow-once");
+        assert_eq!(resolve_always_allow_option_id(&empty), "always-allow");
+        assert_eq!(resolve_reject_option_id(&empty), "reject-once");
+        // Bash session-scoped id from CLI options list
+        let bash = serde_json::json!([
+            {"optionId": "allow-once", "kind": "allow_once"},
+            {"optionId": "allow-always-command", "kind": "allow_always"},
+            {"optionId": "reject-once", "kind": "reject_once"}
+        ]);
+        assert_eq!(
+            resolve_always_allow_option_id(&bash),
+            "allow-always-command"
         );
     }
 

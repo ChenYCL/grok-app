@@ -478,12 +478,12 @@ No repo edits. Prefer built-in tools. Keep the final answer concise and complete
                 AcpEvent::PromptComplete { .. } => break,
                 AcpEvent::ProcessExited { .. } | AcpEvent::Error { .. } => break,
                 AcpEvent::PermissionRequest { rpc_id, .. } => {
-                    // Always-approve path: auto-select allow-ish option.
+                    // Always-approve path: CLI wire optionId (#523).
                     let _ = client_pump
                         .respond_permission(
                             rpc_id,
                             crate::acp_client::PermissionOutcome::Selected {
-                                option_id: "allow".into(),
+                                option_id: crate::permission::FALLBACK_ALLOW_ONCE.into(),
                             },
                         )
                         .await;

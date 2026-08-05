@@ -8,14 +8,14 @@ import {
 describe("mapPermissionButtons (shipped)", () => {
   it("maps ACP optionIds from real options list", () => {
     const buttons = mapPermissionButtons([
-      { optionId: "allow_once", name: "Allow once", kind: "allow_once" },
-      { optionId: "allow_always", name: "Allow always", kind: "allow_always" },
-      { optionId: "reject", name: "Reject", kind: "reject_once" },
+      { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
+      { optionId: "always-allow", name: "Allow always", kind: "allow_always" },
+      { optionId: "reject-once", name: "Reject", kind: "reject_once" },
     ]);
     expect(buttons.map((b) => b.optionId)).toEqual([
-      "allow_once",
-      "allow_always",
-      "reject",
+      "allow-once",
+      "always-allow",
+      "reject-once",
     ]);
     expect(buttons.map((b) => b.decision)).toEqual([
       "allow_once",
@@ -24,16 +24,29 @@ describe("mapPermissionButtons (shipped)", () => {
     ]);
   });
 
-  it("falls back when options empty", () => {
+  it("falls back to hyphenated CLI wire ids when options empty (#523)", () => {
     const buttons = mapPermissionButtons([]);
     expect(buttons).toHaveLength(3);
     expect(buttons[0]!.decision).toBe("allow_once");
+    expect(buttons[0]!.optionId).toBe("allow-once");
+    expect(buttons[1]!.optionId).toBe("always-allow");
     expect(buttons[2]!.decision).toBe("deny");
+    expect(buttons[2]!.optionId).toBe("reject-once");
+  });
+
+  it("maps bash allow-always-command as session button", () => {
+    const buttons = mapPermissionButtons([
+      { optionId: "allow-once", kind: "allow_once" },
+      { optionId: "allow-always-command", kind: "allow_always" },
+      { optionId: "reject-once", kind: "reject_once" },
+    ]);
+    expect(buttons[1]!.decision).toBe("allow_session");
+    expect(buttons[1]!.optionId).toBe("allow-always-command");
   });
 
   it("prefers short i18n labels over long agent names", () => {
     const buttons = mapPermissionButtons(
-      [{ optionId: "allow_once", name: "Allow this bash command once", kind: "allow_once" }],
+      [{ optionId: "allow-once", name: "Allow this bash command once", kind: "allow_once" }],
       { allowOnce: "Allow once", allowSession: "Allow for session", deny: "Deny" },
     );
     expect(buttons[0]!.label).toBe("Allow once");

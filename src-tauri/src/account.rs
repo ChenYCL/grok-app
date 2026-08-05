@@ -214,43 +214,47 @@ fn agent_home_auth_json_path() -> PathBuf {
 ///
 /// Without this, UI shows "signed in" (reads `~/.grok/auth.json`) while the
 /// agent process sees `auth_kind=none` and fails with 401.
+///
+/// Source is always the **canonical** `~/.grok/auth.json` (login writes there).
+/// Copy when dest is missing or **bytes differ** — mtime-only checks failed when
+/// a custom route left a newer empty/stale agent-home file (#525 project switch
+/// re-login).
 pub fn sync_cli_auth_to_agent_home() -> Result<(), String> {
-    let src = {
-        // Prefer the path account/login actually use, then hard default ~/.grok.
-        let primary = auth_json_path();
-        if primary.is_file() {
-            primary
-        } else {
-            cli_default_auth_json_path()
-        }
-    };
+    let src = cli_default_auth_json_path();
     if !src.is_file() {
+        // Fall back to GROK_HOME path only when canonical is absent (tests /
+        // unusual profiles).
+        let alt = auth_json_path();
+        if alt != src && alt.is_file() {
+            return sync_auth_file(&alt, &agent_home_auth_json_path());
+        }
         return Ok(());
     }
-    let dest = agent_home_auth_json_path();
+    sync_auth_file(&src, &agent_home_auth_json_path())
+}
+
+fn sync_auth_file(src: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
     if src == dest {
         return Ok(());
     }
-    let dest_dir = paths::agent_home_dir();
-    fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-
-    let need_copy = match (src.metadata(), dest.metadata()) {
-        (Ok(sm), Ok(dm)) => {
-            let src_m = sm.modified().ok();
-            let dst_m = dm.modified().ok();
-            match (src_m, dst_m) {
-                (Some(a), Some(b)) => a > b || sm.len() != dm.len(),
-                _ => true,
-            }
-        }
-        (Ok(_), Err(_)) => true,
-        _ => false,
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let src_bytes = fs::read(src).map_err(|e| {
+        format!(
+            "failed to read auth.json for sync: {e} (src={})",
+            src.display()
+        )
+    })?;
+    let need_copy = match fs::read(dest) {
+        Ok(dst) => dst != src_bytes,
+        Err(_) => true,
     };
     if !need_copy {
         return Ok(());
     }
 
-    fs::copy(&src, &dest).map_err(|e| {
+    fs::write(dest, &src_bytes).map_err(|e| {
         format!(
             "failed to sync auth.json → agent-home: {e} (src={}, dest={})",
             src.display(),
@@ -260,7 +264,7 @@ pub fn sync_cli_auth_to_agent_home() -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(0o600));
+        let _ = fs::set_permissions(dest, fs::Permissions::from_mode(0o600));
     }
     info!(
         "account: synced auth.json to agent-home ({})",
@@ -299,16 +303,20 @@ fn usage_cache_path() -> PathBuf {
 pub fn read_auth_profile() -> AccountProfile {
     let primary = auth_json_path();
     let canonical = cli_default_auth_json_path();
-    // A missing / unreadable / corrupt primary (e.g. `$GROK_HOME/auth.json`
-    // truncated mid-write or stale after a custom-route switch) must not wipe
-    // the login state while the canonical `~/.grok/auth.json` still holds
-    // valid credentials — fall back before reporting "signed out".
-    match read_auth_profile_at(&primary) {
-        Some(p) => p,
-        None if primary != canonical => {
-            read_auth_profile_at(&canonical).unwrap_or_else(signed_out_profile)
-        }
-        None => signed_out_profile(),
+    // Prefer a *signed-in* profile. `$GROK_HOME/auth.json` after a custom-route
+    // clear can parse as well-formed signed-out and must not mask a still-valid
+    // `~/.grok/auth.json` (#525 multi-project "re-login" false positive).
+    let primary_prof = read_auth_profile_at(&primary);
+    let canonical_prof = if primary != canonical {
+        read_auth_profile_at(&canonical)
+    } else {
+        None
+    };
+    match (primary_prof, canonical_prof) {
+        (Some(p), Some(c)) if !p.signed_in && c.signed_in => c,
+        (Some(p), _) => p,
+        (None, Some(c)) => c,
+        (None, None) => signed_out_profile(),
     }
 }
 

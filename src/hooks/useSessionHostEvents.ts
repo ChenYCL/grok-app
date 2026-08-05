@@ -1058,6 +1058,36 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             },
           ),
         );
+        // #524: agent recycled while a permission bar was open — drop stale UI
+        // so Approve is not written to a dead stdin.
+        await track(
+          api.listen<{
+            reason?: string;
+            sessions?: Array<{
+              sessionId?: string;
+              permissionRpcId?: number | null;
+            }>;
+          }>("session://permissions_invalidated", (p) => {
+            if (cancelled || !p) return;
+            const sessions = Array.isArray(p.sessions) ? p.sessions : [];
+            for (const row of sessions) {
+              const sid = row?.sessionId;
+              if (!sid) continue;
+              c.pendingPermBySessionRef.current.delete(sid);
+              c.pendingAskUserBySessionRef.current.delete(sid);
+              if (sid === c.viewingSessionIdRef.current) {
+                c.setPerm(null);
+                c.clearPendingGatesRef.current?.(sid);
+              }
+            }
+            // Also clear any focused permission that lost its process even if
+            // the payload omitted session ids (older hosts).
+            if (!sessions.length) {
+              c.pendingPermBySessionRef.current.clear();
+              c.setPerm(null);
+            }
+          }),
+        );
         await track(
           api.listen<{ reason?: string }>(
             "session://agent_soft_respawn",

@@ -141,17 +141,30 @@ impl SessionManager {
     /// under a different data root — reconnect should `session/new` + bootstrap).
     /// Emits `session://agents_recycled` for UI toasts.
     pub async fn recycle_all_agents(&self, app: &AppHandle, reason: &str) {
+        // Collect pending permission/plan/ask gates *before* draining so the
+        // UI can drop stale bars that would write to a dead stdin (#524).
+        let invalidated = self.collect_pending_gate_invalidations();
         let drained = self.drain_all_agent_slots();
         let total = drained.acps.len();
         for acp in drained.acps {
             acp.kill().await;
         }
         tracing::info!(
-            "recycle_all_agents reason={reason} killed={total} (live_shell={} bg={} parked={})",
+            "recycle_all_agents reason={reason} killed={total} (live_shell={} bg={} parked={}) pending_invalidated={}",
             drained.had_live_shell as u8,
             drained.background_count,
-            drained.parked_count
+            drained.parked_count,
+            invalidated.len()
         );
+        if !invalidated.is_empty() {
+            let _ = app.emit(
+                "session://permissions_invalidated",
+                serde_json::json!({
+                    "reason": reason,
+                    "sessions": invalidated,
+                }),
+            );
+        }
         let _ = app.emit(
             "session://agents_recycled",
             serde_json::json!({
@@ -162,6 +175,33 @@ impl SessionManager {
             }),
         );
         Self::emit_state(app, &self.snapshot());
+    }
+
+    /// Snapshot app session ids that still hold a pending human gate so the
+    /// frontend can clear stale permission / plan / ask_user UI after kill.
+    pub(super) fn collect_pending_gate_invalidations(&self) -> Vec<serde_json::Value> {
+        let mut out = Vec::new();
+        let push = |out: &mut Vec<serde_json::Value>, s: &LiveSession| {
+            if s.pending_permission_rpc_id.is_none()
+                && s.pending_plan_rpc_id.is_none()
+                && s.pending_ask_user_rpc_id.is_none()
+            {
+                return;
+            }
+            out.push(serde_json::json!({
+                "sessionId": s.app_session_id,
+                "permissionRpcId": s.pending_permission_rpc_id,
+                "planRpcId": s.pending_plan_rpc_id,
+                "askUserRpcId": s.pending_ask_user_rpc_id,
+            }));
+        };
+        if let Some(s) = self.inner.lock().as_ref() {
+            push(&mut out, s);
+        }
+        for s in self.background.lock().values() {
+            push(&mut out, s);
+        }
+        out
     }
 
     /// Take live ACP + all background/parked agents out of maps (no kill).
@@ -196,8 +236,17 @@ impl SessionManager {
                 s.tools_this_turn = 0;
                 s.pending_plan_rpc_id = None;
                 s.pending_ask_user_rpc_id = None;
+                s.pending_permission_rpc_id = None;
                 s.provider_retry_attempt = 0;
                 s.provider_retry_aborted = false;
+                // Leave AwaitingPermission / Streaming so UI busy clears after recycle.
+                if matches!(
+                    s.fsm.state(),
+                    SessionState::AwaitingPermission | SessionState::Streaming
+                ) {
+                    let _ = s.fsm.end_stream();
+                }
+                s.prompt_in_flight = false;
                 if let Some(acp) = s.acp.take() {
                     acps.push(acp);
                 }
@@ -223,6 +272,10 @@ impl SessionManager {
                 h.request_stop();
             }
             Self::maybe_flush_stream_journal(&mut s, true, false);
+            s.pending_permission_rpc_id = None;
+            s.pending_plan_rpc_id = None;
+            s.pending_ask_user_rpc_id = None;
+            s.prompt_in_flight = false;
             if let Some(acp) = s.acp.take() {
                 acps.push(acp);
             }
@@ -471,17 +524,39 @@ impl SessionManager {
             .ok_or("no session")?;
 
         if let Some(acp) = acp {
+            // Dead agent after recycle/provider switch: refuse stale UI answers (#524).
+            if !acp.is_alive() {
+                return Err(
+                    "agent process is no longer running; permission request expired — reopen the chat"
+                        .into(),
+                );
+            }
             let outcome = match decision.as_str() {
                 "cancel" => PermissionOutcome::Cancelled,
                 "deny" => PermissionOutcome::Selected {
-                    option_id: option_id.unwrap_or_else(|| "reject".into()),
+                    // CLI wire id (#523)
+                    option_id: option_id.unwrap_or_else(|| {
+                        crate::permission::FALLBACK_REJECT_ONCE.into()
+                    }),
                 },
                 _ => PermissionOutcome::Selected {
                     // Prefer client-supplied optionId from Agent options list
-                    option_id: option_id.unwrap_or_else(|| "allow_once".into()),
+                    option_id: option_id.unwrap_or_else(|| {
+                        crate::permission::FALLBACK_ALLOW_ONCE.into()
+                    }),
                 },
             };
             acp.respond_permission(rpc_id, outcome).await?;
+            // Clear pending tracker after a successful resolve.
+            let _ = self.with_session_mut(&target, |s| {
+                if s.pending_permission_rpc_id == Some(rpc_id) {
+                    s.pending_permission_rpc_id = None;
+                }
+            });
+        } else {
+            return Err(
+                "no agent process for this chat; permission request expired".into(),
+            );
         }
         // Cross-session permission audit (user decision). Soft-fail.
         crate::audit_ledger::record_permission_resolve(

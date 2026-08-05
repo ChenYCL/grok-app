@@ -21,6 +21,10 @@ See `docs/llm-wiki/release.md`.
 ### Fixed
 - **Stream after thinking**: Host may mark the turn `ready` before the assistant body finishes (early `prompt_complete`). Late body tokens were dropped when the focused host was no longer “live streaming”, so the bubble stayed empty until restart (journal already had the text). Late tokens now apply when the turn bubble is still streaming or body-empty; pure post-turn replays still drop. Journal rehydrate retries once after 400ms if the body is still empty.
 - **PDF open freeze / black window**: `react-pdf` `Document` was given a new `Uint8Array` every render → remount loop and GPU thrash when opening a generated PDF (file card / panel). Memoize the `file` prop. `path_open` now detaches with null stdio on a blocking thread so slow default handlers cannot stall the WebView IPC loop.
+- **#522 sticky Streaming busy after successful turn**: `session/prompt` Ok now always emits authoritative `PromptComplete` (compat `stopReason` / `stop_reason` / default `end_turn`); stamp prompt RPC with agent session id for multi-session routing; Host force-clears `prompt_in_flight` if still set after Ok.
+- **#523 permission Allow for session rejected by CLI**: fallback wire `optionId`s aligned with Grok Build CLI (`allow-once`, `always-allow`, `reject-once`, plus `allow-always-command|mcp|domain`); Host + UI no longer send underscore / non-existent `allow-always`.
+- **#524 stale permission bar after recycle**: track pending permission RPC per session; `recycle_all_agents` emits `session://permissions_invalidated` and clears gates; `resolve_permission` refuses dead agents.
+- **#525 multi-project “re-login”**: prefer signed-in `~/.grok/auth.json` over stale signed-out agent-home profile; sync agent-home auth by **content**, not mtime only, so custom-route clear cannot block official restore on next project connect.
 
 ## [0.2.5] - 2026-08-04
 

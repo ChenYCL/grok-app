@@ -1582,7 +1582,11 @@ impl AcpClient {
         // Response to our request (result or error present)
         if let Some(id) = json_id_u64(msg.get("id")) {
             if msg.get("result").is_some() || msg.get("error").is_some() {
+                let mut pending_method: Option<String> = None;
+                let mut pending_session: Option<String> = None;
                 if let Some(p) = self.pending.lock().remove(&id) {
+                    pending_method = Some(p.method.clone());
+                    pending_session = p.session_id.clone();
                     if let Some(err) = msg.get("error") {
                         let full = format_jsonrpc_error(err);
                         warn!("acp ← {} id={id} error: {}", p.method, full);
@@ -1607,12 +1611,28 @@ impl AcpClient {
                             .map(|o| o.keys().cloned().collect::<Vec<_>>())
                     );
                 }
-                // also surface prompt complete via result stopReason
-                if let Some(sr) = msg.pointer("/result/stopReason").and_then(|v| v.as_str()) {
-                    let _ = self.event_tx.send((None, AcpEvent::PromptComplete {
-                        stop_reason: sr.to_string(),
-                        authoritative: true,
-                    }));
+                // Authoritative turn end for session/prompt (#522):
+                // Some CLI builds omit `result.stopReason` even after a successful
+                // RPC. Always emit PromptComplete so Host clears prompt_in_flight
+                // and leaves Streaming/busy. Prefer stopReason → stop_reason → end_turn.
+                let is_prompt = pending_method
+                    .as_deref()
+                    .is_some_and(|m| m == "session/prompt")
+                    || msg.pointer("/result/stopReason").is_some()
+                    || msg.pointer("/result/stop_reason").is_some();
+                if is_prompt && msg.get("result").is_some() {
+                    let sr = msg
+                        .pointer("/result/stopReason")
+                        .or_else(|| msg.pointer("/result/stop_reason"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("end_turn");
+                    let _ = self.event_tx.send((
+                        pending_session.clone(),
+                        AcpEvent::PromptComplete {
+                            stop_reason: sr.to_string(),
+                            authoritative: true,
+                        },
+                    ));
                 }
                 // The session/prompt RPC result also carries authoritative per-turn
                 // usage (inputTokens, cachedReadTokens, …) under result.usage or
@@ -2231,12 +2251,19 @@ impl AcpClient {
         }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
+        // Stamp owning agent session so PromptComplete routes correctly and the
+        // early-complete fallback only frees this chat's waiter (#522 multi-session).
+        let prompt_sid = params
+            .get("sessionId")
+            .or_else(|| params.get("session_id"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         self.pending.lock().insert(
             id,
             Pending {
                 method: method.to_string(),
                 tx,
-                session_id: None,
+                session_id: prompt_sid,
             },
         );
         let msg = json!({
@@ -2808,6 +2835,7 @@ impl AcpClient {
 
         let stop = result
             .get("stopReason")
+            .or_else(|| result.get("stop_reason"))
             .and_then(|v| v.as_str())
             .unwrap_or("end_turn")
             .to_string();
@@ -2818,6 +2846,9 @@ impl AcpClient {
             message_id: None,
             done: true,
         }));
+        // Belt-and-suspenders with handle_line's unconditional PromptComplete
+        // for session/prompt Ok (#522). Duplicate authoritative completes are
+        // safe: second pass finds prompt_in_flight already false.
         let _ = self.event_tx.send((Some(sid), AcpEvent::PromptComplete {
             stop_reason: stop,
             authoritative: true,

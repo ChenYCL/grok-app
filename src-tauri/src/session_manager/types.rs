@@ -195,6 +195,9 @@ pub(crate) struct LiveSession {
     pub(super) pending_plan_rpc_id: Option<u64>,
     /// Pending `_x.ai/ask_user_question` JSON-RPC id awaiting user answers.
     pub(super) pending_ask_user_rpc_id: Option<u64>,
+    /// Pending `session/request_permission` JSON-RPC id for this session (#524).
+    /// Cleared on resolve or when the owning agent process is recycled/killed.
+    pub(super) pending_permission_rpc_id: Option<u64>,
     /// Last user/agent activity (send, stream, permission, connect).
     pub(super) last_activity: Instant,
     /// Last stream chunk or tool event (I06 stall watchdog). Permission waits do not update this.
