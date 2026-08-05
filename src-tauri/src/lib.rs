@@ -292,6 +292,12 @@ pub fn run() {
                 )
                 // Primary workbench only — secondary `session-*` windows keep defaults.
                 .with_filter(|label| label == "main")
+                // Do NOT auto-restore on window-ready: that runs deferred on the main
+                // thread (after the window is already shown), so the default 1200×800
+                // frame flashes first and then snaps to the saved bounds. The main
+                // window starts hidden (visible:false in tauri conf) and setup restores
+                // the geometry synchronously before showing — see setup below.
+                .skip_initial_state("main")
                 // Do not restore VISIBLE: close-to-tray leaves the window hidden; a
                 // saved `visible:false` would make the next launch appear headless.
                 // Do not restore DECORATIONS: macOS Overlay vs Windows frameless
@@ -522,6 +528,22 @@ pub fn run() {
 
                 win_shell::ensure_main_window_shell_integration(&window);
 
+                // Reveal the workbench only AFTER its saved geometry is applied.
+                // The window starts hidden (visible:false in tauri conf) and the
+                // plugin's auto-restore is skipped for "main", so this synchronous
+                // restore + show never flashes the default frame first.
+                {
+                    use tauri_plugin_window_state::{StateFlags, WindowExt};
+                    let flags = StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN;
+                    if let Err(e) = window.restore_state(flags) {
+                        tracing::warn!(error = %e, "window-state restore failed — showing defaults");
+                    }
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
             }
 
             // Menu-bar / system tray — logo.svg tray icon (not dock app icon)
