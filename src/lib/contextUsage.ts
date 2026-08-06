@@ -1244,6 +1244,10 @@ export type SessionUsageSnapshot = {
   historyTokens: number | null;
   cachedReadTokens: number | null;
   costUsdTicks: number | null;
+  /** CLI context window (tokens) at snapshot time — restore ring denominator. */
+  contextWindow?: number | null;
+  /** CLI integer percentage at snapshot time (auto_compact_started style). */
+  percentage?: number | null;
   source: string | null;
   updatedAt: number;
 };
@@ -1351,6 +1355,8 @@ export function restoreContextUsageForSession(
     historyTokens: snap.historyTokens ?? undefined,
     cachedReadTokens: snap.cachedReadTokens ?? undefined,
     costUsdTicks: snap.costUsdTicks ?? undefined,
+    contextWindow: snap.contextWindow ?? undefined,
+    percentage: snap.percentage ?? undefined,
     source: snap.source ?? "restored",
   });
 }

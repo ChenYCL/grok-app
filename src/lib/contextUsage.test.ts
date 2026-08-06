@@ -876,6 +876,39 @@ describe("session usage snapshot (localStorage-backed)", () => {
     // CLI integer %: round(156385/500000*100) = 31
     expect(d.percent).toBe(31);
   });
+
+  it("restores CLI context window + percentage from snapshot", () => {
+    const st = mockStorage();
+    // auto_compact_started occupancy with CLI denominator + integer %.
+    saveSessionUsageSnapshot(
+      "sess-w",
+      {
+        totalTokens: 402_603,
+        inputTokens: null,
+        outputTokens: null,
+        systemTokens: null,
+        toolsTokens: null,
+        historyTokens: null,
+        cachedReadTokens: null,
+        costUsdTicks: null,
+        contextWindow: 500_000,
+        percentage: 81,
+        source: "auto_compact_started",
+      },
+      st,
+    );
+    const state = restoreContextUsageForSession(
+      "sess-w",
+      [{ id: "u", role: "user", content: "hi" }],
+      st,
+    );
+    expect(state.knownTokens).toBe(402_603);
+    expect(state.agentContextWindow).toBe(500_000);
+    expect(state.agentPercentage).toBe(81);
+    // Ring % matches the CLI integer, not a catalog-window re-derivation.
+    const d = resolveContextUsageDisplay(state, [], "zh", 128_000);
+    expect(d.percent).toBe(81);
+  });
 });
 
 describe("occupancy vs billing classification", () => {

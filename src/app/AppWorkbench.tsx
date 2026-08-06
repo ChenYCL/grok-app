@@ -1267,7 +1267,6 @@ export function AppWorkbench() {
     liveHostRef,
     setLiveMap,
     liveMapRef,
-    liveMapBusyCount,
     getLiveMap,
     stopLatch,
     setStopLatch,

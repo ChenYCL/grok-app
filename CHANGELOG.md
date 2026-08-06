@@ -11,6 +11,50 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-08-07
+
+> **Highlight:** Chat stability & UX hardening — session-switch transcript ownership (#529), turn-end tool layout + localized work duration, sidebar group/Shift multi-select, context-ring occupancy accuracy, and an in-place embedded browser (no more recreate).
+>
+> **中文 · 亮点：** 会话切换稳定性（#529 不再串项目）、回合结束工具布局与中文本地化时长、侧边栏分组全选 + Shift 范围多选、上下文环占用率准确化、内嵌浏览器就地导航/刷新不再重建。
+
+### Added
+- **Sidebar group select-all + Shift range multi-select**: In multi-select mode, each project folder and “Other sessions” show Select-all / Deselect-all; Shift+click selects a contiguous range using sidebar tree order (#sidebar-refactor).
+- **Login paste-back code (optional fallback)**: While `grok login` is waiting, Account panel can accept the “copy this code into Grok Build” verification code from some auth.x.ai pages and feed it to CLI stdin. Normal OAuth still auto-completes; no paste required (docs/llm-wiki/account.md).
+- **Embedded browser refresh / in-place navigation**: URL changes navigate without tearing down the webview; toolbar refresh and Enter-on-same-URL do a true document reload (host `side_browser_reload`).
+- **Dock/tray badge shows unread chats**: Badge now counts chats that finished a reply in the background (post turn-end), not live busy sessions; window focus / opening a chat clears it immediately.
+- **CLI context window + percentage**: Agent-reported `context_window` / `percentage` (auto_compact_started / tokens_used) drive the context ring %, matching `/session-info`; persisted per-session so reopen keeps the CLI denominator.
+
+**中文 · 新增**
+- **侧边栏分组全选 + Shift 范围多选**：多选模式下每个项目/「其他会话」支持全选/取消全选；Shift+点击按侧栏树顺序连续选中。
+- **登录粘贴验证码（可选回退）**：部分 auth.x.ai 页面要求「将代码复制到 Grok Build」时，可在账户面板把验证码送入运行中的 `grok login`；常规 OAuth 仍自动完成，无需粘贴。
+- **内嵌浏览器刷新/就地导航**：改 URL 不再重建 Webview，刷新按钮与同 URL 回车做真正的文档重载。
+- **Dock/托盘角标改为未读数**：统计后台回合结束的未读会话数，聚焦/打开会话即时清零。
+- **CLI 上下文窗口与百分比**：以 `auto_compact_started` / `tokens_used` 的 `context_window` + `percentage` 为准显示上下文环百分比，与会话信息一致；跨会话重开也保留。
+
+### Fixed
+- **Session-switch transcript pollution (#529)**: `sessionTranscriptStore` now tracks `messagesOwnerSessionId` separately from the viewing id; reducers (stream / rehydrate / clear-streaming / journal) never reduce against the previous chat under the new session id. `openSession` paints the target cache immediately.
+- **Turn-end tool layout**: Finished assistant segments collapse to thought → tools → content without a full remount (`reorderSegmentsToHistoryLayout`); live streaming keeps true interleave until the turn ends.
+- **“Worked for …” accuracy**: Duration prefers the tool-span from journal timestamps over short remounted live timers; duration strings localized (zh / zh-TW: N分N秒, N小时N分).
+- **Context ring inflated by billing aggregates**: `turn_completed.usage.totalTokens` is a multi-call billing sum (10–20 model calls) — it no longer drives the ring; only `context_size` / `auto_compact_started` / safe single-shot occupancy does. Cost rollup keeps billing totals.
+- **Intermittent re-login after project switch (#528)**: Auth profile ranking prefers signed-in → refresh → not-expired → canonical `~/.grok`; `sync_cli_auth_to_agent_home` compares bytes (not mtime); process reuse gate uses route class from `AcpClient.custom_route` (custom channels store upstream model ids, not provider ids); warm reuse re-applies route auth before `session/load`; official `authenticate` re-syncs + retries once on soft-fail.
+- **Rail free-scroll vs programmatic cursor (#280)**: Rail highlight prefers scroll-derived state; parent tracks the free-scroll cursor via ref-only `onScrollActiveChange` — prev/next step from the reading position without per-frame setState; a11y listitem wrapper keeps button semantics.
+- **Rail highlight drift on filtered transcripts**: Rail estimate + jump now use the paint list (filtered) instead of journal indices, so hidden tool rows no longer offset the highlight.
+- **Embedded browser open/close jitter**: Visibility uses a redundant-show/hide guard; bounds re-apply only when they move; webview no longer steals keyboard focus on create.
+- **Stale Rust test**: `settings_default_factory_and_disk_roundtrip` asserted sandbox default `off`; product default is `workspace` (matches frontend `DEFAULT_SANDBOX_PROFILE`).
+
+**中文 · 修复**
+- **会话切换串台（#529）**：`sessionTranscriptStore` 增加 `messagesOwnerSessionId`，流式/重水合/清流式/日志合并一律只对目标会话自己的缓存归约；`openSession` 立即绘制目标缓存。
+- **回合结束工具布局**：已完成的助手段落折叠为 思考→工具→正文，无需整组件重挂载；流式期间保持真实交错。
+- **「工作 X 秒」时长不准**：优先取日志时间戳的实际工具跨度，不再被重挂载的短计时器覆盖；时长中文本地化（N分N秒 / N小时N分）。
+- **上下文环被计费聚合撑满**：`turn_completed.usage.totalTokens` 是多次 modelCall 的计费总和，不再作为占用率；只有 `context_size` / `auto_compact_started` / 安全的单次占用才驱动圆环，费用汇总仍用计费值。
+- **切换项目后偶发重新登录（#528）**：认证档案按 已登录→有 refresh→未过期→规范路径 排序；`sync_cli_auth_to_agent_home` 改为按字节比较；进程复用门改用 `AcpClient.custom_route`（自定义通道存的是上游模型名）；热复用前重放路由认证；官方认证软失败时重同步并重试一次。
+- **轨道高亮漂移（#280）**：自由滚动高亮优先，父组件经 ref 同步读取位置；估算与跳转改用过滤后的绘制列表，隐藏的工具行不再导致高亮错位。
+- **内嵌浏览器抖动**：显隐防抖 + 边界仅在移动时重应用；创建时不再抢键盘焦点。
+- **过时的 Rust 测试**：沙箱默认值断言改为 `workspace`（与前端 `DEFAULT_SANDBOX_PROFILE` 一致）。
+
+### Notes
+- 上下文占用字段来自 Grok Build CLI 0.2.x wire（`params._meta.totalTokens` / `auto_compact_started`）；`turn_completed.usage` 仅用于费用统计。
+
 ## [0.2.8] - 2026-08-06
 
 > **Highlight:** Volcengine Ark (火山方舟) provider preset with DeepSeek V4 Flash, plus Base URL full-path so Coding Plan roots are not forced to `/v1`.

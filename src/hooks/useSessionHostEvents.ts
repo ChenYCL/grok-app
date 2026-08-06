@@ -900,6 +900,8 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                 historyTokens: p.historyTokens ?? null,
                 cachedReadTokens: p.cachedReadTokens ?? null,
                 costUsdTicks: p.costUsdTicks ?? null,
+                contextWindow: p.contextWindow ?? null,
+                percentage: p.percentage ?? null,
                 source: p.source ?? "usage",
               });
             }
