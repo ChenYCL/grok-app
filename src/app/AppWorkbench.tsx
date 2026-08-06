@@ -260,8 +260,12 @@ import {
   sameCollapsedIdSet
 } from "@/lib/sidebarExpand";
 import {
+  addIdsToSet,
+  areAllIdsSelected,
   pruneSelectedIds,
-  toggleIdInSet
+  rangeIdsInclusive,
+  toggleIdInSet,
+  toggleIdsInSet,
 } from "@/lib/sessionSelect";
 import {
   armStopLatch,
@@ -1495,6 +1499,10 @@ export function AppWorkbench() {
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(
     () => new Set(),
   );
+  /** Anchor for Shift+click contiguous range select in the sidebar. */
+  const sessionSelectAnchorIdRef = useRef<string | null>(null);
+  /** Latest sidebar order for range select (avoids stale closures). */
+  const sidebarSelectOrderIdsRef = useRef<string[]>([]);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState>(null);
   /** Project rules dialog (from project context menu). */
   const [projectRulesTarget, setProjectRulesTarget] = useState<{
@@ -4656,6 +4664,11 @@ export function AppWorkbench() {
       (!s.projectId || !projects.some((p) => p.id === s.projectId)) &&
       !s.archived,
   );
+  const orphanSessionIds = orphanSessions.map((s) => s.id);
+  const orphanAllSelected = areAllIdsSelected(
+    selectedSessionIds,
+    orphanSessionIds,
+  );
 
   /**
    * Visual order of sessions in the open sidebar (expanded projects + orphans).
@@ -4686,6 +4699,28 @@ export function AppWorkbench() {
   sidebarNavCurrentIdRef.current =
     session.sessionId ?? viewingSessionIdRef.current ?? null;
 
+  /**
+   * Full multi-select order (all projects + orphans), independent of expand/collapse.
+   * Shift+click range uses this so contiguous select matches tree order.
+   */
+  const sidebarSelectOrderIds = useMemo(() => {
+    const ids: string[] = [];
+    const projectIdSet = new Set(projects.map((p) => p.id));
+    for (const proj of projects) {
+      const projSessions = sessions.filter(
+        (s) => s.projectId === proj.id && !s.archived,
+      );
+      for (const s of sortSessionsForSidebar(projSessions)) ids.push(s.id);
+    }
+    const orphans = sessions.filter(
+      (s) =>
+        (!s.projectId || !projectIdSet.has(s.projectId)) && !s.archived,
+    );
+    for (const s of sortSessionsForSidebar(orphans)) ids.push(s.id);
+    return ids;
+  }, [projects, sessions]);
+  sidebarSelectOrderIdsRef.current = sidebarSelectOrderIds;
+
   /** Active (non-archived) session ids visible in the sidebar tree. */
   const selectableSessionIds = useMemo(() => {
     const ids = new Set<string>();
@@ -4699,20 +4734,61 @@ export function AppWorkbench() {
   // Drop selection for sessions that left the active list.
   useEffect(() => {
     setSelectedSessionIds((prev) => pruneSelectedIds(prev, selectableSessionIds));
+    const anchor = sessionSelectAnchorIdRef.current;
+    if (anchor && !selectableSessionIds.has(anchor)) {
+      sessionSelectAnchorIdRef.current = null;
+    }
   }, [selectableSessionIds]);
 
   const exitSessionSelectMode = useCallback(() => {
     setSessionSelectMode(false);
     setSelectedSessionIds(new Set());
+    sessionSelectAnchorIdRef.current = null;
   }, []);
 
   const enterSessionSelectMode = useCallback(() => {
     setSessionSelectMode(true);
     setSelectedSessionIds(new Set());
+    sessionSelectAnchorIdRef.current = null;
   }, []);
 
-  const toggleSessionSelected = useCallback((id: string) => {
-    setSelectedSessionIds((prev) => toggleIdInSet(prev, id));
+  const toggleSessionSelected = useCallback(
+    (id: string, opts?: { shiftKey?: boolean }) => {
+      if (opts?.shiftKey) {
+        const anchor = sessionSelectAnchorIdRef.current;
+        if (anchor) {
+          const range = rangeIdsInclusive(
+            sidebarSelectOrderIdsRef.current,
+            anchor,
+            id,
+          );
+          if (range.length > 0) {
+            setSelectedSessionIds((prev) => addIdsToSet(prev, range));
+            return;
+          }
+        }
+        // No usable anchor — fall through to a normal select of the target.
+        setSelectedSessionIds((prev) => addIdsToSet(prev, [id]));
+        sessionSelectAnchorIdRef.current = id;
+        return;
+      }
+      setSelectedSessionIds((prev) => toggleIdInSet(prev, id));
+      sessionSelectAnchorIdRef.current = id;
+    },
+    [],
+  );
+
+  /** Project / “Other sessions” group: select all under the folder, or clear that group. */
+  const toggleSessionsSelected = useCallback((ids: readonly string[]) => {
+    if (ids.length === 0) return;
+    setSelectedSessionIds((prev) => {
+      const next = toggleIdsInSet(prev, ids);
+      // Keep Shift range coherent: after group select, anchor at the last id.
+      if (areAllIdsSelected(next, ids)) {
+        sessionSelectAnchorIdRef.current = ids[ids.length - 1] ?? null;
+      }
+      return next;
+    });
   }, []);
 
   /** Archived chats grouped by project for Settings → Archived. */
@@ -16372,6 +16448,11 @@ export function AppWorkbench() {
               projects.map((proj) => {
                 const open = expandedProjects[proj.id] !== false;
                 const projSessions = sessionsForProject(proj.id);
+                const projSessionIds = projSessions.map((s) => s.id);
+                const projAllSelected = areAllIdsSelected(
+                  selectedSessionIds,
+                  projSessionIds,
+                );
                 return (
                   <div key={proj.id} className="tree-project">
                     {/* L2 — project folder: expand/collapse only (not selectable) */}
@@ -16380,7 +16461,8 @@ export function AppWorkbench() {
                         "tree-l2" +
                         (isProjectPathMissing(proj.pathOk)
                           ? " tree-l2--path-missing"
-                          : "")
+                          : "") +
+                        (sessionSelectMode ? " tree-l2--select-mode" : "")
                       }
                       role="button"
                       tabIndex={0}
@@ -16441,32 +16523,82 @@ export function AppWorkbench() {
                           {tr("sidebar.untrusted")}
                         </span>
                       ) : null}
-                      <span className="tree-l2__actions">
-                        <Tip label={tr("sidebar.newConversation")}>
-                          <button
-                            type="button"
-                            className="tree-icon-btn"
-                            disabled={
-                              !proj.trusted ||
-                              isProjectPathMissing(proj.pathOk)
-                            }
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void newChat(proj);
-                            }}
-                          >
-                            <IconSquarePen size={14} />
-                          </button>
-                        </Tip>
-                        <Tip label={tr("sidebar.menu")}>
-                          <button
-                            type="button"
-                            className="tree-icon-btn"
-                            onClick={(e) => openProjectMenu(e, proj)}
-                          >
-                            <IconMore size={14} />
-                          </button>
-                        </Tip>
+                      <span
+                        className={
+                          "tree-l2__actions" +
+                          (sessionSelectMode
+                            ? " tree-l2__actions--select-mode"
+                            : "")
+                        }
+                      >
+                        {sessionSelectMode ? (
+                          projSessionIds.length > 0 ? (
+                            <button
+                              type="button"
+                              className={
+                                "tree-l2__select-all" +
+                                (projAllSelected
+                                  ? " tree-l2__select-all--on"
+                                  : "")
+                              }
+                              aria-label={
+                                projAllSelected
+                                  ? tr("sidebar.deselectAllInGroup")
+                                  : tr("sidebar.selectAllInGroup")
+                              }
+                              aria-pressed={projAllSelected}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSessionsSelected(projSessionIds);
+                              }}
+                            >
+                              <span
+                                className={
+                                  "tree-l3__check" +
+                                  (projAllSelected ? " is-on" : "")
+                                }
+                                aria-hidden
+                              >
+                                {projAllSelected ? (
+                                  <IconCheck size={11} stroke={2.4} />
+                                ) : null}
+                              </span>
+                              <span className="tree-l2__select-all-label">
+                                {projAllSelected
+                                  ? tr("sidebar.deselectAllInGroup")
+                                  : tr("sidebar.selectAllInGroup")}
+                              </span>
+                            </button>
+                          ) : null
+                        ) : (
+                          <>
+                            <Tip label={tr("sidebar.newConversation")}>
+                              <button
+                                type="button"
+                                className="tree-icon-btn"
+                                disabled={
+                                  !proj.trusted ||
+                                  isProjectPathMissing(proj.pathOk)
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void newChat(proj);
+                                }}
+                              >
+                                <IconSquarePen size={14} />
+                              </button>
+                            </Tip>
+                            <Tip label={tr("sidebar.menu")}>
+                              <button
+                                type="button"
+                                className="tree-icon-btn"
+                                onClick={(e) => openProjectMenu(e, proj)}
+                              >
+                                <IconMore size={14} />
+                              </button>
+                            </Tip>
+                          </>
+                        )}
                       </span>
                     </div>
 
@@ -16591,6 +16723,44 @@ export function AppWorkbench() {
                   {tr("sidebar.otherSessions")}
                 </span>
               </button>
+              {sessionSelectMode && orphanSessionIds.length > 0 ? (
+                <div className="tree-l1__actions tree-l1__actions--select-mode">
+                  <button
+                    type="button"
+                    className={
+                      "tree-l1__select-all" +
+                      (orphanAllSelected ? " tree-l1__select-all--on" : "")
+                    }
+                    aria-label={
+                      orphanAllSelected
+                        ? tr("sidebar.deselectAllInGroup")
+                        : tr("sidebar.selectAllInGroup")
+                    }
+                    aria-pressed={orphanAllSelected}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSessionsSelected(orphanSessionIds);
+                    }}
+                  >
+                    <span
+                      className={
+                        "tree-l3__check" +
+                        (orphanAllSelected ? " is-on" : "")
+                      }
+                      aria-hidden
+                    >
+                      {orphanAllSelected ? (
+                        <IconCheck size={11} stroke={2.4} />
+                      ) : null}
+                    </span>
+                    <span className="tree-l1__select-all-label">
+                      {orphanAllSelected
+                        ? tr("sidebar.deselectAllInGroup")
+                        : tr("sidebar.selectAllInGroup")}
+                    </span>
+                  </button>
+                </div>
+              ) : null}
             </div>
             {historyOpen && orphanSessions.length > 0
               ? (() => {

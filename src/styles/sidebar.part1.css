@@ -702,6 +702,12 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   pointer-events: auto;
 }
 
+/* Multi-select: keep group “Select all” visible (not hover-only). */
+.tree-l1__actions--select-mode {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .tree-l1__action {
   width: 28px;
   height: 28px;
@@ -716,6 +722,40 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .tree-l1__action:hover {
   background: var(--bg-active);
   color: var(--text-primary);
+}
+
+.tree-l1__select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  max-width: 7.5rem;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tree-l1__select-all:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.tree-l1__select-all--on {
+  color: var(--text-secondary);
+}
+
+.tree-l1__select-all-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tree-project {
@@ -827,6 +867,48 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   opacity: 0;
   pointer-events: none;
   transition: opacity 100ms ease;
+}
+
+/* Multi-select: always show group select-all; width follows label. */
+.tree-l2__actions--select-mode {
+  width: auto;
+  min-width: 0;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tree-l2__select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  max-width: 7.5rem;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tree-l2__select-all:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.tree-l2__select-all--on {
+  color: var(--text-secondary);
+}
+
+.tree-l2__select-all-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /*

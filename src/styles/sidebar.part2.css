@@ -56,7 +56,8 @@
 }
 
 .tree-l2:hover .tree-l2__actions,
-.tree-l2:focus-within .tree-l2__actions {
+.tree-l2:focus-within .tree-l2__actions,
+.tree-l2--select-mode .tree-l2__actions--select-mode {
   opacity: 1;
   pointer-events: auto;
 }

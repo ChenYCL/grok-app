@@ -28,6 +28,8 @@ export const zhSidebar = {
   "sidebar.showArchived": "显示已归档",
   "sidebar.sessionWorking": "进行中…",
   "sidebar.select": "选择",
+  "sidebar.selectAllInGroup": "全选",
+  "sidebar.deselectAllInGroup": "取消全选",
   "sidebar.selectedCount": "已选 {n} 项",
   "sidebar.archiveSelected": "归档 {n}",
   "sidebar.restoreSelected": "恢复 {n}",

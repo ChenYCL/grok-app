@@ -80,7 +80,14 @@ export type SidebarSessionRowProps = {
   /** Prefer stable useCallbacks from App (session-parameterized). */
   onOpen: (session: SidebarSessionRowSession) => void;
   onContextMenu: (e: MouseEvent, session: SidebarSessionRowSession) => void;
-  onToggleSelect: (sessionId: string) => void;
+  /**
+   * Select-mode click / Space / Enter.
+   * `shiftKey` enables contiguous range select from the last anchor.
+   */
+  onToggleSelect: (
+    sessionId: string,
+    opts?: { shiftKey?: boolean },
+  ) => void;
   onPin: (session: SidebarSessionRowSession) => void;
   onArchive: (session: SidebarSessionRowSession) => void;
   onMenu: (e: MouseEvent, session: SidebarSessionRowSession) => void;
@@ -118,9 +125,9 @@ function SidebarSessionRowInner({
     (selectMode ? " tree-l3--select-mode" : "") +
     (checked ? " tree-l3--checked" : "");
 
-  const handleClick = () => {
+  const handleClick = (e: MouseEvent) => {
     if (selectMode) {
-      onToggleSelect(session.id);
+      onToggleSelect(session.id, { shiftKey: e.shiftKey });
       return;
     }
     onOpen(session);
@@ -130,7 +137,7 @@ function SidebarSessionRowInner({
     if (e.key === "Enter" || e.key === " ") {
       if (selectMode) {
         e.preventDefault();
-        onToggleSelect(session.id);
+        onToggleSelect(session.id, { shiftKey: e.shiftKey });
         return;
       }
       if (e.key === "Enter") onOpen(session);

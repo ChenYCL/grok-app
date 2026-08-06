@@ -28,6 +28,8 @@ export const enSidebar = {
   "sidebar.showArchived": "Show archived",
   "sidebar.sessionWorking": "Working…",
   "sidebar.select": "Select",
+  "sidebar.selectAllInGroup": "Select all",
+  "sidebar.deselectAllInGroup": "Deselect all",
   "sidebar.selectedCount": "{n} selected",
   "sidebar.archiveSelected": "Archive {n}",
   "sidebar.restoreSelected": "Restore {n}",

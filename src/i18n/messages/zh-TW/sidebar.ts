@@ -28,6 +28,8 @@ export const zhTWSidebar = {
   "sidebar.showArchived": "顯示已封存",
   "sidebar.sessionWorking": "進行中…",
   "sidebar.select": "選取",
+  "sidebar.selectAllInGroup": "全選",
+  "sidebar.deselectAllInGroup": "取消全選",
   "sidebar.selectedCount": "已選 {n} 項",
   "sidebar.archiveSelected": "封存 {n}",
   "sidebar.restoreSelected": "還原 {n}",
