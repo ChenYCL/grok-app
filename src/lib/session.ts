@@ -2,7 +2,6 @@ import type { Locale } from "../i18n";
 import { isDisplayableAttachmentPath } from "./attachments";
 import {
   buildErrorDeck,
-  deckCodeFromAgent,
   isAuthDeckCode,
   resolveErrorDeckCode,
 } from "./errorDeck";
