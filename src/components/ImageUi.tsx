@@ -2,9 +2,10 @@
  * Shared image UI: click → lightbox; right-click menu aligned with AttachmentCard
  * (view, reveal, copy image, copy path when a local path is known).
  *
- * Frame keeps a non-zero reserved size (default 4:3, then natural ratio) so chat
- * scrollHeight never collapses to 0 mid-decode — that thrash + overflow-anchor:none
- * was the jump-to-top bug. Container aspect follows the image once known.
+ * Chat cards use a **fixed height** (150px) with width from natural ratio.
+ * Aspect ratios are cached in memory + localStorage (`imageAspectCache`) so
+ * virtual-list remounts and next app launch paint the correct card width
+ * immediately — no decode-time width thrash while scrolling.
  */
 
 import {
@@ -30,6 +31,14 @@ import {
   resolveMediaSrcFailure,
   type MediaLoadErrorKind,
 } from "@/lib/mediaLoadPro";
+import {
+  getImageAspect,
+  setImageAspect,
+} from "@/lib/imageAspectCache";
+import {
+  canUseImageThumb,
+  resolveChatImageThumb,
+} from "@/lib/imageThumbClient";
 import { useImageViewerOptional } from "@/components/ImageViewer";
 import { IconCopy, IconExternalLink, IconFolder } from "@/components/icons";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
@@ -88,11 +97,8 @@ interface ImageUiProps {
  */
 export const CHAT_IMAGE_CARD_MAX_W = 240;
 export const CHAT_IMAGE_CARD_MAX_H = 150;
-/** Placeholder ratio before natural size is known. */
+/** Placeholder ratio before natural size is known (no disk cache hit). */
 const DEFAULT_AR = 4 / 3;
-
-/** Remember natural ratios so remounts don't re-reserve the wrong box. */
-const aspectCache = new Map<string, number>();
 
 /** True when path looks like a local absolute path we can reveal/copy. */
 function isLocalFsPath(path: string | undefined): path is string {
@@ -110,26 +116,24 @@ function initialResolvedSrc(src: string): string | null {
   return resolveImageSrcSync(src);
 }
 
-function cacheKey(src: string, path?: string): string {
-  return path || src;
-}
-
 function readCachedAr(src: string, path?: string): number | null {
-  const k = cacheKey(src, path);
-  return aspectCache.get(k) ?? aspectCache.get(src) ?? null;
+  return getImageAspect(src, path);
 }
 
-/** Fit natural ratio into max box; returns width px + aspect ratio. */
-function fitCardBox(ar: number): { widthPx: number; ar: number } {
+/**
+ * Fit natural ratio into the chat card box.
+ * Height is **always** MAX_H so row measure stays stable across decode;
+ * width follows ratio (capped at MAX_W). Letterbox via object-fit:contain.
+ */
+function fitCardBox(ar: number): {
+  widthPx: number;
+  heightPx: number;
+  ar: number;
+} {
   const ratio = ar > 0 && Number.isFinite(ar) ? ar : DEFAULT_AR;
-  // Prefer full card width; shrink width if height would exceed 150px cap.
-  let widthPx = CHAT_IMAGE_CARD_MAX_W;
-  let heightPx = widthPx / ratio;
-  if (heightPx > CHAT_IMAGE_CARD_MAX_H) {
-    heightPx = CHAT_IMAGE_CARD_MAX_H;
-    widthPx = heightPx * ratio;
-  }
-  return { widthPx, ar: ratio };
+  const heightPx = CHAT_IMAGE_CARD_MAX_H;
+  const widthPx = Math.min(CHAT_IMAGE_CARD_MAX_W, heightPx * ratio);
+  return { widthPx, heightPx, ar: ratio };
 }
 
 function resolveLayout(
@@ -193,8 +197,8 @@ export function ImageUi({
   /** Classified reason when resolve or decode fails (MEDIA-LOAD-PRO). */
   const [failKind, setFailKind] = useState<MediaLoadErrorKind | null>(null);
   /**
-   * Natural width/height ratio. Seeded from cache so remounts keep the right
-   * box; defaults to 4:3 until the bitmap reports size.
+   * Natural width/height ratio. Seeded from disk/memory cache so scroll
+   * remounts and cold start paint the correct card width immediately.
    */
   const [aspectRatio, setAspectRatio] = useState<number>(
     () => readCachedAr(src, path) ?? DEFAULT_AR,
@@ -202,6 +206,8 @@ export function ImageUi({
   const [ratioKnown, setRatioKnown] = useState(
     () => readCachedAr(src, path) != null,
   );
+  /** Once we painted from cache or decode, freeze width unless AR shifts a lot. */
+  const lockedArRef = useRef<number | null>(readCachedAr(src, path));
 
   const localPath = isLocalFsPath(path)
     ? path
@@ -213,10 +219,22 @@ export function ImageUi({
     (nw: number, nh: number) => {
       if (!(nw > 0 && nh > 0)) return;
       const ar = nw / nh;
-      aspectCache.set(cacheKey(src, path), ar);
-      aspectCache.set(src, ar);
-      if (localPath) aspectCache.set(localPath, ar);
-      setAspectRatio(ar);
+      if (!(ar > 0) || !Number.isFinite(ar)) return;
+      // Persist for scroll remounts + next launch (path / media URL aliases).
+      setImageAspect(src, path || localPath, ar, localPath ? [localPath] : []);
+      const locked = lockedArRef.current;
+      // Cached / already-shown size: ignore tiny decode differences (no reflow).
+      if (
+        locked != null &&
+        Math.abs(locked - ar) / Math.max(locked, ar, 0.01) < 0.03
+      ) {
+        setRatioKnown(true);
+        return;
+      }
+      lockedArRef.current = ar;
+      setAspectRatio((prev) =>
+        Math.abs(prev - ar) / Math.max(prev, ar, 0.01) < 0.01 ? prev : ar,
+      );
       setRatioKnown(true);
     },
     [src, path, localPath],
@@ -230,15 +248,62 @@ export function ImageUi({
     setFailKind(null);
     const cached = readCachedAr(src, path);
     if (cached != null) {
+      lockedArRef.current = cached;
       setAspectRatio(cached);
       setRatioKnown(true);
     } else {
+      // Height is fixed for chat cards — AR only affects width. Default is fine
+      // until decode; avoid flashing a different height (that was the jitter).
+      lockedArRef.current = null;
       setAspectRatio(DEFAULT_AR);
       setRatioKnown(false);
     }
-    // Ensure loopback media HTTP is ready, then re-resolve (cold-start may have
-    // used media:// fallback or null before the endpoint arrived).
-    // Soft-fail: only classify after resolve settles — never invent a working image.
+
+    const useThumb = layout === "card" && canUseImageThumb(src, path);
+
+    if (useThumb) {
+      // Chat cards: Host disk thumb (≤480px) + session URL cache — not full original.
+      void resolveChatImageThumb(src, path)
+        .then((r) => {
+          if (cancelled) return;
+          if (r?.displaySrc) {
+            setResolvedSrc(r.displaySrc);
+            setLoadFailed(false);
+            setFailKind(null);
+            if (r.width > 0 && r.height > 0) {
+              applyNaturalSize(r.width, r.height);
+            }
+          } else {
+            setResolvedSrc(null);
+            const fail = resolveMediaSrcFailure({
+              pathOrUrl: path || src,
+              resolvedSrc: null,
+              isTauri: isTauri(),
+              mediaEndpointReady: isMediaEndpointReady(),
+            });
+            setFailKind(fail.kind);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // Soft fallback: full resolve path.
+          void ensureMediaEndpoint()
+            .then(() => resolveImageSrc(path || src))
+            .then((url) => {
+              if (cancelled) return;
+              if (url) {
+                setResolvedSrc(url);
+                setLoadFailed(false);
+                setFailKind(null);
+              }
+            });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // Pane / non-thumb: ensure loopback HTTP, then re-resolve full asset.
     if (!isViewableSrc(src) || !next?.startsWith("http://127.0.0.1")) {
       void ensureMediaEndpoint()
         .then(() => resolveImageSrc(src))
@@ -271,7 +336,6 @@ export function ImageUi({
           setFailKind(r.kind);
         });
     } else if (!next) {
-      // Already-viewable check failed and no async path — classify once.
       const r = resolveMediaSrcFailure({
         pathOrUrl: path || src,
         resolvedSrc: null,
@@ -283,7 +347,7 @@ export function ImageUi({
     return () => {
       cancelled = true;
     };
-  }, [src, path]);
+  }, [src, path, layout, applyNaturalSize]);
 
   // Recover size if decode finished before onLoad bound (disk cache).
   useEffect(() => {
@@ -295,14 +359,19 @@ export function ImageUi({
   }, [resolvedSrc, loadFailed, applyNaturalSize]);
 
   const openViewer = () => {
-    if (!resolvedSrc) return;
+    // Lightbox prefers original local path / full src — not the chat thumb JPEG.
+    const full =
+      localPath ||
+      (isViewableSrc(src) && !src.includes("127.0.0.1") ? src : null) ||
+      resolvedSrc;
+    if (!full) return;
     const slides =
       gallery && gallery.length > 0
         ? gallery
         : localPath
           ? [localPath]
-          : [resolvedSrc];
-    const want = localPath ?? resolvedSrc;
+          : [full];
+    const want = localPath ?? full;
     const idx = Math.max(
       0,
       slides.findIndex(
@@ -400,7 +469,9 @@ export function ImageUi({
       ? aspectRatio
       : DEFAULT_AR;
 
-  // Chat cards: cap at 240×150. Resource pane: fill width, natural ratio.
+  // Chat cards: fixed height 150px (width from ratio). Explicit px height so
+  // max-width shrinks (scrollbar / narrow chat) do not change vertical size.
+  // Resource pane: fill width, natural ratio.
   const frameStyle: CSSProperties =
     layout === "pane"
       ? {
@@ -417,8 +488,12 @@ export function ImageUi({
           return {
             ...style,
             width: box.widthPx,
+            height: box.heightPx,
             maxWidth: "100%",
-            aspectRatio: `${box.ar}`,
+            maxHeight: CHAT_IMAGE_CARD_MAX_H,
+            // Prefer explicit height over aspect-ratio so width clamps don't
+            // reflow scrollHeight (virtual list + stick thrash).
+            aspectRatio: "unset",
             ["--img-ar" as string]: String(box.ar),
           };
         })();

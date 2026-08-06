@@ -12,7 +12,8 @@ Product rules for the **full-screen initialization wizard** before the workbench
 ## Flow
 
 ```
-boot → probe CLI
+boot → probe CLI (≤3s per --version; Host spawn_blocking)
+  ├─ timeout (FE 12s) → loading chrome + Retry / open Setup (not infinite spin)
   ├─ no CLI → SetupWizard step Runtime (install required)
   ├─ CLI ok + !setupWizardCompleted → Account step (skippable)
   └─ CLI ok + setupWizardCompleted → home

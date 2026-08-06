@@ -1045,9 +1045,10 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             (p) => {
               if (cancelled || !p) return;
               // session_data_mode flip, custom provider route apply (#376), CLI upgrade, etc.
-              if (p.reason === "provider_route") {
+              if (p.reason === "provider_route" || p.reason === "account_auth") {
                 // Model / provider switch — the picker already shows the new
-                // route; no toast needed.
+                // route. Login/logout/account switch: UI already refreshed;
+                // no data-mode toast (would mislead as "histories not merged").
                 return;
               }
               if (

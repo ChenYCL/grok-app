@@ -314,14 +314,22 @@ impl IntoResponse for FileChunk {
             header::ACCESS_CONTROL_EXPOSE_HEADERS,
             HeaderValue::from_static("content-range, accept-ranges, content-length, content-type"),
         );
-        // Images remount often in chat virtual lists — allow short private cache.
+        // Images remount often in chat virtual lists. Thumbs are tiny + stable;
+        // allow long private browser cache so scroll remounts hit disk not Host.
         // Streaming media keeps no-cache so Range windows stay fresh.
         let cache = if self.mime.starts_with("image/") && !self.partial {
-            "private, max-age=120"
+            "private, max-age=604800, immutable"
         } else {
             "no-cache"
         };
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
+        // Weak ETag from body length — helps revalidation when max-age lapses.
+        if !self.partial && !self.body.is_empty() {
+            let etag = format!("W/\"{}\"", self.body.len());
+            if let Ok(v) = HeaderValue::from_str(&etag) {
+                headers.insert(header::ETAG, v);
+            }
+        }
         if let Some(o) = self.cors_origin {
             if let Ok(v) = HeaderValue::from_str(o) {
                 headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, v);

@@ -43,6 +43,12 @@ export type ErrorDeckActionId =
 export type ErrorDeckCode =
   | "CLI_NOT_FOUND"
   | "AUTH_FAILED"
+  /** Official/agent path: no usable auth context (auth_kind=none / no auth context). */
+  | "AUTH_NO_CONTEXT"
+  /** Incorrect / invalid / missing API key (often HTTP 400 from xAI or a relay). */
+  | "AUTH_API_KEY"
+  /** Active custom provider route rejected credentials (re-login alone will not fix). */
+  | "AUTH_CUSTOM_PROVIDER"
   | "NETWORK_PROVIDER"
   | "AGENT_CRASHED"
   | "QUOTA_EXCEEDED"
@@ -63,6 +69,14 @@ export type ErrorDeckCode =
   /** MCP or provider OAuth token expired / invalid_grant. */
   | "OAUTH_EXPIRED"
   | "GENERIC";
+
+/** Optional context for refining AUTH_FAILED into a more specific deck. */
+export type ErrorDeckResolveOpts = {
+  timeout?: boolean;
+  disconnected?: boolean;
+  /** Active provider route from Host `providers_list.activeSource`. */
+  activeSource?: "official" | "custom" | null;
+};
 
 export type ErrorDeckAction = {
   id: ErrorDeckActionId;
@@ -104,6 +118,30 @@ const DECK: Record<ErrorDeckCode, DeckSpec> = {
     primaryLabel: "error.action.openAccount",
     secondaryId: "open_providers",
     secondaryLabel: "error.action.openProviders",
+  },
+  AUTH_NO_CONTEXT: {
+    problem: "error.deck.authNoContext.problem",
+    cause: "error.deck.authNoContext.cause",
+    primaryId: "open_account",
+    primaryLabel: "error.action.openAccount",
+    secondaryId: "reconnect",
+    secondaryLabel: "error.action.reconnect",
+  },
+  AUTH_API_KEY: {
+    problem: "error.deck.authApiKey.problem",
+    cause: "error.deck.authApiKey.cause",
+    primaryId: "open_providers",
+    primaryLabel: "error.action.openProviders",
+    secondaryId: "open_account",
+    secondaryLabel: "error.action.openAccount",
+  },
+  AUTH_CUSTOM_PROVIDER: {
+    problem: "error.deck.authCustom.problem",
+    cause: "error.deck.authCustom.cause",
+    primaryId: "open_providers",
+    primaryLabel: "error.action.openProviders",
+    secondaryId: "open_account",
+    secondaryLabel: "error.action.openAccount",
   },
   NETWORK_PROVIDER: {
     problem: "error.deck.network.problem",
@@ -251,6 +289,9 @@ export function buildErrorDeck(
 const AGENT_DECK_CODES: ErrorDeckCode[] = [
   "CLI_NOT_FOUND",
   "AUTH_FAILED",
+  "AUTH_NO_CONTEXT",
+  "AUTH_API_KEY",
+  "AUTH_CUSTOM_PROVIDER",
   "NETWORK_PROVIDER",
   "AGENT_CRASHED",
   "QUOTA_EXCEEDED",
@@ -268,7 +309,7 @@ const AGENT_DECK_CODES: ErrorDeckCode[] = [
 /** Map a classified agent code (or special timeout/disconnect) to a deck code. */
 export function deckCodeFromAgent(
   code: string | null | undefined,
-  opts?: { timeout?: boolean; disconnected?: boolean },
+  opts?: ErrorDeckResolveOpts,
 ): ErrorDeckCode {
   if (opts?.timeout) return "TURN_TIMEOUT";
   if (opts?.disconnected) return "AGENT_DISCONNECTED";
@@ -276,6 +317,65 @@ export function deckCodeFromAgent(
     return code as ErrorDeckCode;
   }
   return "GENERIC";
+}
+
+/**
+ * Split host `AUTH_FAILED` / free-form auth strings into actionable subtypes.
+ * Host still emits AUTH_FAILED; UI refines with message + active route.
+ *
+ * CharlieLam 2026-08-05: generic “re-login” misled when the failure was
+ * missing agent auth context, a bad API key, or a custom relay route.
+ */
+export function refineAuthDeckCode(
+  message?: string | null,
+  opts?: Pick<ErrorDeckResolveOpts, "activeSource">,
+): ErrorDeckCode {
+  const s = (message ?? "").toLowerCase();
+  const custom = opts?.activeSource === "custom";
+
+  // Process / agent-home has no usable credentials (not just "wrong key").
+  if (
+    s.includes("no auth context") ||
+    s.includes("auth_kind=none") ||
+    s.includes("auth_kind\":none") ||
+    s.includes("auth_kind: none") ||
+    (s.includes("auth_kind") && s.includes("none") && s.includes("permissiondenied")) ||
+    (s.includes("x_xai_token_auth=none") && s.includes("no auth"))
+  ) {
+    return "AUTH_NO_CONTEXT";
+  }
+
+  // Explicit API key rejection (xAI often HTTP 400 without "401").
+  const apiKeyish =
+    s.includes("incorrect api key") ||
+    s.includes("invalid api key") ||
+    (s.includes("api key") &&
+      (s.includes("incorrect") ||
+        s.includes("invalid") ||
+        s.includes("missing") ||
+        s.includes("not provided") ||
+        s.includes("provided")));
+  if (apiKeyish) {
+    return custom ? "AUTH_CUSTOM_PROVIDER" : "AUTH_API_KEY";
+  }
+
+  // Active custom relay: official re-login will not fix a bad key / OIDC mix.
+  if (custom) {
+    return "AUTH_CUSTOM_PROVIDER";
+  }
+
+  // Invalid/expired bearer with no more specific marker → generic re-login.
+  return "AUTH_FAILED";
+}
+
+/** True for any product auth deck (banner / bubble recovery). */
+export function isAuthDeckCode(code: ErrorDeckCode | string | null | undefined): boolean {
+  return (
+    code === "AUTH_FAILED" ||
+    code === "AUTH_NO_CONTEXT" ||
+    code === "AUTH_API_KEY" ||
+    code === "AUTH_CUSTOM_PROVIDER"
+  );
 }
 
 /**
@@ -468,11 +568,19 @@ export function classifyErrorMessage(raw: string | null | undefined): ErrorDeckC
 export function resolveErrorDeckCode(
   code: string | null | undefined,
   message?: string | null,
-  opts?: { timeout?: boolean; disconnected?: boolean },
+  opts?: ErrorDeckResolveOpts,
 ): ErrorDeckCode {
   const fromCode = deckCodeFromAgent(code, opts);
+  // Host often emits plain AUTH_FAILED — refine with message + active route.
+  if (fromCode === "AUTH_FAILED") {
+    return refineAuthDeckCode(message ?? code, opts);
+  }
   if (fromCode !== "GENERIC") return fromCode;
-  return classifyErrorMessage(message ?? code);
+  const classified = classifyErrorMessage(message ?? code);
+  if (classified === "AUTH_FAILED") {
+    return refineAuthDeckCode(message ?? code, opts);
+  }
+  return classified;
 }
 
 /** Whether the primary/secondary action should re-open the agent. */

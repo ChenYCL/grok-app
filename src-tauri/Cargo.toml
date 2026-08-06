@@ -60,7 +60,8 @@ keyring = { version = "3.6", features = [
     "crypto-rust",
 ] }
 arboard = "3"
-image = { version = "0.25", default-features = false, features = ["png"] }
+# jpeg/gif/webp: chat image thumb disk cache (image_thumb.rs)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 fs2 = "0.4"
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 url = "2"

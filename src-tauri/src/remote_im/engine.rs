@@ -1702,16 +1702,15 @@ fn format_context_report(
     lines.join("\n")
 }
 
-/// After Remote IM switches auth.json, soft-drop desktop ACP + notify UI.
+/// After Remote IM switches auth.json, recycle desktop warm agents + notify UI.
+/// Must kill prewarm/parked too — disconnect alone parks and leaves stale OIDC.
 async fn soft_disconnect_desktop_after_account_switch() {
     let Some(app) = app_sessions::try_app_handle() else {
         return;
     };
     if let Some(mgr) = app.try_state::<Arc<crate::session_manager::SessionManager>>() {
         let mgr = mgr.inner().clone();
-        if let Err(e) = mgr.disconnect(app.clone()).await {
-            tracing::warn!("remote_im: disconnect after account switch: {e}");
-        }
+        mgr.recycle_all_agents(&app, "account_auth").await;
     }
     let _ = app.emit(
         "account://changed",

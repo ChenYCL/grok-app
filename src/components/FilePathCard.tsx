@@ -1,7 +1,11 @@
 /**
  * Compact file / URL card for chat paths.
- * Default: name only (no path on the card — avoids resolve flash).
- * Path lives in details modal + right-click copy.
+ *
+ * Policy: only render the interactive card chrome when the Host can resolve a
+ * real on-disk path (or the token is a URL). Unresolved / missing paths stay
+ * as plain inline code so dead cards never appear in the transcript.
+ *
+ * Card: basename only. Path lives in details modal + right-click copy.
  * Click → open in right resource pane.
  */
 
@@ -10,6 +14,7 @@ import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import { pathBasename, pathExt } from "@/lib/attachments";
 import {
+  isHomeRelativePath,
   isHttpUrl,
   isRealLocalAbsolutePath,
   normalizePathToken,
@@ -22,6 +27,10 @@ import {
   resolveOpenEditorError,
   resolveRevealError,
 } from "@/lib/openEditorHonesty";
+import {
+  getCachedFileResolve,
+  setCachedFileResolve,
+} from "@/lib/filePathResolveCache";
 import {
   IconClose,
   IconCopy,
@@ -145,14 +154,42 @@ export function FilePathCard({
   void _subtitle; // callers may pass; card no longer shows path/subtitle
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  /** Only set after host confirms a real on-disk path. */
-  const [resolvedAbs, setResolvedAbs] = useState<string | null>(null);
-  const [missing, setMissing] = useState(false);
-  const [busy, setBusy] = useState(false);
   const isUrl = kind === "url" || isHttpUrl(path);
+  /**
+   * Seed from session resolve cache so virtual-list remounts do not flash
+   * plain code → card (layout thrash while scrolling).
+   */
+  const seedResolve = (): {
+    abs: string | null;
+    missing: boolean;
+    skipProbe: boolean;
+  } => {
+    if (isUrl) return { abs: null, missing: false, skipProbe: true };
+    if (absolutePath && isRealLocalAbsolutePath(absolutePath)) {
+      const cached = getCachedFileResolve(absolutePath, projectPath);
+      if (cached === null) return { abs: null, missing: true, skipProbe: true };
+      if (typeof cached === "string") {
+        return { abs: cached, missing: false, skipProbe: true };
+      }
+      // Optimistic abs hint — still verify once, but paint card-sized chrome.
+      return { abs: absolutePath, missing: false, skipProbe: false };
+    }
+    const cached = getCachedFileResolve(path, projectPath);
+    if (cached === null) return { abs: null, missing: true, skipProbe: true };
+    if (typeof cached === "string") {
+      return { abs: cached, missing: false, skipProbe: true };
+    }
+    return { abs: null, missing: false, skipProbe: false };
+  };
+  const seed = seedResolve();
+  /** Only set after host confirms a real on-disk path (or cache hit). */
+  const [resolvedAbs, setResolvedAbs] = useState<string | null>(seed.abs);
+  /** True after resolve finished with no openable file (render plain code). */
+  const [missing, setMissing] = useState(seed.missing);
+  const [busy, setBusy] = useState(false);
   /** Card title only: basename, or host for URLs — never the full path. */
   const name = (() => {
-    if (!isUrl) return pathBasename(path);
+    if (!isUrl) return pathBasename(resolvedAbs || path);
     try {
       const u = new URL(path);
       return u.hostname || path;
@@ -162,8 +199,8 @@ export function FilePathCard({
   })();
 
   /**
-   * Resolve a real on-disk absolute path.
-   * Prefer relative tokens for monorepo search; never trust unverified joins.
+   * Resolve a real on-disk absolute path (metadata only — never full file read).
+   * Prefer absolute tokens first; relative uses host smart resolve without body.
    */
   const resolveAbsolute = useCallback(async (): Promise<string | null> => {
     if (isUrl) return null;
@@ -182,8 +219,35 @@ export function FilePathCard({
         : null;
 
     if (!api.isTauri()) {
-      if (absHint) return absHint;
-      if (isRealLocalAbsolutePath(pathNorm)) return pathNorm;
+      // Browser preview: only absolute-looking tokens; no host smart open.
+      if (absHint) {
+        setCachedFileResolve(path, projectPath, absHint);
+        setResolvedAbs(absHint);
+        setMissing(false);
+        return absHint;
+      }
+      if (isRealLocalAbsolutePath(pathNorm) || isHomeRelativePath(pathNorm)) {
+        setCachedFileResolve(path, projectPath, pathNorm);
+        setResolvedAbs(pathNorm);
+        setMissing(false);
+        return pathNorm;
+      }
+      setCachedFileResolve(path, projectPath, null);
+      setMissing(true);
+      return null;
+    }
+
+    // Bare basenames without an abs hint almost never uniquely resolve and
+    // force a full monorepo walk — leave as plain code (pathMap should have
+    // upgraded them already when a real file was tool-touched).
+    const multiSeg =
+      pathNorm.includes("/") ||
+      pathNorm.includes("\\") ||
+      isHomeRelativePath(pathNorm) ||
+      isRealLocalAbsolutePath(pathNorm);
+    if (!absHint && !multiSeg) {
+      setCachedFileResolve(path, projectPath, null);
+      setMissing(true);
       return null;
     }
 
@@ -192,7 +256,9 @@ export function FilePathCard({
     // and project parent (sibling folders such as a shared knowledge base).
     const tokens: string[] = [];
     if (absHint) tokens.push(absHint);
-    if (isRealLocalAbsolutePath(pathNorm)) tokens.push(pathNorm);
+    if (isRealLocalAbsolutePath(pathNorm) || isHomeRelativePath(pathNorm)) {
+      tokens.push(pathNorm);
+    }
     const rel = relativeToken(path);
     if (rel) tokens.push(rel);
     // Multi-segment relative only — bare basenames are last-resort and often
@@ -205,18 +271,41 @@ export function FilePathCard({
     ) {
       tokens.push(pathNorm);
     }
-    // Bare basename last (host may find a unique sibling under project).
-    const bare = pathBasename(pathNorm);
-    if (bare && !tokens.includes(bare)) tokens.push(bare);
+    // Bare basename only as companion of multi-segment (not alone).
+    if (multiSeg) {
+      const bare = pathBasename(pathNorm);
+      if (bare && !tokens.includes(bare) && bare !== pathNorm) {
+        tokens.push(bare);
+      }
+    }
 
     const seen = new Set<string>();
     for (const token of tokens) {
       if (!token || seen.has(token)) continue;
       if (isSiteRootAbsolutePath(token)) continue;
       seen.add(token);
+
+      // Absolute: cheap classify (stat only) before smart resolve.
+      if (isRealLocalAbsolutePath(token)) {
+        try {
+          const list = await api.pathsClassify([token]);
+          const e = list?.[0];
+          if (e?.exists && !e.isDir && e.path) {
+            setCachedFileResolve(path, projectPath, e.path);
+            setResolvedAbs(e.path);
+            setMissing(false);
+            return e.path;
+          }
+        } catch {
+          /* fall through to smart resolve */
+        }
+      }
+
+      // Metadata-only smart resolve — never fsOpenPath (full body) for cards.
       try {
-        const r = await api.fsOpenPath(token, projectPath ?? null);
-        if (r.absolutePath) {
+        const r = await api.fsResolvePath(token, projectPath ?? null);
+        if (r.absolutePath && !r.isDir) {
+          setCachedFileResolve(path, projectPath, r.absolutePath);
           setResolvedAbs(r.absolutePath);
           setMissing(false);
           return r.absolutePath;
@@ -224,32 +313,39 @@ export function FilePathCard({
       } catch {
         /* try next token */
       }
-      // Absolute-only fallback when smart open fails (legacy host / edge cases)
-      if (isRealLocalAbsolutePath(token)) {
-        try {
-          const r = await api.fsReadAbsolute(token);
-          if (r.absolutePath) {
-            setResolvedAbs(r.absolutePath);
-            setMissing(false);
-            return r.absolutePath;
-          }
-        } catch {
-          /* try next */
-        }
-      }
     }
+    setCachedFileResolve(path, projectPath, null);
     setMissing(true);
     return null;
   }, [absolutePath, isUrl, path, projectPath, resolvedAbs]);
 
+  // Verify once per token; cache makes scroll remounts instant (no plain→card).
   useEffect(() => {
     if (isUrl) return;
+    if (missing) return;
+    // Cache hit (incl. known-missing) — do not re-probe on every remount.
+    const cached = getCachedFileResolve(
+      absolutePath && isRealLocalAbsolutePath(absolutePath)
+        ? absolutePath
+        : path,
+      projectPath,
+    );
+    if (cached === null) {
+      setMissing(true);
+      setResolvedAbs(null);
+      return;
+    }
+    if (typeof cached === "string") {
+      setResolvedAbs(cached);
+      setMissing(false);
+      return;
+    }
     if (resolvedAbs) return;
-    if (!api.isTauri()) return;
     let cancelled = false;
     void resolveAbsolute().then((abs) => {
       if (cancelled) return;
       if (abs) setResolvedAbs(abs);
+      else setMissing(true);
     });
     return () => {
       cancelled = true;
@@ -271,13 +367,14 @@ export function FilePathCard({
       onOpenInPanel?.({ type: "url", url: path, title: name });
       return;
     }
-    // Resolve first — never open an empty resource tab for missing / site paths.
+    // Card chrome only mounts after a verified abs; re-resolve if stale.
     if (busy) return;
     setBusy(true);
     try {
       const abs = resolvedAbs || (await resolveAbsolute());
       if (!abs) {
         setMissing(true);
+        setResolvedAbs(null);
         onOpenError?.(filePathCardErrLabel(labels, "not_found"));
         return;
       }
@@ -360,6 +457,16 @@ export function FilePathCard({
   // Prefer resolved abs in details; fall back to original token.
   const detailsPath = resolvedAbs || path;
 
+  // Gate: no real path yet (or proven missing) → plain inline code, not a card.
+  // URLs always render as cards. Pending resolve also stays plain (no flash).
+  if (!isUrl && !resolvedAbs) {
+    return (
+      <code className="chat-md__inline-code" title={path}>
+        {path}
+      </code>
+    );
+  }
+
   const menuItems: ContextMenuItem[] = [
     {
       id: "open-panel",
@@ -411,14 +518,9 @@ export function FilePathCard({
         className={
           "file-path-card" +
           (isUrl ? " file-path-card--url" : "") +
-          (kind === "dir" ? " file-path-card--dir" : "") +
-          (missing && !resolvedAbs ? " file-path-card--missing" : "")
+          (kind === "dir" ? " file-path-card--dir" : "")
         }
-        title={
-          missing && !resolvedAbs
-            ? `${name} — ${labels.detailsMissing || labels.errNotFound || "Not found"}`
-            : resolvedAbs || name
-        }
+        title={resolvedAbs || path || name}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -430,7 +532,6 @@ export function FilePathCard({
           className="file-path-card__main"
           onClick={() => void openInPanel()}
           disabled={busy}
-          aria-disabled={missing && !resolvedAbs ? true : undefined}
         >
           <span className="file-path-card__icon" aria-hidden>
             {kind === "dir" ? (

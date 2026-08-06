@@ -3,7 +3,9 @@ import {
   buildErrorDeck,
   classifyErrorMessage,
   deckCodeFromAgent,
+  isAuthDeckCode,
   isReconnectAction,
+  refineAuthDeckCode,
   resolveErrorDeckCode,
 } from "./errorDeck";
 
@@ -114,7 +116,53 @@ describe("buildErrorDeck", () => {
       ),
     ).toBe("AUTH_FAILED");
     expect(classifyErrorMessage("bad-credentials")).toBe("AUTH_FAILED");
-    expect(resolveErrorDeckCode(null, xai400)).toBe("AUTH_FAILED");
+    // resolveErrorDeckCode refines host/generic AUTH_FAILED into subtypes.
+    expect(resolveErrorDeckCode(null, xai400)).toBe("AUTH_API_KEY");
+  });
+
+  it("refines AUTH_FAILED into no-context / api-key / custom-route subtypes", () => {
+    const noCtx =
+      "cli-proxy HTTP 401: Invalid or expired credentials (auth_kind=bearer, x_xai_token_auth=none, upstream=PermissionDenied, reason=no auth context)";
+    expect(refineAuthDeckCode(noCtx)).toBe("AUTH_NO_CONTEXT");
+    expect(resolveErrorDeckCode("AUTH_FAILED", noCtx)).toBe("AUTH_NO_CONTEXT");
+    expect(isAuthDeckCode("AUTH_NO_CONTEXT")).toBe(true);
+
+    const xai400 = "Incorrect API key provided. Obtain a key from console.x.ai";
+    expect(refineAuthDeckCode(xai400)).toBe("AUTH_API_KEY");
+    expect(resolveErrorDeckCode("AUTH_FAILED", xai400)).toBe("AUTH_API_KEY");
+
+    // Active custom route → open Providers first (re-login alone is wrong).
+    expect(
+      refineAuthDeckCode("401 Unauthorized from relay", {
+        activeSource: "custom",
+      }),
+    ).toBe("AUTH_CUSTOM_PROVIDER");
+    expect(
+      resolveErrorDeckCode("AUTH_FAILED", "401 unauthorized", {
+        activeSource: "custom",
+      }),
+    ).toBe("AUTH_CUSTOM_PROVIDER");
+    expect(
+      refineAuthDeckCode(xai400, { activeSource: "custom" }),
+    ).toBe("AUTH_CUSTOM_PROVIDER");
+
+    // Generic expired without markers stays AUTH_FAILED.
+    expect(refineAuthDeckCode("login expired please sign in")).toBe(
+      "AUTH_FAILED",
+    );
+
+    const noCtxDeck = buildErrorDeck("AUTH_NO_CONTEXT", "en");
+    expect(noCtxDeck.primary.id).toBe("open_account");
+    expect(noCtxDeck.secondary?.id).toBe("reconnect");
+    expect(noCtxDeck.cause.toLowerCase()).toMatch(/auth|credential|reconnect|sign/);
+
+    const apiKeyDeck = buildErrorDeck("AUTH_API_KEY", "en");
+    expect(apiKeyDeck.primary.id).toBe("open_providers");
+    expect(apiKeyDeck.problem.toLowerCase()).toMatch(/api key|key/);
+
+    const customDeck = buildErrorDeck("AUTH_CUSTOM_PROVIDER", "zh");
+    expect(customDeck.primary.id).toBe("open_providers");
+    expect(customDeck.cause).toMatch(/中转|服务商|Key|官方/);
   });
 
   it("classifies App project-gate and MCP/permission strings", () => {

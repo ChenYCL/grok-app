@@ -310,27 +310,69 @@ pub fn read_version_of(path: &Path) -> Option<String> {
     read_version(path)
 }
 
+/// Wall-clock budget for a single `grok --version` (hung binaries must not
+/// freeze the setup gate / async runtime forever).
+const VERSION_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
 fn read_version(path: &Path) -> Option<String> {
+    use std::process::Stdio;
+    use std::time::Instant;
+
     let mut cmd = Command::new(path);
-    cmd.arg("--version");
-    // GUI-spawned probes: PATH + HOME (Windows often lacks $HOME for CLI hub).
+    cmd.arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    // GUI-spawned probes: PATH + HOME + no console window (Windows).
     process_util::apply_cli_env_std(&mut cmd);
-    let out = cmd.output().ok()?;
-    if !out.status.success() {
-        // Some builds print version on stderr
-        let err = String::from_utf8_lossy(&out.stderr);
-        let line = err.lines().next()?.trim().to_string();
-        if !line.is_empty() && line.to_ascii_lowercase().contains("grok") {
-            return Some(line);
+
+    let mut child = cmd.spawn().ok()?;
+    let deadline = Instant::now() + VERSION_PROBE_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout = {
+                    let mut s = String::new();
+                    if let Some(mut pipe) = child.stdout.take() {
+                        use std::io::Read;
+                        let _ = pipe.read_to_string(&mut s);
+                    }
+                    s
+                };
+                let stderr = {
+                    let mut s = String::new();
+                    if let Some(mut pipe) = child.stderr.take() {
+                        use std::io::Read;
+                        let _ = pipe.read_to_string(&mut s);
+                    }
+                    s
+                };
+                if status.success() {
+                    let line = stdout.lines().next()?.trim().to_string();
+                    return if line.is_empty() { None } else { Some(line) };
+                }
+                // Some builds print version on stderr
+                let line = stderr.lines().next()?.trim().to_string();
+                if !line.is_empty() && line.to_ascii_lowercase().contains("grok") {
+                    return Some(line);
+                }
+                return None;
+            }
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    tracing::warn!(
+                        path = %path.display(),
+                        "cli --version timed out after {}s — killing",
+                        VERSION_PROBE_TIMEOUT.as_secs()
+                    );
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Err(_) => return None,
         }
-        return None;
-    }
-    let s = String::from_utf8_lossy(&out.stdout);
-    let line = s.lines().next()?.trim().to_string();
-    if line.is_empty() {
-        None
-    } else {
-        Some(line)
     }
 }
 

@@ -103,10 +103,26 @@ export function useChatMessageVirtualizer(
   const recomputeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Programmatic scrollTop from height correction — ignore once for stick. */
   const ignoreScrollAdjustRef = useRef(false);
-  /** Per-index ResizeObserver so media decode updates height after mount. */
+  /** Per-index ResizeObserver so image/video decode updates height after mount. */
   const rowObserversRef = useRef<Map<number, ResizeObserver>>(new Map());
   /** Coalesce scroll-driven recomputes to one per animation frame. */
   const scrollRafRef = useRef<number | null>(null);
+  /**
+   * True while the user is actively scrolling. Height remeasures that rebuild
+   * the virtual window mid-fling were the main "everything jitters on scroll"
+   * source (estimate→actual + paddingTop churn). Defer those until idle.
+   */
+  const scrollingRef = useRef(false);
+  const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  /** Height commits landed during scroll — recompute once when idle. */
+  const pendingHeightRecomputeRef = useRef(false);
+  /**
+   * Measures taken mid-scroll. Applied to heightsRef only after scroll idle
+   * so window offsets stay stable during the gesture (no padding flash).
+   */
+  const pendingHeightsRef = useRef<Map<string, number>>(new Map());
   /**
    * Bump when any committed height changes so the offset cache invalidates.
    * Avoids O(n) cumulative rebuild on every scroll when heights are stable.
@@ -206,15 +222,14 @@ export function useChatMessageVirtualizer(
       ) {
         return prev;
       }
-      // Ignore sub-pixel spacer thrash while pinned (same window range) —
-      // that was a main source of bottom flash / bounce.
+      // Ignore sub-pixel spacer thrash when the visible range is unchanged
+      // (pin or browse) — main source of bottom / mid-scroll flash.
       if (
-        pin &&
         prev.start === next.start &&
         prev.end === next.end &&
-        Math.abs(prev.paddingTop - next.paddingTop) < 3 &&
-        Math.abs(prev.paddingBottom - next.paddingBottom) < 3 &&
-        Math.abs(prev.totalHeight - next.totalHeight) < 6
+        Math.abs(prev.paddingTop - next.paddingTop) < 4 &&
+        Math.abs(prev.paddingBottom - next.paddingBottom) < 4 &&
+        Math.abs(prev.totalHeight - next.totalHeight) < 8
       ) {
         return prev;
       }
@@ -223,19 +238,25 @@ export function useChatMessageVirtualizer(
   }, [virtualized, itemCount, viewportRef, isPinnedRef, getHeight, getOffsets]);
 
   const recompute = useCallback(() => {
+    // Never rebuild the virtual window from height churn mid-scroll — that
+    // paddingTop flash is the universal scroll jitter.
+    if (scrollingRef.current) {
+      pendingHeightRecomputeRef.current = true;
+      return;
+    }
     // Coalesce measure storms (tall markdown + table reflow) into one window update.
     // When pinned, use a longer debounce so spacer remeasure does not flash the tail.
     if (recomputeTimerRef.current != null) {
       clearTimeout(recomputeTimerRef.current);
     }
-    const delay = isPinnedRef.current ? 72 : 32;
+    const delay = isPinnedRef.current ? 72 : 48;
     recomputeTimerRef.current = setTimeout(() => {
       recomputeTimerRef.current = null;
       recomputeNow();
     }, delay);
   }, [recomputeNow, isPinnedRef]);
 
-  // Scroll → recompute (rAF-coalesced so flings don't rebuild every event).
+  // Scroll → recompute window range only (rAF). Height-driven rebuilds wait for idle.
   useEffect(() => {
     if (!virtualized) {
       setWin(full(itemCount));
@@ -248,6 +269,29 @@ export function useChatMessageVirtualizer(
         ignoreScrollAdjustRef.current = false;
         return;
       }
+      scrollingRef.current = true;
+      if (scrollIdleTimerRef.current != null) {
+        clearTimeout(scrollIdleTimerRef.current);
+      }
+      scrollIdleTimerRef.current = setTimeout(() => {
+        scrollIdleTimerRef.current = null;
+        scrollingRef.current = false;
+        // Flush measures deferred during the fling.
+        const pending = pendingHeightsRef.current;
+        if (pending.size > 0) {
+          for (const [k, h] of pending) {
+            heightsRef.current.set(k, h);
+          }
+          pending.clear();
+          heightsVersionRef.current += 1;
+          offsetsCacheRef.current = null;
+          pendingHeightRecomputeRef.current = true;
+        }
+        if (pendingHeightRecomputeRef.current) {
+          pendingHeightRecomputeRef.current = false;
+          recomputeNow();
+        }
+      }, 140);
       // One window update per frame while the user is flinging through history.
       if (scrollRafRef.current != null) return;
       scrollRafRef.current = requestAnimationFrame(() => {
@@ -256,7 +300,14 @@ export function useChatMessageVirtualizer(
       });
     };
     el.addEventListener("scroll", onScroll, { passive: true });
-    const ro = new ResizeObserver(() => recompute());
+    // Viewport chrome resize only — not content (content RO was thrashy).
+    const ro = new ResizeObserver(() => {
+      if (scrollingRef.current) {
+        pendingHeightRecomputeRef.current = true;
+        return;
+      }
+      recompute();
+    });
     ro.observe(el);
     recomputeNow();
     return () => {
@@ -269,6 +320,10 @@ export function useChatMessageVirtualizer(
       if (recomputeTimerRef.current != null) {
         clearTimeout(recomputeTimerRef.current);
         recomputeTimerRef.current = null;
+      }
+      if (scrollIdleTimerRef.current != null) {
+        clearTimeout(scrollIdleTimerRef.current);
+        scrollIdleTimerRef.current = null;
       }
     };
   }, [virtualized, itemCount, viewportRef, recompute, recomputeNow, conversationKey]);
@@ -291,19 +346,54 @@ export function useChatMessageVirtualizer(
       if (!virtualized) return;
       const key = getKeyRef.current(index);
       const nextH = Math.round(el.getBoundingClientRect().height);
-      const prevH = heightsRef.current.get(key);
-      if (!shouldCommitRowHeight(prevH, nextH)) return;
+      const prevMeasured = heightsRef.current.get(key);
+      const estRaw = estimateRef.current?.(index);
+      const estimateH =
+        estRaw != null && Number.isFinite(estRaw) && estRaw >= 0
+          ? Math.round(estRaw)
+          : CHAT_DEFAULT_ROW_ESTIMATE_PX;
+      // First paint used the estimate in offsets; treat it as the previous
+      // height so estimate→actual can keep the viewport anchored.
+      const prevH = prevMeasured ?? estimateH;
+
+      if (prevMeasured != null) {
+        if (!shouldCommitRowHeight(prevMeasured, nextH)) return;
+      } else if (Math.abs(nextH - estimateH) < 4) {
+        // Close enough to estimate — record without rebuilding the window.
+        if (scrollingRef.current) {
+          pendingHeightsRef.current.set(key, nextH);
+        } else {
+          heightsRef.current.set(key, nextH);
+        }
+        return;
+      }
+
+      // Mid-scroll: buffer only — do not mutate live offsets until idle.
+      if (scrollingRef.current) {
+        pendingHeightsRef.current.set(key, nextH);
+        pendingHeightRecomputeRef.current = true;
+        return;
+      }
+
+      heightsRef.current.set(key, nextH);
+      heightsVersionRef.current += 1;
+      offsetsCacheRef.current = null;
 
       const pin = !!isPinnedRef.current;
       const viewport = viewportRef.current;
-      // Only correct scroll when we already had a committed height (remeasure),
-      // not on first measure from estimate — large first deltas at the viewport
-      // edge were a primary bounce source for diagram rows.
-      if (viewport && prevH != null && !pin) {
-        const offsets = getOffsets();
-        // Use prev height for this row when computing rowOffset (cache may
-        // still hold the old value until we write nextH below).
-        const rowOffset = offsets[index] ?? 0;
+      if (viewport && !pin && Math.abs(nextH - prevH) >= 4) {
+        // Offsets for scroll anchor must use prevH for this row.
+        heightsRef.current.set(key, prevH);
+        const offsetsBefore = cumulativeOffsets(itemCount, (i) => {
+          const k = getKeyRef.current(i);
+          const m = heightsRef.current.get(k);
+          if (m != null) return m;
+          const e = estimateRef.current?.(i);
+          if (e != null && Number.isFinite(e) && e >= 0) return e;
+          return CHAT_DEFAULT_ROW_ESTIMATE_PX;
+        });
+        heightsRef.current.set(key, nextH);
+        const rowOffset = offsetsBefore[index] ?? 0;
         const delta = nextH - prevH;
         const adjusted = scrollTopAfterHeightChange({
           scrollTop: viewport.scrollTop,
@@ -318,9 +408,6 @@ export function useChatMessageVirtualizer(
         }
       }
 
-      heightsRef.current.set(key, nextH);
-      heightsVersionRef.current += 1;
-      offsetsCacheRef.current = null;
       recompute();
       // Stay glued to the true bottom after a height commit while pinned —
       // avoids one-frame empty play at the tail then snap-back flash.
@@ -336,7 +423,7 @@ export function useChatMessageVirtualizer(
         });
       }
     },
-    [virtualized, getOffsets, isPinnedRef, viewportRef, recompute],
+    [virtualized, isPinnedRef, viewportRef, recompute, itemCount],
   );
 
   /**
@@ -367,8 +454,14 @@ export function useChatMessageVirtualizer(
 
         // Immediate sample (mount) + observe media/layout growth afterward.
         commitRowHeight(index, el);
+        // Coalesce RO storms (multi-image decode) — one commit per frame.
+        let roRaf = 0;
         const ro = new ResizeObserver(() => {
-          commitRowHeight(index, el);
+          if (roRaf) return;
+          roRaf = requestAnimationFrame(() => {
+            roRaf = 0;
+            commitRowHeight(index, el);
+          });
         });
         ro.observe(el);
         rowObserversRef.current.set(index, ro);

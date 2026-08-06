@@ -271,7 +271,11 @@ pub async fn session_resolve_permission(
 
 #[tauri::command]
 pub async fn probe_cli(manual_path: Option<String>) -> Result<CliProbeResult, String> {
-    Ok(cli_probe::probe_cli(manual_path.as_deref()))
+    // probe_cli runs `grok --version` (sync I/O). Never block a Tokio worker —
+    // a hung binary used to freeze the setup gate ("Checking Grok Build…") forever.
+    tokio::task::spawn_blocking(move || cli_probe::probe_cli(manual_path.as_deref()))
+        .await
+        .map_err(|e| format!("probe_cli join: {e}"))
 }
 
 /// API mode: TCP-connect to an ACP server and run the initialize handshake.

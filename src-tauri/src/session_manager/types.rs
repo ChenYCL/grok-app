@@ -1438,12 +1438,14 @@ pub(super) fn append_journal_attachment_refs(
     lines.join("\n")
 }
 
-/// Result of taking agent processes out of live / background / parked maps.
+/// Result of taking agent processes out of live / background / parked / prewarm maps.
 pub(super) struct DrainedAgents {
     pub(super) acps: Vec<Arc<AcpClient>>,
     pub(super) had_live_shell: bool,
     pub(super) background_count: usize,
     pub(super) parked_count: usize,
+    /// Ready prewarm processes drained (Spawning slots are cleared without a kill handle).
+    pub(super) prewarm_count: usize,
 }
 
 /// Pure policy: should connect keep the live agent process instead of respawning?

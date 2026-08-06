@@ -1896,6 +1896,10 @@ export function AppWorkbench() {
   const [appGate, setAppGate] = useState<"loading" | "setup" | "ready">(() =>
     typeof window !== "undefined" && isMirrorClient() ? "ready" : "loading",
   );
+  /** Boot probe hung / timed out — show retry on the loading gate. */
+  const [bootDetectTimedOut, setBootDetectTimedOut] = useState(false);
+  const [bootDetectSlow, setBootDetectSlow] = useState(false);
+  const [bootRetryNonce, setBootRetryNonce] = useState(0);
   // Ask once for notification permission after first ready.
   useEffect(() => {
     if (appGate !== "ready") return;
@@ -2419,7 +2423,11 @@ export function AppWorkbench() {
     [asideClampOpts, phoneLayout],
   );
 
-  /** Open the right pane: open first, then one window fit + clamp. */
+  /**
+   * Open the right pane immediately, then fit/clamp the window in the
+   * background. Waiting on Tauri window APIs before uncollapsing made chat
+   * file-card preview feel like the side pane was frozen for a long time.
+   */
   const openAsidePane = useCallback(() => {
     if (phoneLayout) {
       setLayout((l) => {
@@ -2435,6 +2443,17 @@ export function AppWorkbench() {
       cur.asideWidth || 0,
       DEFAULT_LAYOUT.asideWidth,
     );
+    // Paint the pane first — do not block UI on window grow.
+    setLayout((l) => {
+      if (!l.asideCollapsed && (l.asideWidth || 0) >= preferredAside) return l;
+      const n = {
+        ...l,
+        asideCollapsed: false,
+        asideWidth: Math.max(l.asideWidth || 0, preferredAside),
+      };
+      saveLayout(localStorage, n);
+      return n;
+    });
     const projected = {
       sidebarCollapsed: cur.sidebarCollapsed,
       sidebarWidth: cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
@@ -2443,11 +2462,10 @@ export function AppWorkbench() {
     };
     void fitWindowThenClampAside(projected).then((width) => {
       setLayout((l) => {
-        const n = {
-          ...l,
-          asideCollapsed: false,
-          asideWidth: width,
-        };
+        // User may have closed the pane while the window fit was in flight.
+        if (l.asideCollapsed) return l;
+        if (l.asideWidth === width) return l;
+        const n = { ...l, asideWidth: width };
         saveLayout(localStorage, n);
         return n;
       });
@@ -2846,13 +2864,40 @@ export function AppWorkbench() {
       // Boot is two-phase so the full-screen "detecting" gate is not blocked by
       // lists / models / keychain / catalog — only settings + CLI probe decide
       // loading → setup | ready. Everything else hydrates after the shell paints.
+      setBootDetectTimedOut(false);
+      setBootDetectSlow(false);
+      const BOOT_SLOW_MS = 4_000;
+      const BOOT_TIMEOUT_MS = 12_000;
+      const slowTimer = window.setTimeout(
+        () => setBootDetectSlow(true),
+        BOOT_SLOW_MS,
+      );
       const settingsP = api.settingsGet();
       const cliP = api.probeCli();
       const projectsP = api.projectsList();
       const sessionsP = api.sessionsList();
       const modelsP = api.modelsListAvailable().catch(() => null);
 
-      const [settings, cli] = await Promise.all([settingsP, cliP]);
+      // Never hang forever on a stuck Host probe / IPC (was: infinite "Checking…").
+      type BootPair = [
+        Awaited<ReturnType<typeof api.settingsGet>>,
+        Awaited<ReturnType<typeof api.probeCli>>,
+      ];
+      const bootPair = Promise.all([settingsP, cliP]) as Promise<BootPair>;
+      let timeoutId: number | undefined;
+      const timed = new Promise<BootPair>((_resolve, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(new Error("BOOT_DETECT_TIMEOUT"));
+        }, BOOT_TIMEOUT_MS);
+      });
+      let settings: Awaited<ReturnType<typeof api.settingsGet>>;
+      let cli: Awaited<ReturnType<typeof api.probeCli>>;
+      try {
+        [settings, cli] = await Promise.race([bootPair, timed]);
+      } finally {
+        window.clearTimeout(slowTimer);
+        if (timeoutId != null) window.clearTimeout(timeoutId);
+      }
 
       {
         const pref = parseLocalePreference(settings.locale);
@@ -2894,6 +2939,8 @@ export function AppWorkbench() {
         legacyDone,
         isMirror: isMirrorClient(),
       });
+      setBootDetectTimedOut(false);
+      setBootDetectSlow(false);
       setAppGate(gate.phase);
 
       // Phase 2 — workbench data (does not block gate chrome).
@@ -3200,7 +3247,25 @@ export function AppWorkbench() {
         historyOpenHydratedRef.current = true;
       }
     } catch (e) {
-      setLocalError(String(e));
+      const msg = String(e || "");
+      const isTimeout =
+        msg.includes("BOOT_DETECT_TIMEOUT") || /timed?\s*out/i.test(msg);
+      if (isTimeout) {
+        setBootDetectTimedOut(true);
+        setLocalError(tr("setup.detectTimeoutHint"));
+        // Stay on loading chrome with Retry — do not pretend Setup finished.
+        setSetupCliSeed((prev) =>
+          prev ?? {
+            found: false,
+            path: null,
+            version: null,
+            source: "timeout",
+            cliAuthPresent: false,
+          },
+        );
+        return;
+      }
+      setLocalError(msg);
       // Still surface setup if Tauri partially works
       setSetupCliSeed((prev) =>
         prev ?? {
@@ -3213,12 +3278,12 @@ export function AppWorkbench() {
       );
       setAppGate((g) => (g === "loading" ? "setup" : g));
     }
-  }, []);
+  }, [tr]);
 
-  // Bootstrap lists once
+  // Bootstrap lists once (+ manual retry after boot timeout).
   useEffect(() => {
     void refreshLists();
-  }, [refreshLists]);
+  }, [refreshLists, bootRetryNonce]);
 
   // Re-resolve model/permission when project or chat changes.
   // Permission always cascades project/session tiers (L10), even when model
@@ -12549,8 +12614,14 @@ export function AppWorkbench() {
 
   const error = session.lastError;
   const errorBanner = useMemo(
-    () => presentErrorBanner(error, localError, locale),
-    [error, localError, locale],
+    () =>
+      presentErrorBanner(error, localError, locale, {
+        activeSource:
+          providerActiveSource === "custom" || providerActiveSource === "official"
+            ? providerActiveSource
+            : null,
+      }),
+    [error, localError, locale, providerActiveSource],
   );
   /** Prefer in-thread turn error; avoid stacking with the top error banner. */
   const hasChatTurnError = useMemo(
@@ -14512,14 +14583,12 @@ export function AppWorkbench() {
         }
         await refreshAccount({ refreshBilling: true });
         await refreshSavedAccounts();
-        // Drop live agent so next send re-spawns with synced auth.json in agent-home.
-        if (res.ok && api.isTauri()) {
-          try {
-            await api.sessionDisconnect();
-            setSession({ ...IDLE_SNAPSHOT });
-          } catch {
-            /* ignore */
-          }
+        // Host account_login recycles live/bg/parked/prewarm on success
+        // (`account_auth`) so warm CLIs cannot keep stale/missing OIDC.
+        // Reset focused shell snapshot only — do not sessionDisconnect (that
+        // parks processes and used to leave prewarm alive for reuse).
+        if (res.ok) {
+          setSession({ ...IDLE_SNAPSHOT });
         }
         return !!res.ok;
       } catch (e) {
@@ -14597,11 +14666,7 @@ export function AppWorkbench() {
         await api.accountSwitch(id);
         await refreshAccount({ refreshBilling: true });
         await refreshSavedAccounts();
-        try {
-          await api.sessionDisconnect();
-        } catch {
-          /* ignore */
-        }
+        // Host account_switch recycles all agents (account_auth).
         setSession({ ...IDLE_SNAPSHOT });
       } catch (e) {
         showToast(String(e), 4500);
@@ -14647,12 +14712,8 @@ export function AppWorkbench() {
       await api.accountLogout();
       await refreshAccount({ refreshBilling: false });
       await refreshSavedAccounts();
-      try {
-        await api.sessionDisconnect();
-        setSession({ ...IDLE_SNAPSHOT });
-      } catch {
-        /* ignore */
-      }
+      // Host account_logout recycles all agents (account_auth).
+      setSession({ ...IDLE_SNAPSHOT });
     } catch (e) {
       showToast(String(e), 4500);
     } finally {
@@ -15216,11 +15277,53 @@ export function AppWorkbench() {
           <div className="setup-gate__drag" data-tauri-drag-region />
           <div className="setup-gate__center">
             <div className="setup-hero">
-              <div className="setup-logo setup-logo--spin">
+              <div
+                className={
+                  "setup-logo" + (bootDetectTimedOut ? "" : " setup-logo--spin")
+                }
+              >
                 <GrokLogo size={44} />
               </div>
-              <h1 className="setup-title">{tr("setup.title")}</h1>
-              <p className="setup-subtitle">{tr("setup.detecting")}</p>
+              <h1 className="setup-title">
+                {bootDetectTimedOut
+                  ? tr("setup.detectTimeout")
+                  : tr("setup.title")}
+              </h1>
+              <p className="setup-subtitle">
+                {bootDetectTimedOut
+                  ? tr("setup.detectTimeoutHint")
+                  : bootDetectSlow
+                    ? tr("setup.detectingSlow")
+                    : tr("setup.detecting")}
+              </p>
+              {bootDetectTimedOut ? (
+                <div className="setup-gate__actions" style={{ marginTop: 20 }}>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    data-testid="setup-boot-retry"
+                    onClick={() => {
+                      setBootDetectTimedOut(false);
+                      setBootDetectSlow(false);
+                      setLocalError(null);
+                      setBootRetryNonce((n) => n + 1);
+                    }}
+                  >
+                    {tr("setup.detectRetry")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    style={{ marginLeft: 8 }}
+                    onClick={() => {
+                      setBootDetectTimedOut(false);
+                      setAppGate("setup");
+                    }}
+                  >
+                    {tr("setup.cli.required")}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -17512,6 +17615,7 @@ export function AppWorkbench() {
               openAsidePane();
               setResourceOpenTarget(target);
             }}
+            onOpenError={(message) => setLocalError(message)}
             onOpenExternalLink={openExternalLinkFromChat}
             onAddAttachmentToComposer={(att) =>
               setAttachments((prev) => mergeAttachments(prev, [att]))

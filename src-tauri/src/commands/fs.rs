@@ -448,6 +448,17 @@ pub async fn media_video_poster_save(
     .map_err(|e| e.to_string())?
 }
 
+/// Cached chat image thumb (JPEG under app cache). Local path or http(s) URL.
+/// Chat cards load the thumb via loopback media; lightbox keeps the original.
+#[tauri::command]
+pub async fn media_image_thumb(
+    path_or_url: String,
+) -> Result<crate::image_thumb::ImageThumbResult, String> {
+    tokio::task::spawn_blocking(move || crate::image_thumb::ensure_image_thumb(&path_or_url))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Open a file or folder with the OS default application.
 ///
 /// Spawn is fully detached (null stdio, no wait). Holding a pipe or waiting on

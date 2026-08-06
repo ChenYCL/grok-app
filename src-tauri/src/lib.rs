@@ -178,6 +178,7 @@ mod turn_complete;
 mod updater;
 
 mod video_poster;
+mod image_thumb;
 
 mod voice_auth;
 
@@ -1083,6 +1084,8 @@ pub fn run() {
 
             commands::media_video_poster_save,
 
+            commands::media_image_thumb,
+
             commands::git_file_diff,
 
             commands::git_status,
@@ -1146,6 +1149,8 @@ pub fn run() {
             commands::fs_read_absolute,
 
             commands::fs_open_path,
+
+            commands::fs_resolve_path,
 
             commands::session_auto_title,
 

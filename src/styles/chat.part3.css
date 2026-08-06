@@ -214,11 +214,12 @@
   display: none;
 }
 
-/* Markdown inline images — RATIO-AWARE FRAME
+/* Markdown inline images — STABLE CHAT FRAME
  *
- * Frame always has a non-zero size (default 4:3, then natural ratio from JS)
- * so scrollHeight never collapses to 0 mid-decode. Width/height follow the
- * image; max height 150px (width ≤240). Inline style sets width + aspect-ratio.
+ * Chat cards: fixed 150px height (inline style) so image decode / natural-ratio
+ * discovery never changes vertical layout (virtual list + stick-to-bottom).
+ * Width follows ratio (≤240). Image absolute-fills with object-fit:contain.
+ * Resource pane uses natural aspect-ratio instead (no chat caps).
  */
 .md-body__img-frame {
   display: block;
@@ -228,16 +229,22 @@
   overflow: hidden;
   background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
   vertical-align: middle;
-  /* Height comes from aspect-ratio (set inline); never leave empty box */
+  /* Chat cards set height inline; pane leaves auto + aspect-ratio */
   height: auto;
+  /* Isolate paint/layout so decode does not reflow siblings */
+  contain: layout paint;
 }
 
 .md-body__img-frame--card {
   max-width: min(100%, 240px);
+  /* Floor before JS style lands — matches CHAT_IMAGE_CARD_MAX_H */
+  min-height: 150px;
+  height: 150px;
   max-height: 150px;
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  flex-shrink: 0;
 }
 
 /* Resource sidebar / full-width previews — no chat card cap */

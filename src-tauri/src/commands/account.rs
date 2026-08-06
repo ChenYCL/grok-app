@@ -14,6 +14,8 @@ pub async fn account_status(
 
 #[tauri::command]
 pub async fn account_login(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
     method: Option<String>,
     manual_cli_path: Option<String>,
 ) -> Result<crate::account::LoginResult, String> {
@@ -22,7 +24,14 @@ pub async fn account_login(
         .or(settings.manual_cli_path)
         .filter(|s| !s.is_empty());
     let method = method.unwrap_or_else(|| "oauth".into());
-    Ok(crate::account::account_login(&method, manual.as_deref()).await)
+    let result = crate::account::account_login(&method, manual.as_deref()).await;
+    // Auth.json is synced into agent-home on success — drop warm/prewarm
+    // processes so the next send cannot reuse a CLI spawned with stale/missing
+    // credentials (sessionDisconnect alone only parks; connect prefers prewarm).
+    if result.ok {
+        mgr.recycle_all_agents(&app, "account_auth").await;
+    }
+    Ok(result)
 }
 
 /// Abort a running `grok login` (OAuth / device-code). No-op if none is running.
@@ -34,13 +43,19 @@ pub async fn account_login_cancel() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn account_logout(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
     manual_cli_path: Option<String>,
 ) -> Result<crate::account::AccountProfile, String> {
     let settings = store::load_settings();
     let manual = manual_cli_path
         .or(settings.manual_cli_path)
         .filter(|s| !s.is_empty());
-    crate::account::account_logout(manual.as_deref()).await
+    let profile = crate::account::account_logout(manual.as_deref()).await?;
+    // Clear agent-home auth already ran — kill warm agents so they cannot keep
+    // using tokens loaded before logout.
+    mgr.recycle_all_agents(&app, "account_auth").await;
+    Ok(profile)
 }
 
 #[tauri::command]
@@ -72,8 +87,9 @@ pub async fn account_switch(
     id: String,
 ) -> Result<crate::account::AccountProfile, String> {
     let profile = crate::account_profiles::switch_account(&id)?;
-    // Soft-drop live agent so next send uses the new credentials.
-    let _ = mgr.disconnect(app).await;
+    // Recycle live + parked + prewarm — disconnect alone parks and leaves
+    // prewarm (stale OIDC) for the next connect to reuse.
+    mgr.recycle_all_agents(&app, "account_auth").await;
     Ok(profile)
 }
 

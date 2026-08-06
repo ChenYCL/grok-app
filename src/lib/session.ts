@@ -1,7 +1,17 @@
 import type { Locale } from "../i18n";
 import { isDisplayableAttachmentPath } from "./attachments";
-import { buildErrorDeck, deckCodeFromAgent, resolveErrorDeckCode } from "./errorDeck";
-import type { ErrorDeckAction, ErrorDeckCard } from "./errorDeck";
+import {
+  buildErrorDeck,
+  deckCodeFromAgent,
+  isAuthDeckCode,
+  resolveErrorDeckCode,
+} from "./errorDeck";
+import type {
+  ErrorDeckAction,
+  ErrorDeckCard,
+  ErrorDeckCode,
+  ErrorDeckResolveOpts,
+} from "./errorDeck";
 import { inferKindFromToolCallId } from "./toolDisplay";
 
 export type SessionState =
@@ -2582,7 +2592,7 @@ export function errorCopy(code: AgentErrorCode, locale: Locale = "en"): string {
 
 /** Friendly bubble body from any deck code (including App-only recoveries). */
 function errorCopyFromDeck(
-  code: Parameters<typeof buildErrorDeck>[0],
+  code: ErrorDeckCode,
   locale: Locale = "en",
 ): string {
   const card = buildErrorDeck(code, locale);
@@ -2638,6 +2648,7 @@ export function stripErrorNoise(text: string): string {
 export function formatTurnErrorBody(
   payload: Pick<TurnErrorPayload, "code" | "message" | "content">,
   locale: Locale = "en",
+  opts?: Pick<ErrorDeckResolveOpts, "activeSource">,
 ): string {
   const rawCombined = [payload.content, payload.message, payload.code]
     .filter(Boolean)
@@ -2680,15 +2691,19 @@ export function formatTurnErrorBody(
     return streamFlapCopy(locale);
   }
 
+  // Prefer resolveErrorDeckCode so AUTH_FAILED subtypes (no-context / api key /
+  // custom route) get honest bubble copy instead of the generic 401 line.
+  const deckish = resolveErrorDeckCode(code, `${rest}\n${cleaned}`, opts);
+  if (isAuthDeckCode(deckish) || deckish === "PERMISSION_DENIED" || deckish === "MCP_AUTH_FAILED" || deckish === "OAUTH_EXPIRED" || deckish === "WORKSPACE_UNTRUSTED" || deckish === "PROJECT_MISSING") {
+    return errorCopyFromDeck(deckish, locale);
+  }
+
   // Infer codes from common agent/host phrases when payload lacks a code.
-  // Prefer resolveErrorDeckCode for App/MCP/permission recoveries; map only
-  // host AgentErrorCode values into the typed bubble path below.
+  // Map only host AgentErrorCode values into the typed bubble path below.
   if (!code) {
-    const deckish = resolveErrorDeckCode(null, lower);
     if (
       deckish === "CONNECT_FAILED" ||
       deckish === "QUOTA_EXCEEDED" ||
-      deckish === "AUTH_FAILED" ||
       deckish === "CLI_NOT_FOUND" ||
       deckish === "NETWORK_PROVIDER" ||
       deckish === "AGENT_CRASHED" ||
@@ -2696,15 +2711,6 @@ export function formatTurnErrorBody(
       deckish === "CLI_TOO_OLD"
     ) {
       code = deckish;
-    } else if (
-      deckish === "PERMISSION_DENIED" ||
-      deckish === "MCP_AUTH_FAILED" ||
-      deckish === "OAUTH_EXPIRED" ||
-      deckish === "WORKSPACE_UNTRUSTED" ||
-      deckish === "PROJECT_MISSING"
-    ) {
-      // Deck-only codes: friendly bubble from the card (not AgentErrorCode).
-      return errorCopyFromDeck(deckish, locale);
     } else if (
       /could not connect the agent|edit aborted|no active session|acp client missing|connect failed/i.test(
         lower,
@@ -2722,7 +2728,8 @@ export function formatTurnErrorBody(
         lower,
       )
     ) {
-      code = "AUTH_FAILED";
+      // Refined above when possible; fallback generic host code.
+      return errorCopyFromDeck("AUTH_FAILED", locale);
     } else if (/cli not found|command not found|grok.*not found/i.test(lower)) {
       code = "CLI_NOT_FOUND";
     } else if (
@@ -2736,6 +2743,14 @@ export function formatTurnErrorBody(
 
   if (code) {
     // Known code → friendly copy only (no technical rest in the bubble).
+    // AUTH_FAILED already returned via isAuthDeckCode refine above when message
+    // was present; bare code still uses host-aligned copy.
+    if (code === "AUTH_FAILED") {
+      return errorCopyFromDeck(
+        resolveErrorDeckCode("AUTH_FAILED", rest || cleaned, opts),
+        locale,
+      );
+    }
     return errorCopy(code, locale);
   }
 
@@ -2783,16 +2798,21 @@ function bannerFromDeck(
 /**
  * Compact banner: T04 deck (problem / cause / primary / secondary).
  * Technical detail only when short and non-noisy (no MCP stderr walls).
+ *
+ * Pass `activeSource` so AUTH_FAILED can surface custom-route vs official
+ * recovery (re-login alone does not fix a bad relay key).
  */
 export function presentErrorBanner(
   error: AgentError | null,
   localError: string | null,
   locale: Locale = "en",
+  opts?: Pick<ErrorDeckResolveOpts, "activeSource">,
 ): ErrorBannerView | null {
   if (error) {
     const body = formatTurnErrorBody(
       { code: error.code, message: error.message, content: undefined },
       locale,
+      opts,
     );
     const lower = `${error.message}\n${body}`.toLowerCase();
     const timeout =
@@ -2804,9 +2824,12 @@ export function presentErrorBanner(
     const deckCode = resolveErrorDeckCode(error.code, error.message, {
       timeout,
       disconnected,
+      activeSource: opts?.activeSource,
     });
     const deck = buildErrorDeck(deckCode, locale);
-    return bannerFromDeck(deck, error.code, null);
+    // Prefer refined deck code on the banner (AUTH_NO_CONTEXT etc.) when Host
+    // only sent AUTH_FAILED — still keep raw host code out of the way.
+    return bannerFromDeck(deck, deckCode === "GENERIC" ? error.code : deckCode, null);
   }
   if (!localError?.trim()) return null;
 
@@ -2819,16 +2842,19 @@ export function presentErrorBanner(
     const timeout = rest === "turn_timeout" || /timeout|超时/.test(lower);
     const disconnected =
       rest === "agent_disconnected" || /disconnect|中断/i.test(lower);
-    const deck = buildErrorDeck(
-      deckCodeFromAgent(code, { timeout, disconnected }),
-      locale,
-    );
-    return bannerFromDeck(deck, code, null);
+    const deckCode = resolveErrorDeckCode(code, rest, {
+      timeout,
+      disconnected,
+      activeSource: opts?.activeSource,
+    });
+    const deck = buildErrorDeck(deckCode, locale);
+    return bannerFromDeck(deck, deckCode === "GENERIC" ? code : deckCode, null);
   }
 
   const summary = formatTurnErrorBody(
     { code: undefined, message: cleaned, content: undefined },
     locale,
+    opts,
   );
   const isTimeoutish = /timeout|超时|中断|disconnect/i.test(summary);
   if (isTimeoutish) {
@@ -2844,9 +2870,13 @@ export function presentErrorBanner(
   // Classify free-form localError (trust / path / permission / MCP …).
   // Keep the original short UX string as summary when present so project names
   // from i18n stay visible; deck supplies cause + recovery actions.
-  const classified = resolveErrorDeckCode(null, cleaned);
+  // Auth subtypes use deck problem as summary (more accurate than raw 401 text).
+  const classified = resolveErrorDeckCode(null, cleaned, opts);
   if (classified !== "GENERIC") {
     const deck = buildErrorDeck(classified, locale);
+    if (isAuthDeckCode(classified)) {
+      return bannerFromDeck(deck, classified, null);
+    }
     const short =
       cleaned.length > 200 ? `${cleaned.slice(0, 200)}…` : cleaned;
     return {

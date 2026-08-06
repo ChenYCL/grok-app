@@ -1186,7 +1186,9 @@ describe("session projection", () => {
       `NETWORK_PROVIDER: ${raw}`,
       "en",
     );
-    expect(fromLocal?.code).toBe("NETWORK_PROVIDER");
+    // Host class may be NETWORK_PROVIDER, but "rpc timeout … after 600s" refines
+    // to TURN_TIMEOUT (same path as agent timeout opts).
+    expect(fromLocal?.code).toBe("TURN_TIMEOUT");
     expect(fromLocal?.summary).toMatch(/timed?\s*out|timeout|network|model|provider/i);
     expect(fromLocal?.detail).toBeNull();
     expect(fromLocal?.primary?.label.length).toBeGreaterThan(0);
@@ -1241,6 +1243,42 @@ describe("session projection", () => {
       "en",
     );
     expect(auth?.primary?.id).toBe("open_account");
+
+    // CharlieLam: refine host AUTH_FAILED by message + active route.
+    const noCtx = presentErrorBanner(
+      {
+        code: "AUTH_FAILED",
+        message:
+          "cli-proxy HTTP 401: Invalid or expired credentials (auth_kind=bearer, reason=no auth context)",
+      },
+      null,
+      "en",
+    );
+    expect(noCtx?.code).toBe("AUTH_NO_CONTEXT");
+    expect(noCtx?.primary?.id).toBe("open_account");
+    expect(noCtx?.secondary?.id).toBe("reconnect");
+    expect(noCtx?.summary.toLowerCase()).toMatch(/credential|auth|agent/);
+
+    const badKey = presentErrorBanner(
+      {
+        code: "AUTH_FAILED",
+        message: "Incorrect API key provided",
+      },
+      null,
+      "en",
+    );
+    expect(badKey?.code).toBe("AUTH_API_KEY");
+    expect(badKey?.primary?.id).toBe("open_providers");
+
+    const custom = presentErrorBanner(
+      { code: "AUTH_FAILED", message: "401 Unauthorized" },
+      null,
+      "en",
+      { activeSource: "custom" },
+    );
+    expect(custom?.code).toBe("AUTH_CUSTOM_PROVIDER");
+    expect(custom?.primary?.id).toBe("open_providers");
+    expect(custom?.cause?.toLowerCase()).toMatch(/custom|relay|provider|key/);
 
     const crash = presentErrorBanner(
       { code: "AGENT_CRASHED", message: "exit 1" },

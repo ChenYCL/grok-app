@@ -11,8 +11,34 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-08-06
+
+> **Highlight:** Faster chat file/image cards (metadata + disk thumbs), less scroll jitter, boot probe timeout, and auth recycle after login so re-login no longer keeps a warm prewarm with stale OIDC.
+>
+> **中文 · 亮点：** 聊天文件/图片卡片更快（元数据打开 + 磁盘缩略图）、滚动更稳、启动 CLI 探测超时；登录后回收含 prewarm 的 Agent，避免「已登录仍 401」。
+
 ### Fixed
+- **Chat file-card preview very slow**: Opening a path card no longer waits on window resize before showing the right pane; cards resolve path **metadata only** (`fs_resolve_path` / classify) instead of full-file `fs_open_path` on history paint; absolute opens use `fs_read_absolute` (skip monorepo walk); office/image previews stream without host-side unzip/base64 on open.
+- **File cards silent on missing paths**: Chat `FilePathCard` soft-fail (`not found` / denied) now surfaces via `onOpenError` → status banner instead of looking like a dead click when the cited relative path is not on disk.
+- **Unopenable paths stay plain code**: File path tokens that cannot resolve to a real on-disk path no longer render as interactive file cards — only verified paths (or URLs) get card chrome.
+- **Chat image load jitter**: Inline image cards use a fixed 150px height (width follows ratio) so decode no longer reflows the transcript; chat scroller uses `scrollbar-gutter: stable`; virtual-list row measure ignores sub-4px flicker and coalesces ResizeObserver storms.
+- **Image card aspect cache**: Natural image ratios are stored in memory + `localStorage` (`grok.imageAspectCache.v1`, keyed by absolute path / media `p=`), so scroll remounts and next launch draw the correct card width immediately without reflow.
+- **Chat scroll jitter (all sessions)**: Virtual list no longer rebuilds spacers from mid-fling row remeasures (buffer heights until scroll idle); first measure anchors using the estimate; FilePathCard resolve results are cached so remounts do not flash plain→card.
+- **Chat image thumb disk cache**: Card previews use Host-resized JPEG thumbs under `{app_data}/cache/image-thumbs` (path+mtime or URL key, ≤480px); lightbox still opens the original. Media HTTP image responses use week-long private cache headers.
+- **Boot stuck on “Checking Grok Build…”**: CLI `--version` probe now has a 3s kill timeout and runs on `spawn_blocking`; frontend boot races settings+probe with a 12s timeout and shows Retry / open Setup instead of spinning forever.
+- **Re-login still 401 (warm prewarm reuse)**: After successful login, logout, or multi-account switch, Host now `recycle_all_agents(..., "account_auth")` so live / background / parked **and prewarm** CLI processes are killed. Previously login only called `session_disconnect` (park), and `drain_all_agent_slots` omitted prewarm — connect preferred a Ready prewarm spawned with missing/stale OIDC → intermittent `AUTH_FAILED` / `no auth context` even though `auth.json` was synced (#525 file sync alone was not enough). Support: CharlieLam 2026-08-05.
+- **AUTH error deck subtypes**: Host still emits `AUTH_FAILED`, but the banner refines with message + active provider route into `AUTH_NO_CONTEXT` (re-login + reconnect), `AUTH_API_KEY` (open Providers / Account), and `AUTH_CUSTOM_PROVIDER` (custom relay active — official re-login alone will not fix). en/zh/zh-TW; pure `refineAuthDeckCode` + tests.
 - **Permission “Allow for session” cancels shell turn**: Host now stores the ACP `options` list with each pending permission and re-coerces the wire `optionId` on resolve. UI generic fallbacks (`always-allow` / `allow-always`) are rewritten to tool-scoped ids such as `allow-always-command` so Grok Build no longer returns `unknown permission option` and `permission_rejected` mid-turn. Also maps CLI `allow_always_bash` kind in the permission bar.
+- **Sticky “Working” after turn end**: Live phase/step running state is gated on message streaming so unfinished wire tool statuses no longer keep “Working for …” forever; thought/tool/working icons and spacing share activity chrome tokens.
+
+**中文 · 修复**
+- **文件卡片打开慢 / 点不动 / 假卡片**：元数据解析代替整文件打开；缺失路径走错误条；无法落盘的 token 不再做成可点卡片。
+- **图片卡片抖动与缩略图**：固定高度 + 宽高比缓存 + 磁盘 JPEG 缩略图；虚拟列表滚动测量更稳。
+- **启动卡在「正在检查 Grok Build…」**：CLI 版本探测 3s 超时 + 前端 12s 竞态与重试。
+- **重新登录仍 401**：登录/登出/切号后 `recycle_all_agents` 含 prewarm，避免旧 OIDC 预热进程被复用。
+- **鉴权错误分型**：`AUTH_NO_CONTEXT` / `AUTH_API_KEY` / `AUTH_CUSTOM_PROVIDER` 引导不同处理。
+- **「本会话始终允许」取消 shell 回合**：按 CLI 合法 optionId 重写；bash 始终允许映射。
+- **回合结束后仍显示 Working**：运行中状态绑定 streaming，活动栏图标样式统一。
 
 ## [0.2.6] - 2026-08-05
 

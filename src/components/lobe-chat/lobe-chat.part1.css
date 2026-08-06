@@ -124,6 +124,9 @@
   /* We manage stick-to-bottom ourselves; browser anchoring fights
    * programmatic scrollTop during stream growth and feels like bounce. */
   overflow-anchor: none;
+  /* Reserve gutter so image max-width / text wrap don't thrash when the
+   * scrollbar appears mid-load (classic width↔height oscillation). */
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: rgba(128, 128, 128, 0.35) transparent;
 }

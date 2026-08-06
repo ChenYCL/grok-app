@@ -30,6 +30,32 @@ CLI auth is shared with Grok Build TUI (hot-reload of `auth.json` is CLI-side).
 
 Host **must** sync `auth.json` into agent-home on login and before each ACP spawn; otherwise the UI shows signed-in while the agent reports `auth_kind=none` → HTTP 401. Logout clears both copies.
 
+### Warm process recycle after auth change
+
+Syncing the file is not enough while multi-session **parked** / **prewarm** CLI processes still hold credentials loaded at spawn time. Connect prefers a Ready prewarm when policy/effort/route match.
+
+| Event | Host action |
+|-------|-------------|
+| Login success | `sync_cli_auth_to_agent_home` + `recycle_all_agents(..., "account_auth")` |
+| Logout | clear agent-home auth + `recycle_all_agents(..., "account_auth")` |
+| Multi-account switch | snapshot → auth paths + `recycle_all_agents(..., "account_auth")` |
+| Provider route activate | `prepare_route_auth_for_agent` + `recycle_all_agents(..., "provider_route")` |
+
+`recycle_all_agents` drains **live + background + parked + prewarm**. Do **not** use `session_disconnect` alone after login (that only parks and leaves prewarm alive).
+
+### AUTH_FAILED UI subtypes (Error Deck)
+
+Host may still emit `AUTH_FAILED`. The App banner refines with error text + `providers_list.activeSource`:
+
+| Deck code | Typical signal | Primary recovery |
+|-----------|----------------|------------------|
+| `AUTH_NO_CONTEXT` | `no auth context` / `auth_kind=none` | Account re-login + **Reconnect** (fresh agent) |
+| `AUTH_API_KEY` | Incorrect / invalid API key (often HTTP 400) | Providers / Account keys |
+| `AUTH_CUSTOM_PROVIDER` | Active route is **custom** | Providers (key / switch Official) — **not** “only re-login” |
+| `AUTH_FAILED` | Other 401 / expired | Account + Providers |
+
+Never tell the user that official OAuth alone fixes a bad custom relay key.
+
 ## Host commands
 
 | Command | Role |

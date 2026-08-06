@@ -396,6 +396,9 @@ export function scrollTopAfterHeightChange(input: {
  * Whether a remeasure should update the height cache.
  * Ignore tiny flicker; resist shrink thrash (markdown/code reflow) that
  * oscillates padding and fights stick-to-bottom.
+ *
+ * Image-heavy rows used to oscillate by a few px after decode (scrollbar
+ * gutter / subpixel) → virtual window rebuild → visible chat "shiver".
  */
 export function shouldCommitRowHeight(
   prev: number | undefined,
@@ -411,7 +414,8 @@ export function shouldCommitRowHeight(
   }
   if (prev == null) return true;
   const delta = next - prev;
-  if (Math.abs(delta) < 2) return false;
+  // 4px floor: ignores subpixel + scrollbar-gutter flicker after images settle.
+  if (Math.abs(delta) < 4) return false;
   // Allow growth freely; only accept shrinks that are meaningful and stable.
   if (delta < 0 && Math.abs(delta) < Math.max(24, prev * 0.08)) {
     return false;

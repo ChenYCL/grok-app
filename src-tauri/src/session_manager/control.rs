@@ -133,13 +133,14 @@ impl SessionManager {
         )
     }
 
-    /// Drop every warm agent process (live + background + parked).
+    /// Drop every warm agent process (live + background + parked + prewarm).
     ///
     /// Used when `session_data_mode` flips independent↔shared so no process keeps
-    /// the previous `GROK_HOME`. App session meta + journals stay; live shell is
-    /// soft-disconnected and its `agent_session_id` is cleared (old agent dirs are
-    /// under a different data root — reconnect should `session/new` + bootstrap).
-    /// Emits `session://agents_recycled` for UI toasts.
+    /// the previous `GROK_HOME`, when provider route changes, and after
+    /// login/logout/account switch so no process keeps stale OIDC / api_key.
+    /// App session meta + journals stay; live shell is soft-disconnected and its
+    /// `agent_session_id` is cleared when the data root changes (reconnect should
+    /// `session/new` + bootstrap). Emits `session://agents_recycled` for UI toasts.
     pub async fn recycle_all_agents(&self, app: &AppHandle, reason: &str) {
         // Collect pending permission/plan/ask gates *before* draining so the
         // UI can drop stale bars that would write to a dead stdin (#524).
@@ -150,10 +151,11 @@ impl SessionManager {
             acp.kill().await;
         }
         tracing::info!(
-            "recycle_all_agents reason={reason} killed={total} (live_shell={} bg={} parked={}) pending_invalidated={}",
+            "recycle_all_agents reason={reason} killed={total} (live_shell={} bg={} parked={} prewarm={}) pending_invalidated={}",
             drained.had_live_shell as u8,
             drained.background_count,
             drained.parked_count,
+            drained.prewarm_count,
             invalidated.len()
         );
         if !invalidated.is_empty() {
@@ -177,6 +179,7 @@ impl SessionManager {
                 "killed": total,
                 "background": drained.background_count,
                 "parked": drained.parked_count,
+                "prewarm": drained.prewarm_count,
             }),
         );
         Self::emit_state(app, &self.snapshot());
@@ -245,9 +248,13 @@ impl SessionManager {
         );
     }
 
-    /// Take live ACP + all background/parked agents out of maps (no kill).
+    /// Take live ACP + all background/parked/prewarm agents out of maps (no kill).
     /// Live shell stays (soft-disconnected, agent_session_id cleared when present).
-    /// Background/parked maps are emptied.
+    /// Background/parked/prewarm maps are emptied.
+    ///
+    /// **Must** include prewarm: login/route changes that only killed live/parked
+    /// still left a Ready prewarm (spawned with stale/missing auth) for the next
+    /// connect to consume → intermittent 401 after re-login (CharlieLam 2026-08-05).
     pub(super) fn drain_all_agent_slots(&self) -> DrainedAgents {
         let mut acps: Vec<Arc<AcpClient>> = Vec::new();
         let mut had_live_shell = false;
@@ -334,11 +341,25 @@ impl SessionManager {
             acps.push(p.acp);
         }
 
+        // New-chat prewarm (spawn+init+auth, no session). Connect prefers this
+        // slot — leaving it alive after auth rebind reuses stale credentials.
+        let prewarm_count = {
+            let mut pw = self.prewarm.lock();
+            match std::mem::replace(&mut *pw, PrewarmState::None) {
+                PrewarmState::Ready(p) => {
+                    acps.push(p.acp);
+                    1
+                }
+                PrewarmState::Spawning { .. } | PrewarmState::None => 0,
+            }
+        };
+
         DrainedAgents {
             acps,
             had_live_shell,
             background_count,
             parked_count,
+            prewarm_count,
         }
     }
 
@@ -801,6 +822,7 @@ impl SessionManager {
 #[cfg(test)]
 mod recycle_tests {
     use super::*;
+    use std::time::Instant;
 
     #[test]
     fn drain_all_agent_slots_clears_empty_maps() {
@@ -813,6 +835,7 @@ mod recycle_tests {
         assert!(!drained.had_live_shell);
         assert_eq!(drained.background_count, 0);
         assert_eq!(drained.parked_count, 0);
+        assert_eq!(drained.prewarm_count, 0);
 
         // Maps stay empty; safe to call again (idempotent).
         assert_eq!(mgr.tracked_agent_map_counts(), (0, 0, 0));
@@ -821,5 +844,20 @@ mod recycle_tests {
         assert!(again.acps.is_empty());
         assert_eq!(again.background_count, 0);
         assert_eq!(again.parked_count, 0);
+        assert_eq!(again.prewarm_count, 0);
+        // Prewarm slot must be empty after drain (no leftover Spawning/Ready).
+        assert!(matches!(*mgr.prewarm.lock(), PrewarmState::None));
+    }
+
+    #[test]
+    fn drain_all_agent_slots_clears_spawning_prewarm_slot() {
+        let mgr = SessionManager::new();
+        *mgr.prewarm.lock() = PrewarmState::Spawning {
+            since: Instant::now(),
+        };
+        let drained = mgr.drain_all_agent_slots();
+        assert_eq!(drained.prewarm_count, 0);
+        assert!(drained.acps.is_empty());
+        assert!(matches!(*mgr.prewarm.lock(), PrewarmState::None));
     }
 }

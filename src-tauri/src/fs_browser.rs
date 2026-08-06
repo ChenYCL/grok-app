@@ -2,7 +2,6 @@
 //! All paths are resolved under an explicit project root (no escape).
 
 #![allow(dead_code)] // residual-clippy: MAX_BINARY_BYTES const
-use base64::Engine;
 use serde::Serialize;
 use std::fs;
 use std::io::Read;
@@ -745,7 +744,9 @@ fn strip_path_ellipsis(path: &str) -> String {
     t
 }
 
-pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadResult, String> {
+/// Resolve a chat path to an absolute file path without reading file contents.
+/// Same search order as [`open_path_smart`] (absolute → project join → siblings → suffix).
+fn resolve_path_buf_smart(project_root: Option<&str>, path: &str) -> Result<PathBuf, String> {
     let raw_in = path.trim();
     if raw_in.is_empty() {
         return Err("empty path".into());
@@ -782,19 +783,11 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
             let canon = as_path
                 .canonicalize()
                 .map_err(|e| format!("path not found: {e}"))?;
-            let name = canon
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| raw.to_string());
-            return read_path(canon, name);
+            return Ok(canon);
         }
         // Absolute but missing — try suffix under project / parent
         if let Some(found) = search_under_project_and_parent(project_root, &raw) {
-            let name = found
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| raw.to_string());
-            return read_path(found, name);
+            return Ok(found);
         }
         return Err(format!("not a file: {raw}"));
     }
@@ -809,11 +802,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                 let canon = joined
                     .canonicalize()
                     .map_err(|e| format!("path not found: {e}"))?;
-                let name = canon
-                    .file_name()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_else(|| raw.to_string());
-                return read_path(canon, name);
+                return Ok(canon);
             }
 
             // 2b) Agent basename globs: `docs/plans/2026-03-15-foo*.md`
@@ -822,11 +811,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                     let canon = found
                         .canonicalize()
                         .map_err(|e| format!("path not found: {e}"))?;
-                    let name = canon
-                        .file_name()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_else(|| raw.to_string());
-                    return read_path(canon, name);
+                    return Ok(canon);
                 }
                 // Also try under project parent (sibling knowledge-base layouts)
                 if let Some(parent) = root_pb.parent() {
@@ -835,11 +820,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                             let canon = found
                                 .canonicalize()
                                 .map_err(|e| format!("path not found: {e}"))?;
-                            let name = canon
-                                .file_name()
-                                .map(|s| s.to_string_lossy().to_string())
-                                .unwrap_or_else(|| raw.to_string());
-                            return read_path(canon, name);
+                            return Ok(canon);
                         }
                         // Sibling project folders: try each child once
                         if let Ok(rd) = fs::read_dir(parent) {
@@ -852,11 +833,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                                     let canon = found
                                         .canonicalize()
                                         .map_err(|e| format!("path not found: {e}"))?;
-                                    let name = canon
-                                        .file_name()
-                                        .map(|s| s.to_string_lossy().to_string())
-                                        .unwrap_or_else(|| raw.to_string());
-                                    return read_path(canon, name);
+                                    return Ok(canon);
                                 }
                             }
                         }
@@ -875,11 +852,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                         let canon = sibling
                             .canonicalize()
                             .map_err(|e| format!("path not found: {e}"))?;
-                        let name = canon
-                            .file_name()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_else(|| raw.to_string());
-                        return read_path(canon, name);
+                        return Ok(canon);
                     }
 
                     // 3b) Path is relative to a *sibling folder* of the project
@@ -899,11 +872,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                                 let canon = joined
                                     .canonicalize()
                                     .map_err(|e| format!("path not found: {e}"))?;
-                                let name = canon
-                                    .file_name()
-                                    .map(|s| s.to_string_lossy().to_string())
-                                    .unwrap_or_else(|| raw.to_string());
-                                return read_path(canon, name);
+                                return Ok(canon);
                             }
                         }
                     }
@@ -912,11 +881,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
 
             // 4) Suffix search under project (monorepo subfolder paths)
             if let Some(found) = find_file_by_suffix(&root_pb, &raw) {
-                let name = found
-                    .file_name()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_else(|| raw.to_string());
-                return read_path(found, name);
+                return Ok(found);
             }
 
             // 5) Suffix under parent when first segment is a direct child of parent
@@ -928,11 +893,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                         let candidate_root = parent.join(first_name);
                         if candidate_root.is_dir() {
                             if let Some(found) = find_file_by_suffix(&candidate_root, &raw) {
-                                let name = found
-                                    .file_name()
-                                    .map(|s| s.to_string_lossy().to_string())
-                                    .unwrap_or_else(|| raw.to_string());
-                                return read_path(found, name);
+                                return Ok(found);
                             }
                         }
                     }
@@ -957,11 +918,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                                     continue;
                                 }
                                 if let Some(found) = find_file_by_suffix(&p, &raw) {
-                                    let name = found
-                                        .file_name()
-                                        .map(|s| s.to_string_lossy().to_string())
-                                        .unwrap_or_else(|| raw.to_string());
-                                    return read_path(found, name);
+                                    return Ok(found);
                                 }
                             }
                         }
@@ -973,6 +930,50 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
 
     Err(format!("not a file: {raw}"))
 }
+
+/// Lightweight resolve for chat file cards (path only — no body / base64 / text).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsResolveResult {
+    pub absolute_path: String,
+    pub name: String,
+    pub size: u64,
+    pub is_dir: bool,
+}
+
+/// Resolve path for chat cards without reading file contents.
+pub fn resolve_path_smart(
+    project_root: Option<&str>,
+    path: &str,
+) -> Result<FsResolveResult, String> {
+    let found = resolve_path_buf_smart(project_root, path)?;
+    let name = found
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.trim().to_string());
+    let meta = fs::metadata(&found).map_err(|e| format!("stat: {e}"))?;
+    // Grant so loopback media HTTP can serve the file after resolve-only open.
+    crate::path_scope::grant_path(&found);
+    Ok(FsResolveResult {
+        absolute_path: found.to_string_lossy().to_string(),
+        name,
+        size: meta.len(),
+        is_dir: meta.is_dir(),
+    })
+}
+
+/// Open a path for chat cards: absolute file, project-relative, sibling under
+/// project parent, or suffix search — then read preview body.
+pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadResult, String> {
+    let found = resolve_path_buf_smart(project_root, path)?;
+    let name = found
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.trim().to_string());
+    crate::path_scope::grant_path(&found);
+    read_path(found, name)
+}
+
 
 fn search_under_project_and_parent(
     project_root: Option<&str>,
@@ -1220,14 +1221,9 @@ fn read_path(path: PathBuf, rel_in: String) -> Result<FsReadResult, String> {
                 )),
             ));
         }
-        // Optional plain-text fallback for tiny extract failures in UI
-        let text_fallback = extract_office_text(&path, &kind).ok().map(|t| {
-            if t.len() as u64 > MAX_TEXT_BYTES {
-                t.chars().take(MAX_TEXT_BYTES as usize).collect()
-            } else {
-                t
-            }
-        });
+        // Stream only — do not unzip/parse office XML here. Frontend
+        // OfficeDocumentPreview loads binary via media HTTP; host text
+        // extract used to block chat→pane open on large docx/xlsx/pptx.
         return Ok(ok_result(
             &path,
             rel_in,
@@ -1235,7 +1231,7 @@ fn read_path(path: PathBuf, rel_in: String) -> Result<FsReadResult, String> {
             size,
             kind,
             mime,
-            text_fallback,
+            None,
             None,
             true, // stream → frontend fetches binary via asset/media URL
             false,
@@ -1269,44 +1265,10 @@ fn read_path(path: PathBuf, rel_in: String) -> Result<FsReadResult, String> {
         ));
     }
 
-    // Image / PDF — stream path for large files; small images may embed as base64
+    // Image / PDF — always stream via loopback media HTTP (no base64 IPC).
     if matches!(kind.as_str(), "image" | "pdf") {
-        if ext == "svg" {
-            // Never inline SVG as HTML/text — render via media/asset stream only.
-            return Ok(ok_result(
-                &path,
-                rel_in,
-                name,
-                size,
-                "image".into(),
-                mime,
-                None,
-                None,
-                true,
-                false,
-                None,
-            ));
-        }
-        // Prefer stream for anything over 2 MiB (webview loads via asset protocol)
-        if size > 2 * 1024 * 1024 {
-            return Ok(ok_result(
-                &path, rel_in, name, size, kind, mime, None, None, true, false, None,
-            ));
-        }
-        let bytes = fs::read(&path).map_err(|e| format!("read: {e}"))?;
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
         return Ok(ok_result(
-            &path,
-            rel_in,
-            name,
-            size,
-            kind,
-            mime,
-            None,
-            Some(b64),
-            false,
-            false,
-            None,
+            &path, rel_in, name, size, kind, mime, None, None, true, false, None,
         ));
     }
 
@@ -1699,12 +1661,14 @@ mod tests {
         write_minimal_docx(&docx, "Hello DOCX preview");
         let r = read_file(dir.to_str().unwrap(), "sample.docx").unwrap();
         // UI picks renderer by concrete kind (docx|xlsx|pptx), not a generic "office".
+        // Body is streamed (no host-side unzip/text extract on open).
         assert_eq!(r.kind, "docx");
-        assert!(
-            r.text.as_ref().unwrap().contains("Hello DOCX preview"),
-            "{:?}",
-            r.text
-        );
+        assert!(r.stream, "office should stream for FE renderer");
+        assert!(r.text.is_none(), "no host text extract: {:?}", r.text);
+        assert!(!r.absolute_path.is_empty());
+        // Extract helper still works for tooling / fallback paths.
+        let extracted = extract_office_text(&docx, "docx").unwrap();
+        assert!(extracted.contains("Hello DOCX preview"), "{extracted}");
         let _ = fs::remove_dir_all(&dir);
     }
 

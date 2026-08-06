@@ -198,6 +198,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   /** Session-level token→abs map (tool-touched files + unique tails). */
   sessionPathMap,
   onOpenResource,
+  onOpenError,
   onOpenExternalLink,
   onAddAttachmentToComposer,
   attachLabels,
@@ -214,6 +215,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   projectPath?: string | null;
   sessionPathMap?: Record<string, string>;
   onOpenResource?: (target: ResourceOpenTarget) => void;
+  onOpenError?: (message: string) => void;
   onOpenExternalLink?: (url: string) => void;
   onAddAttachmentToComposer?: (att: Attachment) => void;
   attachLabels: AttachLabels;
@@ -279,6 +281,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
           imagePathMap={pathMapProp}
           projectPath={projectPath}
           onOpenResource={onOpenResource}
+          onOpenError={onOpenError}
           onOpenExternalLink={onOpenExternalLink}
           findQuery={findQuery}
           findActiveOccurrence={findActiveOccurrence}
@@ -512,6 +515,8 @@ export interface ConversationThreadProps {
   onOpenResource?: (
     target: import("@/components/ResourceViewer").ResourceOpenTarget,
   ) => void;
+  /** File card soft-fail (missing / denied / host-only). */
+  onOpenError?: (message: string) => void;
   /** Open external http(s) chat links (desktop shell + optional confirm). */
   onOpenExternalLink?: (url: string) => void;
   onAddAttachmentToComposer?: (att: Attachment) => void;
@@ -669,6 +674,7 @@ type TranscriptMessageRowProps = {
   onRewindToUserMessage?: ConversationThreadProps["onRewindToUserMessage"];
   onForkFromUserMessage?: ConversationThreadProps["onForkFromUserMessage"];
   onOpenResource?: ConversationThreadProps["onOpenResource"];
+  onOpenError?: ConversationThreadProps["onOpenError"];
   onOpenExternalLink?: ConversationThreadProps["onOpenExternalLink"];
   onAddAttachmentToComposer?: ConversationThreadProps["onAddAttachmentToComposer"];
 };
@@ -765,6 +771,7 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
   onRewindToUserMessage,
   onForkFromUserMessage,
   onOpenResource,
+  onOpenError,
   onOpenExternalLink,
   onAddAttachmentToComposer,
 }: TranscriptMessageRowProps) {
@@ -1352,6 +1359,7 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
                   projectPath={projectPath}
                   sessionPathMap={sessionPathMap}
                   onOpenResource={onOpenResource}
+                  onOpenError={onOpenError}
                   onOpenExternalLink={onOpenExternalLink}
                   onAddAttachmentToComposer={
                     onAddAttachmentToComposer
@@ -1380,6 +1388,7 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
               projectPath={projectPath}
               sessionPathMap={sessionPathMap}
               onOpenResource={onOpenResource}
+              onOpenError={onOpenError}
               onOpenExternalLink={onOpenExternalLink}
               onAddAttachmentToComposer={onAddAttachmentToComposer}
               attachLabels={attachLabels}
@@ -1526,6 +1535,7 @@ export function ConversationThread({
   onRewindToUserMessage,
   onForkFromUserMessage,
   onOpenResource,
+  onOpenError,
   onOpenExternalLink,
   onAddAttachmentToComposer,
   attachLabels,
@@ -2360,6 +2370,7 @@ export function ConversationThread({
               onRewindToUserMessage={onRewindToUserMessage}
               onForkFromUserMessage={onForkFromUserMessage}
               onOpenResource={onOpenResource}
+              onOpenError={onOpenError}
               onOpenExternalLink={onOpenExternalLink}
               onAddAttachmentToComposer={onAddAttachmentToComposer}
             />

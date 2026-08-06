@@ -311,7 +311,9 @@ describe("shouldCommitRowHeight", () => {
 
   it("ignores tiny flicker and small shrink thrash", () => {
     expect(shouldCommitRowHeight(400, 401)).toBe(false);
+    expect(shouldCommitRowHeight(400, 403)).toBe(false); // <4px floor
     expect(shouldCommitRowHeight(400, 390)).toBe(false);
+    expect(shouldCommitRowHeight(400, 405)).toBe(true); // ≥4px growth
   });
 
   it("commits zero height so collapsed spacers correct estimates", () => {

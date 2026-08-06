@@ -383,7 +383,15 @@ const openAbsoluteFile = useCallback(
     setTabs((prev) => mergeFileTabsFromOpen(prev, open, tab));
     setActiveId(id);
     try {
-      const r = await api.fsOpenPath(norm, projectPath);
+      // Chat file cards already hand us absolute paths — read directly.
+      // Smart open (suffix walk under monorepos) is only for relative tokens.
+      const looksAbs =
+        norm.startsWith("/") ||
+        /^[A-Za-z]:[\\/]/.test(norm) ||
+        norm.startsWith("\\\\");
+      const r = looksAbs
+        ? await api.fsReadAbsolute(norm)
+        : await api.fsOpenPath(norm, projectPath);
       const src = await resolvePreviewSrc(r);
       // Prefer project-relative tab key when file is under project
       let relKey = r.relativePath || baseName(norm);

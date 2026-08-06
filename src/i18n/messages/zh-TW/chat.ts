@@ -113,7 +113,7 @@ export const zhTWChat = {
   "chat.hostSearchTitle": "搜尋 X 資訊",
   "chat.turnFailed": "本輪執行失敗",
   "chat.thoughtDone": "思考",
-  "chat.thoughtFor": "思考了 {n} 秒",
+  "chat.thoughtFor": "思考了 {n}s",
   "chat.showThought": "檢視",
   "chat.hideThought": "收合",
   "chat.toolRunning": "工具執行中…",

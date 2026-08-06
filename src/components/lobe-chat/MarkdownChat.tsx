@@ -114,6 +114,7 @@ export const MarkdownChat = memo(function MarkdownChat({
   imagePathMap,
   projectPath,
   onOpenResource,
+  onOpenError,
   onOpenExternalLink,
   findQuery = "",
   findActiveOccurrence = null,
@@ -129,6 +130,8 @@ export const MarkdownChat = memo(function MarkdownChat({
   imagePathMap?: Record<string, string>;
   projectPath?: string | null;
   onOpenResource?: (target: ResourceOpenTarget) => void;
+  /** Soft-fail when a file card cannot resolve / open (missing, denied). */
+  onOpenError?: (message: string) => void;
   /**
    * When set, http(s) markdown links call this instead of target=_blank /
    * URL path cards. Parent may confirm then open via desktop shell.
@@ -257,6 +260,7 @@ export const MarkdownChat = memo(function MarkdownChat({
           kind="url"
           projectPath={projectPath}
           labels={fileLabels}
+          onOpenError={onOpenError}
           onOpenInPanel={(t) => {
             if (t.type === "url" && t.url) {
               onOpenResource?.({ type: "url", url: t.url, title: t.title });
@@ -367,8 +371,8 @@ export const MarkdownChat = memo(function MarkdownChat({
     ) {
       return null;
     }
-    // Relative media without pathMap: still allow multi-segment FilePathCard
-    // (host smart-open); open fails soft if missing — never empty resource tab.
+    // FilePathCard only mounts interactive chrome after Host confirms a real
+    // path; unresolved / missing tokens render as plain inline code.
 
     return (
       <FilePathCard
@@ -380,6 +384,7 @@ export const MarkdownChat = memo(function MarkdownChat({
         kind="file"
         subtitle={fileSubtitle(tokenForCard, locale === "en" ? "en" : "zh")}
         labels={fileLabels}
+        onOpenError={onOpenError}
         onOpenInPanel={(t) => {
           if (t.type === "file" && t.path) {
             onOpenResource?.({ type: "file", path: t.path, title: t.title });

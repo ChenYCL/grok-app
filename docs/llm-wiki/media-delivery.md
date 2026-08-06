@@ -25,6 +25,19 @@ GET http://127.0.0.1:{port}/v1/media?t={token}&p={urlencode(absPath)}
 Frontend entry: `src/lib/imageSrc.ts` (`localPathToMediaHttpUrl`, `resolveImageSrc*`).  
 Preview/office: `src/lib/filePreviewSrc.ts` (reassembles multi-Range for full-file readers).
 
+## Chat image thumbs (performance)
+
+Chat **card** layout does **not** re-stream full multi-MB originals on every virtual-list remount.
+
+| Layer | Behavior |
+|-------|----------|
+| Host | `media_image_thumb` → `{app_data}/cache/image-thumbs/{hash}.jpg` (≤480px edge, JPEG). Local key = path+mtime+size; remote https key = URL. |
+| Frontend | `resolveChatImageThumb` / `ImageUi` card mode loads thumb via loopback media; lightbox still opens original path/URL. |
+| HTTP | Image responses: `Cache-Control: private, max-age=604800` + weak ETag. |
+
+Very small locals (≤96 KiB) may skip re-encode and serve the original path.  
+Video covers remain separate (`video-posters` + ffmpeg).
+
 ## Fallback
 
 `media://` custom protocol remains registered for cold-start races only. Steady-state UI should use HTTP URLs.
@@ -50,8 +63,8 @@ Frontend normalize (`src/lib/pathNormalize.ts`):
 
 - Shell-unescape POSIX paths (`file\ \(1\).png` → `file (1).png`)
 - Reject site-root absolutes (`/images/…`) for media HTTP
-- Fail soft: unresolved relative media → FilePathCard (or plain code for bare media basenames), not broken ImageUi
-- **FilePathCard open**: resolve first; if missing → mark card, do **not** open an empty resource tab
+- Fail soft: unresolved relative media → plain code (not broken ImageUi)
+- **FilePathCard**: only interactive chrome after Host confirms a real on-disk path (or URL). Unresolved / missing tokens stay plain inline code — never a dead clickable card
 - Bare media basenames (`manycore.png`) stay as inline code unless pathMap maps them to a real local abs
 
 ## Chat attachments (tool → journal → thumb)

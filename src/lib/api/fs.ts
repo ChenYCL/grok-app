@@ -349,6 +349,25 @@ export async function fsOpenPath(path: string, projectPath?: string | null) {
   });
 }
 
+/** Resolve-only (no body): path metadata for chat file cards. */
+export interface FsResolveResult {
+  absolutePath: string;
+  name: string;
+  size: number;
+  isDir: boolean;
+}
+
+/**
+ * Smart resolve without reading file contents. Prefer this over `fsOpenPath`
+ * when you only need an absolute path (card title, missing check, open target).
+ */
+export async function fsResolvePath(path: string, projectPath?: string | null) {
+  return invoke<FsResolveResult>("fs_resolve_path", {
+    path,
+    projectPath: projectPath ?? null,
+  });
+}
+
 /** Auto-title session from first user message (heuristic + optional low-effort CLI). */
 export async function sessionAutoTitle(id: string, firstMessage: string) {
   return invoke<{
@@ -371,6 +390,25 @@ export type VideoPosterResult = {
  */
 export async function mediaVideoPoster(path: string) {
   return invoke<VideoPosterResult>("media_video_poster", { path });
+}
+
+/** Cached chat image thumb (JPEG under app cache). */
+export type ImageThumbResult = {
+  thumbPath: string;
+  fromCache: boolean;
+  width: number;
+  height: number;
+  isOriginal: boolean;
+};
+
+/**
+ * Get or create a chat-card image thumb for a local absolute path or http(s) URL.
+ * Host resizes to ≤480px edge and stores under app cache (path+mtime or URL key).
+ */
+export async function mediaImageThumb(pathOrUrl: string) {
+  return invoke<ImageThumbResult>("media_image_thumb", {
+    pathOrUrl,
+  });
 }
 
 /**

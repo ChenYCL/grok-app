@@ -48,12 +48,21 @@ pub fn ensure_app_dirs() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(root.join("wallpapers").join("library"))?;
     // Chat video cover frames (ffmpeg / client canvas JPEG).
     std::fs::create_dir_all(root.join("cache").join("video-posters"))?;
+    // Chat image thumbs (resized JPEG for virtual-list remounts).
+    std::fs::create_dir_all(root.join("cache").join("image-thumbs"))?;
     Ok(root)
 }
 
 /// Disk cache for chat video posters: `{app_data}/cache/video-posters`.
 pub fn video_posters_dir() -> PathBuf {
     let dir = app_data_root().join("cache").join("video-posters");
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
+
+/// Disk cache for chat image thumbs: `{app_data}/cache/image-thumbs`.
+pub fn image_thumbs_dir() -> PathBuf {
+    let dir = app_data_root().join("cache").join("image-thumbs");
     let _ = fs::create_dir_all(&dir);
     dir
 }

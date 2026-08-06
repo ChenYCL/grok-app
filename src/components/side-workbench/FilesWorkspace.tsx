@@ -157,7 +157,11 @@ export function FilesWorkspace({
       // Bound project folder itself → tree only, no preview tab.
       if (root && (norm === root || norm === "")) return;
 
-      if (api.isTauri()) {
+      // Skip dir-check IPC when path has a clear file extension (chat cards).
+      // Full classify only for extension-less names that might be folders.
+      const base = norm.split("/").pop() || norm;
+      const looksLikeFile = base.includes(".") && !base.endsWith(".");
+      if (!looksLikeFile && api.isTauri()) {
         try {
           const classified = await api.pathsClassify([p]);
           if (cancelled) return;

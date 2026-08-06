@@ -490,6 +490,16 @@ pub async fn fs_open_path(
     crate::fs_browser::open_path_smart(project_path.as_deref(), &path)
 }
 
+/// Resolve a chat path to absolute metadata only (no body). Used by file cards
+/// before opening the resource pane so history paint does not read every file.
+#[tauri::command]
+pub async fn fs_resolve_path(
+    path: String,
+    project_path: Option<String>,
+) -> Result<crate::fs_browser::FsResolveResult, String> {
+    crate::fs_browser::resolve_path_smart(project_path.as_deref(), &path)
+}
+
 /// Auto-name a session from the first user message.
 /// Returns heuristic title immediately; low-effort CLI refine emits `session://title`.
 #[tauri::command]
