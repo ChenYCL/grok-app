@@ -6,6 +6,7 @@
  * labels. No DOM / Tauri side effects. Never invents session ids or stall rows.
  */
 
+import type { Locale } from "@/i18n";
 import { formatWorkDuration } from "@/lib/formatWorkDuration";
 import {
   hasActiveStallHistoryFilters,
@@ -191,12 +192,13 @@ export function resolveStallTimelineEmptyState(
 // ── Duration display ─────────────────────────────────────────────────────────
 
 /**
- * Human-readable quiet duration for a stall row ("38s", "1m 2s", "1h 3m").
+ * Human-readable quiet duration for a stall row.
  * Returns `null` when unknown / non-positive — never invents a duration.
- * Pure — unit abbreviations only (no i18n).
+ * Locale-aware via {@link formatWorkDuration} (en: 1m 2s · zh: 1分2秒).
  */
 export function formatStallDuration(
   stallSeconds: number | null | undefined,
+  locale: Locale = "en",
 ): string | null {
   if (stallSeconds == null) return null;
   if (typeof stallSeconds !== "number" || !Number.isFinite(stallSeconds)) {
@@ -204,5 +206,5 @@ export function formatStallDuration(
   }
   const s = Math.floor(stallSeconds);
   if (s <= 0) return null;
-  return formatWorkDuration(s);
+  return formatWorkDuration(s, locale);
 }

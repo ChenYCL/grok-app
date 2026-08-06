@@ -6,6 +6,7 @@ import {
   isMessageNodeCandidate,
   isThoughtOnlyAssistant,
   nearestNodeForMessageIndex,
+  nearestNodeIdFromPaintList,
   pickActiveNodeIdFromRects,
   truncateNodePreview,
 } from "./sessionMessageNodes";
@@ -186,6 +187,51 @@ describe("nearestNodeForMessageIndex / adjacentNode", () => {
     expect(adjacentNode(nodes, "a1", -1)?.id).toBe("u1");
     expect(adjacentNode(nodes, "u1", -1)).toBeNull();
     expect(adjacentNode(nodes, "u2", 1)).toBeNull();
+  });
+});
+
+describe("nearestNodeIdFromPaintList", () => {
+  const journal = [
+    msg({ id: "u1", role: "user", content: "a" }),
+    msg({ id: "a1", role: "assistant", content: "b" }),
+    msg({
+      id: "t1",
+      role: "tool",
+      marker: "tool_step",
+      content: "tool_step|done|shell|ls",
+    }),
+    msg({ id: "u2", role: "user", content: "c" }),
+    msg({ id: "a2", role: "assistant", content: "d" }),
+  ];
+  const nodes = buildSessionMessageNodes(journal);
+  // Filtered paint list: tools dropped (conversation mode).
+  const paint = [
+    { id: "u1" },
+    { id: "a1" },
+    { id: "u2" },
+    { id: "a2" },
+  ];
+
+  it("resolves by paint id, not journal messageIndex", () => {
+    // Journal index of u2 is 3; paint index of u2 is 2.
+    // Using paint index 2 must still hit u2, not drift.
+    expect(nearestNodeIdFromPaintList(paint, nodes, 2)).toBe("u2");
+    expect(nearestNodeIdFromPaintList(paint, nodes, 3)).toBe("a2");
+  });
+
+  it("walks backward from a non-node paint row", () => {
+    const paintWithSpacer = [
+      { id: "u1" },
+      { id: "a1" },
+      { id: "spacer" },
+      { id: "u2" },
+    ];
+    expect(nearestNodeIdFromPaintList(paintWithSpacer, nodes, 2)).toBe("a1");
+  });
+
+  it("returns null on empty inputs", () => {
+    expect(nearestNodeIdFromPaintList([], nodes, 0)).toBeNull();
+    expect(nearestNodeIdFromPaintList(paint, [], 0)).toBeNull();
   });
 });
 

@@ -34,7 +34,23 @@ export interface LastCompactSummary {
   messageId?: string;
 }
 
-/** Agent-reported turn/context usage (preferred over char heuristics). */
+/**
+ * Agent-reported usage breakdown (I/O, cache, cost).
+ *
+ * **Two different meanings of `totalTokens` on the wire** (Grok Build 0.2.x):
+ *
+ * 1. **Context occupancy** — `params._meta.totalTokens` on streaming
+ *    `session/update` chunks (thought / tool / message). Tracks how full the
+ *    model context window is right now. Source: `context_size`.
+ *
+ * 2. **Turn billing aggregate** — `update.usage` on `turn_completed` (and
+ *    similar). Sums `inputTokens` / `outputTokens` across **all modelCalls**
+ *    in the agentic turn (often 10–20 API rounds). Includes cache reads.
+ *    Source: `turn_completed`. **Not** window occupancy — using it for the
+ *    ring inflates short chats to 50–100%.
+ *
+ * Chip / ring must use occupancy only. Cost rollup may use billing totals.
+ */
 export interface KnownUsageBreakdown {
   inputTokens: number | null;
   outputTokens: number | null;
@@ -53,8 +69,112 @@ export interface KnownUsageBreakdown {
   source?: string;
 }
 
+/**
+ * Sources that report **context window occupancy** (not multi-call spend).
+ * - `context_size` — Grok Build `params._meta.totalTokens` on stream chunks
+ * - `compact` / structured context usage with system/tools/history buckets
+ * - Solo `totalTokens` without input/output (stream-shaped)
+ */
+export function isOccupancyUsageSource(source: string | null | undefined): boolean {
+  const s = (source ?? "").toLowerCase();
+  if (!s) return false;
+  if (
+    s === "context_size" ||
+    s === "stream_meta" ||
+    s === "compact" ||
+    s === "contextusage" ||
+    s === "context_usage" ||
+    s === "tokens_used" ||
+    s === "auto_compact_started"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * True when this usage payload is a **turn-level billing aggregate** and must
+ * not drive the context ring.
+ *
+ * Evidence from live Grok sessions:
+ *   turn_completed.usage = { inputTokens: 1.6M, totalTokens: 1.7M,
+ *     cachedReadTokens: 1.5M, modelCalls: 19 }
+ * while stream `_meta.totalTokens` for the same turn ends ~150k.
+ */
+export function isLikelyBillingAggregateUsage(opts: {
+  source?: string | null;
+  totalTokens?: number | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cachedReadTokens?: number | null;
+}): boolean {
+  const src = (opts.source ?? "").toLowerCase();
+  if (
+    src === "turn_completed" ||
+    src === "response_completed" ||
+    src.includes("turn_completed") ||
+    src === "turn_usage" ||
+    src === "turnusage"
+  ) {
+    return true;
+  }
+  // Explicit occupancy sources are never billing aggregates.
+  if (isOccupancyUsageSource(src)) return false;
+
+  const total = opts.totalTokens ?? null;
+  const input = opts.inputTokens ?? null;
+  const cached = opts.cachedReadTokens ?? null;
+
+  // Multi-call billing: large cache read that is a big fraction of input, and
+  // a total that would already overflow a typical 128k–500k window.
+  if (
+    cached != null &&
+    cached > 50_000 &&
+    input != null &&
+    input > 0 &&
+    cached / input >= 0.4 &&
+    total != null &&
+    total > 200_000
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Whether `knownUsage.totalTokens` is safe to show as context occupancy.
+ * Prefer {@link ContextUsageState.knownTokens} when set.
+ */
+export function knownUsageTotalIsOccupancy(
+  usage: KnownUsageBreakdown | null | undefined,
+): boolean {
+  if (!usage || usage.totalTokens == null) return false;
+  if (isLikelyBillingAggregateUsage(usage)) return false;
+  if (isOccupancyUsageSource(usage.source)) return true;
+  // Solo total (no I/O split) → stream-shaped occupancy.
+  if (usage.inputTokens == null && usage.outputTokens == null) return true;
+  // Structured context breakdown (system/tools/history) → occupancy.
+  if (
+    usage.systemTokens != null ||
+    usage.toolsTokens != null ||
+    usage.historyTokens != null
+  ) {
+    return true;
+  }
+  // Single-shot usage without multi-call cache signal: treat as occupancy
+  // (short chat turn with one model call ≈ full prompt size).
+  if (
+    usage.inputTokens != null &&
+    usage.outputTokens != null &&
+    (usage.cachedReadTokens == null || usage.cachedReadTokens === 0)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export interface ContextUsageState {
-  /** Absolute tokens from last agent compact event (`tokensAfter`). */
+  /** Absolute occupancy tokens (CLI `tokens_used` / stream `_meta.totalTokens`). */
   knownTokens: number | null;
   /** Message id of the last compact marker (for post-compact delta). */
   lastCompactMessageId: string | null;
@@ -64,6 +184,17 @@ export interface ContextUsageState {
    * Prefer total for the chip when present.
    */
   knownUsage: KnownUsageBreakdown | null;
+  /**
+   * Agent-reported context window (CLI denominator). Prefer over catalog
+   * so ring % matches `/session-info` / auto-compact reason.
+   */
+  agentContextWindow: number | null;
+  /**
+   * Agent-reported integer percentage (CLI style) when the wire sends it
+   * (`auto_compact_started.percentage`). Cleared when occupancy changes
+   * without a fresh percentage.
+   */
+  agentPercentage: number | null;
 }
 
 export const INITIAL_CONTEXT_USAGE: ContextUsageState = {
@@ -71,6 +202,8 @@ export const INITIAL_CONTEXT_USAGE: ContextUsageState = {
   lastCompactMessageId: null,
   lastCompact: null,
   knownUsage: null,
+  agentContextWindow: null,
+  agentPercentage: null,
 };
 
 export type ContextUsageMessage = {
@@ -111,6 +244,10 @@ export type ContextUsageAction =
       cacheCreationTokens?: number;
       reasoningTokens?: number;
       costUsdTicks?: number;
+      /** CLI context window (tokens). */
+      contextWindow?: number;
+      /** CLI integer percentage when provided. */
+      percentage?: number;
       source?: string;
     }
   | { type: "hydrate"; messages: ContextUsageMessage[] };
@@ -164,6 +301,8 @@ export function reduceContextUsage(
               source: "compact",
             }
           : null,
+        // Keep agent window; percentage no longer valid after compact.
+        agentPercentage: null,
       };
     }
     case "usage": {
@@ -172,7 +311,15 @@ export function reduceContextUsage(
       const systemTokens = finiteToken(action.systemTokens) ?? null;
       const toolsTokens = finiteToken(action.toolsTokens) ?? null;
       const historyTokens = finiteToken(action.historyTokens) ?? null;
+      const cachedReadTokens = finiteToken(action.cachedReadTokens) ?? null;
+      const cacheCreationTokens =
+        finiteToken(action.cacheCreationTokens) ?? null;
+      const reasoningTokens = finiteToken(action.reasoningTokens) ?? null;
+      const costUsdTicks = finiteToken(action.costUsdTicks) ?? null;
+      const agentWindow = finiteToken(action.contextWindow) ?? null;
+      const agentPct = finiteToken(action.percentage) ?? null;
       let totalTokens = finiteToken(action.totalTokens) ?? null;
+      // Fallback sum only for single-shot I/O (never for billing aggregates).
       if (
         totalTokens == null &&
         inputTokens != null &&
@@ -186,30 +333,72 @@ export function reduceContextUsage(
         outputTokens == null &&
         systemTokens == null &&
         toolsTokens == null &&
-        historyTokens == null
+        historyTokens == null &&
+        cachedReadTokens == null &&
+        reasoningTokens == null &&
+        costUsdTicks == null &&
+        agentWindow == null &&
+        agentPct == null
       ) {
         return state;
       }
+
+      const knownUsage: KnownUsageBreakdown = {
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        systemTokens,
+        toolsTokens,
+        historyTokens,
+        cachedReadTokens,
+        cacheCreationTokens,
+        reasoningTokens,
+        costUsdTicks,
+        source: action.source,
+      };
+
+      // Occupancy (ring): only context_size / compact-shaped / safe single-shot.
+      // Billing aggregates (turn_completed multi-call sums) keep knownUsage for
+      // cache/cost UI but must not overwrite knownTokens.
+      const billing = isLikelyBillingAggregateUsage({
+        source: action.source,
+        totalTokens,
+        inputTokens,
+        outputTokens,
+        cachedReadTokens,
+      });
+      const occupancySafe =
+        !billing &&
+        totalTokens != null &&
+        (isOccupancyUsageSource(action.source) ||
+          knownUsageTotalIsOccupancy(knownUsage));
+
+      // Stream meta fires on every chunk — skip no-op occupancy updates
+      // (unless window/pct refreshed).
+      if (
+        occupancySafe &&
+        totalTokens === state.knownTokens &&
+        (action.source === "context_size" || action.source === "stream_meta") &&
+        state.knownUsage?.source === action.source &&
+        agentWindow == null &&
+        agentPct == null
+      ) {
+        return state;
+      }
+
       return {
         ...state,
-        // Prefer agent total as known chip base when provided.
-        knownTokens:
-          totalTokens != null ? totalTokens : state.knownTokens,
+        knownTokens: occupancySafe ? totalTokens : state.knownTokens,
+        // Occupancy snapshot clears post-compact delta; billing does not.
         lastCompactMessageId:
-          totalTokens != null ? null : state.lastCompactMessageId,
-        knownUsage: {
-          inputTokens,
-          outputTokens,
-          totalTokens,
-          systemTokens,
-          toolsTokens,
-          historyTokens,
-          cachedReadTokens: finiteToken(action.cachedReadTokens) ?? null,
-          cacheCreationTokens: finiteToken(action.cacheCreationTokens) ?? null,
-          reasoningTokens: finiteToken(action.reasoningTokens) ?? null,
-          costUsdTicks: finiteToken(action.costUsdTicks) ?? null,
-          source: action.source,
-        },
+          occupancySafe ? null : state.lastCompactMessageId,
+        knownUsage,
+        agentContextWindow:
+          agentWindow ?? state.agentContextWindow,
+        // Prefer fresh CLI percentage; clear when occupancy moves without %.
+        agentPercentage: occupancySafe
+          ? agentPct
+          : agentPct ?? state.agentPercentage,
       };
     }
     case "hydrate":
@@ -262,6 +451,8 @@ export function hydrateContextUsageFromMessages(
               source: "compact",
             }
           : null,
+      agentContextWindow: null,
+      agentPercentage: null,
     };
   }
   return { ...INITIAL_CONTEXT_USAGE };
@@ -669,6 +860,59 @@ export function contextPercent(
   return Math.max(0.01, Math.round(p * 100) / 100);
 }
 
+/**
+ * Grok Build CLI style: integer percent = round(tokens_used / context_window * 100).
+ * Matches `auto_compact_started.percentage` / `/session-info` wording.
+ */
+export function contextPercentCliStyle(
+  tokens: number | null,
+  windowSize: number | null,
+): number | null {
+  if (tokens == null || tokens <= 0) return null;
+  if (windowSize == null || windowSize <= 0) return null;
+  return Math.min(100, Math.round((tokens / windowSize) * 100));
+}
+
+/**
+ * Effective window for the ring: prefer agent-reported CLI denominator.
+ */
+export function resolveOccupancyWindow(
+  state: ContextUsageState,
+  catalogWindow: number | null = null,
+): number | null {
+  if (state.agentContextWindow != null && state.agentContextWindow > 0) {
+    return state.agentContextWindow;
+  }
+  if (catalogWindow != null && catalogWindow > 0) return catalogWindow;
+  return null;
+}
+
+/**
+ * Percent for known CLI occupancy: prefer agent integer %, else CLI-style round.
+ */
+export function resolveOccupancyPercent(
+  tokens: number | null,
+  state: ContextUsageState,
+  catalogWindow: number | null,
+  opts?: { estimated?: boolean },
+): number | null {
+  if (tokens == null || tokens <= 0) return null;
+  // Fresh agent percentage only when no post-compact estimate delta.
+  if (
+    !opts?.estimated &&
+    state.agentPercentage != null &&
+    state.agentPercentage >= 0
+  ) {
+    return Math.min(100, state.agentPercentage);
+  }
+  const window = resolveOccupancyWindow(state, catalogWindow);
+  if (opts?.estimated) {
+    return contextPercent(tokens, window);
+  }
+  // Known occupancy: match CLI integer rounding.
+  return contextPercentCliStyle(tokens, window) ?? contextPercent(tokens, window);
+}
+
 /** Prompt-cache hit rate (%) = cachedReadTokens / inputTokens. Null when unknown. */
 export function cacheHitRate(usage: KnownUsageBreakdown | null): {
   rate: number | null;
@@ -698,29 +942,14 @@ export function resolveContextUsageDisplay(
 ): ContextUsageDisplay {
   const lastCompact = state.lastCompact;
   const knownUsage = state.knownUsage;
+  // Prefer CLI agent window so % matches `/session-info` / auto-compact.
+  const effectiveWindow = resolveOccupancyWindow(state, windowSize);
   // Breakdown from full visible transcript + any agent-reported buckets.
   const breakdown = breakdownOrNull(messages, knownUsage);
   const cache = cacheHitRate(knownUsage);
 
-  // Prefer agent-reported total with no post-compact delta ambiguity.
-  if (
-    knownUsage?.totalTokens != null &&
-    state.lastCompactMessageId == null
-  ) {
-    return {
-      tokens: knownUsage.totalTokens,
-      source: "known",
-      label: formatContextChipLabel(knownUsage.totalTokens, "known", locale),
-      lastCompact,
-      breakdown,
-      knownUsage,
-      windowSize,
-      percent: contextPercent(knownUsage.totalTokens, windowSize),
-      cacheHitRate: cache.rate,
-      cachedReadTokens: cache.cachedReadTokens,
-    };
-  }
-
+  // Occupancy path: knownTokens is only written from context_size / compact /
+  // safe single-shot usage — never from turn_completed multi-call sums.
   if (state.knownTokens != null) {
     let delta = 0;
     if (state.lastCompactMessageId) {
@@ -743,8 +972,34 @@ export function resolveContextUsageDisplay(
       lastCompact,
       breakdown,
       knownUsage,
-      windowSize,
-      percent: contextPercent(tokens, windowSize),
+      windowSize: effectiveWindow,
+      percent: resolveOccupancyPercent(tokens, state, windowSize, {
+        estimated: delta > 0,
+      }),
+      cacheHitRate: cache.rate,
+      cachedReadTokens: cache.cachedReadTokens,
+    };
+  }
+
+  // Fallback: agent usage total only when it is occupancy-safe (not billing).
+  if (
+    knownUsage?.totalTokens != null &&
+    state.lastCompactMessageId == null &&
+    knownUsageTotalIsOccupancy(knownUsage)
+  ) {
+    return {
+      tokens: knownUsage.totalTokens,
+      source: "known",
+      label: formatContextChipLabel(knownUsage.totalTokens, "known", locale),
+      lastCompact,
+      breakdown,
+      knownUsage,
+      windowSize: effectiveWindow,
+      percent: resolveOccupancyPercent(
+        knownUsage.totalTokens,
+        state,
+        windowSize,
+      ),
       cacheHitRate: cache.rate,
       cachedReadTokens: cache.cachedReadTokens,
     };
@@ -761,7 +1016,7 @@ export function resolveContextUsageDisplay(
       // Still surface visible role split as estimated (honest ~).
       breakdown,
       knownUsage,
-      windowSize,
+      windowSize: effectiveWindow,
       percent: null,
       cacheHitRate: cache.rate,
       cachedReadTokens: cache.cachedReadTokens,
@@ -785,8 +1040,8 @@ export function resolveContextUsageDisplay(
         lastCompact: null,
         breakdown,
         knownUsage,
-        windowSize,
-        percent: contextPercent(breakdown.totalTokens, windowSize),
+        windowSize: effectiveWindow,
+        percent: contextPercent(breakdown.totalTokens, effectiveWindow),
         cacheHitRate: cache.rate,
         cachedReadTokens: cache.cachedReadTokens,
       };
@@ -800,7 +1055,7 @@ export function resolveContextUsageDisplay(
         lastCompact: null,
         breakdown,
         knownUsage,
-        windowSize,
+        windowSize: effectiveWindow,
         percent: null,
         cacheHitRate: cache.rate,
         cachedReadTokens: cache.cachedReadTokens,
@@ -813,7 +1068,7 @@ export function resolveContextUsageDisplay(
       lastCompact: null,
       breakdown: null,
       knownUsage,
-      windowSize,
+      windowSize: effectiveWindow,
       percent: null,
       cacheHitRate: cache.rate,
       cachedReadTokens: cache.cachedReadTokens,
@@ -826,8 +1081,8 @@ export function resolveContextUsageDisplay(
     lastCompact: null,
     breakdown,
     knownUsage,
-    windowSize,
-    percent: contextPercent(estimated, windowSize),
+    windowSize: effectiveWindow,
+    percent: contextPercent(estimated, effectiveWindow),
     cacheHitRate: cache.rate,
     cachedReadTokens: cache.cachedReadTokens,
   };

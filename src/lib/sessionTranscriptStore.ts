@@ -4,6 +4,13 @@
  * Stream tokens update messages without forcing the whole App shell to
  * re-render: ConversationThread subscribes to full snapshots; App shell
  * only subscribes to a cheap structural meta snapshot.
+ *
+ * **Ownership invariant (P0 multi-session):** `this.messages` always belongs
+ * to `messagesOwnerSessionId`. `openSession` points `viewingSessionId` at the
+ * target *before* disk load finishes — any stream/rehydrate/clear that reduced
+ * against the *previous* chat's array under the new id wrote cross-project
+ * pollution into the wrong cache (#529). Reducers must never treat a foreign
+ * transcript as `prev` for another session.
  */
 
 import type { ChatMessage } from "@/lib/session";
@@ -67,6 +74,11 @@ type Listener = () => void;
 
 class SessionTranscriptStore {
   private messages: ChatMessage[] = [];
+  /**
+   * Session id that `this.messages` currently represents.
+   * Distinct from viewing id during the openSession handoff window.
+   */
+  private messagesOwnerSessionId: string | null = null;
   private meta: TranscriptMeta = {
     length: 0,
     lastUserId: null,
@@ -111,6 +123,11 @@ class SessionTranscriptStore {
 
   getMessagesRef(): ChatMessage[] {
     return this.messages;
+  }
+
+  /** Which session `getMessages()` currently represents (tests / diagnostics). */
+  getMessagesOwnerSessionId(): string | null {
+    return this.messagesOwnerSessionId;
   }
 
   getBySessionMap(): Map<string, ChatMessage[]> {
@@ -176,9 +193,26 @@ class SessionTranscriptStore {
     for (const l of this.metaListeners) l();
   }
 
+  /**
+   * Base list for a session reducer: own cache → owned viewing messages → [].
+   * Never returns another session's transcript.
+   */
+  private baseForSession(sessionId: string): ChatMessage[] {
+    if (this.bySession.has(sessionId)) {
+      return this.bySession.get(sessionId)!;
+    }
+    if (
+      this.messagesOwnerSessionId === sessionId &&
+      this.getViewingSessionId() === sessionId
+    ) {
+      return this.messages;
+    }
+    return [];
+  }
+
   private commitViewing(
     next: ChatMessage[],
-    opts?: { forceStructural?: boolean },
+    opts?: { forceStructural?: boolean; ownerSessionId?: string | null },
   ): void {
     const prevMetaCore = {
       length: this.meta.length,
@@ -192,9 +226,13 @@ class SessionTranscriptStore {
       !!opts?.forceStructural || !metaStructuralEqual(prevMetaCore, nextCore);
 
     this.messages = next;
-    const viewing = this.getViewingSessionId();
+    const viewing =
+      opts?.ownerSessionId !== undefined
+        ? opts.ownerSessionId
+        : this.getViewingSessionId();
     if (viewing) {
       this.bySession.set(viewing, next);
+      this.messagesOwnerSessionId = viewing;
     }
 
     if (structural) {
@@ -213,11 +251,19 @@ class SessionTranscriptStore {
     this.scheduleContentNotify(structural);
   }
 
-  /** Replace viewing messages (open session / clear / optimistic full set). */
+  /**
+   * Replace viewing messages (open session / clear / optimistic full set).
+   *
+   * Functional updates use the **viewing session's** base, not a foreign
+   * transcript that may still be painted during openSession handoff.
+   */
   setMessages(next: ChatMessage[] | MessagesReducer): void {
+    const viewing = this.getViewingSessionId();
     const resolved =
       typeof next === "function"
-        ? (next as MessagesReducer)(this.messages)
+        ? (next as MessagesReducer)(
+            viewing ? this.baseForSession(viewing) : this.messages,
+          )
         : next;
     this.commitViewing(resolved);
   }
@@ -225,19 +271,21 @@ class SessionTranscriptStore {
   /**
    * Apply reducer to a session. Only notifies React when the target is the
    * viewing session (background sessions stay in the cache only).
+   *
+   * Always reduces against that session's own cache (or empty) — never against
+   * a still-painted previous chat when viewing id already moved (#529).
    */
   patchSession(
     targetSessionId: string | null | undefined,
     reduce: MessagesReducer,
   ): void {
     if (!targetSessionId) return;
+    const base = this.baseForSession(targetSessionId);
+    const next = reduce(base);
+    this.bySession.set(targetSessionId, next);
     if (this.getViewingSessionId() === targetSessionId) {
-      const next = reduce(this.messages);
       this.commitViewing(next);
-      return;
     }
-    const prev = this.bySession.get(targetSessionId) ?? [];
-    this.bySession.set(targetSessionId, reduce(prev));
   }
 
   /** Cache helper used when switching sessions (leave behind). */
@@ -247,6 +295,9 @@ class SessionTranscriptStore {
 
   deleteSession(sessionId: string): void {
     this.bySession.delete(sessionId);
+    if (this.messagesOwnerSessionId === sessionId) {
+      this.messagesOwnerSessionId = null;
+    }
   }
 
   /** Test / hot-reload reset. */
@@ -257,6 +308,7 @@ class SessionTranscriptStore {
     }
     this.contentNotifyQueued = false;
     this.messages = [];
+    this.messagesOwnerSessionId = null;
     this.meta = {
       length: 0,
       lastUserId: null,

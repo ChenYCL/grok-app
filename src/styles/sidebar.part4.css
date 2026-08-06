@@ -790,6 +790,45 @@ html[data-sidebar-density="compact"] .session-row__meta {
   word-break: break-word;
 }
 
+/* Optional paste-back (collapsed by default — auto OAuth is primary). */
+.account-login-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.account-login-paste__toggle {
+  align-self: flex-start;
+  opacity: 0.85;
+  text-align: left;
+}
+
+.account-login-paste strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.account-login-paste p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.account-login-paste__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.account-login-paste__input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
 /* Multi-account manager modal */
 .account-mgr__hint {
   margin: 0 0 12px;

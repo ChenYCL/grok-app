@@ -98,9 +98,8 @@ export function SideWorkbench({
     (kind: SidePickerKind) => {
       const next = openSideTabFromPicker(state, kind, { isGitProject });
       if ("created" in next) {
-        setState(
-          kind === "file" ? setTreeVisible(next, true) : next,
-        );
+        // Keep treeVisible as-is — file tree is user-toggled only.
+        setState(next);
       }
     },
     [state, isGitProject, setState],
@@ -128,18 +127,16 @@ export function SideWorkbench({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan?.visible, planFocusKey, autoOpenPlanTab]);
 
-  // Context open → ensure matching SideTab exists for file requests
+  // Context open → ensure matching SideTab exists for file requests.
+  // Do not force the file tree open; user toggles it from chrome.
   useEffect(() => {
     if (!openRequest) return;
     if (openRequest.type === "file" && openRequest.path) {
       setState(
-        setTreeVisible(
-          openSideTab(state, "file", {
-            path: openRequest.path,
-            name: openRequest.title,
-          }),
-          true,
-        ),
+        openSideTab(state, "file", {
+          path: openRequest.path,
+          name: openRequest.title,
+        }),
       );
     } else if (openRequest.type === "url" && openRequest.url) {
       setState(

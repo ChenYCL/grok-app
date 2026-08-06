@@ -33,6 +33,7 @@ import {
   reconcileOptimisticDuplicates,
   isClientOptimisticId,
   weaveToolsIntoAssistantSegments,
+  reorderSegmentsToHistoryLayout,
   mergeAssistantFragments,
   pickAssistantFragmentCarrierIdx,
   filterTranscriptMessages,
@@ -920,6 +921,117 @@ describe("session projection", () => {
       "tool",
       "tool",
       "content",
+    ]);
+  });
+
+  it("reorderSegmentsToHistoryLayout collapses live interleave to thought→tools→content", () => {
+    const segs = reorderSegmentsToHistoryLayout([
+      { kind: "thought", text: "plan A" },
+      {
+        kind: "tool",
+        toolCallId: "t1",
+        title: "Read x",
+        status: "completed",
+        streaming: false,
+      },
+      { kind: "content", text: "partial…" },
+      { kind: "thought", text: "plan B" },
+      {
+        kind: "tool",
+        toolCallId: "t2",
+        title: "Edit y",
+        status: "completed",
+        streaming: true,
+      },
+      { kind: "content", text: " final" },
+    ]);
+    expect(segs.map((s) => s.kind)).toEqual([
+      "thought",
+      "tool",
+      "tool",
+      "content",
+    ]);
+    expect(segs[0]).toMatchObject({ kind: "thought", text: "plan A\n\nplan B" });
+    expect(segs[1]).toMatchObject({ kind: "tool", toolCallId: "t1" });
+    expect(segs[2]).toMatchObject({
+      kind: "tool",
+      toolCallId: "t2",
+      streaming: false,
+    });
+    expect(segs[3]).toMatchObject({ kind: "content", text: "partial… final" });
+  });
+
+  it("weaveToolsIntoAssistantSegments reorders finished live interleave without remount", () => {
+    // Live turn left thought/tool interleaved with content; streaming=false.
+    const woven = weaveToolsIntoAssistantSegments([
+      { id: "u1", role: "user", content: "q" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "hello world",
+        streaming: false,
+        segments: [
+          { kind: "thought", text: "think" },
+          {
+            kind: "tool",
+            toolCallId: "t1",
+            title: "Read",
+            status: "completed",
+          },
+          { kind: "content", text: "hello " },
+          {
+            kind: "tool",
+            toolCallId: "t2",
+            title: "Shell",
+            status: "completed",
+          },
+          { kind: "content", text: "world" },
+        ],
+      },
+    ]);
+    const segs = messageSegments(woven.find((m) => m.id === "a1")!);
+    expect(segs.map((s) => s.kind)).toEqual([
+      "thought",
+      "tool",
+      "tool",
+      "content",
+    ]);
+    expect(segs[3]).toMatchObject({ kind: "content", text: "hello world" });
+  });
+
+  it("weaveToolsIntoAssistantSegments keeps live interleave while streaming", () => {
+    const woven = weaveToolsIntoAssistantSegments([
+      { id: "u1", role: "user", content: "q" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "hello ",
+        streaming: true,
+        segments: [
+          { kind: "thought", text: "think" },
+          {
+            kind: "tool",
+            toolCallId: "t1",
+            title: "Read",
+            status: "completed",
+          },
+          { kind: "content", text: "hello " },
+          {
+            kind: "tool",
+            toolCallId: "t2",
+            title: "Shell",
+            status: "in_progress",
+            streaming: true,
+          },
+        ],
+      },
+    ]);
+    const segs = messageSegments(woven.find((m) => m.id === "a1")!);
+    expect(segs.map((s) => s.kind)).toEqual([
+      "thought",
+      "tool",
+      "content",
+      "tool",
     ]);
   });
 

@@ -414,7 +414,15 @@ impl SessionManager {
                 // ACP host with a per-session dispatch lock, so a busy process
                 // can host a brand-new session too — this is what makes "open
                 // another chat while one is running" free of cold spawns.
-                let target_custom = crate::providers::is_custom_provider_id(&prefs.model_id);
+                // Route class must follow active_route(), not prefs.model_id.
+                // Custom channels store the *upstream* model in session prefs
+                // (e.g. deepseek-v4-flash), which is_custom_provider_id rejects
+                // — processes were mis-labeled official and reused after
+                // auth.json was stripped (#528 intermittent re-login).
+                let target_custom = matches!(
+                    crate::providers::active_route(),
+                    crate::providers::ActiveRoute::Custom { .. }
+                );
                 let gate = |alive: bool,
                             p_policy: PermissionPolicy,
                             p_effort: Option<&str>,
@@ -483,9 +491,7 @@ impl SessionManager {
                                     p.policy,
                                     p.effort.as_deref(),
                                     p.sandbox_profile.as_deref(),
-                                    crate::providers::is_custom_provider_id(
-                                        p.model_id.as_deref().unwrap_or(""),
-                                    ),
+                                    p.acp.is_custom_route(),
                                 ) {
                                     Some((p.acp, p.process_id, p.created_at))
                                 } else {
@@ -496,9 +502,7 @@ impl SessionManager {
                                             p.policy,
                                             p.effort.as_deref(),
                                             p.sandbox_profile.as_deref(),
-                                            crate::providers::is_custom_provider_id(
-                                                p.model_id.as_deref().unwrap_or(""),
-                                            ),
+                                            p.acp.is_custom_route(),
                                         )
                                     ));
                                     None
@@ -542,9 +546,7 @@ impl SessionManager {
                             p.policy,
                             p.effort.as_deref(),
                             p.acp.sandbox_profile().as_deref(),
-                            crate::providers::is_custom_provider_id(
-                                p.model_id.as_deref().unwrap_or(""),
-                            ),
+                            p.acp.is_custom_route(),
                         ) {
                             rejected.push(format!(
                                 "parked {}: {}",
@@ -554,9 +556,7 @@ impl SessionManager {
                                     p.policy,
                                     p.effort.as_deref(),
                                     p.acp.sandbox_profile().as_deref(),
-                                    crate::providers::is_custom_provider_id(
-                                        p.model_id.as_deref().unwrap_or(""),
-                                    ),
+                                    p.acp.is_custom_route(),
                                 )
                             ));
                             continue;
@@ -570,14 +570,13 @@ impl SessionManager {
                 if best.is_none() {
                     let bg = self.background.lock();
                     for s in bg.values() {
+                        let s_custom = s.acp.as_ref().is_some_and(|c| c.is_custom_route());
                         if !gate(
                             s.acp.as_ref().is_some_and(|c| c.is_alive()),
                             s.policy,
                             s.effort.as_deref(),
                             s.acp.as_ref().and_then(|c| c.sandbox_profile()).as_deref(),
-                            crate::providers::is_custom_provider_id(
-                                s.model_id.as_deref().unwrap_or(""),
-                            ),
+                            s_custom,
                         ) {
                             rejected.push(format!(
                                 "background {}: {}",
@@ -589,9 +588,7 @@ impl SessionManager {
                                     s.acp.as_ref()
                                         .and_then(|c| c.sandbox_profile())
                                         .as_deref(),
-                                    crate::providers::is_custom_provider_id(
-                                        s.model_id.as_deref().unwrap_or(""),
-                                    ),
+                                    s_custom,
                                 )
                             ));
                             continue;
@@ -641,6 +638,10 @@ impl SessionManager {
                     reused_from = ?reused_from,
                     "connect warm-process reuse (shared, no spawn)"
                 );
+                // #528: warm reuse skips cold spawn (no prepare_route_auth).
+                // Re-apply route auth so official OIDC is on disk after any
+                // intervening custom-route clear, and nested tools see keys.
+                crate::providers::prepare_route_auth_for_agent();
                 // P0: bind the live shell to the reused process *before*
                 // session/load. Load replays stream/tool notifications while
                 // open awaits; if live still held a temporary process_id,

@@ -1179,6 +1179,7 @@ pub fn run() {
             commands::account_login,
 
             commands::account_login_cancel,
+            commands::account_login_submit_code,
 
             commands::account_logout,
 

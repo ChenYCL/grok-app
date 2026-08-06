@@ -1,9 +1,9 @@
 /**
- * TRAY-NOTIFY-PRO — pure helpers for dock/tray busy badge + desktop
+ * TRAY-NOTIFY-PRO — pure helpers for dock/tray badge + desktop
  * notification prefs honesty.
  *
- * - Busy badge count is derived only from liveMap-style busy counts the
- *   caller already computed (never invents activity).
+ * - Dock/tray badge count is supplied by the caller (product: unread
+ *   sessions after background turn end — never invents activity).
  * - Desktop notify honesty reports OS permission + prefs + quiet hours;
  *   never claims a notification will fire when the OS / prefs block it.
  * - Soft-fail closed: invalid numbers → 0; secondary windows never apply.
@@ -35,7 +35,10 @@ export function clampBusyBadgeDisplayCount(count: number): number {
 export type ResolveTrayBusyBadgeCountInput = {
   /** User pref (`trayBusyBadgePref`); default product is on. */
   enabled: boolean;
-  /** Raw busy session count from liveMap projection. */
+  /**
+   * Raw badge count from the caller (product: unread session count after
+   * background turn end). Name kept for API stability.
+   */
   busyCount: number;
   /** Secondary windows must not overwrite the main dock badge. */
   isSecondaryWindow?: boolean;
@@ -51,11 +54,11 @@ export type ResolveTrayBusyBadgeCountResult = {
 };
 
 /**
- * Resolve the dock/tray busy badge count for this window.
+ * Resolve the dock/tray badge count for this window.
  *
  * - Secondary → do not apply (view-only panes never drive the badge).
  * - Pref off → apply `0` (clear).
- * - Pref on → clamp raw busy count to the display cap.
+ * - Pref on → clamp raw count to the display cap.
  */
 export function resolveTrayBusyBadgeCount(
   input: ResolveTrayBusyBadgeCountInput,
@@ -90,7 +93,7 @@ export type TrayBusyBadgeSurface = {
   severity: "none" | "info";
 };
 
-/** Settings status line under the busy-badge toggle (honest live count). */
+/** Settings status line under the dock-badge toggle (honest live count). */
 export function deriveTrayBusyBadgeSurface(opts: {
   enabled: boolean;
   busyCount: number;

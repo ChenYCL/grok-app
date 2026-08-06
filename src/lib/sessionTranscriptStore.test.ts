@@ -130,4 +130,64 @@ describe("sessionTranscriptStore", () => {
     unsubC();
     vi.useRealTimers();
   });
+
+  it("does not poison the new session when viewing id moves before messages swap (#529)", () => {
+    // Simulate openSession handoff: user was on s1, viewing id flips to s2
+    // while s1's transcript is still painted (disk load not finished).
+    sessionTranscriptStore.setViewingSessionId("s1");
+    sessionTranscriptStore.setMessages([
+      msg({ id: "u-a", role: "user", content: "project A question" }),
+      msg({
+        id: "a-a",
+        role: "assistant",
+        content: "answer for project A",
+        streaming: false,
+      }),
+    ]);
+    expect(sessionTranscriptStore.getMessagesOwnerSessionId()).toBe("s1");
+
+    // openSession points viewing at s2 first (stream routing), without content yet.
+    sessionTranscriptStore.setViewingSessionId("s2");
+    // Stream / rehydrate for s2 must not reduce against project A's messages.
+    sessionTranscriptStore.patchSession("s2", (prev) => [
+      ...prev,
+      msg({ id: "u-b", role: "user", content: "project B question" }),
+      msg({
+        id: "a-b",
+        role: "assistant",
+        content: "B",
+        streaming: true,
+      }),
+    ]);
+
+    const viewing = sessionTranscriptStore.getMessages();
+    expect(viewing.map((m) => m.id)).toEqual(["u-b", "a-b"]);
+    expect(viewing.some((m) => m.content.includes("project A"))).toBe(false);
+    expect(sessionTranscriptStore.getMessagesOwnerSessionId()).toBe("s2");
+    // s1 cache stays intact
+    expect(sessionTranscriptStore.getCached("s1")?.map((m) => m.id)).toEqual([
+      "u-a",
+      "a-a",
+    ]);
+  });
+
+  it("setMessages reducer ignores foreign transcript after viewing id handoff (#529)", () => {
+    sessionTranscriptStore.setViewingSessionId("s1");
+    sessionTranscriptStore.setMessages([
+      msg({ id: "u-a", role: "user", content: "A body" }),
+      msg({ id: "a-a", role: "assistant", content: "A ans", streaming: true }),
+    ]);
+    sessionTranscriptStore.setViewingSessionId("s2");
+    // Functional update must not clear-streaming on A's rows into s2.
+    sessionTranscriptStore.setMessages((prev) => {
+      if (!prev.some((m) => m.streaming)) return prev;
+      return prev.map((m) => (m.streaming ? { ...m, streaming: false } : m));
+    });
+    expect(sessionTranscriptStore.getMessages()).toEqual([]);
+    expect(sessionTranscriptStore.getMessagesOwnerSessionId()).toBe("s2");
+    expect(
+      sessionTranscriptStore.getCached("s1")?.find((m) => m.id === "a-a")
+        ?.streaming,
+    ).toBe(true);
+  });
 });

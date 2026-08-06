@@ -75,6 +75,19 @@ into a **parked** co-tenant journal:
    Never `rescue_parked` with fake `prompt_in_flight=true` (that caused
    cross-chat journal pollution + sticky “in progress”).
 
+**UI transcript ownership (P0, #529):** `openSession` points `viewingSessionId`
+at the target **before** disk journal load. Until messages swap, stream /
+rehydrate / clear-streaming must **not** reduce against the previous chat's
+array under the new id. Rules:
+
+1. `sessionTranscriptStore` tracks `messagesOwnerSessionId` separately from
+   viewing id; reducers use that session's own cache (or `[]`), never a foreign
+   painted transcript.  
+2. On switch, immediately `setMessages(cache[target] ?? [])` so owner matches
+   viewing before any host event lands.  
+3. Journal rehydrate upgrades only `messagesBySession[sid]`, never React prev
+   from another project.
+
 ### 2. Fallback — journal bootstrap (reasonable turns)
 
 When a **new** agent session is created but the App journal already has turns:
@@ -289,10 +302,10 @@ App history still shows full prior bubbles; the banner signals that **agent cont
 
 Presentation rules (non-intrusive, audited 2026-07; timeline 2026-07-26):
 
-1. **True timeline (new sessions)**: each tool is a `segments` entry (`kind: "tool"`) on the current-turn **assistant**, inserted when `applyToolEvent` fires. UI renders **thought → tool → content** in stream order inside the assistant bubble — not a bottom dump.
+1. **True timeline (while streaming)**: each tool is a `segments` entry (`kind: "tool"`) on the current-turn **assistant**, inserted when `applyToolEvent` fires. UI renders **thought → tool → content** in stream order inside the assistant bubble — not a bottom dump.
 2. **Phase collapse (display layer)**: consecutive thought + tools form a **work phase**. When the phase ends (next **content**, or a **new thought after tools**, or turn idle), it collapses to one expandable chip (`TimelinePhaseBlock`). Expand to see reasoning + tool list. **Does not wait for final answer** — merge at phase boundary. Answer `content` never folds into a phase. Live trailing phase stays expanded while streaming.  
    **Layout (CodePilot-aligned)**: phase header = count badge + summary + caret-right; expanded body = **single left rail** (`border-l-2`); tool rows are flat 28px mono lines with **status dot on the right** (no nested left-dot + chevron stacks).
-3. **Journal / reload**: Host often stores `U → assistant(final) → tool_step…` while tool `createdAt` is *earlier* than the assistant finalize time. On load, `weaveToolsIntoAssistantSegments` collects **all tools in the user-turn window** (before or after the assistant row) and rebuilds display segments as **thought → tools → content** when there is no live interleave yet. Message merge **must not re-sort by createdAt** (that produced `U → tools → A` and piled steps at the wrong end).
+3. **Turn end + journal / reload**: Host often stores `U → assistant(final) → tool_step…` while tool `createdAt` is *earlier* than the assistant finalize time. `weaveToolsIntoAssistantSegments` (transcript paint + openSession + journal rehydrate) collects **all tools in the user-turn window** and rebuilds display segments as **thought → tools → content**. When the assistant is **finished** (`streaming: false`), live-interleaved segments are also forced into that same history layout via `reorderSegmentsToHistoryLayout` — no full app remount required. While still streaming, interleave is preserved. Message merge **must not re-sort by createdAt** (that produced `U → tools → A` and piled steps at the wrong end).
 4. **No bottom turn-activity block** in the transcript. Failures are **quiet red dots / short hints** on timeline / phase rows only.
 5. **Context grouping**: ≥3 consecutive read/search tools inside a phase expand as “Gathering context” (`TimelineContextGroup`).
 6. **Standalone tool rows**: only when a tool arrives before any assistant bubble (and is not yet inlined), or a single tool without thought (not phase-worthy).
@@ -310,7 +323,7 @@ Presentation rules (non-intrusive, audited 2026-07; timeline 2026-07-26):
 | Multi-session busy | `sessionLiveStore` |
 | Session UUID hint | Host injects narrow search hint when resuming by UUID |
 
-Old sessions without woven segments may still show tools after the answer body after weave — acceptable; new live turns keep real order.
+Old sessions without woven segments may still show tools after the answer body after weave — acceptable. New live turns keep stream order **until the turn ends**, then match history layout (tools above answer).
 
 ## Acceptance
 

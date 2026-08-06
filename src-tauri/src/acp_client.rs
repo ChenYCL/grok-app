@@ -97,9 +97,14 @@ pub enum AcpEvent {
         note: Option<String>,
     },
     /// Turn / context usage reported by the agent (when present).
-    /// Prefer these over UI char heuristics.
+    /// Prefer occupancy fields over UI char heuristics.
+    ///
+    /// Grok Build CLI occupancy (same as `/session-info` / auto-compact):
+    ///   tokens_used / context_window → percentage
+    /// Streamed as `params._meta.totalTokens` or `auto_compact_started.tokens_used`.
+    /// Do **not** treat `turn_completed.usage.totalTokens` as occupancy (billing sum).
     UsageReported {
-        /// Total context tokens after the turn when known.
+        /// Occupancy or billing total (see `source`).
         total_tokens: Option<u64>,
         input_tokens: Option<u64>,
         output_tokens: Option<u64>,
@@ -113,6 +118,10 @@ pub enum AcpEvent {
         reasoning_tokens: Option<u64>,
         /// USD cost in 1e-6 ticks (1 tick = 1 micro-dollar) — avoids float drift.
         cost_usd_ticks: Option<u64>,
+        /// Agent's model context window (CLI denominator for %).
+        context_window: Option<u64>,
+        /// Agent-reported integer percentage (CLI style), when present.
+        percentage: Option<u64>,
         /// Optional raw kind for debugging (not shown to users).
         source: String,
     },
@@ -281,6 +290,12 @@ pub struct AcpClient {
     empty_mcp_servers: bool,
     /// Effective `--sandbox` profile at spawn (process-level gate for parked reuse).
     sandbox_profile: ParkingMutex<Option<String>>,
+    /// Route class at spawn: custom relay (api_key, no OIDC) vs official OIDC.
+    /// Used by process reuse gate — must **not** be inferred from composer
+    /// model id (custom routes often store the upstream model name, not the
+    /// provider section id; that mis-labeled processes as "official" and
+    /// let them be reused after auth.json was cleared → #528 re-login).
+    custom_route: bool,
 }
 
 /// Options applied at agent process start (CLI flags).
@@ -1085,6 +1100,16 @@ impl AcpClient {
             crate::paths::resolve_agent_grok_home(session_data_mode)
         };
         let _ = std::fs::create_dir_all(&grok_home);
+        // Route class is process-scoped (auth material + config.toml). Official
+        // aux override home is always OIDC-side; main home follows active_route.
+        let custom_route = if home_override.is_some() {
+            false
+        } else {
+            matches!(
+                crate::providers::active_route(),
+                crate::providers::ActiveRoute::Custom { .. }
+            )
+        };
         // Side-channel with explicit home: never touch main agent-home auth.
         if home_override.is_none() && session_data_mode != "shared" {
             // Official → sync OIDC; custom → strip auth.json (api_key only).
@@ -1419,6 +1444,7 @@ impl AcpClient {
             last_update_at: ParkingMutex::new(None),
             empty_mcp_servers,
             sandbox_profile: ParkingMutex::new(sandbox.map(|sb| sb.profile.clone())),
+            custom_route,
         });
 
         client.start_read_loop(Box::new(stdout));
@@ -1496,9 +1522,16 @@ impl AcpClient {
             // TCP connect path keeps default MCP inject (not official side-channel).
             empty_mcp_servers: false,
             sandbox_profile: ParkingMutex::new(None),
+            // Remote ACP: treat as official-class for reuse (no local auth strip).
+            custom_route: false,
         });
         client.start_read_loop(Box::new(read_half));
         Ok((client, event_rx))
+    }
+
+    /// Whether this process was spawned for a custom relay route (api_key only).
+    pub fn is_custom_route(&self) -> bool {
+        self.custom_route
     }
 
     /// Spawn the transport read loop over any `AsyncRead` (child stdout or the
@@ -1634,10 +1667,10 @@ impl AcpClient {
                         },
                     ));
                 }
-                // The session/prompt RPC result also carries authoritative per-turn
-                // usage (inputTokens, cachedReadTokens, …) under result.usage or
-                // result._meta. Parse it so the context chip shows real totals +
-                // cache hit instead of the chars/4 estimate.
+                // session/prompt result.usage is a **billing aggregate** for the
+                // turn (often summed across modelCalls). Frontend must NOT use it
+                // as context-window occupancy — that lives on stream
+                // params._meta.totalTokens (source: context_size).
                 if let Some(usage) = msg
                     .pointer("/result/usage")
                     .or_else(|| msg.pointer("/result/_meta/usage"))
@@ -1666,6 +1699,8 @@ impl AcpClient {
                         ),
                         reasoning_tokens: u64_field("reasoningTokens", "reasoning_tokens"),
                         cost_usd_ticks: u64_field("costUsdTicks", "cost_usd_ticks"),
+                        context_window: None,
+                        percentage: None,
                         source: "turn_completed".to_string(),
                     }));
                 }
@@ -2004,19 +2039,31 @@ pub fn parse_usage_update(kind: &str, update: &Value) -> Option<AcpEvent> {
             "output",
         ],
     );
-    let total = json_token_u64(
+    // Grok Build CLI occupancy field is `tokens_used` (auto_compact_started,
+    // tokens_used updates). Prefer it over billing `totalTokens` when both exist
+    // on the same object (should not happen on live wire).
+    let occupancy = json_token_u64(
         root,
         &[
-            "totalTokens",
-            "total_tokens",
-            "contextTokens",
-            "context_tokens",
+            "tokens_used",
+            "tokensUsed",
             "usedTokens",
             "used_tokens",
-            "tokens",
-            "total",
         ],
-    )
+    );
+    let total = occupancy.or_else(|| {
+        json_token_u64(
+            root,
+            &[
+                "totalTokens",
+                "total_tokens",
+                "contextTokens",
+                "context_tokens",
+                "tokens",
+                "total",
+            ],
+        )
+    })
     .or_else(|| match (input, output) {
         (Some(i), Some(o)) => Some(i.saturating_add(o)),
         _ => None,
@@ -2062,6 +2109,19 @@ pub fn parse_usage_update(kind: &str, update: &Value) -> Option<AcpEvent> {
     );
     let reasoning = json_token_u64(root, &["reasoningTokens", "reasoning_tokens"]);
     let cost_usd_ticks = json_token_u64(root, &["costUsdTicks", "cost_usd_ticks"]);
+    // CLI denominator + integer % (auto_compact_started / tokens_used).
+    let context_window = json_token_u64(
+        root,
+        &["context_window", "contextWindow", "context_window_tokens"],
+    )
+    .or_else(|| {
+        json_token_u64(
+            update,
+            &["context_window", "contextWindow", "context_window_tokens"],
+        )
+    });
+    let percentage = json_token_u64(root, &["percentage", "percent", "context_usage_pct"])
+        .or_else(|| json_token_u64(update, &["percentage", "percent", "context_usage_pct"]));
 
     // Kind hints alone are not enough — need at least one number.
     // Do not invent zeros for missing structured buckets.
@@ -2075,13 +2135,17 @@ pub fn parse_usage_update(kind: &str, update: &Value) -> Option<AcpEvent> {
         && cache_creation.is_none()
         && reasoning.is_none()
         && cost_usd_ticks.is_none()
+        && occupancy.is_none()
     {
         return None;
     }
 
-    // Avoid double-firing compact events that only carry tokens_before/after.
+    // Avoid double-firing compact *completed* events that only carry before/after.
+    // `auto_compact_started` carries tokens_used and must still emit occupancy.
     if kind.contains("compact")
+        && !kind.contains("started")
         && total.is_none()
+        && occupancy.is_none()
         && (update.get("tokens_before").is_some()
             || update.get("tokensBefore").is_some()
             || update.get("tokens_after").is_some()
@@ -2089,6 +2153,17 @@ pub fn parse_usage_update(kind: &str, update: &Value) -> Option<AcpEvent> {
     {
         return None;
     }
+
+    // Normalize source so the frontend occupancy classifier matches CLI events.
+    let source = if kind == "auto_compact_started" || kind.ends_with("auto_compact_started") {
+        "auto_compact_started".to_string()
+    } else if kind == "tokens_used" {
+        "tokens_used".to_string()
+    } else if occupancy.is_some() && input.is_none() && output.is_none() && kind.is_empty() {
+        "tokens_used".to_string()
+    } else {
+        kind.to_string()
+    };
 
     Some(AcpEvent::UsageReported {
         total_tokens: total,
@@ -2101,7 +2176,9 @@ pub fn parse_usage_update(kind: &str, update: &Value) -> Option<AcpEvent> {
         cache_creation_tokens: cache_creation,
         reasoning_tokens: reasoning,
         cost_usd_ticks,
-        source: kind.to_string(),
+        context_window,
+        percentage,
+        source,
     })
 }
 
@@ -2421,6 +2498,9 @@ impl AcpClient {
         }
 
         // Best-effort cached auth — short timeout so a hung auth cannot burn 120s.
+        // Official independent mode: if the first attempt fails (stale/empty
+        // agent-home after a custom-route clear, #528), re-sync ~/.grok →
+        // agent-home and retry once before soft-continuing.
         match self
             .request_timeout(
                 "authenticate",
@@ -2430,7 +2510,32 @@ impl AcpClient {
             .await
         {
             Ok(_) => info!("acp authenticate cached_token ok"),
-            Err(e) => warn!("acp authenticate soft-fail (continuing): {e}"),
+            Err(e) => {
+                if !self.custom_route {
+                    if let Err(sync_e) = crate::account::sync_cli_auth_to_agent_home() {
+                        warn!("acp authenticate: re-sync auth before retry failed: {sync_e}");
+                    }
+                    match self
+                        .request_timeout(
+                            "authenticate",
+                            json!({ "methodId": "cached_token" }),
+                            AUTH_TIMEOUT_SECS,
+                        )
+                        .await
+                    {
+                        Ok(_) => {
+                            info!("acp authenticate cached_token ok after auth re-sync");
+                        }
+                        Err(e2) => {
+                            warn!(
+                                "acp authenticate soft-fail after re-sync (continuing): first={e}; retry={e2}"
+                            );
+                        }
+                    }
+                } else {
+                    warn!("acp authenticate soft-fail (continuing): {e}");
+                }
+            }
         }
         Ok(init)
     }
@@ -3570,24 +3675,38 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 status,
             });
         }
+        // CLI occupancy + compact lifecycle (Grok Build 0.2.x wire).
+        // auto_compact_started: { tokens_used, context_window, percentage }
+        // auto_compact_completed: { tokens_before, tokens_after }
         "tokens_used"
         | "compaction"
         | "compaction_completed"
         | "context_compact"
         | "auto_compact"
+        | "auto_compact_started"
+        | "auto_compact_completed"
+        | "auto_compact_failed"
+        | "auto_compact_cancelled"
         | "compaction_checkpoint" => {
-            if let Some((trigger, before, after, summary, note)) =
-                parse_context_compact_update(kind, update)
-            {
-                out.push(AcpEvent::ContextCompact {
-                    trigger,
-                    tokens_before: before,
-                    tokens_after: after,
-                    summary_preview: summary,
-                    note,
-                });
+            // `auto_compact_started` / bare `tokens_used` are occupancy snapshots
+            // (tokens_used + window), not compact completions — do not emit
+            // ContextCompact without before/after (that would wipe the chip).
+            let is_occupancy_only =
+                kind == "tokens_used" || kind == "auto_compact_started";
+            if !is_occupancy_only {
+                if let Some((trigger, before, after, summary, note)) =
+                    parse_context_compact_update(kind, update)
+                {
+                    out.push(AcpEvent::ContextCompact {
+                        trigger,
+                        tokens_before: before,
+                        tokens_after: after,
+                        summary_preview: summary,
+                        note,
+                    });
+                }
             }
-            // tokens_used often also carries a usage object — surface it.
+            // tokens_used / auto_compact_started → occupancy UsageReported.
             if let Some(ev) = parse_usage_update(kind, update) {
                 out.push(ev);
             }
@@ -3661,6 +3780,51 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
             }
         }
     }
+
+    // Grok Build streams **context occupancy** on params._meta.totalTokens
+    // (every thought/tool/message chunk). This is the real window fill — not
+    // turn_completed.usage.totalTokens (which sums all modelCalls in the turn).
+    // See contextUsage.ts: isLikelyBillingAggregateUsage.
+    if let Some(n) = params
+        .pointer("/_meta/totalTokens")
+        .or_else(|| params.pointer("/_meta/total_tokens"))
+        .and_then(|v| {
+            v.as_u64()
+                .or_else(|| v.as_i64().map(|i| i.max(0) as u64))
+                .or_else(|| v.as_f64().map(|f| f.max(0.0) as u64))
+        })
+        .filter(|n| *n > 0)
+    {
+        // Skip if this update already emitted the same total via usage object
+        // (avoid double occupancy events on a single packet).
+        let already = out.iter().any(|ev| {
+            matches!(
+                ev,
+                AcpEvent::UsageReported {
+                    total_tokens: Some(t),
+                    ..
+                } if *t == n
+            )
+        });
+        if !already {
+            out.push(AcpEvent::UsageReported {
+                total_tokens: Some(n),
+                input_tokens: None,
+                output_tokens: None,
+                system_tokens: None,
+                tools_tokens: None,
+                history_tokens: None,
+                cached_read_tokens: None,
+                cache_creation_tokens: None,
+                reasoning_tokens: None,
+                cost_usd_ticks: None,
+                context_window: None,
+                percentage: None,
+                source: "context_size".to_string(),
+            });
+        }
+    }
+
     out
 }
 
@@ -4244,6 +4408,125 @@ mod context_tokens_tests {
             }
             _ => panic!("expected UsageReported"),
         }
+    }
+
+    #[test]
+    fn decode_stream_chunk_emits_context_size_from_params_meta() {
+        // Live Grok shape: occupancy lives on params._meta, not update.usage.
+        let evs = decode_session_update(&json!({
+            "sessionId": "s1",
+            "update": {
+                "sessionUpdate": "agent_thought_chunk",
+                "content": { "type": "text", "text": "thinking…" }
+            },
+            "_meta": {
+                "totalTokens": 27148,
+                "updateType": "AgentThoughtChunk"
+            }
+        }));
+        let size = evs.iter().find_map(|e| match e {
+            AcpEvent::UsageReported {
+                total_tokens,
+                source,
+                input_tokens,
+                ..
+            } if source == "context_size" => {
+                Some((*total_tokens, *input_tokens))
+            }
+            _ => None,
+        });
+        assert_eq!(size, Some((Some(27148), None)));
+    }
+
+    #[test]
+    fn decode_turn_completed_keeps_billing_usage_and_optional_meta_size() {
+        // Billing aggregate on update.usage; meta may omit occupancy.
+        let evs = decode_session_update(&json!({
+            "sessionId": "s1",
+            "update": {
+                "sessionUpdate": "turn_completed",
+                "usage": {
+                    "inputTokens": 1_681_484,
+                    "outputTokens": 19_856,
+                    "totalTokens": 1_701_340,
+                    "cachedReadTokens": 1_581_440,
+                    "modelCalls": 19
+                }
+            },
+            "_meta": { "eventId": "e1" }
+        }));
+        let billing = evs.iter().find_map(|e| match e {
+            AcpEvent::UsageReported {
+                total_tokens,
+                source,
+                ..
+            } if source == "turn_completed" => *total_tokens,
+            _ => None,
+        });
+        assert_eq!(billing, Some(1_701_340));
+        // No params._meta.totalTokens → no context_size event.
+        assert!(evs.iter().all(|e| !matches!(
+            e,
+            AcpEvent::UsageReported { source, .. } if source == "context_size"
+        )));
+    }
+
+    #[test]
+    fn decode_auto_compact_started_emits_cli_occupancy_triplet() {
+        // Live Grok Build wire from updates.jsonl:
+        // tokens_used + context_window + percentage (same as /session-info).
+        let evs = decode_session_update(&json!({
+            "sessionId": "s1",
+            "update": {
+                "sessionUpdate": "auto_compact_started",
+                "tokens_used": 402603,
+                "context_window": 500000,
+                "percentage": 81,
+                "reason": "Context window 81% full"
+            }
+        }));
+        let occ = evs.iter().find_map(|e| match e {
+            AcpEvent::UsageReported {
+                total_tokens,
+                context_window,
+                percentage,
+                source,
+                input_tokens,
+                ..
+            } if source == "auto_compact_started" => {
+                Some((*total_tokens, *context_window, *percentage, *input_tokens))
+            }
+            _ => None,
+        });
+        assert_eq!(
+            occ,
+            Some((Some(402603), Some(500000), Some(81), None))
+        );
+        // Must not emit ContextCompact (no tokens_after yet).
+        assert!(evs.iter().all(|e| !matches!(e, AcpEvent::ContextCompact { .. })));
+    }
+
+    #[test]
+    fn decode_auto_compact_completed_emits_compact_with_before_after() {
+        let evs = decode_session_update(&json!({
+            "sessionId": "s1",
+            "update": {
+                "sessionUpdate": "auto_compact_completed",
+                "tokens_before": 402603,
+                "tokens_after": 34179,
+                "elapsed_ms": 33181
+            }
+        }));
+        let compact = evs.iter().find_map(|e| match e {
+            AcpEvent::ContextCompact {
+                tokens_before,
+                tokens_after,
+                trigger,
+                ..
+            } => Some((*tokens_before, *tokens_after, trigger.clone())),
+            _ => None,
+        });
+        assert_eq!(compact, Some((Some(402603), Some(34179), "auto".to_string())));
     }
 }
 

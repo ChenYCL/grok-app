@@ -469,7 +469,9 @@ function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null 
  * Host often finalizes the assistant row *before* appending tool_step rows, and
  * assistant.createdAt is often *after* tool timestamps — so tools must not sit
  * only after the answer. Prefer: thoughts → tools → content for history reload.
- * If segments already contain tools (live interleave), only fill missing ids.
+ * If segments already contain tools (live interleave), only fill missing ids;
+ * finished-turn reorder is applied by {@link reorderSegmentsToHistoryLayout}
+ * after weave (streaming rows keep interleave).
  */
 export function mergeToolsIntoAssistantSegments(
   segs: MessageSegment[],
@@ -524,11 +526,58 @@ export function mergeToolsIntoAssistantSegments(
 }
 
 /**
- * After journal reload, stitch turn tool_step rows into the turn assistant.
+ * Finished-turn display layout (matches journal reload):
+ * all thoughts → all tools → all content.
+ *
+ * Live streaming keeps true interleave (thought ↔ tool ↔ content). Once the
+ * assistant is no longer streaming, collapse work above the answer so the
+ * bubble matches history reopen without requiring a full app remount.
+ */
+export function reorderSegmentsToHistoryLayout(
+  segs: MessageSegment[],
+): MessageSegment[] {
+  if (segs.length < 2) return segs;
+
+  // Detect whether kinds already follow thought* → tool* → content*.
+  let phase: 0 | 1 | 2 = 0; // 0 thought, 1 tool, 2 content
+  let outOfOrder = false;
+  for (const s of segs) {
+    const rank: 0 | 1 | 2 =
+      s.kind === "thought" ? 0 : s.kind === "tool" ? 1 : 2;
+    if (rank < phase) {
+      outOfOrder = true;
+      break;
+    }
+    phase = rank;
+  }
+  if (!outOfOrder) return segs;
+
+  const thoughts: MessageSegment[] = [];
+  const tools: MessageSegment[] = [];
+  const contents: MessageSegment[] = [];
+  for (const s of segs) {
+    if (s.kind === "thought") {
+      thoughts.push({ kind: "thought", text: s.text });
+    } else if (s.kind === "tool") {
+      // Turn is finished at the call site — never leave a live stream flag.
+      tools.push({ ...s, streaming: false });
+    } else if (s.kind === "content") {
+      contents.push({ kind: "content", text: s.text });
+    }
+  }
+  return compactMessageSegments([...thoughts, ...tools, ...contents]);
+}
+
+/**
+ * After journal reload (and on every transcript paint), stitch turn tool_step
+ * rows into the turn assistant.
  *
  * Collects tools anywhere in the user-turn window (before or after the assistant
  * row — Host journal is often U → A → tools). Rebuilds display order as
  * thought → tools → content when segments have no live tool interleave yet.
+ *
+ * For finished (non-streaming) assistants that already have live-interleaved
+ * tools, also force the same history layout so turn-end matches reopen.
  */
 export function weaveToolsIntoAssistantSegments(
   messages: ChatMessage[],
@@ -634,6 +683,19 @@ export function weaveToolsIntoAssistantSegments(
     }
 
     i = turnEnd > i ? turnEnd : i + 1;
+  }
+
+  // Turn-end / history paint: force thought → tools → content on finished
+  // assistants. Live streaming rows keep interleave (stream honesty).
+  for (let k = 0; k < out.length; k++) {
+    const m = out[k]!;
+    if (m.role !== "assistant" || m.isError || m.streaming) continue;
+    const segs = m.segments?.length ? m.segments : ensureSegments(m);
+    const nextSegs = reorderSegmentsToHistoryLayout(segs);
+    // Same array reference ⇒ already history-shaped and had segments.
+    if (nextSegs === segs && m.segments?.length) continue;
+    const derived = deriveFieldsFromSegments(nextSegs);
+    out[k] = { ...m, ...derived, segments: nextSegs };
   }
   return out;
 }

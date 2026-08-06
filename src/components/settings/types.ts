@@ -151,8 +151,10 @@ export interface SettingsPageProps {
   onCloseToTray?: (v: boolean) => void;
   keepTrayForSchedules?: boolean;
   onKeepTrayForSchedules?: (v: boolean) => void;
+  /** Dock/tray badge pref (product: unread after background turn end). */
   trayBusyBadge?: boolean;
   onTrayBusyBadge?: (v: boolean) => void;
+  /** Current badge count for settings status (unread session count). */
   trayBusyCount?: number;
   launchAtLogin?: boolean;
   onLaunchAtLogin?: (v: boolean) => void;
@@ -218,6 +220,8 @@ export interface SettingsPageProps {
   activeAccountId?: string | null;
   onAccountLoginOauth: () => void;
   onAccountLoginDevice: () => void;
+  /** Paste browser verification code into running grok login. */
+  onAccountLoginSubmitCode?: (code: string) => void;
   onCancelLogin: () => void;
   onAccountLogout: () => void;
   onAccountRefresh: () => void;

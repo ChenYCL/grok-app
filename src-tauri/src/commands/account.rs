@@ -41,6 +41,15 @@ pub async fn account_login_cancel() -> Result<(), String> {
     Ok(())
 }
 
+/// Paste a browser verification code into the running `grok login` process.
+///
+/// auth.x.ai sometimes shows “copy this code into Grok Build” instead of a
+/// localhost callback — the App keeps CLI stdin open and accepts that paste.
+#[tauri::command]
+pub async fn account_login_submit_code(code: String) -> Result<(), String> {
+    crate::account::account_login_submit_code(&code).await
+}
+
 #[tauri::command]
 pub async fn account_logout(
     app: tauri::AppHandle,

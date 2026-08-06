@@ -240,7 +240,7 @@ function StallRow({
   existingSessionIds?: ReadonlySet<string> | readonly string[];
 }) {
   const when = formatWhen(signal.at, locale);
-  const durationLabel = formatStallDuration(signal.stallSeconds);
+  const durationLabel = formatStallDuration(signal.stallSeconds, locale);
   const secs = durationLabel
     ? t("reliability.stall.seconds", {
         duration: durationLabel,

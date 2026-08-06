@@ -239,6 +239,33 @@ export function nearestNodeForMessageIndex(
   return nodes[0] ?? null;
 }
 
+/**
+ * Nearest rail node for a paint-list (transcript) index.
+ *
+ * Prefer this over {@link nearestNodeForMessageIndex} when the scroll/virtual
+ * list is a filtered view of the journal: node.messageIndex is into full
+ * `messages[]`, so indexing filtered rows by that field drifts.
+ * Walks paint rows by id (back first, then forward).
+ */
+export function nearestNodeIdFromPaintList(
+  paintMessages: readonly { id: string }[],
+  nodes: readonly SessionMessageNode[],
+  paintIndex: number,
+): string | null {
+  if (paintMessages.length === 0 || nodes.length === 0) return null;
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const idx = Math.max(0, Math.min(paintIndex, paintMessages.length - 1));
+  for (let i = idx; i >= 0; i--) {
+    const id = paintMessages[i]?.id;
+    if (id && nodeIds.has(id)) return id;
+  }
+  for (let i = idx + 1; i < paintMessages.length; i++) {
+    const id = paintMessages[i]?.id;
+    if (id && nodeIds.has(id)) return id;
+  }
+  return nodes[0]?.id ?? null;
+}
+
 export function nodeById(
   nodes: readonly SessionMessageNode[],
   id: string | null | undefined,

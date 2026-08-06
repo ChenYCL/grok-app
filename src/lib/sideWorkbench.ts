@@ -90,7 +90,8 @@ export function emptySideWorkbenchState(): SideWorkbenchState {
   return {
     tabs: [],
     activeId: null,
-    treeVisible: true,
+    // File tree is opt-in — opening a file must not force the tree open.
+    treeVisible: false,
     expanded: false,
   };
 }

@@ -5,7 +5,7 @@
  * Hero layout: identity | actions on top; plan/quota full width below (not mixed).
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GrokLogo } from "@/components/GrokLogo";
 import type { AccountStatus, SavedAccount } from "@/lib/api";
 import {
@@ -80,6 +80,12 @@ export interface AccountPanelLabels {
   team: string;
   billingUnavailable: string;
   loginBusy: string;
+  /** Collapsed toggle — paste is optional fallback only. */
+  loginPasteToggle: string;
+  loginPasteTitle: string;
+  loginPasteBody: string;
+  loginPastePlaceholder: string;
+  loginPasteSubmit: string;
   loginCancel: string;
   resetsAt: string;
   fetchedAt: string;
@@ -169,6 +175,8 @@ export interface AccountPanelProps {
   activeAccountId?: string | null;
   onLoginOauth: () => void;
   onLoginDevice: () => void;
+  /** Paste browser-shown verification code into running grok login. */
+  onSubmitLoginCode?: (code: string) => void | Promise<void>;
   onCancelLogin?: () => void;
   onLogout: () => void;
   onRefresh: () => void;
@@ -207,6 +215,7 @@ export function AccountPanel({
   activeAccountId = null,
   onLoginOauth,
   onLoginDevice,
+  onSubmitLoginCode,
   onCancelLogin,
   onLogout,
   onRefresh,
@@ -220,6 +229,21 @@ export function AccountPanel({
   onImportChat,
 }: AccountPanelProps) {
   const [accountsOpen, setAccountsOpen] = useState(false);
+  /**
+   * Optional paste-back from auth.x.ai “copy into Grok Build” page.
+   * Collapsed by default — normal OAuth still auto-completes in the browser.
+   */
+  const [loginPasteOpen, setLoginPasteOpen] = useState(false);
+  const [loginPasteCode, setLoginPasteCode] = useState("");
+  const [loginPasteBusy, setLoginPasteBusy] = useState(false);
+  // Collapse paste UI when login ends so next sign-in starts clean.
+  useEffect(() => {
+    if (!busy) {
+      setLoginPasteOpen(false);
+      setLoginPasteCode("");
+      setLoginPasteBusy(false);
+    }
+  }, [busy]);
   /** Day or week range → filter recent call logs. */
   const [heatGranularity, setHeatGranularity] =
     useState<HeatGranularity>("day");
@@ -646,6 +670,73 @@ export function AccountPanel({
             <p>{labels.loginHelpBody}</p>
             {loginHint ? (
               <p className="account-login-help__err">{loginHint}</p>
+            ) : null}
+            {/*
+              Optional fallback only. Default OAuth still finishes in the
+              browser with no paste. Show while login is in flight so users who
+              hit the reverse pairing page can expand and paste.
+            */}
+            {busy && onSubmitLoginCode ? (
+              <div className="account-login-paste">
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm account-login-paste__toggle"
+                  aria-expanded={loginPasteOpen}
+                  onClick={() => setLoginPasteOpen((v) => !v)}
+                >
+                  {labels.loginPasteToggle}
+                </button>
+                {loginPasteOpen ? (
+                  <>
+                    <strong>{labels.loginPasteTitle}</strong>
+                    <p>{labels.loginPasteBody}</p>
+                    <div className="account-login-paste__row">
+                      <input
+                        type="text"
+                        className="input account-login-paste__input"
+                        value={loginPasteCode}
+                        placeholder={labels.loginPastePlaceholder}
+                        autoComplete="off"
+                        spellCheck={false}
+                        disabled={loginPasteBusy}
+                        onChange={(e) => setLoginPasteCode(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && loginPasteCode.trim()) {
+                            e.preventDefault();
+                            void (async () => {
+                              setLoginPasteBusy(true);
+                              try {
+                                await onSubmitLoginCode(loginPasteCode.trim());
+                                setLoginPasteCode("");
+                              } finally {
+                                setLoginPasteBusy(false);
+                              }
+                            })();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--solid btn--sm"
+                        disabled={loginPasteBusy || !loginPasteCode.trim()}
+                        onClick={() => {
+                          void (async () => {
+                            setLoginPasteBusy(true);
+                            try {
+                              await onSubmitLoginCode(loginPasteCode.trim());
+                              setLoginPasteCode("");
+                            } finally {
+                              setLoginPasteBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        {labels.loginPasteSubmit}
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
             ) : null}
             <button
               type="button"

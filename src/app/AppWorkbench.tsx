@@ -841,7 +841,6 @@ import {
   emptySideWorkbenchState,
   openSideTab,
   openSideTabFromPicker,
-  setTreeVisible,
   type SidePickerKind,
   type SideWorkbenchState,
 } from "@/lib/sideWorkbench";
@@ -1053,6 +1052,25 @@ export function AppWorkbench() {
     return () =>
       window.removeEventListener(SESSION_UNREAD_CHANGE_EVENT, onChange);
   }, []);
+  /**
+   * Clear one session's unread marker and sync React state immediately so
+   * sidebar dots + dock/tray badge count drop without waiting solely on the
+   * storage CustomEvent (open / focus / mark-as-read paths share this).
+   */
+  const applyClearSessionUnread = useCallback(
+    (sessionId: string | null | undefined) => {
+      const id = typeof sessionId === "string" ? sessionId.trim() : "";
+      if (!id) return;
+      clearSessionUnread(id);
+      setUnreadSessionIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    },
+    [],
+  );
   /**
    * Sessions with an open plan review gate (or restored re-park wait).
    * Sidebar badge only — does not change open/busy/select interactions.
@@ -2740,19 +2758,19 @@ export function AppWorkbench() {
     };
   }, []);
 
-  // Dock / tray busy-session badge from liveMap projection.
+  // Dock / tray badge: unread sessions that finished a turn in the background.
+  // Only updates after turn end (markUnread), never on send / while streaming.
   // Secondary windows must not overwrite the dock badge (main owns chrome).
-  // Secondary windows must not overwrite the dock badge from a view-only pane.
   // Count is clamped for display (TRAY-NOTIFY-PRO); pref off clears to 0.
   useEffect(() => {
     const resolved = resolveTrayBusyBadgeCount({
       enabled: trayBusyBadge,
-      busyCount: liveMapBusyCount,
+      busyCount: unreadSessionIds.size,
       isSecondaryWindow,
     });
     if (!resolved.apply) return;
     void api.traySetBusyCount(resolved.count);
-  }, [liveMapBusyCount, trayBusyBadge, isSecondaryWindow]);
+  }, [unreadSessionIds.size, trayBusyBadge, isSecondaryWindow]);
 
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
@@ -3912,8 +3930,16 @@ export function AppWorkbench() {
     // Point viewing id immediately so late stream chunks land in the right cache.
     openingSessionIdRef.current = s.id;
     viewingSessionIdRef.current = s.id;
-    // Opening/viewing clears the sidebar unread dot for this chat.
-    clearSessionUnread(s.id);
+    // P0 (#529): immediately paint this session's cache (or empty) so stream /
+    // rehydrate / clear-streaming never reduce against the previous chat while
+    // viewing id has already moved. Disk load below may replace with prefer().
+    {
+      const early = messagesBySessionRef.current.get(s.id) ?? [];
+      messagesBySessionRef.current.set(s.id, early);
+      setMessages(early);
+    }
+    // Opening/viewing clears sidebar unread + dock/tray badge for this chat.
+    applyClearSessionUnread(s.id);
     // Swap plan chrome to this session (memory cache first; Host restore below).
     setPlan(
       planBySessionRef.current.get(s.id) ??
@@ -6299,17 +6325,43 @@ export function AppWorkbench() {
     applyClearAllSessionMutes();
   }, [mutedSessionIds.size, tr, applyClearAllSessionMutes]);
 
-  const handleClearSessionUnread = useCallback((sessionId: string) => {
-    clearSessionUnread(sessionId);
-    setUnreadSessionIds(loadUnreadSessionIds());
-  }, []);
+  const handleClearSessionUnread = useCallback(
+    (sessionId: string) => {
+      applyClearSessionUnread(sessionId);
+    },
+    [applyClearSessionUnread],
+  );
 
-  // Any path that binds the workbench to a session clears its unread marker.
+  // Any path that binds the workbench to a session clears its unread marker
+  // (sidebar + dock/tray badge). Covers openSession, deep links, tray Recent.
   useEffect(() => {
     if (session.sessionId) {
-      clearSessionUnread(session.sessionId);
+      applyClearSessionUnread(session.sessionId);
     }
-  }, [session.sessionId]);
+  }, [session.sessionId, applyClearSessionUnread]);
+
+  // Dock/taskbar or OS focus while already on a finished chat: clear that
+  // session's unread so the badge decrements without re-clicking the row.
+  useEffect(() => {
+    const clearViewingIfPresent = () => {
+      const id = viewingSessionIdRef.current;
+      if (id) applyClearSessionUnread(id);
+    };
+    const onVis = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
+        clearViewingIfPresent();
+      }
+    };
+    window.addEventListener("focus", clearViewingIfPresent);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", clearViewingIfPresent);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [applyClearSessionUnread]);
 
   const openProjectMenu = (e: ReactMouseEvent, proj: Project) => {
     e.preventDefault();
@@ -12437,7 +12489,8 @@ export function AppWorkbench() {
           isGitProject: sideIsGitProject,
         });
         if (!("created" in next)) return s;
-        return kind === "file" ? setTreeVisible(next, true) : next;
+        // File tree stays closed unless the user opens it.
+        return next;
       });
       openAsidePane();
     },
@@ -14618,6 +14671,29 @@ export function AppWorkbench() {
     setAccountBusy(false);
   }, []);
 
+  /**
+   * Paste a browser-shown verification code into the running `grok login`.
+   * auth.x.ai sometimes asks to “copy this code into Grok Build” instead of
+   * completing via localhost callback.
+   */
+  const submitAccountLoginCode = useCallback(
+    async (code: string) => {
+      if (!api.isTauri()) {
+        showToast(tr("error.needTauri"));
+        return;
+      }
+      try {
+        await api.accountLoginSubmitCode(code);
+        showToast(tr("account.loginPasteOk"), 4000);
+      } catch (e) {
+        const msg = `${tr("account.loginPasteFailed")}: ${String(e)}`;
+        setLoginHint(msg);
+        showToast(msg, 5000);
+      }
+    },
+    [showToast, tr],
+  );
+
   const runSaveAccount = useCallback(async () => {
     if (!api.isTauri()) return;
     setAccountBusy(true);
@@ -15835,7 +15911,7 @@ export function AppWorkbench() {
           );
           }}
           trayBusyBadge={trayBusyBadge}
-          trayBusyCount={liveMapBusyCount}
+          trayBusyCount={unreadSessionIds.size}
           onTrayBusyBadge={(v) => {
           saveTrayBusyBadgePref(v, localStorage);
           setTrayBusyBadge(v);
@@ -15912,6 +15988,7 @@ export function AppWorkbench() {
           activeAccountId={activeAccountId}
           onAccountLoginOauth={() => void runAccountLogin("oauth")}
           onAccountLoginDevice={() => void runAccountLogin("device")}
+          onAccountLoginSubmitCode={(code) => void submitAccountLoginCode(code)}
           onCancelLogin={() => void cancelAccountLogin()}
           onAccountLogout={() => void runAccountLogout()}
           onAccountRefresh={() => void refreshAccount({ refreshBilling: true })}

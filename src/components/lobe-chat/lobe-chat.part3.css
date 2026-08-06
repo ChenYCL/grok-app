@@ -45,6 +45,14 @@
   height: 0;
 }
 
+/* a11y listitem wrapper — keep flex column of ticks intact */
+.lobe-msg-rail__item {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  align-items: center;
+}
+
 .lobe-msg-rail__tick {
   position: relative;
   flex: 0 0 auto;

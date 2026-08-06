@@ -21,13 +21,17 @@ use tracing::{info, warn};
 use crate::cli_probe;
 use crate::paths;
 
-/// Cancellation signal for a running `grok login`. The login task selects on
-/// this notifier plus the child wait; Cancel just fires it without touching the
-/// child handle (avoids racing the wait side).
+/// Cancellation + optional stdin for a running `grok login`.
+///
+/// Some auth.x.ai pages show a code and ask the user to **paste it into
+/// Grok Build** (reverse of classic device-code). The App must keep stdin open
+/// and accept that paste while the CLI is still waiting.
 pub struct LoginProcState {
     cancel: tokio::sync::Notify,
     /// Guard: only one login may run at a time.
     busy: tokio::sync::Mutex<bool>,
+    /// Live child stdin while `account_login` is in flight (for paste-back codes).
+    stdin: tokio::sync::Mutex<Option<tokio::process::ChildStdin>>,
 }
 
 impl Default for LoginProcState {
@@ -35,6 +39,7 @@ impl Default for LoginProcState {
         Self {
             cancel: tokio::sync::Notify::new(),
             busy: tokio::sync::Mutex::new(false),
+            stdin: tokio::sync::Mutex::new(None),
         }
     }
 }
@@ -49,6 +54,44 @@ fn login_proc() -> &'static LoginProcState {
 /// Signal a running login to abort (no-op if none is running).
 pub async fn account_login_cancel() {
     login_proc().cancel.notify_waiters();
+}
+
+/// Optional: paste a browser-shown verification code into running `grok login`.
+///
+/// **Not required for normal OAuth** — the default path still completes via
+/// browser callback / CLI poll of `auth.json`. Only some auth.x.ai sessions show
+/// “copy this code into Grok Build”; then the App can feed that line to stdin
+/// while login remains in flight. No write happens unless the user submits.
+pub async fn account_login_submit_code(code: &str) -> Result<(), String> {
+    let code = code.trim();
+    if code.is_empty() {
+        return Err("verification code is empty".into());
+    }
+    // Strip common wrappers (quotes, surrounding whitespace/newlines).
+    let cleaned = code
+        .trim_matches(|c: char| c == '"' || c == '\'' || c.is_whitespace())
+        .to_string();
+    if cleaned.is_empty() {
+        return Err("verification code is empty".into());
+    }
+    use tokio::io::AsyncWriteExt;
+    let mut guard = login_proc().stdin.lock().await;
+    let Some(stdin) = guard.as_mut() else {
+        return Err(
+            "no active login waiting for a code — start Sign in first, then paste".into(),
+        );
+    };
+    let line = format!("{cleaned}\n");
+    stdin
+        .write_all(line.as_bytes())
+        .await
+        .map_err(|e| format!("failed to send code to grok login: {e}"))?;
+    stdin
+        .flush()
+        .await
+        .map_err(|e| format!("failed to flush code to grok login: {e}"))?;
+    info!("account: submitted paste-back verification code (len={})", cleaned.len());
+    Ok(())
 }
 use crate::store;
 
@@ -306,17 +349,44 @@ pub fn read_auth_profile() -> AccountProfile {
     // Prefer a *signed-in* profile. `$GROK_HOME/auth.json` after a custom-route
     // clear can parse as well-formed signed-out and must not mask a still-valid
     // `~/.grok/auth.json` (#525 multi-project "re-login" false positive).
+    //
+    // Also prefer canonical when agent-home is expired/stale but `~/.grok` still
+    // has a usable login (#528 intermittent re-login after project switch).
     let primary_prof = read_auth_profile_at(&primary);
     let canonical_prof = if primary != canonical {
         read_auth_profile_at(&canonical)
     } else {
         None
     };
-    match (primary_prof, canonical_prof) {
-        (Some(p), Some(c)) if !p.signed_in && c.signed_in => c,
-        (Some(p), _) => p,
-        (None, Some(c)) => c,
+    prefer_auth_profile(primary_prof, canonical_prof)
+}
+
+/// Pick the better of two auth profiles (pure — unit-tested).
+///
+/// Ranking (higher wins): signed-in → has refresh → not expired → canonical.
+pub(crate) fn prefer_auth_profile(
+    primary: Option<AccountProfile>,
+    canonical: Option<AccountProfile>,
+) -> AccountProfile {
+    match (primary, canonical) {
         (None, None) => signed_out_profile(),
+        (Some(p), None) => p,
+        (None, Some(c)) => c,
+        (Some(p), Some(c)) => {
+            let score = |prof: &AccountProfile, is_canonical: bool| -> (u8, u8, u8, u8) {
+                (
+                    u8::from(prof.signed_in),
+                    u8::from(prof.has_refresh),
+                    u8::from(!prof.expired),
+                    u8::from(is_canonical),
+                )
+            };
+            if score(&c, true) > score(&p, false) {
+                c
+            } else {
+                p
+            }
+        }
     }
 }
 
@@ -1363,10 +1433,19 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
     // Spawn CLI login. The CLI prints the OAuth/device URL to stdout but does
     // NOT open a browser itself, so we read stdout line-by-line and open the
     // URL the moment it appears — otherwise the user is stuck on "Working…".
+    //
+    // **Primary path (most users):** browser OAuth / device poll completes on
+    // its own; we only wait for process exit + auth.json. We never write stdin
+    // unless the user explicitly pastes a reverse pairing code.
+    //
+    // **Optional path:** keep stdin open (piped, unread) so rare
+    // “copy code into Grok Build” pages can be completed without restarting
+    // login. Leaving stdin open without writing does not replace the auto path.
     // tokio::process lets us race this against the Cancel notifier.
     let mut cmd = tokio::process::Command::new(&cli);
     cmd.arg("login")
         .arg(arg)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     // Login may open a browser; still hide the console flash on Windows.
@@ -1393,6 +1472,11 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
     // for the browser callback. stderr is read too so it appears in diagnostics.
     let stdout_handle = child.stdout.take();
     let stderr_handle = child.stderr.take();
+    // Expose stdin for paste-back codes while login is in flight.
+    {
+        let mut stdin_slot = login_proc().stdin.lock().await;
+        *stdin_slot = child.stdin.take();
+    }
 
     // Drain stdout: open the browser on the first URL we see, and collect
     // everything for later message/diagnostics parsing.
@@ -1463,6 +1547,12 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
         }
     };
 
+    // Drop stdin handle whether we succeeded, cancelled, or timed out.
+    {
+        let mut stdin_slot = login_proc().stdin.lock().await;
+        *stdin_slot = None;
+    }
+
     if cancelled {
         return LoginResult {
             ok: false,
@@ -1482,7 +1572,9 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
             ok: false,
             method: method.into(),
             message: format!(
-                "Sign-in timed out after {secs}s — the Grok auth endpoint could not be reached."
+                "Sign-in timed out after {secs}s — the Grok auth endpoint could not be reached. \
+If the browser showed a code to paste into Grok Build, start sign-in again and paste it promptly \
+(or use Device code login)."
             ),
             device_url: None,
             device_code: None,
@@ -1764,6 +1856,55 @@ mod tests {
     fn profile_without_auth_is_signed_out() {
         // Just ensure function is callable; may be signed in on developer machines.
         let _ = read_auth_profile();
+    }
+
+    fn prof(signed_in: bool, has_refresh: bool, expired: bool) -> AccountProfile {
+        AccountProfile {
+            signed_in,
+            auth_mode: None,
+            email: None,
+            display_name: None,
+            user_id: None,
+            team_id: None,
+            principal_type: None,
+            expires_at: None,
+            expired,
+            has_refresh,
+            oidc_issuer: None,
+        }
+    }
+
+    #[test]
+    fn prefer_auth_profile_picks_signed_in_canonical_over_signed_out_primary() {
+        let out = prefer_auth_profile(
+            Some(prof(false, false, false)),
+            Some(prof(true, true, false)),
+        );
+        assert!(out.signed_in);
+        assert!(out.has_refresh);
+    }
+
+    #[test]
+    fn prefer_auth_profile_picks_fresh_canonical_over_expired_primary() {
+        // #528: agent-home mirror can hold expired tokens while ~/.grok is fine.
+        let out = prefer_auth_profile(
+            Some(prof(true, false, true)),
+            Some(prof(true, true, false)),
+        );
+        assert!(out.signed_in);
+        assert!(out.has_refresh);
+        assert!(!out.expired);
+    }
+
+    #[test]
+    fn prefer_auth_profile_keeps_primary_when_stronger() {
+        let out = prefer_auth_profile(
+            Some(prof(true, true, false)),
+            Some(prof(true, false, true)),
+        );
+        assert!(out.signed_in);
+        assert!(out.has_refresh);
+        assert!(!out.expired);
     }
 
     #[test]

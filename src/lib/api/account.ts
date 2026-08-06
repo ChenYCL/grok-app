@@ -170,6 +170,11 @@ export async function accountLogin(method: "oauth" | "device" = "oauth") {
   return invoke<LoginResult>("account_login", { method });
 }
 
+/** Paste browser-shown verification code into the running `grok login` stdin. */
+export async function accountLoginSubmitCode(code: string) {
+  return invoke<void>("account_login_submit_code", { code });
+}
+
 /** Abort a running `grok login` (OAuth / device-code). No-op if none is running. */
 export async function accountLoginCancel() {
   return invoke<void>("account_login_cancel");

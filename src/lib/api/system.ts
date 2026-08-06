@@ -347,7 +347,8 @@ export async function trayRefresh() {
 }
 
 /**
- * Show busy session count on dock badge (macOS) or tray tooltip (elsewhere).
+ * Show badge count on dock (macOS) or tray tooltip (elsewhere).
+ * Product uses unread session count (post turn-end), not live busy.
  * Pass `0` to clear. Fail-closed outside Tauri / on host errors.
  */
 export async function traySetBusyCount(count: number) {

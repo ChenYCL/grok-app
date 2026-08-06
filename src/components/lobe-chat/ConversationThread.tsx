@@ -1783,6 +1783,21 @@ export function ConversationThread({
     () => buildSessionMessageNodes(messages),
     [messages],
   );
+  /**
+   * Display-layer weave + paint list (early): journal reload can leave
+   * tool_step rows outside assistant.segments; stitch before paint. Defined
+   * here so rail coarse-scroll estimates share the virtualizer row list
+   * (filtered transcript), not full journal indices.
+   * `conversation` filter also drops standalone tool_step rows.
+   */
+  const wovenMessages = useMemo(
+    () => weaveToolsIntoAssistantSegments(messages),
+    [messages],
+  );
+  const transcriptMessages = useMemo(
+    () => filterMessagesForTranscript(wovenMessages, transcriptFilter),
+    [wovenMessages, transcriptFilter],
+  );
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [locateTargetId, setLocateTargetId] = useState<string | null>(null);
   const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
@@ -1793,17 +1808,17 @@ export function ConversationThread({
   const locateRafRef = useRef<number | null>(null);
   /** While set, scroll-sync must not overwrite the rail cursor (nav in flight). */
   const navLockUntilRef = useRef(0);
-  /** Authoritative cursor for prev/next — survives brief active-id flicker. */
+  /**
+   * Authoritative cursor for prev/next. Updated by programmatic jumps and by
+   * MessageNodeRail free-scroll via onScrollActiveChange (ref only — no
+   * parent setState on every scroll frame; #280).
+   */
   const railCursorRef = useRef<string | null>(null);
 
-  /**
-   * Free-scroll rail highlight lives in MessageNodeRail (rAF + no parent
-   * setState). This only updates railCursorRef after programmatic jumps settle
-   * so prev/next keep a stable cursor without re-rendering the transcript.
-   */
-  const syncRailCursorAfterNav = useCallback(() => {
+  const onRailScrollActiveChange = useCallback((id: string) => {
+    // Ignore free-scroll updates while a programmatic jump is in flight.
     if (performance.now() < navLockUntilRef.current) return;
-    // Cursor already set by scrollToMessageNode / select; nothing else needed.
+    railCursorRef.current = id;
   }, []);
 
   const onScroll = useCallback(
@@ -1853,10 +1868,9 @@ export function ConversationThread({
         locateClearTimerRef.current = null;
         // Release nav lock shortly after so free scroll can update the rail.
         navLockUntilRef.current = performance.now() + 120;
-        syncRailCursorAfterNav();
       }, 700);
     },
-    [scrollRef, syncRailCursorAfterNav],
+    [scrollRef],
   );
 
   const scrollToMessageNode = useCallback(
@@ -1878,13 +1892,21 @@ export function ConversationThread({
         focusClearTimerRef.current = null;
       }, 1600);
 
-      // Coarse jump via estimates so the virtual window moves near the target
-      // even before the row is mounted.
-      const approx = estimateStartScrollTop(
-        messages,
-        node.messageIndex,
-        viewport.clientHeight,
-      );
+      // Coarse jump via the paint list so estimates match the virtualizer.
+      // node.messageIndex is journal-space; tool rows may be filtered out.
+      const paintIndex = transcriptMessages.findIndex((m) => m.id === node.id);
+      const approx =
+        paintIndex >= 0
+          ? estimateStartScrollTop(
+              transcriptMessages,
+              paintIndex,
+              viewport.clientHeight,
+            )
+          : estimateStartScrollTop(
+              messages,
+              node.messageIndex,
+              viewport.clientHeight,
+            );
       const prevBehavior = viewport.style.scrollBehavior;
       viewport.style.scrollBehavior = "auto";
       viewport.scrollTop = approx;
@@ -1902,7 +1924,13 @@ export function ConversationThread({
         });
       });
     },
-    [applyScrollToNodeDom, isPinnedRef, messages, scrollRef],
+    [
+      applyScrollToNodeDom,
+      isPinnedRef,
+      messages,
+      scrollRef,
+      transcriptMessages,
+    ],
   );
 
   // After force-mount state commits, finish the jump (virtual list needs a paint).
@@ -2077,27 +2105,6 @@ export function ConversationThread({
     !showQuietThinking &&
     !liveTool &&
     !turnBusy;
-
-  /**
-   * Display-layer weave: journal reload / cache races can leave tool_step rows
-   * outside assistant.segments. Always stitch before paint so history shows the
-   * same Worked-for phase as live (thought ↔ tools interleaved).
-   */
-  const wovenMessages = useMemo(
-    () => weaveToolsIntoAssistantSegments(messages),
-    [messages],
-  );
-
-  /**
-   * Paint list: drop inlined tool_step journal rows; when filter is
-   * `conversation`, also drop every tool_step row. Full `messages` stays for
-   * path maps / live tools / nodes — only the virtual list + render loop use this.
-   * (64 woven tools otherwise force virtualization and thrash near-bottom stick.)
-   */
-  const transcriptMessages = useMemo(
-    () => filterMessagesForTranscript(wovenMessages, transcriptFilter),
-    [wovenMessages, transcriptFilter],
-  );
 
   /**
    * Consecutive unwoven standalone tool_step rows merge into one collapsible
@@ -2430,8 +2437,9 @@ export function ConversationThread({
         onNext={onNodeNext}
         labels={railLabels}
         scrollParentRef={scrollRef}
-        messages={messages}
+        messages={transcriptMessages}
         navLockUntilRef={navLockUntilRef}
+        onScrollActiveChange={onRailScrollActiveChange}
       />
 
       <BackBottom

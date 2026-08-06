@@ -289,9 +289,12 @@ pub fn create(
     let polyfill = crate::side_browser_blob::blob_download_polyfill(&label);
     let polyfill_reload = polyfill.clone();
     let title_label = label.clone();
+    // Do not steal keyboard focus from the main chat/composer on create —
+    // focused(true) made panel open + first load feel frozen while WKWebView
+    // took the key view. Users click the page when they want to type there.
     let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
         .accept_first_mouse(true)
-        .focused(true)
+        .focused(false)
         .initialization_script(polyfill)
         // Re-assert after every full document load (init script can miss remote
         // navigations). Polyfill early-returns if already installed — cheap.

@@ -28,8 +28,10 @@ import {
   TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT,
 } from "@/lib/toolStepsAutoCollapsePref";
 import {
+  earliestTimestampMs,
   estimateDurationSecFromTimestamps,
   formatWorkDuration,
+  resolveWorkDurationSec,
 } from "@/lib/formatWorkDuration";
 import {
   buildGrokActivitySteps,
@@ -390,17 +392,30 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
   const startRef = useRef<number | null>(null);
   const [liveSec, setLiveSec] = useState<number | null>(null);
 
-  const historySec = useMemo(() => {
-    if (durationSecProp != null && durationSecProp > 0) return durationSecProp;
-    return estimateDurationSecFromTimestamps([
+  const stampPool = useMemo(
+    () => [
       ...(historyTimestamps ?? []),
       ...phase.tools.map((t) => t.createdAt),
-    ]);
-  }, [durationSecProp, historyTimestamps, phase.tools]);
+    ],
+    [historyTimestamps, phase.tools],
+  );
+
+  const historySec = useMemo(() => {
+    if (durationSecProp != null && durationSecProp > 0) return durationSecProp;
+    return estimateDurationSecFromTimestamps(stampPool);
+  }, [durationSecProp, stampPool]);
 
   useEffect(() => {
+    // Seed / rewind the live timer from the earliest known work timestamp so a
+    // remounted or trailing phase (after content split / segment reorder) does
+    // not restart at "1s" and freeze a bogus short "Worked for …".
+    const earliest = earliestTimestampMs(stampPool);
     if (phaseRunning) {
-      if (startRef.current == null) startRef.current = Date.now();
+      if (startRef.current == null) {
+        startRef.current = earliest ?? Date.now();
+      } else if (earliest != null && earliest < startRef.current) {
+        startRef.current = earliest;
+      }
       const tick = () => {
         if (startRef.current != null) {
           setLiveSec(
@@ -418,7 +433,7 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
       );
       startRef.current = null;
     }
-  }, [phaseRunning, phase.id]);
+  }, [phaseRunning, phase.id, stampPool]);
 
   const stepsResolved = useMemo(() => {
     const items =
@@ -436,9 +451,10 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
     });
   }, [phase.items, phase.thoughts, phase.tools, phase.live, messageStreaming]);
 
-  const durationSec = liveSec ?? historySec;
+  // Prefer the larger of wall-clock and timestamp span (see resolveWorkDurationSec).
+  const durationSec = resolveWorkDurationSec({ liveSec, historySec });
   const durationText =
-    durationSec != null ? formatWorkDuration(durationSec) : null;
+    durationSec != null ? formatWorkDuration(durationSec, locale) : null;
   const workedLabel =
     durationText != null
       ? tr("chat.workedFor", { duration: durationText })

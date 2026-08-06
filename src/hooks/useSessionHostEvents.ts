@@ -61,6 +61,7 @@ import {
   reduceContextUsage,
   mergeCompactTokensBefore,
   saveSessionUsageSnapshot,
+  isLikelyBillingAggregateUsage,
 } from "@/lib/contextUsage";
 import {
   emptySessionPlan,
@@ -258,6 +259,8 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
               const woven = weaveToolsIntoAssistantSegments(
                 mapStoredMessagesToChat(stored),
               );
+              // Session-scoped cache only — never merge journal into the
+              // previous chat's still-painted React prev (#529 pollution).
               const cached: ChatMessage[] =
                 c.messagesBySessionRef.current.get(sid) ?? [];
               const base = opts?.clearStreaming
@@ -265,31 +268,15 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                     m.streaming ? { ...m, streaming: false } : m,
                   )
                 : cached;
-              // When cache is empty, still need React prev — fall back to
-              // functional update so we never wipe a live transcript.
-              if (cached.length === 0) {
-                c.setMessages((reactPrev: ChatMessage[]) => {
-                  const from = opts?.clearStreaming
-                    ? reactPrev.map((m) =>
-                        m.streaming ? { ...m, streaming: false } : m,
-                      )
-                    : reactPrev;
-                  const next = upgradeMessagesFromJournal(from, woven);
-                  c.messagesBySessionRef.current.set(sid, next);
-                  if (attempt === 0) {
-                    window.setTimeout(() => {
-                      if (!cancelled) {
-                        scheduleJournalRehydrate(sid, 1, opts);
-                      }
-                    }, 400);
-                  }
-                  return next;
-                });
-                return;
-              }
-              const next = upgradeMessagesFromJournal(base, woven);
+              // Empty cache → journal is sole source (openSession may race-write).
+              // Non-empty → lift longer journal tails into this session only.
+              const next =
+                base.length === 0
+                  ? woven
+                  : upgradeMessagesFromJournal(base, woven);
               c.messagesBySessionRef.current.set(sid, next);
-              c.setMessages(next);
+              // patchSession / setMessages both honor session ownership.
+              c.patchSessionMessages(sid, () => next);
               if (attempt === 0) {
                 window.setTimeout(() => {
                   if (!cancelled) scheduleJournalRehydrate(sid, 1, opts);
@@ -867,6 +854,8 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             cacheCreationTokens?: number;
             reasoningTokens?: number;
             costUsdTicks?: number;
+            contextWindow?: number;
+            percentage?: number;
             source?: string;
           }>("session://usage", (p) => {
             if (cancelled || !p) return;
@@ -889,9 +878,19 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                 source: p.source ?? "usage",
               }),
             );
-            // Persist a per-session snapshot so reopening the session can
-            // restore real usage (host journal does not store turn usage).
-            if (p.totalTokens != null) {
+            // Persist occupancy for ring restore (host journal has no turn usage).
+            // Skip turn_completed multi-call billing sums — those inflate the
+            // ring to 50–100% after short agentic turns (see contextUsage.ts).
+            if (
+              p.totalTokens != null &&
+              !isLikelyBillingAggregateUsage({
+                source: p.source,
+                totalTokens: p.totalTokens,
+                inputTokens: p.inputTokens,
+                outputTokens: p.outputTokens,
+                cachedReadTokens: p.cachedReadTokens,
+              })
+            ) {
               saveSessionUsageSnapshot(sid, {
                 totalTokens: p.totalTokens,
                 inputTokens: p.inputTokens ?? null,
@@ -918,6 +917,8 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                 cacheCreationTokens: p.cacheCreationTokens,
                 reasoningTokens: p.reasoningTokens,
                 costUsdTicks: p.costUsdTicks,
+                contextWindow: p.contextWindow,
+                percentage: p.percentage,
                 source: p.source,
               }),
             );

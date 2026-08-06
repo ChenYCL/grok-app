@@ -1,5 +1,6 @@
 /**
- * Show busy session count on dock badge (macOS) / tray tooltip (elsewhere).
+ * Show unread session count on dock badge (macOS) / tray tooltip (elsewhere).
+ * Count comes from background turn completions (sessionUnread), not live busy.
  * localStorage-only — does not touch Host AppSettings.
  * Default: on. Fail-closed outside Tauri (invoke no-op via api).
  */

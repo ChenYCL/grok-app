@@ -596,6 +596,8 @@ impl SessionManager {
                 cache_creation_tokens,
                 reasoning_tokens,
                 cost_usd_ticks,
+                context_window,
+                percentage,
                 source,
             } => {
                 let _ = app.emit(
@@ -612,6 +614,8 @@ impl SessionManager {
                         "cacheCreationTokens": cache_creation_tokens,
                         "reasoningTokens": reasoning_tokens,
                         "costUsdTicks": cost_usd_ticks,
+                        "contextWindow": context_window,
+                        "percentage": percentage,
                         "source": source,
                     }),
                 );

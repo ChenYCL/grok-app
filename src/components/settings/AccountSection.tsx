@@ -24,6 +24,7 @@ export function AccountSection() {
     loginHint,
     onAccountLoginDevice,
     onAccountLoginOauth,
+    onAccountLoginSubmitCode,
     onAccountLogout,
     onAccountManageUsage,
     onAccountRefresh,
@@ -190,6 +191,11 @@ export function AccountSection() {
               team: t("account.team"),
               billingUnavailable: t("account.billingUnavailable"),
               loginBusy: t("account.loginBusy"),
+              loginPasteToggle: t("account.loginPasteToggle"),
+              loginPasteTitle: t("account.loginPasteTitle"),
+              loginPasteBody: t("account.loginPasteBody"),
+              loginPastePlaceholder: t("account.loginPastePlaceholder"),
+              loginPasteSubmit: t("account.loginPasteSubmit"),
               loginCancel: t("account.loginCancel"),
               resetsAt: t("account.resetsAt"),
               fetchedAt: t("account.fetchedAt"),
@@ -251,6 +257,7 @@ export function AccountSection() {
             activeAccountId={activeAccountId}
             onLoginOauth={onAccountLoginOauth}
             onLoginDevice={onAccountLoginDevice}
+            onSubmitLoginCode={onAccountLoginSubmitCode}
             onCancelLogin={onCancelLogin}
             onLogout={onAccountLogout}
             onRefresh={onAccountRefresh}

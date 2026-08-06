@@ -43,6 +43,16 @@ Syncing the file is not enough while multi-session **parked** / **prewarm** CLI 
 
 `recycle_all_agents` drains **live + background + parked + prewarm**. Do **not** use `session_disconnect` alone after login (that only parks and leaves prewarm alive).
 
+### Multi-project switch re-login (#525 / #528)
+
+| Failure mode | Fix |
+|--------------|-----|
+| agent-home empty/stale after custom route, UI reads it as signed-out | `read_auth_profile` prefers **better** of agent-home vs `~/.grok` (signed-in → refresh → not expired → canonical) |
+| mtime-only sync skipped restore of good `~/.grok` over newer empty agent-home | `sync_cli_auth_to_agent_home` compares **bytes** |
+| Process reuse gate used `is_custom_provider_id(modelId)` — custom sessions store **upstream** model ids, so custom processes looked "official" and were reused after auth strip | Store `custom_route` on `AcpClient` at spawn from `active_route()`; gate uses that |
+| Warm reuse skipped `prepare_route_auth` | Connect warm path re-runs `prepare_route_auth_for_agent` before `session/load` |
+| Official `authenticate(cached_token)` soft-fail left process with no OIDC | Official path re-syncs auth and **retries authenticate once** |
+
 ### AUTH_FAILED UI subtypes (Error Deck)
 
 Host may still emit `AUTH_FAILED`. The App banner refines with error text + `providers_list.activeSource`:
@@ -82,6 +92,18 @@ xAI may refuse device-code generation on some networks. Product response:
 1. Surface long-form error + tips (VPN / device code / custom provider).
 2. Prefer **Device code** path when OAuth fails; auto-open verification URL when CLI prints it.
 3. Do not invent a parallel OAuth — always go through Grok Build CLI.
+
+### Browser “copy code into Grok Build” page (optional fallback)
+
+**Default path is unchanged:** browser OAuth / device poll finishes automatically; App only waits for `grok login` exit + `auth.json`. No paste required.
+
+Some auth.x.ai sessions (not always) show a long code and ask to **paste into Grok Build**. Optional handling only:
+
+1. While login is in progress, Account panel shows a **collapsed** “paste code?” toggle — expand only if that page appears.
+2. Host keeps `grok login` stdin open but **writes nothing** unless the user submits.
+3. `account_login_submit_code` feeds one line when needed; auto OAuth is not blocked or replaced.
+4. Do not refresh the browser page while waiting.
+5. If paste is missed and login times out: start sign-in again, or use **Device code** (CLI shows code → enter on website).
 
 ### Conversation import (not Grok.com cloud history)
 

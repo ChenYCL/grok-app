@@ -417,7 +417,8 @@ pub fn busy_tooltip(base: &str, count: u32) -> String {
     }
 }
 
-/// Show busy session count on the dock badge (macOS) or tray tooltip (elsewhere).
+/// Show a count on the dock badge (macOS) or tray tooltip (elsewhere).
+/// Frontend product passes unread session count (after background turn end).
 ///
 /// - **macOS**: `set_badge_count` + `set_badge_label` on the main window.
 /// - **Other platforms**: tray tooltip `Grok · N` (or platform tooltip base).
@@ -448,7 +449,7 @@ pub fn set_busy_count(app: &AppHandle, count: u32) {
     }
 }
 
-/// Frontend → host: update dock/tray busy-session badge.
+/// Frontend → host: update dock/tray badge count (product: unread sessions).
 #[tauri::command]
 pub fn tray_set_busy_count(app: AppHandle, count: u32) -> Result<(), String> {
     set_busy_count(&app, count);

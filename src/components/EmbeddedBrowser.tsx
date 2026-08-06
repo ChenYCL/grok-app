@@ -11,6 +11,12 @@
  * Creation goes through host `side_browser_create` (not frontend `new Webview`)
  * so downloads get a native save dialog via wry/Tauri `on_download`.
  *
+ * Lifecycle (perf):
+ * - Create once per label; URL changes use `side_browser_navigate` (not recreate).
+ * - Reload uses `side_browser_reload` (full document refresh without tear-down).
+ * - Pane hide/show only toggles visibility; bounds re-apply only when the host
+ *   rect actually moves (avoids open/close blocking on setPosition/setSize).
+ *
  * Bounds: host ResizeObserver + ancestor observers + window resize, coalesced
  * through a trailing single-flight so setPosition/setSize never interleave
  * (sidebar drag used to jitter / leave a white gap).
@@ -24,6 +30,8 @@ import {
   sideBrowserClose,
   sideBrowserCreate,
   sideBrowserInstallDownloadHook,
+  sideBrowserNavigate,
+  sideBrowserReload,
 } from "@/lib/api";
 import type { SideBrowserDownloadEvent } from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
@@ -126,6 +134,11 @@ export interface EmbeddedBrowserProps {
    * Full label = `resource-browser-${instanceId}`.
    */
   instanceId?: string;
+  /**
+   * Bump to force a full document reload without changing `url`
+   * (address-bar Enter on same URL / explicit refresh).
+   */
+  reloadKey?: number;
 }
 
 /** Public label scheme for automation / host commands. */
@@ -158,12 +171,14 @@ export function EmbeddedBrowser({
   active = true,
   className = "",
   instanceId,
+  reloadKey = 0,
 }: EmbeddedBrowserProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   // Dynamic import type — keep loose to avoid hard coupling on Tauri version.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const webviewRef = useRef<any>(null);
   const currentUrlRef = useRef<string>("");
+  const bootUrlRef = useRef(url.trim());
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   /** Short status for download save result (host event). */
@@ -175,14 +190,20 @@ export function EmbeddedBrowser({
   const activeRef = useRef(active);
   const coveredRef = useRef(covered);
   const lastBoundsRef = useRef<BoundsPx | null>(null);
+  /** Last applied visibility — skip redundant hide/show IPC on every RO tick. */
+  const lastVisibleRef = useRef<boolean | null>(null);
   const scheduleRef = useRef<ReturnType<typeof createTrailingSingleFlight> | null>(
     null,
   );
   const applyBoundsRef = useRef<() => Promise<void>>(async () => undefined);
   const roRafRef = useRef(0);
   const downloadStatusTimerRef = useRef(0);
+  const injectTimersRef = useRef<number[]>([]);
+  /** Last reloadKey we already applied (skip 0 / initial). */
+  const appliedReloadKeyRef = useRef(0);
   activeRef.current = active;
   coveredRef.current = covered;
+  bootUrlRef.current = url.trim();
 
   const flashDownloadStatus = (msg: string) => {
     setDownloadStatus(msg);
@@ -190,6 +211,40 @@ export function EmbeddedBrowser({
     downloadStatusTimerRef.current = window.setTimeout(() => {
       setDownloadStatus(null);
     }, 4200);
+  };
+
+  const clearInjectTimers = () => {
+    for (const id of injectTimersRef.current) window.clearTimeout(id);
+    injectTimersRef.current = [];
+  };
+
+  const scheduleDownloadHookInject = () => {
+    clearInjectTimers();
+    // Non-blocking reinject after paint (host eval no longer waits 15s).
+    // ChatCut is a slow SPA — reinject a few times until hooks stick.
+    const injectHook = () => {
+      void sideBrowserInstallDownloadHook(webviewLabel).catch(() => undefined);
+    };
+    injectTimersRef.current = [
+      window.setTimeout(injectHook, 500),
+      window.setTimeout(injectHook, 2000),
+      window.setTimeout(injectHook, 5000),
+    ];
+  };
+
+  const setWebviewVisible = async (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    wv: any,
+    wantShow: boolean,
+  ) => {
+    if (lastVisibleRef.current === wantShow) return;
+    try {
+      if (wantShow) await wv.show();
+      else await wv.hide();
+      lastVisibleRef.current = wantShow;
+    } catch {
+      /* ignore — leave lastVisible so next tick can retry */
+    }
   };
 
   /**
@@ -205,11 +260,7 @@ export function EmbeddedBrowser({
     const rect = hostRectForWebview(el);
     if (rect.width < 2 || rect.height < 2) {
       lastBoundsRef.current = null;
-      try {
-        await wv.hide();
-      } catch {
-        /* ignore */
-      }
+      await setWebviewVisible(wv, false);
       return;
     }
 
@@ -228,11 +279,7 @@ export function EmbeddedBrowser({
 
     if (clipped.width < 2 || clipped.height < 2) {
       lastBoundsRef.current = null;
-      try {
-        await wv.hide();
-      } catch {
-        /* ignore */
-      }
+      await setWebviewVisible(wv, false);
       return;
     }
 
@@ -247,23 +294,19 @@ export function EmbeddedBrowser({
     const boundsSame = boundsNearlyEqual(lastBoundsRef.current, next, 0.5);
 
     if (boundsSame) {
-      try {
-        if (wantShow) await wv.show();
-        else await wv.hide();
-      } catch {
-        /* ignore */
-      }
+      await setWebviewVisible(wv, wantShow);
       return;
     }
 
     try {
       const { LogicalPosition, LogicalSize } = await loadDpi();
       // Position then size — one pair per apply; single-flight prevents interleave.
+      // When hidden (pane closed), still update bounds so the next show is correct
+      // without a second full apply — but skip show/hide thrash via lastVisibleRef.
       await wv.setPosition(new LogicalPosition(next.x, next.y));
       await wv.setSize(new LogicalSize(next.width, next.height));
       lastBoundsRef.current = next;
-      if (wantShow) await wv.show();
-      else await wv.hide();
+      await setWebviewVisible(wv, wantShow);
     } catch (e) {
       console.error("[EmbeddedBrowser] syncBounds", e);
     }
@@ -348,20 +391,18 @@ export function EmbeddedBrowser({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [webviewLabel, locale]);
 
-  // Create / recreate native webview when URL or label changes.
-  // Inactive tabs stay mounted (persist host) — hide only via active/covered.
-  // Host create attaches on_download (native save dialog); JS new Webview does not.
+  // Create once per label. URL changes navigate in-place (do not tear down WKWebView).
   useEffect(() => {
     if (!isTauri()) return;
-    const target = url.trim();
-    if (!target) return;
+    const initialUrl = bootUrlRef.current;
+    if (!initialUrl) return;
 
     let cancelled = false;
     let resizeObs: ResizeObserver | null = null;
     let io: IntersectionObserver | null = null;
 
-    // New webview → force bounds re-apply even if numbers match previous instance.
     lastBoundsRef.current = null;
+    lastVisibleRef.current = null;
 
     const boot = async () => {
       setError(null);
@@ -374,19 +415,15 @@ export function EmbeddedBrowser({
         const { LogicalPosition, LogicalSize } = await loadDpi();
         const win = getCurrentWindow();
 
+        // Prefer host close only — avoids double-close races with getByLabel.
         try {
           await sideBrowserClose(webviewLabel);
         } catch {
           /* ignore */
         }
-        try {
-          const existing = await Webview.getByLabel(webviewLabel);
-          if (existing) await existing.close();
-        } catch {
-          /* ignore */
-        }
         webviewRef.current = null;
         currentUrlRef.current = "";
+        lastVisibleRef.current = null;
         if (cancelled) return;
 
         const el = hostRef.current;
@@ -395,6 +432,9 @@ export function EmbeddedBrowser({
         const y = Math.round(rect?.top ?? 0);
         const w = Math.max(Math.round(rect?.width ?? 320), 40);
         const h = Math.max(Math.round(rect?.height ?? 240), 40);
+
+        // Use latest desired URL in case props changed while we awaited imports.
+        const target = bootUrlRef.current || initialUrl;
 
         await sideBrowserCreate({
           label: webviewLabel,
@@ -425,21 +465,28 @@ export function EmbeddedBrowser({
         lastBoundsRef.current = { x, y, width: w, height: h };
         await webview.setPosition(new LogicalPosition(x, y));
         await webview.setSize(new LogicalSize(w, h));
-        if (activeRef.current && !coveredRef.current) await webview.show();
+        const wantShow = activeRef.current && !coveredRef.current;
+        if (wantShow) await webview.show();
         else await webview.hide();
+        lastVisibleRef.current = wantShow;
         setReady(true);
 
-        // Non-blocking reinject after paint (host eval no longer waits 15s).
-        // ChatCut is a slow SPA — reinject a few times until hooks stick.
-        const injectHook = () => {
-          void sideBrowserInstallDownloadHook(webviewLabel).catch(() => undefined);
-        };
-        window.setTimeout(injectHook, 500);
-        window.setTimeout(injectHook, 2000);
-        window.setTimeout(injectHook, 5000);
+        scheduleDownloadHookInject();
 
         // Layout may have changed while we awaited create — apply latest once.
         scheduleSync();
+
+        // If URL changed during boot, navigate once (no recreate).
+        const latest = bootUrlRef.current;
+        if (latest && latest !== target) {
+          try {
+            await sideBrowserNavigate(webviewLabel, latest);
+            currentUrlRef.current = latest;
+            scheduleDownloadHookInject();
+          } catch (e) {
+            console.error("[EmbeddedBrowser] post-boot navigate", e);
+          }
+        }
 
         if (hostRef.current && typeof ResizeObserver !== "undefined") {
           resizeObs = new ResizeObserver(() => {
@@ -462,7 +509,10 @@ export function EmbeddedBrowser({
               const wv = webviewRef.current;
               if (!wv) return;
               if (!vis || !activeRef.current) {
-                void wv.hide().catch(() => undefined);
+                if (lastVisibleRef.current !== false) {
+                  lastVisibleRef.current = false;
+                  void wv.hide().catch(() => undefined);
+                }
               } else {
                 scheduleSyncRaf();
               }
@@ -490,27 +540,84 @@ export function EmbeddedBrowser({
     return () => {
       cancelled = true;
       cancelAnimationFrame(roRafRef.current);
+      clearInjectTimers();
       resizeObs?.disconnect();
       io?.disconnect();
       window.removeEventListener("resize", onResize);
-      const wv = webviewRef.current;
       webviewRef.current = null;
       currentUrlRef.current = "";
       lastBoundsRef.current = null;
-      if (wv) {
-        void wv.close().catch(() => undefined);
-      } else if (isTauri()) {
+      lastVisibleRef.current = null;
+      // Single host close path (do not also call frontend Webview.close).
+      if (isTauri()) {
         void sideBrowserClose(webviewLabel).catch(() => undefined);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, webviewLabel]);
+  }, [webviewLabel]);
 
+  // In-place navigate when URL changes (keeps process / session / caches warm).
+  useEffect(() => {
+    if (!isTauri() || !ready) return;
+    const target = url.trim();
+    if (!target) return;
+    if (target === currentUrlRef.current) return;
+    if (!webviewRef.current) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        await sideBrowserNavigate(webviewLabel, target);
+        if (cancelled) return;
+        currentUrlRef.current = target;
+        setError(null);
+        scheduleDownloadHookInject();
+        scheduleSync();
+      } catch (e) {
+        if (!cancelled) {
+          console.error("[EmbeddedBrowser] navigate failed", e);
+          setError(String(e));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, ready, webviewLabel]);
+
+  // Explicit reload (refresh button / Enter on same URL).
+  useEffect(() => {
+    if (!isTauri() || !ready) return;
+    if (!reloadKey || reloadKey === appliedReloadKeyRef.current) return;
+    appliedReloadKeyRef.current = reloadKey;
+    if (!webviewRef.current) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        await sideBrowserReload(webviewLabel);
+        if (cancelled) return;
+        setError(null);
+        scheduleDownloadHookInject();
+        scheduleSync();
+      } catch (e) {
+        if (!cancelled) {
+          console.error("[EmbeddedBrowser] reload failed", e);
+          setError(String(e));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey, ready, webviewLabel]);
+
+  // Visibility only — do NOT null bounds (avoids open/close setPosition thrash).
   useEffect(() => {
     const wv = webviewRef.current;
     if (!wv || !isTauri()) return;
-    // Force apply (visibility may change without size change).
-    lastBoundsRef.current = null;
     scheduleSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, covered]);
@@ -520,6 +627,7 @@ export function EmbeddedBrowser({
     return () => {
       scheduleRef.current?.dispose();
       scheduleRef.current = null;
+      clearInjectTimers();
     };
   }, []);
 
@@ -529,57 +637,12 @@ export function EmbeddedBrowser({
 
   const reload = () => {
     if (!isTauri()) return;
-    const u = url;
+    if (!webviewRef.current) return;
     void (async () => {
       try {
-        await sideBrowserClose(webviewLabel);
-      } catch {
-        /* ignore */
-      }
-      try {
-        const { Webview } = await import("@tauri-apps/api/webview");
-        const w = await Webview.getByLabel(webviewLabel);
-        if (w) await w.close();
-      } catch {
-        /* ignore */
-      }
-      webviewRef.current = null;
-      currentUrlRef.current = "";
-      lastBoundsRef.current = null;
-      setReady(false);
-      setError(null);
-      const el = hostRef.current;
-      if (!el) return;
-      try {
-        const { Webview } = await import("@tauri-apps/api/webview");
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const { LogicalPosition, LogicalSize } = await loadDpi();
-        const rect = hostRectForWebview(el);
-        const x = Math.round(rect.left);
-        const y = Math.round(rect.top);
-        const w = Math.max(Math.round(rect.width), 40);
-        const h = Math.max(Math.round(rect.height), 40);
-        const win = getCurrentWindow();
-        await sideBrowserCreate({
-          label: webviewLabel,
-          url: u,
-          windowLabel: win.label,
-          x,
-          y,
-          width: w,
-          height: h,
-        });
-        const webview = await Webview.getByLabel(webviewLabel);
-        if (!webview) {
-          throw new Error("side browser webview missing after reload");
-        }
-        webviewRef.current = webview;
-        lastBoundsRef.current = { x, y, width: w, height: h };
-        await webview.setPosition(new LogicalPosition(x, y));
-        await webview.setSize(new LogicalSize(w, h));
-        if (activeRef.current && !coveredRef.current) await webview.show();
-        else await webview.hide();
-        setReady(true);
+        setError(null);
+        await sideBrowserReload(webviewLabel);
+        scheduleDownloadHookInject();
         scheduleSync();
       } catch (e) {
         setError(String(e));
@@ -604,6 +667,7 @@ export function EmbeddedBrowser({
           </button>
         </div>
         <iframe
+          key={`${url}::${reloadKey}`}
           className="rp-preview__frame rp-preview__frame--browser"
           title={title || url}
           src={url}

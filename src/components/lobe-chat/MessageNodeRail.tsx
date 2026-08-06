@@ -4,7 +4,8 @@
  *
  * Active highlight is owned here during free scroll (rAF-throttled
  * querySelectorAll) so ConversationThread does not setState on every scroll
- * frame — that was a multi-turn jank source (#280).
+ * frame — that was a multi-turn jank source (#280). Parent only mirrors the
+ * free-scroll cursor via `onScrollActiveChange` (ref update, no setState).
  */
 
 import {
@@ -19,7 +20,7 @@ import { IconChevronDown, IconChevronUp } from "@/components/icons";
 import type { SessionMessageNode } from "@/lib/sessionMessageNodes";
 import {
   estimateMessageIndexAtY,
-  nearestNodeForMessageIndex,
+  nearestNodeIdFromPaintList,
   pickActiveNodeIdFromRects,
 } from "@/lib/sessionMessageNodes";
 import type { ChatMessage } from "@/lib/session";
@@ -49,13 +50,22 @@ export function MessageNodeRail({
   onNext,
   labels,
   scrollParentRef,
-  /** Full message list for estimate fallback when rows are virtualized away. */
+  /**
+   * Paint list (filtered transcript) for height-estimate fallback when rows
+   * are virtualized away. Must match the virtualizer item list — not the full
+   * journal — or free-scroll highlight drifts past hidden tool rows.
+   */
   messages,
   /** When performance.now() < this ref value, ignore scroll-driven highlight. */
   navLockUntilRef,
+  /**
+   * Free-scroll cursor sync (ref-only on the parent). Called when the rail
+   * picks a new active node so prev/next step from the reading position.
+   */
+  onScrollActiveChange,
 }: {
   nodes: readonly SessionMessageNode[];
-  /** Programmatic cursor (prev/next / click) — rail follows this when set. */
+  /** Programmatic cursor seed (prev/next / click) — mirrored into local state. */
   activeId: string | null;
   onSelect: (node: SessionMessageNode) => void;
   onPrev: () => void;
@@ -64,15 +74,22 @@ export function MessageNodeRail({
   scrollParentRef?: RefObject<HTMLElement | null>;
   messages?: readonly ChatMessage[];
   navLockUntilRef?: RefObject<number>;
+  onScrollActiveChange?: (id: string) => void;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const [tip, setTip] = useState<TipState | null>(null);
-  /** Scroll-derived highlight; does not bubble setState to the parent thread. */
+  /**
+   * Scroll-derived highlight owns the display after free scroll.
+   * Programmatic activeId only seeds this state (see effect below) so a
+   * stale parent activeId cannot pin the rail after the user has scrolled.
+   */
   const [scrollActiveId, setScrollActiveId] = useState<string | null>(null);
   const rafRef = useRef<number | null>(null);
+  const onScrollActiveChangeRef = useRef(onScrollActiveChange);
+  onScrollActiveChangeRef.current = onScrollActiveChange;
 
-  // Prefer programmatic activeId; fall back to scroll-derived highlight.
-  const displayActiveId = activeId ?? scrollActiveId;
+  // Free-scroll / local state first; fall back to programmatic seed.
+  const displayActiveId = scrollActiveId ?? activeId;
 
   const activeIndex = useMemo(() => {
     if (!displayActiveId) return -1;
@@ -127,11 +144,14 @@ export function MessageNodeRail({
       if (!bestId && messages && messages.length > 0) {
         const y = viewport.scrollTop + viewport.clientHeight * 0.28;
         const msgIdx = estimateMessageIndexAtY(messages, y);
-        bestId = nearestNodeForMessageIndex(nodes, msgIdx)?.id ?? null;
+        // Id walk on the paint list — not journal messageIndex (filtered lists).
+        bestId = nearestNodeIdFromPaintList(messages, nodes, msgIdx);
       }
 
       if (bestId) {
         setScrollActiveId((prev) => (prev === bestId ? prev : bestId));
+        // Ref-only parent sync so prev/next track free scroll without setState.
+        onScrollActiveChangeRef.current?.(bestId);
       }
     };
 
@@ -156,7 +176,10 @@ export function MessageNodeRail({
   // When parent sets a programmatic activeId, mirror it into scroll state so
   // highlight does not snap back on the next free-scroll frame incorrectly.
   useEffect(() => {
-    if (activeId) setScrollActiveId(activeId);
+    if (activeId) {
+      setScrollActiveId(activeId);
+      onScrollActiveChangeRef.current?.(activeId);
+    }
   }, [activeId]);
 
   const showTipFor = (node: SessionMessageNode, el: HTMLElement) => {
@@ -203,29 +226,31 @@ export function MessageNodeRail({
           const isHover = tip?.node.id === n.id;
           const roleLabel =
             n.role === "user" ? labels.userRole : labels.assistantRole;
+          // Keep button role; wrap with listitem so a11y trees do not promote
+          // the control to a nameless "group" (Appshot / VoiceOver).
           return (
-            <button
-              key={n.id}
-              type="button"
-              role="listitem"
-              data-node-id={n.id}
-              className={cn(
-                "lobe-msg-rail__tick",
-                n.role === "user" && "lobe-msg-rail__tick--user",
-                n.role === "assistant" && "lobe-msg-rail__tick--assistant",
-                isActive && "is-active",
-                isHover && "is-hover",
-                n.status === "error" && "is-error",
-                n.status === "pending" && "is-pending",
-              )}
-              aria-label={`${roleLabel}: ${n.preview}`}
-              aria-current={isActive ? "true" : undefined}
-              onMouseEnter={(e) => showTipFor(n, e.currentTarget)}
-              onMouseLeave={() => clearTip(n.id)}
-              onFocus={(e) => showTipFor(n, e.currentTarget)}
-              onBlur={() => clearTip(n.id)}
-              onClick={() => onSelect(n)}
-            />
+            <div key={n.id} role="listitem" className="lobe-msg-rail__item">
+              <button
+                type="button"
+                data-node-id={n.id}
+                className={cn(
+                  "lobe-msg-rail__tick",
+                  n.role === "user" && "lobe-msg-rail__tick--user",
+                  n.role === "assistant" && "lobe-msg-rail__tick--assistant",
+                  isActive && "is-active",
+                  isHover && "is-hover",
+                  n.status === "error" && "is-error",
+                  n.status === "pending" && "is-pending",
+                )}
+                aria-label={`${roleLabel}: ${n.preview}`}
+                aria-current={isActive ? "true" : undefined}
+                onMouseEnter={(e) => showTipFor(n, e.currentTarget)}
+                onMouseLeave={() => clearTip(n.id)}
+                onFocus={(e) => showTipFor(n, e.currentTarget)}
+                onBlur={() => clearTip(n.id)}
+                onClick={() => onSelect(n)}
+              />
+            </div>
           );
         })}
       </div>
