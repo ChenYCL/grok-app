@@ -31,6 +31,7 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 | `id` | Config section slug (`[model.<id>]`) |
 | `name` | Channel display label (provider card / menu group) |
 | `baseUrl` | OpenAI-compatible root, usually ends with `/v1` |
+| `baseUrlFullPath` | When **true**, host stores the URL as typed and **does not** auto-append `/v1` (App TOML `app_base_url_full_path`). Default **false** = legacy auto-`/v1` for CPA/sub2api. Use for gateways like Volcengine Ark Coding Plan (`…/api/coding`, `…/api/coding/v3`). Settings UI: switch **完整路径 / Full path** next to Base URL label. |
 | `apiKey` | Required for custom relay; never returned plaintext to UI |
 | `model` | **Active** request body model id (written to config `model = …`) |
 | `models` | Multi-model catalog (`[{id, name}]`); App field `app_models` JSON in TOML (ignored by Grok Build). Each entry has request id + **display name** for composer chip |

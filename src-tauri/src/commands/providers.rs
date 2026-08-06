@@ -119,6 +119,7 @@ pub async fn providers_upsert(
     models: Option<Vec<crate::providers::ProviderModelEntry>>,
     efforts: Option<Vec<crate::providers::ProviderEffortEntry>>,
     context_window: Option<u64>,
+    base_url_full_path: Option<bool>,
 ) -> Result<crate::providers::ProvidersListResult, String> {
     let set_default_flag = set_as_default.unwrap_or(false);
     let mutated_id = id.clone();
@@ -136,6 +137,7 @@ pub async fn providers_upsert(
                 models,
                 efforts,
                 context_window,
+                base_url_full_path,
             })?;
         // Keep legacy secrets in sync for Doctor / account channel display.
         if let Some(p) = result

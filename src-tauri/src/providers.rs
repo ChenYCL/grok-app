@@ -53,6 +53,10 @@ pub struct CustomProvider {
     /// the model catalog window, then `DEFAULT_CUSTOM_CONTEXT_WINDOW`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u64>,
+    /// When true, treat `base_url` as a complete root path and never auto-append `/v1`.
+    /// Default false preserves legacy OpenAI-compatible `/v1` normalization.
+    #[serde(default)]
+    pub base_url_full_path: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -75,12 +79,17 @@ pub struct UpsertProviderInput {
     /// `None` keeps the existing value on edit. Written to TOML as a string.
     #[serde(default)]
     pub context_window: Option<u64>,
+    /// Full-path base URL mode. `None` keeps previous flag on edit; create defaults false.
+    #[serde(default)]
+    pub base_url_full_path: Option<bool>,
 }
 
 /// TOML field (ignored by Grok Build) storing JSON array of `{id,name}`.
 const APP_MODELS_KEY: &str = "app_models";
 /// TOML field (ignored by Grok Build) storing JSON array of `{id,name,isDefault}`.
 const APP_EFFORTS_KEY: &str = "app_efforts";
+/// TOML field (ignored by Grok Build): when true, do not auto-append `/v1` to base_url.
+const APP_BASE_URL_FULL_PATH_KEY: &str = "app_base_url_full_path";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -198,13 +207,38 @@ fn normalize_backend(v: Option<&str>) -> String {
     }
 }
 
+/// Parse App-managed boolean TOML string fields (`"true"` / `"1"` / …).
+pub fn parse_app_bool_field(raw: Option<&str>) -> bool {
+    match raw.map(str::trim).unwrap_or("") {
+        "" => false,
+        s => matches!(
+            s.to_ascii_lowercase().as_str(),
+            "true" | "1" | "yes" | "on"
+        ),
+    }
+}
+
+/// Whether this provider section opts out of automatic `/v1` base_url repair.
+pub fn base_url_full_path_from_fields(
+    fields: &std::collections::HashMap<String, String>,
+) -> bool {
+    parse_app_bool_field(fields.get(APP_BASE_URL_FULL_PATH_KEY).map(|s| s.as_str()))
+}
+
 /// Grok Build joins `{base_url}/chat/completions` (or `/responses`).
 /// OpenAI-compatible relays almost always expect `…/v1` as the base.
 /// Without it, requests hit `https://host/chat/completions` (404/HTML) and the
 /// agent may retry for minutes with no user-visible progress.
-pub fn normalize_openai_base_url(raw: &str, api_backend: &str) -> String {
+///
+/// When `full_path` is true (UI「完整路径」), only trim trailing slashes — used
+/// for gateways that already expose a non-`/v1` root (e.g. Volcengine Ark
+/// Coding Plan `…/api/coding` or `…/api/coding/v3`).
+pub fn normalize_openai_base_url(raw: &str, api_backend: &str, full_path: bool) -> String {
     let mut base = raw.trim().trim_end_matches('/').to_string();
     if base.is_empty() {
+        return base;
+    }
+    if full_path {
         return base;
     }
     // Anthropic-style messages often use bare host or /v1 already; still prefer /v1.
@@ -243,6 +277,10 @@ pub fn repair_custom_base_urls() -> Result<bool, String> {
             continue;
         }
         let backend = normalize_backend(s.fields.get("api_backend").map(|x| x.as_str()));
+        // Full-path providers intentionally skip /v1 auto-repair.
+        if base_url_full_path_from_fields(&s.fields) {
+            continue;
+        }
         let Some(old_base) = s.fields.get("base_url").cloned() else {
             continue;
         };
@@ -253,7 +291,7 @@ pub fn repair_custom_base_urls() -> Result<bool, String> {
             let Some(old_up) = s.fields.get(upstream_key).cloned() else {
                 continue;
             };
-            let new_up = normalize_openai_base_url(&old_up, &backend);
+            let new_up = normalize_openai_base_url(&old_up, &backend, false);
             if new_up == old_up.trim().trim_end_matches('/') || new_up == old_up {
                 continue;
             }
@@ -266,7 +304,7 @@ pub fn repair_custom_base_urls() -> Result<bool, String> {
             );
             continue;
         }
-        let new = normalize_openai_base_url(&old_base, &backend);
+        let new = normalize_openai_base_url(&old_base, &backend, false);
         if new != old_base.trim().trim_end_matches('/') && new != old_base {
             let keep_up = s.fields.get(upstream_key).map(|x| x.as_str());
             out = rewrite_section_base_urls(&out, &s.id, &new, keep_up)?;
@@ -700,6 +738,7 @@ pub fn maybe_migrate_legacy_relay(
         models: None,
         efforts: None,
         context_window: None,
+        base_url_full_path: None,
     })?;
     Ok(())
 }
@@ -839,6 +878,7 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             .get("context_window")
             .and_then(|v| v.parse::<u64>().ok())
             .filter(|n| *n > 0);
+        let base_url_full_path = base_url_full_path_from_fields(&s.fields);
         providers.push(CustomProvider {
             id: s.id,
             model,
@@ -850,6 +890,7 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             models,
             efforts,
             context_window,
+            base_url_full_path,
         });
     }
     let (active_source, active_provider_id) = route_from_default(def.as_deref(), &providers);
@@ -1026,7 +1067,21 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         }
     };
     let api_backend = normalize_backend(input.api_backend.as_deref());
-    let user_base = normalize_openai_base_url(input.base_url.trim(), &api_backend);
+
+    let _ = ensure_agent_home()?;
+    let path = agent_config_toml();
+    let mut text = read_text(&path);
+    let sections = parse_model_sections(&text);
+    let existing = sections.iter().find(|s| s.id == id);
+
+    // Full-path mode: UI switch. Omitted on edit keeps previous; create defaults false.
+    let full_path = match input.base_url_full_path {
+        Some(v) => v,
+        None => existing
+            .map(|s| base_url_full_path_from_fields(&s.fields))
+            .unwrap_or(false),
+    };
+    let user_base = normalize_openai_base_url(input.base_url.trim(), &api_backend, full_path);
     if user_base.is_empty() {
         return Err("base_url is required".into());
     }
@@ -1035,14 +1090,12 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     }
     // OpenCode Zen Go etc.: CLI talks to loopback sanitize proxy; real host in
     // app_upstream_base_url (ignored by Grok Build).
-    let (base_url, app_upstream) =
-        crate::relay_stream_proxy::rewrite_base_for_cli(&id, &user_base, &api_backend)?;
-
-    let _ = ensure_agent_home()?;
-    let path = agent_config_toml();
-    let mut text = read_text(&path);
-    let sections = parse_model_sections(&text);
-    let existing = sections.iter().find(|s| s.id == id);
+    let (base_url, app_upstream) = crate::relay_stream_proxy::rewrite_base_for_cli(
+        &id,
+        &user_base,
+        &api_backend,
+        full_path,
+    )?;
     let create_only = input.create_only.unwrap_or(false);
     if create_only && existing.is_some() {
         return Err(format!("provider id `{id}` already exists"));
@@ -1118,6 +1171,9 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         ("api_backend".into(), api_backend),
         (APP_MODELS_KEY.into(), app_models_json),
     ];
+    if full_path {
+        fields.push((APP_BASE_URL_FULL_PATH_KEY.into(), "true".into()));
+    }
     if !app_efforts_json.is_empty() && app_efforts_json != "[]" {
         fields.push((APP_EFFORTS_KEY.into(), app_efforts_json));
     }
@@ -1370,17 +1426,60 @@ mod tests {
     #[test]
     fn normalizes_missing_v1() {
         assert_eq!(
-            normalize_openai_base_url("https://api.yunyi.ai", "chat_completions"),
+            normalize_openai_base_url("https://api.yunyi.ai", "chat_completions", false),
             "https://api.yunyi.ai/v1"
         );
         assert_eq!(
-            normalize_openai_base_url("https://api.yunyi.ai/v1", "chat_completions"),
+            normalize_openai_base_url("https://api.yunyi.ai/v1", "chat_completions", false),
             "https://api.yunyi.ai/v1"
         );
         assert_eq!(
-            normalize_openai_base_url("https://api.yunyi.ai/v1/", "chat_completions"),
+            normalize_openai_base_url("https://api.yunyi.ai/v1/", "chat_completions", false),
             "https://api.yunyi.ai/v1"
         );
+    }
+
+    #[test]
+    fn full_path_skips_v1_append() {
+        // Volcengine Ark Coding Plan roots must not gain trailing /v1.
+        assert_eq!(
+            normalize_openai_base_url(
+                "https://ark.cn-beijing.volces.com/api/coding",
+                "messages",
+                true
+            ),
+            "https://ark.cn-beijing.volces.com/api/coding"
+        );
+        assert_eq!(
+            normalize_openai_base_url(
+                "https://ark.cn-beijing.volces.com/api/coding/v3/",
+                "responses",
+                true
+            ),
+            "https://ark.cn-beijing.volces.com/api/coding/v3"
+        );
+        // Legacy default still appends.
+        assert_eq!(
+            normalize_openai_base_url(
+                "https://ark.cn-beijing.volces.com/api/coding",
+                "messages",
+                false
+            ),
+            "https://ark.cn-beijing.volces.com/api/coding/v1"
+        );
+    }
+
+    #[test]
+    fn parses_full_path_bool_fields() {
+        assert!(!parse_app_bool_field(None));
+        assert!(!parse_app_bool_field(Some("")));
+        assert!(parse_app_bool_field(Some("true")));
+        assert!(parse_app_bool_field(Some("1")));
+        assert!(parse_app_bool_field(Some("YES")));
+        assert!(!parse_app_bool_field(Some("false")));
+        let mut m = std::collections::HashMap::new();
+        m.insert(APP_BASE_URL_FULL_PATH_KEY.into(), "true".into());
+        assert!(base_url_full_path_from_fields(&m));
     }
 
     #[test]
@@ -1400,6 +1499,7 @@ mod tests {
                 }],
                 efforts: vec![],
                 context_window: None,
+                base_url_full_path: false,
             }],
             default_model: Some("relay".into()),
             active_source: "custom".into(),

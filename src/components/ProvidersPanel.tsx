@@ -81,6 +81,8 @@ type FormState = {
   id: string;
   name: string;
   baseUrl: string;
+  /** When true, host keeps baseUrl as-is (no auto `/v1`). */
+  baseUrlFullPath: boolean;
   apiKey: string;
   apiBackend: string;
   models: FormModel[];
@@ -96,6 +98,7 @@ const emptyForm = (): FormState => ({
   id: "",
   name: "",
   baseUrl: "",
+  baseUrlFullPath: false,
   apiKey: "",
   apiBackend: "responses",
   models: [],
@@ -139,6 +142,8 @@ function formFromPreset(preset: ProviderPreset): FormState {
     id: preset.suggestedId,
     name: preset.name,
     baseUrl: preset.baseUrl,
+    // Presets already include /v1 when needed — keep auto-normalize off only if user opts in.
+    baseUrlFullPath: false,
     apiKey: "",
     apiBackend: preset.apiBackend,
     models: preset.models.map((m) => ({
@@ -487,6 +492,7 @@ export function ProvidersPanel({
       id: p.id,
       name: p.name,
       baseUrl: p.baseUrl,
+      baseUrlFullPath: !!p.baseUrlFullPath,
       apiKey: "",
       apiBackend: p.apiBackend || "responses",
       models: modelsFromProvider(p),
@@ -595,6 +601,7 @@ export function ProvidersPanel({
       setAsDefault: false as boolean,
       models,
       efforts,
+      baseUrlFullPath: form.baseUrlFullPath,
     };
     try {
       // Wall-clock budget so a hung host IPC cannot leave the UI on “Saving…”.
@@ -1231,20 +1238,58 @@ export function ProvidersPanel({
                   />
                 </label>
 
-                {/* Base URL full — typically long */}
-                <label className="prov-field prov-field--full">
-                  <span className="prov-field__label">{tr("prov.baseUrl")}</span>
+                {/* Base URL full — typically long; optional full-path (no auto /v1) */}
+                <div className="prov-field prov-field--full">
+                  <span className="prov-field__label-row">
+                    <span className="prov-field__label">{tr("prov.baseUrl")}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={form.baseUrlFullPath}
+                      className={
+                        "prov-field__full-path-switch" +
+                        (form.baseUrlFullPath ? " is-on" : "")
+                      }
+                      title={tr("prov.baseUrlFullPathHint")}
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          baseUrlFullPath: !f.baseUrlFullPath,
+                        }))
+                      }
+                    >
+                      <span className="prov-field__full-path-label">
+                        {tr("prov.baseUrlFullPath")}
+                      </span>
+                      <span
+                        className="prov-field__full-path-track"
+                        aria-hidden
+                      >
+                        <span className="prov-field__full-path-thumb" />
+                      </span>
+                    </button>
+                  </span>
                   <input
                     className="settings-input"
                     value={form.baseUrl}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, baseUrl: e.target.value }))
                     }
-                    placeholder={tr("prov.baseUrlPh")}
+                    placeholder={
+                      form.baseUrlFullPath
+                        ? tr("prov.baseUrlPhFull")
+                        : tr("prov.baseUrlPh")
+                    }
                     autoComplete="off"
                     spellCheck={false}
+                    aria-label={tr("prov.baseUrl")}
                   />
-                </label>
+                  <span className="prov-field__hint">
+                    {form.baseUrlFullPath
+                      ? tr("prov.baseUrlFullPathOnHint")
+                      : tr("prov.baseUrlFullPathOffHint")}
+                  </span>
+                </div>
 
                 {/* Row: protocol | API key — equal grid columns */}
                 <div className="prov-field">

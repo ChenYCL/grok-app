@@ -11,6 +11,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+- **Provider Base URL “Full path” switch**: Next to the Base URL field label. When on, host does not auto-append `/v1` (stored as `app_base_url_full_path` in agent-home `config.toml`). Default off keeps legacy OpenAI-compatible `/v1` normalization so existing relays are unchanged. Enables Volcengine Ark Coding Plan roots (`…/api/coding`, `…/api/coding/v3`) and similar non-`/v1` gateways (#527).
+
+**中文 · 新增**
+- **服务商 Base URL「完整路径」开关**：打开后不再自动拼接 `/v1`，兼容火山方舟 Coding Plan 等非 `/v1` 根路径；默认关闭，老配置行为不变（#527）。
+
 ## [0.2.7] - 2026-08-06
 
 > **Highlight:** Faster chat file/image cards (metadata + disk thumbs), less scroll jitter, boot probe timeout, and auth recycle after login so re-login no longer keeps a warm prewarm with stale OIDC.

@@ -224,8 +224,10 @@ pub fn rewrite_base_for_cli(
     provider_id: &str,
     user_base_url: &str,
     api_backend: &str,
+    full_path: bool,
 ) -> Result<(String, Option<String>), String> {
-    let real = crate::providers::normalize_openai_base_url(user_base_url, api_backend);
+    let real =
+        crate::providers::normalize_openai_base_url(user_base_url, api_backend, full_path);
     if real.is_empty() {
         return Ok((real, None));
     }
@@ -268,7 +270,9 @@ pub fn repair_sanitize_proxy_bases() -> Result<bool, String> {
             // Drop stale app_upstream if the host no longer needs sanitizing.
             continue;
         }
-        let (cli_base, upstream) = rewrite_base_for_cli(&s.id, &displayed, backend)?;
+        let full_path = crate::providers::base_url_full_path_from_fields(&s.fields);
+        let (cli_base, upstream) =
+            rewrite_base_for_cli(&s.id, &displayed, backend, full_path)?;
         let Some(up) = upstream else {
             // Already local — ensure port still matches a live proxy, rebind if needed.
             let cur = s.fields.get("base_url").cloned().unwrap_or_default();

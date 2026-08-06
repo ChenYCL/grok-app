@@ -35,6 +35,11 @@ export interface CustomProvider {
   efforts?: ProviderEffortEntry[];
   /** Per-channel context window (tokens). None → catalog window, then default. */
   contextWindow?: number | null;
+  /**
+   * When true, host does not auto-append `/v1` to baseUrl (full path mode).
+   * Default false keeps legacy OpenAI-compatible `/v1` normalization.
+   */
+  baseUrlFullPath?: boolean;
 }
 
 export interface ProvidersListResult {
@@ -277,6 +282,8 @@ export async function providersUpsert(body: {
   models?: ProviderModelEntry[];
   efforts?: ProviderEffortEntry[];
   contextWindow?: number | null;
+  /** Full-path base URL — do not auto-append `/v1`. */
+  baseUrlFullPath?: boolean;
 }) {
   return invoke<ProvidersListResult>("providers_upsert", {
     id: body.id,
@@ -290,6 +297,7 @@ export async function providersUpsert(body: {
     models: body.models ?? null,
     efforts: body.efforts ?? null,
     contextWindow: body.contextWindow ?? null,
+    baseUrlFullPath: body.baseUrlFullPath ?? null,
   });
 }
 
