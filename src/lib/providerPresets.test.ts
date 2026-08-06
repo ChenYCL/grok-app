@@ -4,6 +4,7 @@ import {
   DEEPSEEK_EFFORTS,
   DEEPSEEK_MODELS,
   PROVIDER_PRESETS,
+  VOLCANO_ARK_MODELS,
   YUN_API_MODELS,
   defaultCustomChannelEfforts,
   findProviderPreset,
@@ -80,7 +81,25 @@ describe("providerPresets", () => {
     );
   });
 
-  it("resolves brand logos for DeepSeek/Amux/OpenCode Go", () => {
+  it("ships Volcengine Ark (火山方舟) with full-path Coding Plan root", () => {
+    const ark = findProviderPreset("volcano-ark");
+    expect(ark).toBeDefined();
+    expect(ark!.name).toBe("火山方舟");
+    expect(ark!.baseUrl).toBe(
+      "https://ark.cn-beijing.volces.com/api/plan/v3",
+    );
+    expect(ark!.baseUrlFullPath).toBe(true);
+    expect(ark!.apiBackend).toBe("chat_completions");
+    expect(VOLCANO_ARK_MODELS).toEqual([
+      { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    ]);
+    expect(ark!.models).toEqual(VOLCANO_ARK_MODELS);
+    expect(ark!.brandId).toBe("volcano-ark");
+    expect(ark!.apiKeyUrl).toContain("console.volcengine.com/ark");
+    expect(ark!.efforts.find((e) => e.isDefault)?.id).toBe("medium");
+  });
+
+  it("resolves brand logos for DeepSeek/Amux/OpenCode Go/Volcano Ark", () => {
     expect(resolveProviderBrandId({ providerId: "deepseek" })).toBe(
       "deepseek",
     );
@@ -94,6 +113,17 @@ describe("providerPresets", () => {
       resolveProviderBrandId({ baseUrl: "https://opencode.ai/zen/go/v1" }),
     ).toBe("opencode-go");
     expect(resolveProviderBrandId({ providerId: "yun-api" })).toBe(null);
+    expect(resolveProviderBrandId({ providerId: "volcano-ark" })).toBe(
+      "volcano-ark",
+    );
+    expect(resolveProviderBrandId({ providerId: "huo-shan" })).toBe(
+      "volcano-ark",
+    );
+    expect(
+      resolveProviderBrandId({
+        baseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3",
+      }),
+    ).toBe("volcano-ark");
   });
 
   it("defaults blank custom channels to Grok low/medium/high/max (ladder order)", () => {

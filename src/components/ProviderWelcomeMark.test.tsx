@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   DeepSeekFullMark,
   OpenCodeWordmark,
+  VolcanoArkWelcomeMark,
 } from "./ProviderWelcomeMark";
 
 describe("DeepSeekFullMark", () => {
@@ -41,5 +42,24 @@ describe("OpenCodeWordmark", () => {
   it("carries an accessible label", () => {
     const html = renderToStaticMarkup(<OpenCodeWordmark title="OpenCode" />);
     expect(html).toContain("<title>OpenCode</title>");
+  });
+});
+
+describe("VolcanoArkWelcomeMark", () => {
+  it("renders brand icon plus 火山方舟 label", () => {
+    const html = renderToStaticMarkup(<VolcanoArkWelcomeMark />);
+    expect(html).toContain("volcano-ark-welcome-mark");
+    expect(html).toContain("volcano-ark-welcome-mark__text");
+    expect(html).toContain("火山方舟");
+    expect(html).toContain("provider-brand-icon--volcano-ark");
+    expect(html).toContain("#00DCFF");
+    expect(html).toContain("#006AFF");
+  });
+
+  it("carries an accessible label", () => {
+    const html = renderToStaticMarkup(
+      <VolcanoArkWelcomeMark title="火山方舟" />,
+    );
+    expect(html).toContain('aria-label="火山方舟"');
   });
 });

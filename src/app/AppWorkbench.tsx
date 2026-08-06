@@ -943,7 +943,8 @@ import {
 } from "@/components/SuperGrokMark";
 import {
   DeepSeekFullMark,
-  OpenCodeWordmark
+  OpenCodeWordmark,
+  VolcanoArkWelcomeMark
 } from "@/components/ProviderWelcomeMark";
 import { Tip } from "@/components/ui/tooltip";
 import {
@@ -10787,7 +10788,7 @@ export function AppWorkbench() {
   /**
    * Preset provider wordmark on the welcome composer.
    * DeepSeek → full DeepSeek wordmark; OpenCode → theme-aware wordmark;
-   * every other channel (Amux / Yun API / official) keeps the SuperGrok mark.
+   * Volcengine Ark → logo + “火山方舟”; every other channel keeps SuperGrok.
    */
   const welcomeProviderBrandNode = useMemo(() => {
     if (!customRouteActive) return null;
@@ -10800,6 +10801,9 @@ export function AppWorkbench() {
     }
     if (brand === "opencode-go") {
       return <OpenCodeWordmark title="OpenCode" />;
+    }
+    if (brand === "volcano-ark") {
+      return <VolcanoArkWelcomeMark title="火山方舟" />;
     }
     return null;
   }, [customRouteActive, activeCustomProvider]);

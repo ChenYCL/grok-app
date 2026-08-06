@@ -1,10 +1,11 @@
 /**
- * Brand marks for known custom-provider presets (DeepSeek, Amux, OpenCode Go, …).
+ * Brand marks for known custom-provider presets
+ * (DeepSeek, Amux, OpenCode Go, Volcengine Ark, …).
  * Amux / OpenCode Go use currentColor so they follow light/dark theme;
- * DeepSeek keeps brand blue.
+ * DeepSeek / Volcano Ark keep brand colors.
  */
 
-import { memo } from "react";
+import { memo, useId } from "react";
 import {
   resolveProviderBrandId,
   type ProviderBrandId,
@@ -119,6 +120,127 @@ function DeepSeekMark({
   );
 }
 
+/** Volcengine Ark (火山方舟) mark — brand cyan/blue (docs/svg/volcano-ark.svg). */
+function VolcanoArkMark({
+  className = "",
+  title,
+  size = 20,
+}: {
+  className?: string;
+  title?: string;
+  size?: number;
+}) {
+  // Unique suffix so multiple icons on one page do not collide on mask/clip ids.
+  const uid = `va-${useId().replace(/:/g, "")}`;
+  return (
+    <svg
+      className={`provider-brand-icon provider-brand-icon--volcano-ark ${className}`.trim()}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      role={title ? "img" : "presentation"}
+      aria-hidden={title ? undefined : true}
+      aria-label={title}
+    >
+      {title ? <title>{title}</title> : null}
+      <g clipPath={`url(#${uid}-clip)`}>
+        <mask
+          id={`${uid}-m1`}
+          width="7"
+          height="11"
+          x="0"
+          y="12"
+          maskUnits="userSpaceOnUse"
+          style={{ maskType: "luminance" }}
+        >
+          <path
+            fill="#fff"
+            d="M.348 22.254h6.344L3.819 13.22a.318.318 0 0 0-.606 0z"
+          />
+        </mask>
+        <g mask={`url(#${uid}-m1)`}>
+          <path fill="#00DCFF" d="M7.041 12.604H0v10.004h7.041z" />
+        </g>
+        <mask
+          id={`${uid}-m2`}
+          width="9"
+          height="12"
+          x="15"
+          y="11"
+          maskUnits="userSpaceOnUse"
+          style={{ maskType: "luminance" }}
+        >
+          <path
+            fill="#fff"
+            d="M15.773 22.266h7.362l-3.377-10.642a.318.318 0 0 0-.607 0z"
+          />
+        </mask>
+        <g mask={`url(#${uid}-m2)`}>
+          <path fill="#00DCFF" d="M23.489 11.008h-8.06v11.611h8.06z" />
+        </g>
+        <mask
+          id={`${uid}-m3`}
+          width="14"
+          height="22"
+          x="7"
+          y="1"
+          maskUnits="userSpaceOnUse"
+          style={{ maskType: "luminance" }}
+        >
+          <path
+            fill="#fff"
+            d="M7.012 22.265h13.58L14.105 1.956a.315.315 0 0 0-.4-.205.32.32 0 0 0-.206.205z"
+          />
+        </mask>
+        <g mask={`url(#${uid}-m3)`}>
+          <path fill="#006AFF" d="M20.946 1.34H6.668v21.279h14.278z" />
+        </g>
+        <mask
+          id={`${uid}-m4`}
+          width="12"
+          height="17"
+          x="2"
+          y="6"
+          maskUnits="userSpaceOnUse"
+          style={{ maskType: "luminance" }}
+        >
+          <path
+            fill="#fff"
+            d="M2.886 22.267h10.28L8.328 7.113a.315.315 0 0 0-.401-.206.32.32 0 0 0-.206.206L2.883 22.267z"
+          />
+        </mask>
+        <g mask={`url(#${uid}-m4)`}>
+          <path fill="#006AFF" d="M13.516 6.496H2.539v16.125h10.977z" />
+        </g>
+        <mask
+          id={`${uid}-m5`}
+          width="10"
+          height="14"
+          x="5"
+          y="9"
+          maskUnits="userSpaceOnUse"
+          style={{ maskType: "luminance" }}
+        >
+          <path
+            fill="#fff"
+            d="M5.734 22.267h8.694L10.384 9.68a.315.315 0 0 0-.603 0L5.738 22.267z"
+          />
+        </mask>
+        <g mask={`url(#${uid}-m5)`}>
+          <path fill="#00DCFF" d="M14.785 9.066h-9.39v13.555h9.39z" />
+        </g>
+      </g>
+      <defs>
+        <clipPath id={`${uid}-clip`}>
+          <path fill="#fff" d="M0 0h24v24H0z" />
+        </clipPath>
+      </defs>
+    </svg>
+  );
+}
+
 export const ProviderBrandIcon = memo(function ProviderBrandIcon({
   brand,
   providerId,
@@ -138,6 +260,9 @@ export const ProviderBrandIcon = memo(function ProviderBrandIcon({
   }
   if (id === "opencode-go") {
     return <OpenCodeGoMark className={className} title={title} size={size} />;
+  }
+  if (id === "volcano-ark") {
+    return <VolcanoArkMark className={className} title={title} size={size} />;
   }
   return null;
 });

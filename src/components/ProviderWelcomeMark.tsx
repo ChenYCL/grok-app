@@ -5,11 +5,13 @@
  *   light theme, white in dark theme (CSS `deepseek-full-mark__ink`).
  * - OpenCode: simple monochrome wordmark (`docs/svg/opencode-wordmark-simple-*.svg`)
  *   — white in dark theme, black in light theme via `currentColor`.
+ * - Volcengine Ark (火山方舟): brand icon + “火山方舟” text.
  *
  * Inline SVG (no network fetch) — paths sourced from `docs/svg/`.
  */
 
 import { memo } from "react";
+import { ProviderBrandIcon } from "@/components/ProviderBrandIcon";
 
 /** DeepSeek full wordmark. Blue in light mode, white in dark (CSS-driven). */
 export const DeepSeekFullMark = memo(function DeepSeekFullMark({
@@ -86,5 +88,32 @@ export const OpenCodeWordmark = memo(function OpenCodeWordmark({
           <path fill="currentColor" d="M541.535 32.8571H508.715V82.1428H541.535V32.8571ZM557.946 98.5714H492.305V16.4286H541.535V0H557.946V98.5714Z" />
           <path fill="currentColor" d="M590.77 32.8573V49.2859H623.59V32.8573H590.77ZM640 65.7144H590.77V82.143H640V98.5716H574.359V16.4287H640V65.7144Z" />
     </svg>
+  );
+});
+
+/**
+ * Volcengine Ark welcome mark: brand icon + “火山方舟” label.
+ * Horizontal row, centered above the empty-session composer
+ * (icon 47px; label scaled ~+30% from prior size).
+ */
+export const VolcanoArkWelcomeMark = memo(function VolcanoArkWelcomeMark({
+  className = "",
+  title,
+}: {
+  className?: string;
+  title?: string;
+}) {
+  const label = title ?? "火山方舟";
+  return (
+    <div
+      className={`volcano-ark-welcome-mark ${className}`.trim()}
+      role="img"
+      aria-label={label}
+    >
+      <ProviderBrandIcon brand="volcano-ark" size={47} />
+      <span className="volcano-ark-welcome-mark__text" aria-hidden>
+        火山方舟
+      </span>
+    </div>
   );
 });

@@ -11,11 +11,19 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-08-06
+
+> **Highlight:** Volcengine Ark (火山方舟) provider preset with DeepSeek V4 Flash, plus Base URL full-path so Coding Plan roots are not forced to `/v1`.
+>
+> **中文 · 亮点：** 内置火山方舟预设（DeepSeek V4 Flash）+ Base URL「完整路径」，Coding Plan 根路径不再被强行补 `/v1`。
+
 ### Added
-- **Provider Base URL “Full path” switch**: Next to the Base URL field label. When on, host does not auto-append `/v1` (stored as `app_base_url_full_path` in agent-home `config.toml`). Default off keeps legacy OpenAI-compatible `/v1` normalization so existing relays are unchanged. Enables Volcengine Ark Coding Plan roots (`…/api/coding`, `…/api/coding/v3`) and similar non-`/v1` gateways (#527).
+- **Provider Base URL “Full path” switch**: Next to the Base URL field label. When on, host does not auto-append `/v1` (stored as `app_base_url_full_path` in agent-home `config.toml`). Default off keeps legacy OpenAI-compatible `/v1` normalization so existing relays are unchanged. Enables Volcengine Ark Coding Plan roots (`…/api/coding`, `…/api/coding/v3`, `…/api/plan/v3`) and similar non-`/v1` gateways (#527).
+- **Volcengine Ark (火山方舟) preset**: Add-provider gallery ships a one-click channel — `https://ark.cn-beijing.volces.com/api/plan/v3` with **full path**, `chat_completions`, model **`deepseek-v4-flash`** (DeepSeek V4 Flash), Grok-style efforts, console API-key link, brand logo, and empty-session welcome mark (logo +「火山方舟」). Existing local ids such as `huo-shan` / Ark hosts resolve the same brand (#527).
 
 **中文 · 新增**
-- **服务商 Base URL「完整路径」开关**：打开后不再自动拼接 `/v1`，兼容火山方舟 Coding Plan 等非 `/v1` 根路径；默认关闭，老配置行为不变（#527）。
+- **服务商 Base URL「完整路径」开关**：打开后不再自动拼接 `/v1`，兼容火山方舟 Coding Plan / Plan 等非 `/v1` 根路径；默认关闭，老配置行为不变（#527）。
+- **火山方舟预设**：添加提供商一键预填完整路径 + Chat Completions + **DeepSeek V4 Flash**（`deepseek-v4-flash`）、品牌 logo 与空会话欢迎字标；已有 `huo-shan` 等通道按主机名识别同一品牌（#527）。
 
 ## [0.2.7] - 2026-08-06
 

@@ -142,8 +142,8 @@ function formFromPreset(preset: ProviderPreset): FormState {
     id: preset.suggestedId,
     name: preset.name,
     baseUrl: preset.baseUrl,
-    // Presets already include /v1 when needed — keep auto-normalize off only if user opts in.
-    baseUrlFullPath: false,
+    // Most presets ship with `/v1`; Volcengine Ark Coding Plan needs full path as typed.
+    baseUrlFullPath: !!preset.baseUrlFullPath,
     apiKey: "",
     apiBackend: preset.apiBackend,
     models: preset.models.map((m) => ({

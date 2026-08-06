@@ -6,7 +6,11 @@
 import type { ProviderEffortEntry, ProviderModelEntry } from "@/lib/api";
 
 /** Known brand marks with dedicated logos (see ProviderBrandIcon). */
-export type ProviderBrandId = "deepseek" | "amux" | "opencode-go";
+export type ProviderBrandId =
+  | "deepseek"
+  | "amux"
+  | "opencode-go"
+  | "volcano-ark";
 
 export type ProviderPreset = {
   id: string;
@@ -15,6 +19,11 @@ export type ProviderPreset = {
   /** Suggested config section id. */
   suggestedId: string;
   baseUrl: string;
+  /**
+   * When true, store Base URL as typed (no auto `/v1`).
+   * Needed for Volcengine Ark Coding Plan roots like `…/api/plan/v3`.
+   */
+  baseUrlFullPath?: boolean;
   apiBackend: "responses" | "chat_completions" | "messages";
   models: ProviderModelEntry[];
   efforts: ProviderEffortEntry[];
@@ -62,6 +71,14 @@ export const AMUX_MODELS: ProviderModelEntry[] = [
 /** Yun API (云驿 yunyi) OpenAI-compatible relay. */
 export const YUN_API_MODELS: ProviderModelEntry[] = [
   { id: "grok-4.5", name: "Grok 4.5" },
+];
+
+/**
+ * Volcengine Ark (火山方舟) Coding Plan — OpenAI-compatible chat_completions
+ * at a non-`/v1` full path root (requires baseUrlFullPath).
+ */
+export const VOLCANO_ARK_MODELS: ProviderModelEntry[] = [
+  { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
 ];
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
@@ -121,6 +138,23 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     apiKeyUrl: "https://opencode.ai/",
     brandId: "opencode-go",
   },
+  /**
+   * Volcengine Ark (火山方舟) Coding Plan.
+   * Full-path root — do not auto-append `/v1` (app_base_url_full_path).
+   */
+  {
+    id: "volcano-ark",
+    name: "火山方舟",
+    suggestedId: "volcano-ark",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3",
+    baseUrlFullPath: true,
+    apiBackend: "chat_completions",
+    models: VOLCANO_ARK_MODELS,
+    efforts: GROK_CHANNEL_EFFORTS.map((e) => ({ ...e })),
+    blurbKey: "prov.preset.volcanoArk.blurb",
+    apiKeyUrl: "https://console.volcengine.com/ark",
+    brandId: "volcano-ark",
+  },
 ];
 
 export function findProviderPreset(id: string): ProviderPreset | undefined {
@@ -137,6 +171,17 @@ function matchPreset(opts: {
       (p) => p.id === pid || p.suggestedId === pid,
     );
     if (byId) return byId;
+    // Legacy local ids that still map to a known brand (e.g. huo-shan → 火山方舟).
+    if (
+      pid === "huo-shan" ||
+      pid === "huoshan" ||
+      pid === "volcengine-ark" ||
+      pid === "volcengine" ||
+      pid === "ark"
+    ) {
+      const ark = PROVIDER_PRESETS.find((p) => p.id === "volcano-ark");
+      if (ark) return ark;
+    }
   }
   let host = "";
   try {
@@ -145,6 +190,17 @@ function matchPreset(opts: {
     host = "";
   }
   if (!host) return undefined;
+  // Volcengine Ark hosts: ark.*.volces.com / *.volcengineapi.com
+  if (
+    host.includes("volces.com") ||
+    host.includes("volcengineapi.com") ||
+    host.endsWith("volcengine.com")
+  ) {
+    if (host.startsWith("ark.") || host.includes(".ark.") || host.includes("ark")) {
+      const ark = PROVIDER_PRESETS.find((p) => p.id === "volcano-ark");
+      if (ark) return ark;
+    }
+  }
   for (const p of PROVIDER_PRESETS) {
     try {
       if (new URL(p.baseUrl).host.toLowerCase() === host) return p;

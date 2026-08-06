@@ -49,6 +49,7 @@ export const zhTWProviders = {
   "prov.preset.amux.blurb": "Amux 中轉 — Grok 4.5，推理 low/medium/high",
   "prov.preset.yunApi.blurb": "Yun API（雲驛）— Grok 4.5，推理 low/medium/high",
   "prov.preset.opencodeGo.blurb": "OpenCode Zen Go — DeepSeek V4 須用 Chat Completions（勿用 Responses）",
+  "prov.preset.volcanoArk.blurb": "火山方舟 Coding Plan — 完整路徑 + Chat Completions，DeepSeek V4 Flash",
   "prov.getApiKey": "取得 API Key",
   "prov.efforts": "思考深度",
   "prov.effortsHint": "出現在輸入框推理強度選單中；取值作為 reasoning_effort 傳給上游。",
