@@ -127,6 +127,8 @@ Host must rebind both sides on every switch and before each ACP spawn (`prepare_
 | `providers_balance` | Account balance / plan probe (Phase 1: **DeepSeek only**) |
 | `providers_cc_switch_scan` | Read-only scan of local **CC Switch** Grok Build providers |
 | `providers_cc_switch_import` | Import selected CC Switch rows into custom providers |
+| `editors_list` | Detected local IDEs |
+| `open_in_editor` | Open path in chosen editor |
 
 ### Balance probe (Phase 1: DeepSeek)
 
@@ -156,8 +158,6 @@ Wire shape (confirmed):
 ```
 
 Future providers (Coding Plan quotas, etc.) add adapters under the same `providers_balance` command.
-| `editors_list` | Detected local IDEs |
-| `open_in_editor` | Open path in chosen editor |
 
 **Live apply (#376):** Do **not** only park the live agent (`session_disconnect`) after provider edits — parked processes keep old OIDC/`config.toml` in memory. Host `recycle_all_agents(..., "provider_route")` after route-affecting writes. Settings UI always clears “Saving…” in `finally` and soft-fails apply errors with a toast (config is already on disk).
 
