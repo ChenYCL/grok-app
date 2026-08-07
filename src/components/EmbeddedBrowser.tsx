@@ -29,13 +29,18 @@ import {
   isTauri,
   sideBrowserClose,
   sideBrowserCreate,
+  sideBrowserEval,
   sideBrowserInstallDownloadHook,
   sideBrowserNavigate,
   sideBrowserReload,
 } from "@/lib/api";
-import type { SideBrowserDownloadEvent } from "@/lib/api";
+import type {
+  SideBrowserDownloadEvent,
+  SideBrowserPageLoadEvent,
+} from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { IconExternalLink, IconRefresh } from "@/components/icons";
+import { Spinner } from "@/components/ui/spinner";
 import {
   applyFloatExcludeToBounds,
   getNativeWebviewFloatExclude,
@@ -107,8 +112,11 @@ function hostRectForWebview(hostEl: HTMLElement): HostRectPx {
 
 const WEBVIEW_LABEL_DEFAULT = "resource-browser";
 const DOWNLOAD_EVENT = "side-browser://download";
+const PAGE_LOAD_EVENT = "side-browser://page-load";
 const CREATE_TIMEOUT_MS = 15_000;
 const CLOSE_GRACE_MS = 150;
+/** Drop loading UI if host never emits Finished (network hang / offline). */
+const PAGE_LOAD_TIMEOUT_MS = 45_000;
 
 // React StrictMode and quick pane remounts run effect cleanup immediately
 // before mounting the same label again. Closing the native WebView in that
@@ -184,6 +192,8 @@ export interface EmbeddedBrowserProps {
    * (address-bar Enter on same URL / explicit refresh).
    */
   reloadKey?: number;
+  /** Notify parent chrome (side BrowserTab) when document load state changes. */
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 /** Public label scheme for automation / host commands. */
@@ -217,6 +227,7 @@ export function EmbeddedBrowser({
   className = "",
   instanceId,
   reloadKey = 0,
+  onLoadingChange,
 }: EmbeddedBrowserProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   // Dynamic import type — keep loose to avoid hard coupling on Tauri version.
@@ -226,6 +237,12 @@ export function EmbeddedBrowser({
   const bootUrlRef = useRef(url.trim());
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  /**
+   * Document navigation in flight — chrome progress only.
+   * Never hide/show the native webview for this flag: WK/WebView2 page-load
+   * events fire per frame/redirect and hide thrash makes the pane flicker.
+   */
+  const [pageLoading, setPageLoading] = useState(true);
   /** Short status for download save result (host event). */
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
   /** DOM overlays (floating menus) that must paint above native Webviews. */
@@ -234,6 +251,7 @@ export function EmbeddedBrowser({
   const webviewLabel = sideBrowserWebviewLabel(instanceId);
   const activeRef = useRef(active);
   const coveredRef = useRef(covered);
+  const pageLoadingRef = useRef(pageLoading);
   const lastBoundsRef = useRef<BoundsPx | null>(null);
   /** Last applied visibility — skip redundant hide/show IPC on every RO tick. */
   const lastVisibleRef = useRef<boolean | null>(null);
@@ -243,12 +261,18 @@ export function EmbeddedBrowser({
   const applyBoundsRef = useRef<() => Promise<void>>(async () => undefined);
   const roRafRef = useRef(0);
   const downloadStatusTimerRef = useRef(0);
+  const pageLoadTimeoutRef = useRef(0);
+  /** Coalesce Finished bursts (iframe / redirect chains). */
+  const pageLoadIdleTimerRef = useRef(0);
   const injectTimersRef = useRef<number[]>([]);
   /** Last reloadKey we already applied (skip 0 / initial). */
   const appliedReloadKeyRef = useRef(0);
+  const onLoadingChangeRef = useRef(onLoadingChange);
   activeRef.current = active;
   coveredRef.current = covered;
+  pageLoadingRef.current = pageLoading;
   bootUrlRef.current = url.trim();
+  onLoadingChangeRef.current = onLoadingChange;
 
   const flashDownloadStatus = (msg: string) => {
     setDownloadStatus(msg);
@@ -256,6 +280,60 @@ export function EmbeddedBrowser({
     downloadStatusTimerRef.current = window.setTimeout(() => {
       setDownloadStatus(null);
     }, 4200);
+  };
+
+  const clearPageLoadTimeout = () => {
+    window.clearTimeout(pageLoadTimeoutRef.current);
+    pageLoadTimeoutRef.current = 0;
+  };
+
+  const clearPageLoadIdleTimer = () => {
+    window.clearTimeout(pageLoadIdleTimerRef.current);
+    pageLoadIdleTimerRef.current = 0;
+  };
+
+  /**
+   * Update loading chrome only — never touches native webview visibility.
+   * No-ops when state is unchanged to avoid parent chrome thrash.
+   */
+  const markPageLoading = (loading: boolean) => {
+    if (loading) {
+      clearPageLoadIdleTimer();
+      if (pageLoadingRef.current) {
+        // Already loading: only refresh the hang timeout.
+        clearPageLoadTimeout();
+        pageLoadTimeoutRef.current = window.setTimeout(() => {
+          if (!pageLoadingRef.current) return;
+          pageLoadingRef.current = false;
+          setPageLoading(false);
+          onLoadingChangeRef.current?.(false);
+        }, PAGE_LOAD_TIMEOUT_MS);
+        return;
+      }
+      pageLoadingRef.current = true;
+      setPageLoading(true);
+      onLoadingChangeRef.current?.(true);
+      clearPageLoadTimeout();
+      pageLoadTimeoutRef.current = window.setTimeout(() => {
+        if (!pageLoadingRef.current) return;
+        pageLoadingRef.current = false;
+        setPageLoading(false);
+        onLoadingChangeRef.current?.(false);
+      }, PAGE_LOAD_TIMEOUT_MS);
+      return;
+    }
+
+    // Finished: brief settle so iframe/redirect Started→Finished pairs do not
+    // strobe the progress bar (and BrowserTab status) on every subresource.
+    clearPageLoadTimeout();
+    clearPageLoadIdleTimer();
+    pageLoadIdleTimerRef.current = window.setTimeout(() => {
+      pageLoadIdleTimerRef.current = 0;
+      if (!pageLoadingRef.current) return;
+      pageLoadingRef.current = false;
+      setPageLoading(false);
+      onLoadingChangeRef.current?.(false);
+    }, 120);
   };
 
   const clearInjectTimers = () => {
@@ -335,6 +413,9 @@ export function EmbeddedBrowser({
       height: clipped.height,
     });
 
+    // Keep webview visible during document loads — progress lives in chrome.
+    // Tying visibility to pageLoading caused hide/show flicker on every
+    // redirect / iframe PageLoadEvent.
     const wantShow = activeRef.current && !coveredRef.current;
     const boundsSame = boundsNearlyEqual(lastBoundsRef.current, next, 0.5);
 
@@ -436,6 +517,42 @@ export function EmbeddedBrowser({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [webviewLabel, locale]);
 
+  // Page load start/finish from host (WKWebView / WebView2 PageLoadEvent).
+  // Chrome-only: never scheduleSync / hide webview here (flicker source).
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const off = await listen<SideBrowserPageLoadEvent>(
+          PAGE_LOAD_EVENT,
+          (ev) => {
+            const p = ev.payload;
+            if (!p || p.label !== webviewLabel) return;
+            if (p.phase === "started") {
+              markPageLoading(true);
+            } else if (p.phase === "finished") {
+              markPageLoading(false);
+            }
+          },
+        );
+        if (cancelled) off();
+        else unlisten = off;
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      clearPageLoadTimeout();
+      clearPageLoadIdleTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webviewLabel]);
+
   // Create once per label. URL changes navigate in-place (do not tear down WKWebView).
   useEffect(() => {
     if (!isTauri()) return;
@@ -453,6 +570,7 @@ export function EmbeddedBrowser({
       cancelPendingClose(webviewLabel);
       setError(null);
       setReady(false);
+      markPageLoading(true);
       try {
         // Warm dpi module before create so first drag frames don't pay import cost.
         void loadDpi();
@@ -511,6 +629,8 @@ export function EmbeddedBrowser({
         lastBoundsRef.current = { x, y, width: w, height: h };
         await webview.setPosition(new LogicalPosition(x, y));
         await webview.setSize(new LogicalSize(w, h));
+        // Show as soon as the child exists — do not wait on pageLoading
+        // (that path caused navigate-time hide/show flicker).
         const wantShow = activeRef.current && !coveredRef.current;
         if (wantShow) await webview.show();
         else await webview.hide();
@@ -524,13 +644,40 @@ export function EmbeddedBrowser({
 
         // If URL changed during boot, navigate once (no recreate).
         const latest = bootUrlRef.current;
-        if (latest && latest !== target) {
+        const navigatedDuringBoot = !!(latest && latest !== target);
+        if (navigatedDuringBoot) {
           try {
+            markPageLoading(true);
             await sideBrowserNavigate(webviewLabel, latest);
             currentUrlRef.current = latest;
             scheduleDownloadHookInject();
           } catch (e) {
             console.error("[EmbeddedBrowser] post-boot navigate", e);
+          }
+        }
+
+        // Race fix: when reusing an already-complete webview (no navigate),
+        // PageLoad Finished may never re-fire. Probe readyState once. Skip
+        // after boot navigates — host page-load events own that path.
+        if (!cancelled && pageLoadingRef.current && !navigatedDuringBoot) {
+          try {
+            const raw = await sideBrowserEval(
+              webviewLabel,
+              "(function(){try{return document.readyState||''}catch(e){return ''}})()",
+            );
+            const state = String(raw || "")
+              .replace(/^"|"$/g, "")
+              .trim()
+              .toLowerCase();
+            if (
+              !cancelled &&
+              pageLoadingRef.current &&
+              (state === "complete" || state === "interactive")
+            ) {
+              markPageLoading(false);
+            }
+          } catch {
+            /* ignore — host page-load events still drive the common path */
           }
         }
 
@@ -573,6 +720,7 @@ export function EmbeddedBrowser({
           console.error("[EmbeddedBrowser] create failed", e);
           setError(String(e));
           setReady(false);
+          markPageLoading(false);
         }
       }
     };
@@ -587,6 +735,7 @@ export function EmbeddedBrowser({
       cancelled = true;
       cancelAnimationFrame(roRafRef.current);
       clearInjectTimers();
+      clearPageLoadTimeout();
       resizeObs?.disconnect();
       io?.disconnect();
       window.removeEventListener("resize", onResize);
@@ -612,6 +761,8 @@ export function EmbeddedBrowser({
     if (!webviewRef.current) return;
 
     let cancelled = false;
+    // Chrome progress only — leave native webview painted (no hide/show).
+    markPageLoading(true);
     void (async () => {
       try {
         await sideBrowserNavigate(webviewLabel, target);
@@ -619,11 +770,11 @@ export function EmbeddedBrowser({
         currentUrlRef.current = target;
         setError(null);
         scheduleDownloadHookInject();
-        scheduleSync();
       } catch (e) {
         if (!cancelled) {
           console.error("[EmbeddedBrowser] navigate failed", e);
           setError(String(e));
+          markPageLoading(false);
         }
       }
     })();
@@ -641,17 +792,18 @@ export function EmbeddedBrowser({
     if (!webviewRef.current) return;
 
     let cancelled = false;
+    markPageLoading(true);
     void (async () => {
       try {
         await sideBrowserReload(webviewLabel);
         if (cancelled) return;
         setError(null);
         scheduleDownloadHookInject();
-        scheduleSync();
       } catch (e) {
         if (!cancelled) {
           console.error("[EmbeddedBrowser] reload failed", e);
           setError(String(e));
+          markPageLoading(false);
         }
       }
     })();
@@ -675,6 +827,8 @@ export function EmbeddedBrowser({
       scheduleRef.current?.dispose();
       scheduleRef.current = null;
       clearInjectTimers();
+      clearPageLoadTimeout();
+      clearPageLoadIdleTimer();
     };
   }, []);
 
@@ -688,14 +842,27 @@ export function EmbeddedBrowser({
     void (async () => {
       try {
         setError(null);
+        markPageLoading(true);
         await sideBrowserReload(webviewLabel);
         scheduleDownloadHookInject();
-        scheduleSync();
       } catch (e) {
         setError(String(e));
+        markPageLoading(false);
       }
     })();
   };
+
+  // Full-host spinner only while the child webview is being created.
+  // In-navigation feedback is chrome progress only (native surface stays up).
+  const showBootLoading = !ready && !error;
+  const displayUrl = url.trim();
+
+  // Dev / browser preview: iframe has no host page-load events.
+  useEffect(() => {
+    if (isTauri()) return;
+    markPageLoading(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, reloadKey]);
 
   if (!isTauri()) {
     return (
@@ -704,6 +871,16 @@ export function EmbeddedBrowser({
           <span className="embedded-browser__url" title={url}>
             {url}
           </span>
+          {pageLoading ? (
+            <span
+              className="embedded-browser__load-status"
+              role="status"
+              aria-live="polite"
+            >
+              <Spinner size={12} />
+              {tr("resources.browserLoading")}
+            </span>
+          ) : null}
           <button
             type="button"
             className="chrome-btn"
@@ -713,6 +890,17 @@ export function EmbeddedBrowser({
             <IconExternalLink size={14} />
           </button>
         </div>
+        <div
+          className="embedded-browser__progress"
+          data-active={pageLoading ? "1" : "0"}
+          role="progressbar"
+          aria-hidden={!pageLoading}
+          aria-label={tr("resources.browserLoadingAria")}
+        >
+          {pageLoading ? (
+            <div className="embedded-browser__progress-bar" />
+          ) : null}
+        </div>
         <iframe
           key={`${url}::${reloadKey}`}
           className="rp-preview__frame rp-preview__frame--browser"
@@ -720,6 +908,7 @@ export function EmbeddedBrowser({
           src={url}
           referrerPolicy="no-referrer"
           allow="fullscreen"
+          onLoad={() => markPageLoading(false)}
         />
         <div className="embedded-browser__hint">
           {tr("resources.browserIframeHint")}
@@ -732,6 +921,7 @@ export function EmbeddedBrowser({
     <div
       className={"embedded-browser embedded-browser--native " + className}
       data-webview-label={webviewLabel}
+      data-page-loading={pageLoading ? "1" : "0"}
     >
       <div className="embedded-browser__bar">
         <span className="embedded-browser__url" title={url}>
@@ -745,14 +935,28 @@ export function EmbeddedBrowser({
           >
             {downloadStatus}
           </span>
+        ) : pageLoading ? (
+          <span
+            className="embedded-browser__load-status"
+            role="status"
+            aria-live="polite"
+          >
+            <Spinner size={12} />
+            {tr("resources.browserLoading")}
+          </span>
         ) : null}
         <button
           type="button"
           className="chrome-btn"
           onClick={reload}
           title={tr("resources.browserReload")}
+          aria-busy={pageLoading}
         >
-          <IconRefresh size={14} />
+          <span
+            className={pageLoading ? "embedded-browser__reload-spin" : undefined}
+          >
+            <IconRefresh size={14} />
+          </span>
         </button>
         <button
           type="button"
@@ -764,13 +968,24 @@ export function EmbeddedBrowser({
         </button>
       </div>
       <div
+        className="embedded-browser__progress"
+        data-active={pageLoading || showBootLoading ? "1" : "0"}
+        role="progressbar"
+        aria-hidden={!(pageLoading || showBootLoading)}
+        aria-label={tr("resources.browserLoadingAria")}
+      >
+        <div className="embedded-browser__progress-bar" />
+      </div>
+      <div
         ref={hostRef}
         className="embedded-browser__host"
         data-native-webview-host=""
         data-webview-label={webviewLabel}
         data-ready={ready ? "1" : "0"}
+        data-page-loading={pageLoading ? "1" : "0"}
         data-webview-covered={covered ? "1" : "0"}
         aria-label={title || url}
+        aria-busy={pageLoading || showBootLoading}
       >
         {error ? (
           <div className="rp-preview__msg" role="alert">
@@ -784,8 +999,22 @@ export function EmbeddedBrowser({
               {tr("resources.openExternal")}
             </button>
           </div>
-        ) : !ready ? (
-          <div className="rp-preview__msg">{tr("resources.loading")}</div>
+        ) : showBootLoading ? (
+          <div
+            className="embedded-browser__loading"
+            role="status"
+            aria-live="polite"
+          >
+            <Spinner size={22} />
+            <div className="embedded-browser__loading-text">
+              {tr("resources.loading")}
+            </div>
+            {displayUrl ? (
+              <div className="embedded-browser__loading-url" title={displayUrl}>
+                {displayUrl}
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className="embedded-browser__host-fill" aria-hidden />
         )}

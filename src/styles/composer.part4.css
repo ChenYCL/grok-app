@@ -122,6 +122,84 @@
   background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
 }
 
+.embedded-browser__load-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.2;
+  min-height: 18px;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent, #3b82f6) 12%, var(--bg-hover));
+}
+
+/* Thin indeterminate bar under chrome (visible above native webview).
+ * Height is always reserved so toggling load state never reflows the host
+ * rect (native webview setSize thrash = flicker). */
+.embedded-browser__progress {
+  position: relative;
+  flex-shrink: 0;
+  height: 2px;
+  width: 100%;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none;
+}
+
+.embedded-browser__progress[data-active="1"] {
+  background: color-mix(in srgb, var(--border-subtle) 70%, transparent);
+}
+
+.embedded-browser__progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  border-radius: 1px;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent, #3b82f6) 35%,
+    color-mix(in srgb, var(--accent, #3b82f6) 80%, #fff) 55%,
+    var(--accent, #3b82f6) 75%,
+    transparent 100%
+  );
+}
+
+.embedded-browser__progress[data-active="1"] .embedded-browser__progress-bar {
+  opacity: 1;
+  animation: embedded-browser-progress 1.1s ease-in-out infinite;
+}
+
+@keyframes embedded-browser-progress {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.embedded-browser__reload-spin {
+  display: inline-flex;
+  animation: embedded-browser-spin 0.85s linear infinite;
+}
+
+@keyframes embedded-browser-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .embedded-browser__host {
   flex: 1;
   min-height: 0;
@@ -138,6 +216,43 @@
   height: 100%;
   /* Native Webview paints over this rectangle */
   background: transparent;
+}
+
+/* Shown under / instead of white webview while a document is loading. */
+.embedded-browser__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  background:
+    radial-gradient(
+      120% 80% at 50% 0%,
+      color-mix(in srgb, var(--accent, #3b82f6) 8%, transparent),
+      transparent 60%
+    ),
+    var(--bg-main);
+}
+
+.embedded-browser__loading-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.embedded-browser__loading-url {
+  max-width: min(520px, 90%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-tertiary);
 }
 
 .embedded-browser__hint {

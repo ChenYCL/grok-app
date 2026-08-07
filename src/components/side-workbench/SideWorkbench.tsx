@@ -89,6 +89,21 @@ export function SideWorkbench({
     [onStateChange],
   );
 
+  /**
+   * After close mutations: if the strip is empty, collapse the right aside
+   * (same as the chrome “hide side” control) so users are not left on the
+   * empty picker full-height panel.
+   */
+  const applyCloseState = useCallback(
+    (next: SideWorkbenchState) => {
+      setState(next);
+      if (next.tabs.length === 0) {
+        onCloseSide();
+      }
+    },
+    [setState, onCloseSide],
+  );
+
   const active = useMemo(() => activeSideTab(state), [state]);
   const hasFileTabs = state.tabs.some((t) => t.kind === "file");
   const activeFilePath =
@@ -168,9 +183,9 @@ export function SideWorkbench({
         expanded={state.expanded}
         dockComposer={dockComposer}
         onActivate={(id) => setState(setActiveSideTab(state, id))}
-        onCloseTab={(id) => setState(closeSideTab(state, id))}
+        onCloseTab={(id) => applyCloseState(closeSideTab(state, id))}
         onCloseOtherTabs={(id) => setState(closeOtherSideTabs(state, id))}
-        onCloseAllTabs={() => setState(closeAllSideTabs(state))}
+        onCloseAllTabs={() => applyCloseState(closeAllSideTabs(state))}
         onCloseTabsToLeft={(id) => setState(closeSideTabsToLeft(state, id))}
         onCloseTabsToRight={(id) => setState(closeSideTabsToRight(state, id))}
         onPickNew={pick}

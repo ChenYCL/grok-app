@@ -86,6 +86,13 @@ export type SideBrowserDownloadEvent = {
   fileName?: string | null;
 };
 
+/** Host event `side-browser://page-load` payload (loading bar UX). */
+export type SideBrowserPageLoadEvent = {
+  phase: "started" | "finished" | string;
+  label: string;
+  url: string;
+};
+
 export async function sideBrowserCreate(opts: {
   label: string;
   url: string;

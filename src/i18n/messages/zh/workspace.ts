@@ -207,6 +207,8 @@ export const zhWorkspace = {
   "resources.browserReload": "刷新",
   "resources.browserFailed": "内置浏览器无法加载此页面。",
   "resources.browserIframeHint": "部分网站禁止 iframe 嵌入。请用「用系统应用打开」，或在桌面端用原生 WebView 浏览。",
+  "resources.browserLoading": "页面加载中…",
+  "resources.browserLoadingAria": "页面正在加载",
   "resources.browserDownloadStarted": "正在下载 {name}…",
   "resources.browserDownloadSaved": "已保存 {name}",
   "resources.browserDownloadFailed": "下载失败",

@@ -570,7 +570,8 @@ html[data-wallpaper="1"].platform-mac[data-theme="light"]
   flex-direction: column;
 }
 
-/* Nested EmbeddedBrowser already has its own bar — hide duplicate when we own URL bar */
+/* Nested EmbeddedBrowser already has its own bar — hide duplicate when we own URL bar.
+ * Keep the progress strip visible so navigations are never a silent white panel. */
 .sw-browser__host .embedded-browser__bar {
   display: none;
 }
@@ -578,6 +579,11 @@ html[data-wallpaper="1"].platform-mac[data-theme="light"]
 .sw-browser__host .embedded-browser {
   flex: 1;
   min-height: 0;
+}
+
+.sw-browser__host .embedded-browser__progress {
+  /* Sit flush under the side tab address bar */
+  z-index: 1;
 }
 
 /* Persist browser/terminal hosts across tab switches (keep PTY/xterm alive) */

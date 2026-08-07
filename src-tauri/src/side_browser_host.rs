@@ -39,6 +39,7 @@ use tauri::{LogicalPosition, LogicalSize, Url};
 
 const LABEL_PREFIX: &str = "resource-browser";
 const DOWNLOAD_EVENT: &str = "side-browser://download";
+const PAGE_LOAD_EVENT: &str = "side-browser://page-load";
 
 /// url → staging path chosen in `Requested` (macOS finish omits path).
 static PENDING_DOWNLOADS: LazyLock<Mutex<HashMap<String, PendingDownload>>> =
@@ -71,9 +72,32 @@ pub struct SideBrowserDownloadPayload {
     pub file_name: Option<String>,
 }
 
+/// Payload for `side-browser://page-load` (loading bar / anti-white-screen UX).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SideBrowserPageLoadPayload {
+    /// `started` | `finished`
+    pub phase: String,
+    pub label: String,
+    pub url: String,
+}
+
 /// Emit download status for the EmbeddedBrowser status line (HTTP + blob paths).
 pub fn emit_download_payload(app: &AppHandle, payload: SideBrowserDownloadPayload) {
     emit_download(app, payload);
+}
+
+fn emit_page_load(app: &AppHandle, phase: &str, label: &str, url: &str) {
+    if let Err(e) = app.emit(
+        PAGE_LOAD_EVENT,
+        SideBrowserPageLoadPayload {
+            phase: phase.into(),
+            label: label.into(),
+            url: url.into(),
+        },
+    ) {
+        tracing::warn!(error = %e, "side-browser page-load emit failed");
+    }
 }
 
 fn validate_label(label: &str) -> Result<(), String> {
@@ -301,6 +325,7 @@ pub fn create(
             .map(|current| current != parsed)
             .unwrap_or(true);
         if should_navigate {
+            emit_page_load(app, "started", &label, &url);
             existing
                 .navigate(parsed)
                 .map_err(|e| format!("reuse side browser navigate: {e}"))?;
@@ -319,17 +344,35 @@ pub fn create(
     let polyfill = crate::side_browser_blob::blob_download_polyfill(&label);
     let polyfill_reload = polyfill.clone();
     let title_label = label.clone();
+    let page_load_label = label.clone();
     // Do not steal keyboard focus from the main chat/composer on create —
     // users click the page when they want to type there.
+    // First document load starts immediately after create.
+    emit_page_load(app, "started", &label, &url);
     let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
         .accept_first_mouse(true)
         .focused(false)
         .initialization_script(polyfill)
-        // Re-assert after every full document load (init script can miss remote
-        // navigations). Polyfill early-returns if already installed — cheap.
+        // Drive UI loading bar + re-assert download polyfill after navigations.
+        // Polyfill early-returns if already installed — cheap.
         .on_page_load(move |webview, payload| {
-            if matches!(payload.event(), PageLoadEvent::Finished) {
-                let _ = webview.eval(polyfill_reload.clone());
+            let url = payload.url().to_string();
+            let label = {
+                let live = webview.label().to_string();
+                if live.is_empty() {
+                    page_load_label.clone()
+                } else {
+                    live
+                }
+            };
+            match payload.event() {
+                PageLoadEvent::Started => {
+                    emit_page_load(&webview.app_handle(), "started", &label, &url);
+                }
+                PageLoadEvent::Finished => {
+                    emit_page_load(&webview.app_handle(), "finished", &label, &url);
+                    let _ = webview.eval(polyfill_reload.clone());
+                }
             }
         })
         .on_document_title_changed(move |webview, title| {
@@ -622,11 +665,16 @@ pub fn list(app: &AppHandle) -> Result<Vec<SideBrowserInfo>, String> {
 pub fn navigate(app: &AppHandle, label: String, url: String) -> Result<(), String> {
     let parsed = validate_url(&url)?;
     let wv = get_side_webview(app, &label)?;
+    // Optimistic start so the UI can paint a progress bar before WK/WebView2
+    // fires PageLoadEvent::Started (can lag on slow DNS / first byte).
+    emit_page_load(app, "started", &label, &url);
     wv.navigate(parsed).map_err(|e| format!("navigate: {e}"))
 }
 
 pub fn reload(app: &AppHandle, label: String) -> Result<(), String> {
     let wv = get_side_webview(app, &label)?;
+    let url = wv.url().ok().map(|u| u.to_string()).unwrap_or_default();
+    emit_page_load(app, "started", &label, &url);
     wv.reload().map_err(|e| format!("reload: {e}"))
 }
 
