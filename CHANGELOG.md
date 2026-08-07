@@ -11,6 +11,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- **Windows embedded browser stuck on “Loading…” (#530, #531)**: `side_browser_create` is now an async command that runs `window.add_child` via `spawn_blocking`, so the UI/IPC thread is not blocked while WebView2 waits on the platform event loop. Same-label webviews are reused (no sync close→recreate), frontend cleanup is delayed 150ms (StrictMode remount cancel), and create has a 15s timeout with error + open-external fallback. Thanks @Sixmin.
+
+**中文 · 修复**
+- **Windows 内嵌浏览器卡在「加载中」（#530, #531）**：`side_browser_create` 改为异步 + `spawn_blocking` 执行 `add_child`，避免同步 IPC 占住事件循环导致 WebView2 半创建死锁；同 label 复用、cleanup 延迟关闭、15 秒创建超时。感谢 @Sixmin。
+
 ## [0.2.9] - 2026-08-07
 
 > **Highlight:** Chat stability & UX hardening — session-switch transcript ownership (#529), turn-end tool layout + localized work duration, sidebar group/Shift multi-select, context-ring occupancy accuracy, and an in-place embedded browser (no more recreate).
