@@ -73,7 +73,8 @@ Frontend normalize (`src/lib/pathNormalize.ts`):
 |--------|--------|
 | Structured tool output (`rawOutput.path`, ChatCut `thumbnail*`) | Attach + **grant** path_scope (may live outside default roots) |
 | Freeform text / tool path_hint (reads, ls, markdown) | Attach only if file exists **and** already allowlisted or under session project — no incidental `~/.codex/plugins/...` logos |
-| Remote `https://` media (ChatCut S3 thumbs) | Always attach |
+| Freeform https in **terminal / file / search tool output** | **Never attach** — command stdout is arbitrary (a `curl` scrape listing image URLs would otherwise become an unrelated chat image card). Gate: `tool_is_media_capable` in `types.rs` |
+| Remote `https://` media (ChatCut S3 thumbs, web-research fetches) | Always attach |
 | False extracts (`/img_001.png` from `![](media/img_001.png)`) | Never attach; frontend `isDisplayableAttachmentPath` also drops them |
 
 History load calls `paths_classify` (grants existing local paths, drops missing locals) so thumbs do not flash as dead paperclips.

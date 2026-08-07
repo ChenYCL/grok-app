@@ -151,6 +151,98 @@ fn freeform_scans_okay_output_when_no_structured_path() {
 }
 
 #[test]
+fn terminal_output_urls_never_attach_freeform() {
+    // A curl scrape of a homepage prints image URLs as incidental stdout.
+    // The assistant message must not end up with an unrelated image card.
+    let raw = json!({
+        "status": "completed",
+        "rawInput": {"command": "curl -s https://mixailab.com/ | grep -oE 'https?://[^\"' ]+\\.jpg'"},
+        "rawOutput": {
+            "output": "https://wanxiang-home-website-hz.oss-cn-hangzhou.aliyuncs.com/prod/frontend/public/images/community-experts/azhen-irene.jpg"
+        }
+    });
+    assert!(!tool_is_media_capable(
+        "run_terminal_command",
+        "execute",
+        "Execute",
+        &raw
+    ));
+    // The gate runs before the scanner in events.rs; combined = no attach.
+    let combined = if tool_is_media_capable("run_terminal_command", "execute", "Execute", &raw) {
+        extract_freeform_media_path(&raw)
+    } else {
+        None
+    };
+    assert_eq!(combined, None);
+}
+
+#[test]
+fn read_file_output_does_not_attach_freeform_media() {
+    let raw = json!({
+        "status": "completed",
+        "rawOutput": {
+            "output": "README says see https://cdn.example.com/a/b/logo.png for the logo"
+        }
+    });
+    assert!(!tool_is_media_capable("read_file", "read", "Read", &raw));
+    let combined = if tool_is_media_capable("read_file", "read", "Read", &raw) {
+        extract_freeform_media_path(&raw)
+    } else {
+        None
+    };
+    assert_eq!(combined, None);
+}
+
+#[test]
+fn web_fetch_and_mcp_stay_media_capable() {
+    // Research fetches may legitimately carry relevant media refs (77d8c613
+    // wan-3-0 cover came from a web_fetch og:image). ChatCut MCP plain-text
+    // thumbs must keep attaching too.
+    let web = json!({"rawOutput": {"output": "image: https://cdn.evolink.ai/models/wan-3-0/wan-3-0-release-cover-v2.webp"}});
+    assert!(tool_is_media_capable("web_fetch", "fetch", "Web Fetch", &web));
+    assert_eq!(
+        extract_freeform_media_path(&web).as_deref(),
+        Some("https://cdn.evolink.ai/models/wan-3-0/wan-3-0-release-cover-v2.webp")
+    );
+
+    let mcp = json!({
+        "rawOutput": {
+            "type": "MCP",
+            "tool_name": "chatcut__create_project",
+            "output": "thumbnail: //cdn.example.com/a/b/thumb.jpg\n"
+        }
+    });
+    assert!(tool_is_media_capable(
+        "chatcut__create_project",
+        "use_tool",
+        "Use Tool",
+        &mcp
+    ));
+    assert_eq!(
+        extract_freeform_media_path(&mcp).as_deref(),
+        Some("https://cdn.example.com/a/b/thumb.jpg")
+    );
+}
+
+#[test]
+fn sparse_terminal_update_is_blocked_by_command_hint() {
+    // Status-only terminal payload lost its identity; the command argument is
+    // the terminal signal that must still gate freeform scanning.
+    let raw = json!({
+        "status": "completed",
+        "rawInput": {"command": "find /Users/me -name '*.jpg' | head"},
+        "rawOutput": {"output": "/Users/me/out/photo.jpg"}
+    });
+    assert!(!tool_is_media_capable("", "tool", "Tool", &raw));
+    let combined = if tool_is_media_capable("", "tool", "Tool", &raw) {
+        extract_freeform_media_path(&raw)
+    } else {
+        None
+    };
+    assert_eq!(combined, None);
+}
+
+#[test]
 fn prepare_rejects_missing_and_single_segment() {
     assert!(prepare_media_attachment_path("/img_001.png", None, true).is_none());
     assert!(

@@ -429,10 +429,29 @@ impl SessionManager {
                 }
 
                 // Project path for soft-attach gating (workspace media only).
-                let project_path = {
+                let (app_sid, project_path) = {
                     let guard = self.inner.lock();
-                    guard.as_ref().and_then(|s| s.project_path.clone())
+                    (
+                        guard.as_ref().map(|s| s.app_session_id.clone()),
+                        guard.as_ref().and_then(|s| s.project_path.clone()),
+                    )
                 };
+
+                // Tool identity for freeform-media gating: terminal / file /
+                // search tool output is arbitrary text — a curl scrape printing
+                // image URLs must not become an unrelated chat image card.
+                // Structured `rawOutput` media stays trusted unconditionally.
+                let (title_id, kind_id, name_id, _input_id) = resolve_tool_identity(
+                    &self.tool_identities,
+                    app_sid.as_deref().unwrap_or(""),
+                    &tool_call_id,
+                    &title,
+                    &kind,
+                );
+                let (kind_enr_id, title_enr_id) =
+                    enrich_tool_identity_from_raw(&raw, &title_id, &kind_id);
+                let freeform_media_capable =
+                    tool_is_media_capable(&name_id, &kind_enr_id, &title_enr_id, &raw);
 
                 // Structured (force-grant) vs freeform (soft: allowlist/project only).
                 // Soft avoids incidental tool reads of plugin logos under ~/.codex
@@ -442,7 +461,10 @@ impl SessionManager {
                 } else {
                     None
                 };
-                let freeform_media = if status == "completed" && structured_media.is_none() {
+                let freeform_media = if status == "completed"
+                    && structured_media.is_none()
+                    && freeform_media_capable
+                {
                     extract_freeform_media_path(&raw)
                 } else {
                     None

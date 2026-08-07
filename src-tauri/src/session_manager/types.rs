@@ -1284,6 +1284,77 @@ pub(super) fn extract_freeform_media_path(raw: &serde_json::Value) -> Option<Str
     None
 }
 
+/// True when a tool may legitimately surface media refs in its *freeform*
+/// output text (MCP / image / vision / web-research tools).
+///
+/// Terminal, file-read, search, edit and plan tools print arbitrary text —
+/// e.g. a `curl` scrape of a homepage lists image URLs purely incidentally.
+/// Scanning their output for https media would attach an unrelated image card
+/// to the assistant message (azhen-irene.jpg from a CDN-review curl).
+/// Structured `rawOutput` media (image_gen, ChatCut thumbnail keys) is still
+/// trusted unconditionally via `extract_structured_media_path`.
+///
+/// Kept capable: `web_fetch` / `web_search` (research content may carry
+/// relevant media refs), image/video tools, MCP `use_tool` (ChatCut
+/// plain-text thumbs) and unknown tools (default-on avoids regressing new
+/// MCP servers). Sparse terminal updates that lost their identity are caught
+/// by the `rawInput.command` hint.
+pub(super) fn tool_is_media_capable(
+    name: &str,
+    kind: &str,
+    title: &str,
+    raw: &serde_json::Value,
+) -> bool {
+    let n = name.to_ascii_lowercase();
+    let k = kind.to_ascii_lowercase();
+    let t = title.to_ascii_lowercase();
+    // Terminal command execution: stdout is arbitrary.
+    if k.contains("execute")
+        || k.contains("terminal")
+        || k.contains("shell")
+        || n.contains("terminal")
+        || n.contains("shell")
+        || t.contains("execute")
+        || t.contains("run command")
+    {
+        return false;
+    }
+    // Local file read / search / edit / plan tools (media-delivery.md:
+    // freeform from reads / ls / markdown attaches only allowlisted locals).
+    if n.starts_with("read")
+        || n.starts_with("list")
+        || n.starts_with("grep")
+        || n.starts_with("search")
+        || n.starts_with("write")
+        || n.starts_with("markdown")
+        || n.starts_with("todo")
+        || k.starts_with("read")
+        || k.starts_with("list")
+        || k.starts_with("grep")
+        || k.starts_with("search")
+        || k.starts_with("write")
+        || k.starts_with("markdown")
+    {
+        return false;
+    }
+    // Background task plumbing.
+    if n.contains("command_or_subagent") || n.contains("kill_command") || k.contains("subagent") {
+        return false;
+    }
+    // Sparse terminal updates may lack identity: a `command` argument is a
+    // free-text execution signal (MCP image tools never carry one).
+    let has_command = raw
+        .pointer("/rawInput/command")
+        .or_else(|| raw.pointer("/raw_input/command"))
+        .and_then(|v| v.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if has_command {
+        return false;
+    }
+    true
+}
+
 /// Pull media path/URL from ACP tool_call / tool_call_update payload
 /// (image_gen, image_edit, image_to_video, reference_to_video, MCP / ChatCut, …).
 /// Returns normalized local path or https URL (never protocol-relative / placeholders).
