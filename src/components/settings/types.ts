@@ -203,7 +203,23 @@ export interface SettingsPageProps {
     version: string | null;
     source: string;
     cliAuthPresent: boolean;
+    versionSupported?: boolean | null;
+    minVersion?: string | null;
+    recommendedVersion?: string | null;
+    meetsRecommended?: boolean | null;
+    agentBinarySkew?: boolean;
+    agentVersion?: string | null;
+    agentPath?: string | null;
   };
+  /** Returns outcome so Settings can toast without inventing host results. */
+  onCliRepairAgentSidecar?: () =>
+    | void
+    | Promise<{
+        ok: boolean;
+        agentVersion?: string | null;
+        error?: string | null;
+      } | void>;
+  cliAgentSkewRepairing?: boolean;
   onDoctor: () => void;
   onOpenReliability?: () => void;
   onOpenBatchAgents?: () => void;

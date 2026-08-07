@@ -6,6 +6,7 @@ import {
   effortDisplayLabel,
   effortUiOptionsForCatalog,
   effortsForModel,
+  isSpawnableReasoningEffort,
   isValidEffort,
   mapEffortToTargetCatalog,
   pickDefaultEffort,
@@ -102,9 +103,26 @@ describe("pickDefaultEffort", () => {
     expect(pickDefaultEffort(modelCustomOnly)).toBe("max");
   });
 
-  it("falls back to medium static default", () => {
+  it("falls back to high static default (Grok Build 1.0)", () => {
+    expect(DEFAULT_EFFORT).toBe("high");
+    expect(GROK_BUILD_EFFORTS.find((e) => e.isDefault)?.id).toBe("high");
     expect(pickDefaultEffort(null)).toBe(DEFAULT_EFFORT);
-    expect(pickDefaultEffort({ id: "x", label: "X" })).toBe("medium");
+    expect(pickDefaultEffort({ id: "x", label: "X" })).toBe("high");
+  });
+});
+
+describe("isSpawnableReasoningEffort", () => {
+  it("accepts catalog and custom tier ids", () => {
+    expect(isSpawnableReasoningEffort("low")).toBe(true);
+    expect(isSpawnableReasoningEffort("high")).toBe(true);
+    expect(isSpawnableReasoningEffort("max")).toBe(true);
+    expect(isSpawnableReasoningEffort("xhigh")).toBe(true);
+  });
+
+  it("rejects empty or invalid tokens", () => {
+    expect(isSpawnableReasoningEffort("")).toBe(false);
+    expect(isSpawnableReasoningEffort("  ")).toBe(false);
+    expect(isSpawnableReasoningEffort("-max")).toBe(false);
   });
 });
 

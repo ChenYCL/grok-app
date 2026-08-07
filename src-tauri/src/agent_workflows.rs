@@ -578,12 +578,66 @@ fn wait_thread<T: Send + 'static>(
     }
 }
 
+/// Tauri event for progressive workflow headless output (Settings live log).
+pub const WORKFLOW_RUN_PROGRESS_EVENT: &str = "workflows://run-progress";
+
 /// Soft-fail headless invoke of a registered workflow by name.
 ///
 /// Probe note: Grok Build has no `workflow` subcommand; the App uses short
 /// headless `grok -p` and asks the agent to call the `workflow` tool once.
 /// Default mode is `validate` (`validate_only: true` smoke). Never panics.
+///
+/// When `app` is provided, emits line-level progress on
+/// [`WORKFLOW_RUN_PROGRESS_EVENT`] so Settings can show a live log.
 pub fn run_workflow(
+    name: &str,
+    project_path: Option<&str>,
+    mode: Option<&str>,
+    timeout_ms: Option<u64>,
+) -> WorkflowRunResult {
+    run_workflow_inner(None, name, project_path, mode, timeout_ms)
+}
+
+/// Same as [`run_workflow`] but streams progress to the UI via `app`.
+pub fn run_workflow_with_app(
+    app: tauri::AppHandle,
+    name: &str,
+    project_path: Option<&str>,
+    mode: Option<&str>,
+    timeout_ms: Option<u64>,
+) -> WorkflowRunResult {
+    run_workflow_inner(Some(&app), name, project_path, mode, timeout_ms)
+}
+
+fn emit_workflow_progress(
+    app: Option<&tauri::AppHandle>,
+    name: &str,
+    mode: &str,
+    kind: &str,
+    line: &str,
+    elapsed_ms: u64,
+) {
+    let Some(app) = app else { return };
+    use tauri::Emitter;
+    let text = crate::agent_memory::redact_memory_preview(line);
+    let text = text.chars().take(500).collect::<String>();
+    if text.trim().is_empty() && kind != "status" {
+        return;
+    }
+    let _ = app.emit(
+        WORKFLOW_RUN_PROGRESS_EVENT,
+        serde_json::json!({
+            "workflowName": name,
+            "mode": mode,
+            "kind": kind,
+            "line": text,
+            "elapsedMs": elapsed_ms,
+        }),
+    );
+}
+
+fn run_workflow_inner(
+    app: Option<&tauri::AppHandle>,
     name: &str,
     project_path: Option<&str>,
     mode: Option<&str>,
@@ -648,72 +702,182 @@ pub fn run_workflow(
         .filter(|p| p.is_dir())
         .unwrap_or_else(std::env::temp_dir);
 
-    let cli_path_clone = cli_path.clone();
-    let mode_home = settings.session_data_mode.clone();
-    let handle = std::thread::spawn(move || {
-        let mut cmd = Command::new(&cli_path_clone);
-        cmd.args(&args)
-            .current_dir(&cwd)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        process_util::apply_cli_env_std(&mut cmd);
-        let grok_home = crate::paths::resolve_agent_grok_home(&mode_home);
-        let _ = std::fs::create_dir_all(&grok_home);
-        cmd.env("GROK_HOME", &grok_home);
-        if mode_home != "shared" {
-            crate::providers::prepare_route_auth_for_agent();
-        }
-        proxy::apply_to_std_command(&mut cmd);
-        cmd.output()
-    });
+    emit_workflow_progress(
+        app,
+        name_trim,
+        mode_s,
+        "status",
+        "starting headless workflow tool…",
+        0,
+    );
 
-    let joined = wait_thread(handle, timeout);
-    let duration_ms = started.elapsed().as_millis() as u64;
+    let mut cmd = Command::new(&cli_path);
+    cmd.args(&args)
+        .current_dir(&cwd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    process_util::apply_cli_env_std(&mut cmd);
+    let grok_home = crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+    let _ = std::fs::create_dir_all(&grok_home);
+    cmd.env("GROK_HOME", &grok_home);
+    if settings.session_data_mode != "shared" {
+        crate::providers::prepare_route_auth_for_agent();
+    }
+    proxy::apply_to_std_command(&mut cmd);
 
-    match joined {
-        ThreadWait::TimedOut => run_soft_fail(
-            "timeout",
-            name_trim,
-            mode_s,
-            None,
-            false,
-            duration_ms,
-            Some(cli_path),
-            cli_version,
-        ),
-        ThreadWait::JoinErr => run_soft_fail(
-            "spawn_failed",
-            name_trim,
-            mode_s,
-            None,
-            false,
-            duration_ms,
-            Some(cli_path),
-            cli_version,
-        ),
-        ThreadWait::Done(Err(e)) => {
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
             tracing::warn!(
                 target: "agent_workflows",
                 error = %e,
                 name = %name_trim,
                 "workflow run spawn failed"
             );
-            run_soft_fail(
+            return run_soft_fail(
                 "spawn_failed",
                 name_trim,
                 mode_s,
                 None,
                 false,
+                started.elapsed().as_millis() as u64,
+                Some(cli_path),
+                cli_version,
+            );
+        }
+    };
+
+    use std::io::{BufRead, BufReader};
+    use std::sync::{Arc, Mutex};
+
+    let stdout_buf = Arc::new(Mutex::new(String::new()));
+    let stderr_buf = Arc::new(Mutex::new(String::new()));
+    let name_owned = name_trim.to_string();
+    let mode_owned = mode_s.to_string();
+    let started_arc = Arc::new(started);
+
+    if let Some(out) = child.stdout.take() {
+        let buf = Arc::clone(&stdout_buf);
+        let app_c = app.map(|a| a.clone());
+        let n = name_owned.clone();
+        let m = mode_owned.clone();
+        let st = Arc::clone(&started_arc);
+        std::thread::spawn(move || {
+            let reader = BufReader::new(out);
+            for line in reader.lines().map_while(Result::ok) {
+                if let Ok(mut g) = buf.lock() {
+                    if !g.is_empty() {
+                        g.push('\n');
+                    }
+                    g.push_str(&line);
+                }
+                emit_workflow_progress(
+                    app_c.as_ref(),
+                    &n,
+                    &m,
+                    "stdout",
+                    &line,
+                    st.elapsed().as_millis() as u64,
+                );
+            }
+        });
+    }
+    if let Some(err) = child.stderr.take() {
+        let buf = Arc::clone(&stderr_buf);
+        let app_c = app.map(|a| a.clone());
+        let n = name_owned.clone();
+        let m = mode_owned.clone();
+        let st = Arc::clone(&started_arc);
+        std::thread::spawn(move || {
+            let reader = BufReader::new(err);
+            for line in reader.lines().map_while(Result::ok) {
+                if let Ok(mut g) = buf.lock() {
+                    if !g.is_empty() {
+                        g.push('\n');
+                    }
+                    g.push_str(&line);
+                }
+                emit_workflow_progress(
+                    app_c.as_ref(),
+                    &n,
+                    &m,
+                    "stderr",
+                    &line,
+                    st.elapsed().as_millis() as u64,
+                );
+            }
+        });
+    }
+
+    // Poll until exit or soft timeout (kill child on timeout).
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break Ok(st),
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break Err("timeout");
+                }
+                std::thread::sleep(Duration::from_millis(40));
+            }
+            Err(_) => break Err("spawn_failed"),
+        }
+    };
+
+    // Give reader threads a moment to flush last lines.
+    std::thread::sleep(Duration::from_millis(80));
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let stdout = stdout_buf.lock().map(|g| g.clone()).unwrap_or_default();
+    let stderr = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
+    let (log, truncated) = prepare_log(&stdout, &stderr);
+
+    match status {
+        Err("timeout") => {
+            emit_workflow_progress(
+                app,
+                name_trim,
+                mode_s,
+                "status",
+                "timeout — killed headless process",
+                duration_ms,
+            );
+            run_soft_fail(
+                "timeout",
+                name_trim,
+                mode_s,
+                log,
+                truncated,
                 duration_ms,
                 Some(cli_path),
                 cli_version,
             )
         }
-        ThreadWait::Done(Ok(output)) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            let (log, truncated) = prepare_log(&stdout, &stderr);
-            let status_ok = output.status.success();
+        Err(_) => run_soft_fail(
+            "spawn_failed",
+            name_trim,
+            mode_s,
+            log,
+            truncated,
+            duration_ms,
+            Some(cli_path),
+            cli_version,
+        ),
+        Ok(st) => {
+            let status_ok = st.success();
+            emit_workflow_progress(
+                app,
+                name_trim,
+                mode_s,
+                "status",
+                if status_ok {
+                    "finished ok"
+                } else {
+                    "finished with non-zero exit"
+                },
+                duration_ms,
+            );
             if log.is_none() {
                 return run_soft_fail(
                     if status_ok { "empty" } else { "spawn_failed" },
@@ -740,7 +904,6 @@ pub fn run_workflow(
                     invoke_path: "headless_workflow_tool".into(),
                 }
             } else {
-                // Non-zero with text: still surface the log as soft-fail.
                 WorkflowRunResult {
                     ok: false,
                     reason: "nonzero_exit".into(),

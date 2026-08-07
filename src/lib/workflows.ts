@@ -276,6 +276,50 @@ export type WorkflowRunResultLike = {
 /** Max characters kept for the result log surface (FE + host align). */
 export const WORKFLOW_RUN_LOG_MAX_CHARS = 4_000;
 
+/** Host event for progressive headless workflow output. */
+export const WORKFLOW_RUN_PROGRESS_EVENT = "workflows://run-progress";
+
+export type WorkflowRunProgressPayload = {
+  workflowName?: string | null;
+  mode?: string | null;
+  kind?: "stdout" | "stderr" | "status" | string | null;
+  line?: string | null;
+  elapsedMs?: number | null;
+};
+
+/**
+ * Append a progress line to the live log buffer (soft cap).
+ * Status lines are prefixed; empty lines ignored.
+ */
+export function appendWorkflowRunLiveLog(
+  prev: string,
+  payload: WorkflowRunProgressPayload | null | undefined,
+  maxChars: number = WORKFLOW_RUN_LOG_MAX_CHARS,
+): string {
+  if (!payload) return prev;
+  const kind = String(payload.kind ?? "stdout").trim().toLowerCase();
+  let line = String(payload.line ?? "").replace(/\r/g, "").trimEnd();
+  if (!line && kind !== "status") return prev;
+  if (kind === "status") {
+    line = line ? `· ${line}` : "· …";
+  } else if (kind === "stderr") {
+    line = line.startsWith("[stderr]") ? line : `[stderr] ${line}`;
+  }
+  const next = prev ? `${prev}\n${line}` : line;
+  if (next.length <= maxChars) return next;
+  return `…${next.slice(-(maxChars - 1))}`;
+}
+
+/** Format elapsed ms for the busy panel (e.g. 12s, 1m 05s). */
+export function formatWorkflowRunElapsed(ms: number | null | undefined): string {
+  const n = Math.max(0, Math.floor(Number(ms) || 0));
+  const sec = Math.floor(n / 1000);
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
 /** Soft cap on workflow definition names accepted for run. */
 export const WORKFLOW_NAME_MAX_LEN = 96;
 

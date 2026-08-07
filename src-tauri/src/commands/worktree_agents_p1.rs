@@ -144,6 +144,7 @@ pub async fn workflows_list(
 /// redacted truncated log — never panics on CLI missing / timeout.
 #[tauri::command]
 pub async fn workflows_run(
+    app: tauri::AppHandle,
     name: String,
     project_path: Option<String>,
     mode: Option<String>,
@@ -160,7 +161,8 @@ pub async fn workflows_run(
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
     tauri::async_runtime::spawn_blocking(move || {
-        crate::agent_workflows::run_workflow(
+        crate::agent_workflows::run_workflow_with_app(
+            app,
             &name,
             project.as_deref(),
             mode_owned.as_deref(),

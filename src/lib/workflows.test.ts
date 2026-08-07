@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   WORKFLOWS_ENABLED_CONFIG_KEY,
   WORKFLOW_RUN_LOG_MAX_CHARS,
+  appendWorkflowRunLiveLog,
   buildWorkflowRunPrompt,
   collectWorkflowDefs,
   formatDiscoveredWorkflowNames,
+  formatWorkflowRunElapsed,
   formatWorkflowRunStatusLine,
   grokHomeFromUserHome,
   isValidWorkflowName,
@@ -184,5 +186,23 @@ describe("workflow run helpers", () => {
     expect(
       formatWorkflowRunStatusLine({ ok: true, reason: "ok", durationMs: 200 }),
     ).toMatch(/ok/);
+  });
+
+  it("appends live progress lines and formats elapsed", () => {
+    let log = "";
+    log = appendWorkflowRunLiveLog(log, {
+      kind: "status",
+      line: "starting",
+    });
+    log = appendWorkflowRunLiveLog(log, { kind: "stdout", line: "hello" });
+    log = appendWorkflowRunLiveLog(log, {
+      kind: "stderr",
+      line: "warn",
+    });
+    expect(log).toContain("· starting");
+    expect(log).toContain("hello");
+    expect(log).toContain("[stderr] warn");
+    expect(formatWorkflowRunElapsed(1500)).toBe("1s");
+    expect(formatWorkflowRunElapsed(65_000)).toBe("1m 05s");
   });
 });

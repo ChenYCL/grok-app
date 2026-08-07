@@ -462,6 +462,26 @@ pub fn should_pass_always_approve(policy: &str, product_mode: Option<&str>) -> b
     resolve_cli_permission_mode(policy, product_mode) == "bypassPermissions"
 }
 
+/// Whether `id` is safe to pass as CLI `--reasoning-effort <id>`.
+///
+/// Accepts official Grok tiers (`low` / `medium` / `high`) and custom-channel
+/// ids such as `max` / `xhigh`. Rejects empty, overly long, or non-token shapes.
+/// Passed as a separate argv element (not shell-interpolated).
+pub fn is_spawnable_reasoning_effort(id: &str) -> bool {
+    let t = id.trim();
+    if t.is_empty() || t.len() > 64 {
+        return false;
+    }
+    let mut chars = t.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
 /// Pure spawn plan for the OS-level sandbox profile.
 ///
 /// `--sandbox` is a **top-level** `grok` flag (not under `agent` / `stdio`),
@@ -1343,7 +1363,9 @@ impl AcpClient {
         }
         if let Some(ref e) = opts.effort {
             let e = e.trim();
-            if matches!(e, "high" | "medium" | "low") {
+            // Pass any catalog/channel effort id (low/medium/high, max, …).
+            // Do not hard-allowlist only Grok 3-tier — custom channels use max etc.
+            if is_spawnable_reasoning_effort(e) {
                 cmd.args(["--reasoning-effort", e]);
             }
         }
@@ -5489,11 +5511,38 @@ mod agents_json_spawn_tests {
 }
 
 #[cfg(test)]
+mod reasoning_effort_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_official_and_custom_effort_ids() {
+        assert!(is_spawnable_reasoning_effort("low"));
+        assert!(is_spawnable_reasoning_effort("medium"));
+        assert!(is_spawnable_reasoning_effort("high"));
+        assert!(is_spawnable_reasoning_effort("max"));
+        assert!(is_spawnable_reasoning_effort("xhigh"));
+        assert!(is_spawnable_reasoning_effort("  max  "));
+        assert!(is_spawnable_reasoning_effort("tier.2"));
+        assert!(is_spawnable_reasoning_effort("effort_1"));
+    }
+
+    #[test]
+    fn rejects_empty_or_non_token_ids() {
+        assert!(!is_spawnable_reasoning_effort(""));
+        assert!(!is_spawnable_reasoning_effort("   "));
+        assert!(!is_spawnable_reasoning_effort("-high"));
+        assert!(!is_spawnable_reasoning_effort("hi gh"));
+        assert!(!is_spawnable_reasoning_effort("a".repeat(65).as_str()));
+    }
+}
+
+#[cfg(test)]
 mod permission_mode_spawn_tests {
     use super::*;
 
     #[test]
     fn maps_app_policies_to_cli_modes() {
+
         assert_eq!(cli_permission_mode("ask"), "default");
         assert_eq!(cli_permission_mode("accept_edits"), "acceptEdits");
         assert_eq!(cli_permission_mode("allow_for_session"), "default");

@@ -11,11 +11,50 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-08-07
+
+> **Highlight:** Align the desktop workbench with **Grok Build CLI 1.0** — default effort/workflows match the CLI, CLI version & agent-binary skew are visible and repairable, Ops (tasks/dashboard/board) is reachable from the command palette, workflow runs stream live logs, and `/goal` shows an honest session chip.
+>
+> **中文 · 亮点：** 桌面端对齐 **Grok Build CLI 1.0**：默认推理/workflows 与 CLI 一致；CLI 版本与 agent 旁路漂移可见可修；命令面板可进 Ops（任务/仪表盘/看板）；workflow 运行有实时日志；`/goal` 有诚实会话指示。
+
+### Added
+- **CLI 1.0 recommend chip + agent binary skew**: Runtime · CLI shows recommended ≥1.0.0 status; Doctor warns when the sibling `agent` binary version differs from `grok`, with one-click **Align agent with grok** (Settings + Doctor). Host `probe_cli` returns recommended / skew fields; `cli_repair_agent_sidecar` relinks/copies `~/.grok/bin/agent`.
+- **Ops command-palette group**: **Agent ops** opens the multi-session dashboard; **Session task board** is fully wired (was palette-only); tasks / dashboard / board / batch share the `ops` group and keywords.
+- **Workflow live log**: Headless Smoke/Run streams `workflows://run-progress` line events into Settings (elapsed time + progressive log); timeout kills the headless process.
+- **Goal session chip waiting state**: When Composer `/goal` is on but the harness has not emitted `goal_updated`, a dashed **waiting** chip appears (no fake progress); active chip shows phase / detail / deliverable progress from real events.
+
+**中文 · 新增**
+- **CLI 1.0 推荐芯片 + agent 旁路漂移**：运行时 CLI 页展示推荐 ≥1.0.0；Doctor/设置检测 `agent` 与 `grok` 版本不一致并可一键对齐。
+- **Ops 命令面板分组**：Agent 运维入口、会话任务看板完整接线；任务/仪表盘/看板/批量同属 ops。
+- **Workflow 实时日志**：无头 Smoke/Run 按行推送进度到设置页；超时结束进程。
+- **Goal 会话指示等待态**：已开 `/goal` 但尚无 `goal_updated` 时显示等待 chip，不发明进度。
+
+### Changed
+- **Default reasoning effort → high**: Aligns with Grok Build 1.0 `models_cache` (static catalog + new installs). One-shot migration lifts global stored product-default `medium` → `high`; deliberate low/high/max kept. Spawn passes catalog effort ids including custom `max` / `xhigh` (no 3-tier hard allowlist).
+- **Workflows enabled by default**: App default and one-shot migration match CLI ≥0.2.111/1.0 (`workflows_enabled` true). Independent agent-home is synced; **shared** mode still does not rewrite `~/.grok`.
+- **catalog.md / product copy**: Document 1.0 effort default, spawn pass-through, CLI recommend/skew, workflow live log, and goal chip honesty.
+
+**中文 · 变更**
+- **默认推理强度改为 high**：对齐 CLI 1.0；一次性迁移历史产品默认 medium；spawn 透传自定义 effort id。
+- **Workflows 默认开启**：与 CLI 默认一致；独立 agent-home 写入，共享模式仍不改写 `~/.grok`。
+- **产品文档**：catalog 与设置文案对齐 1.0。
+
 ### Fixed
 - **Windows embedded browser stuck on “Loading…” (#530, #531)**: `side_browser_create` is now an async command that runs `window.add_child` via `spawn_blocking`, so the UI/IPC thread is not blocked while WebView2 waits on the platform event loop. Same-label webviews are reused (no sync close→recreate), frontend cleanup is delayed 150ms (StrictMode remount cancel), and create has a 15s timeout with error + open-external fallback. Thanks @Sixmin.
+- **Side browser IME Enter**: URL bar composition/confirm Enter no longer navigates while IME is open (type-safe IME key check).
+- **Workflow live log render**: Settings panel uses log `.text` (not the prep object) so typecheck/build stay clean.
 
 **中文 · 修复**
-- **Windows 内嵌浏览器卡在「加载中」（#530, #531）**：`side_browser_create` 改为异步 + `spawn_blocking` 执行 `add_child`，避免同步 IPC 占住事件循环导致 WebView2 半创建死锁；同 label 复用、cleanup 延迟关闭、15 秒创建超时。感谢 @Sixmin。
+- **Windows 内嵌浏览器卡在「加载中」（#530, #531）**：异步创建 WebView2 + 超时/复用，避免死锁。感谢 @Sixmin。
+- **侧栏浏览器 IME 回车**：候选确认时不触发导航。
+- **Workflow 实时日志类型**：结果面板正确渲染文本。
+
+### Notes
+- Hard CLI floor remains **0.2.112**; **1.0.0** is recommended (soft chip). App ACP always spawns **`grok`**, not the `agent` sidecar.
+- Goal waiting chip is display-only; it does not enable the CLI goal harness.
+
+**中文 · 说明**
+- CLI 硬门槛仍为 0.2.112；推荐 1.0.0。App 始终 spawn `grok`。Goal 等待 chip 仅为展示，不会开关 harness。
 
 ## [0.2.9] - 2026-08-07
 

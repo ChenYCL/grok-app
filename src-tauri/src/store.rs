@@ -58,8 +58,8 @@ impl Default for ComposerPrefs {
     fn default() -> Self {
         Self {
             model_id: "grok-4.5".into(),
-            // Balanced default: faster than high, deeper than low.
-            effort: "medium".into(),
+            // Aligned with Grok Build 1.0 models_cache default (high).
+            effort: "high".into(),
             mode: "agent".into(),
             permission_policy: "ask".into(),
             scope: "global".into(),
@@ -349,6 +349,13 @@ pub struct AppSettings {
     /// (reopen-last-session defaulted to false). Existing installs run this once.
     #[serde(default)]
     pub startup_new_chat_default_migrated: bool,
+    /// One-shot: product effort default medium → high (Grok Build 1.0 align).
+    /// Missing field deserializes as false so existing installs migrate once.
+    #[serde(default)]
+    pub effort_default_migrated: bool,
+    /// One-shot: product workflows default off → on (CLI ≥0.2.111 / 1.0 align).
+    #[serde(default)]
+    pub workflows_default_migrated: bool,
     /// When true (default), agents may enter plan mode. When false, spawn with
     /// top-level `--no-plan` so plan mode is disabled for that process.
     #[serde(default = "default_plan_enabled")]
@@ -373,11 +380,12 @@ pub struct AppSettings {
     #[serde(default)]
     pub auto_wake_enabled: bool,
     /// Enable Grok Build workflows (`workflows_enabled` in agent-home config.toml).
-    /// Default **false** (opt-in). Workflows are Rhai scripts under
-    /// `~/.grok/workflows` / project `.grok/workflows` run by the CLI `workflow`
-    /// tool — the App only surfaces this toggle + read-only discovery (no in-app
-    /// runner). Independent mode writes the top-level key; soft-respawns.
-    #[serde(default)]
+    /// Default **true** (aligned with Grok Build CLI ≥0.2.111 / 1.0). Workflows are
+    /// Rhai scripts under `~/.grok/workflows` / project `.grok/workflows` run by the
+    /// CLI `workflow` tool. App lists names + headless smoke/run; no visual editor.
+    /// Independent mode writes the top-level key; shared mode does not rewrite
+    /// `~/.grok`. Soft-respawns on change.
+    #[serde(default = "default_true")]
     pub workflows_enabled: bool,
     /// Preferred Grok Build agent definition for new agent processes
     /// (`explore` / `plan` / `general-purpose` / custom name under `~/.grok/agents`).
@@ -536,7 +544,7 @@ impl Default for AppSettings {
             manual_cli_path: None,
             permission_policy: "ask".into(),
             model_id: None,
-            effort: Some("medium".into()),
+            effort: Some("high".into()),
             mode: "agent".into(),
             onboarding_done: false,
             setup_skipped: false,
@@ -576,11 +584,14 @@ impl Default for AppSettings {
             sidebar_other_sessions_open: true,
             // Fresh defaults already match the new-chat-on-launch product rule.
             startup_new_chat_default_migrated: true,
+            // Fresh installs already use 1.0-aligned effort / workflows defaults.
+            effort_default_migrated: true,
+            workflows_default_migrated: true,
             plan_enabled: default_plan_enabled(),
             subagents_enabled: true,
             subagent_worktree_snapshot_enabled: false,
             auto_wake_enabled: false,
-            workflows_enabled: false,
+            workflows_enabled: true,
             preferred_agent: String::new(),
             agent_profile_path: String::new(),
             agents_json: String::new(),
@@ -762,7 +773,50 @@ pub fn load_settings() -> AppSettings {
         tracing::info!("settings migration: reopenLastSession → false (start on new chat)");
         let _ = write_json(&settings_file(), &s);
     }
+    // One-time: Grok Build 1.0 effort default medium → high. Unset / empty /
+    // legacy product default medium lift to high; deliberate low/high/max kept.
+    if !s.effort_default_migrated {
+        if let Some(next) = migrate_legacy_effort_default(s.effort.as_deref()) {
+            tracing::info!(
+                "settings migration: effort {:?} → {} (Grok Build 1.0 default)",
+                s.effort,
+                next
+            );
+            s.effort = Some(next);
+        }
+        s.effort_default_migrated = true;
+        let _ = write_json(&settings_file(), &s);
+    }
+    // One-time: product workflows default off → on (CLI ≥0.2.111 / 1.0).
+    // Only lifts false → true once; users who turn it off again stay off.
+    if !s.workflows_default_migrated {
+        if !s.workflows_enabled {
+            tracing::info!("settings migration: workflowsEnabled false → true (CLI default)");
+            s.workflows_enabled = true;
+            let _ = crate::agent_workflows::sync_workflows_to_agent_profile(
+                &s.session_data_mode,
+                true,
+            );
+        }
+        s.workflows_default_migrated = true;
+        let _ = write_json(&settings_file(), &s);
+    }
     s
+}
+
+/// Product default effort for cold start / fallback (Grok Build 1.0 = high).
+pub const DEFAULT_REASONING_EFFORT: &str = "high";
+
+/// One-shot effort migration: lift unset / empty / legacy `"medium"` product
+/// default to [`DEFAULT_REASONING_EFFORT`]. Returns `Some(new)` when the stored
+/// value should change; `None` when it should be left alone (already high, or
+/// deliberate low/max/custom). Callers still set the migrated flag either way.
+pub fn migrate_legacy_effort_default(stored: Option<&str>) -> Option<String> {
+    match stored.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Some(DEFAULT_REASONING_EFFORT.into()),
+        Some("medium") => Some(DEFAULT_REASONING_EFFORT.into()),
+        Some(_) => None,
+    }
 }
 
 pub fn save_settings(s: &AppSettings) -> Result<(), String> {
@@ -1984,7 +2038,7 @@ fn global_prefs(settings: &AppSettings) -> (String, String, String, String) {
             .effort
             .clone()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "medium".into()),
+            .unwrap_or_else(|| "high".into()),
         if settings.mode.trim().is_empty() {
             "agent".into()
         } else {
@@ -2367,11 +2421,64 @@ mod tests {
         assert!(s.plan_enabled);
         assert!(s.subagents_enabled);
         assert!(!s.subagent_worktree_snapshot_enabled);
-        assert!(!s.workflows_enabled);
+        assert!(s.workflows_enabled);
+        assert!(s.effort_default_migrated);
+        assert!(s.workflows_default_migrated);
+        assert_eq!(s.effort.as_deref(), Some("high"));
         assert_eq!(s.preferred_agent, "");
         assert_eq!(s.agent_profile_path, "");
         assert_eq!(s.agents_json, "");
         assert!(!s.use_leader);
+    }
+
+    #[test]
+    fn migrate_legacy_effort_lifts_medium_and_unset() {
+        assert_eq!(
+            migrate_legacy_effort_default(None).as_deref(),
+            Some("high")
+        );
+        assert_eq!(
+            migrate_legacy_effort_default(Some("")).as_deref(),
+            Some("high")
+        );
+        assert_eq!(
+            migrate_legacy_effort_default(Some("  medium  ")).as_deref(),
+            Some("high")
+        );
+        assert_eq!(migrate_legacy_effort_default(Some("low")), None);
+        assert_eq!(migrate_legacy_effort_default(Some("high")), None);
+        assert_eq!(migrate_legacy_effort_default(Some("max")), None);
+    }
+
+    #[test]
+    fn legacy_json_effort_medium_deserializes_unmigrated() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert_eq!(s.effort.as_deref(), Some("medium"));
+        assert!(!s.effort_default_migrated);
+        assert!(!s.workflows_default_migrated);
+        // Missing workflowsEnabled → new serde default true (cold field only);
+        // persisted false from old AppSettings still migrates via flag in load_settings.
+        assert!(s.workflows_enabled);
+    }
+
+    #[test]
+    fn workflows_enabled_false_when_explicit_in_json() {
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "en",
+            "sessionDataMode": "independent",
+            "manualCliPath": null,
+            "permissionPolicy": "ask",
+            "modelId": null,
+            "effort": "high",
+            "mode": "agent",
+            "onboardingDone": true,
+            "setupSkipped": false,
+            "workflowsEnabled": false
+        }"#;
+        let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
+        assert!(!s.workflows_enabled);
+        assert!(!s.workflows_default_migrated);
     }
 
     /// Minimal legacy settings JSON (pre-batch fields omitted).
@@ -2551,10 +2658,10 @@ mod tests {
     }
 
     #[test]
-    fn workflows_enabled_defaults_false_when_missing_from_json() {
+    fn workflows_enabled_defaults_true_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
-        assert!(!s.workflows_enabled);
-        assert!(!AppSettings::default().workflows_enabled);
+        assert!(s.workflows_enabled);
+        assert!(AppSettings::default().workflows_enabled);
     }
 
     #[test]

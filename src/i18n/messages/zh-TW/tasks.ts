@@ -1,6 +1,8 @@
 /** Traditional Chinese messages — domain: tasks */
 export const zhTWTasks = {
   "tasks.title": "任務",
+  "ops.palette": "Agent 運維",
+  "ops.paletteHint": "任務 · 儀表板 · 工作階段看板 · 批次",
   "tasks.empty": "本輪尚無 Agent 任務",
   "tasks.emptyHint": "進行中與最近完成的工具呼叫（子代理、終端、監視器等）會從目前工作階段串流出現在這裡。",
   "tasks.showPanel": "顯示 Agent 任務",

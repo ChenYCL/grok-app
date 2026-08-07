@@ -278,6 +278,37 @@ pub async fn probe_cli(manual_path: Option<String>) -> Result<CliProbeResult, St
         .map_err(|e| format!("probe_cli join: {e}"))
 }
 
+/// Relink/copy `~/.grok/bin/agent` to match the probed `grok` binary (skew repair).
+///
+/// App ACP always spawns `grok`; this only helps external TUI / tooling that uses
+/// the `agent` sidecar. Soft-fails when grok is missing.
+#[tauri::command]
+pub async fn cli_repair_agent_sidecar(
+    grok_path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let path = grok_path
+        .or_else(|| store::load_settings().manual_cli_path)
+        .filter(|s| !s.trim().is_empty());
+    let path_for_probe = path.clone();
+    let repaired = tokio::task::spawn_blocking(move || {
+        cli_probe::repair_agent_sidecar_link(path.as_deref())
+    })
+    .await
+    .map_err(|e| format!("cli_repair_agent_sidecar join: {e}"))??;
+    let after = tokio::task::spawn_blocking(move || {
+        cli_probe::probe_cli(path_for_probe.as_deref())
+    })
+    .await
+    .map_err(|e| format!("re-probe join: {e}"))?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "agentPath": repaired,
+        "agentBinarySkew": after.agent_binary_skew,
+        "agentVersion": after.agent_version,
+        "grokVersion": after.version,
+    }))
+}
+
 /// API mode: TCP-connect to an ACP server and run the initialize handshake.
 #[tauri::command]
 pub async fn acp_test_connection(

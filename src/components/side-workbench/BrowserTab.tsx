@@ -39,12 +39,12 @@ function normalizeBrowserUrl(raw: string): string {
 
 /** True while CJK IME candidate UI is open / committing (do not treat as action Enter). */
 function isImeKeyEvent(e: {
-  nativeEvent: KeyboardEvent;
-  isComposing: boolean;
+  nativeEvent?: { isComposing?: boolean; keyCode?: number };
+  isComposing?: boolean;
 }): boolean {
   const ne = e.nativeEvent;
   // keyCode 229 = IME processing (common on Chromium / WebView2 / some WK).
-  return e.isComposing || ne.isComposing || ne.keyCode === 229;
+  return !!(e.isComposing || ne?.isComposing || ne?.keyCode === 229);
 }
 
 export function BrowserTab({

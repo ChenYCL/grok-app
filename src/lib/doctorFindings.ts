@@ -194,6 +194,20 @@ function makeKey(source: DoctorFindingSource, rawId: string): string {
   return `${source}:${rawId}`;
 }
 
+/**
+ * App-managed repair for CLI agent binary skew (`cli_agent_skew` check).
+ * Not a CLI `grok doctor fix` id — Host `cli_repair_agent_sidecar`.
+ */
+export const APP_AGENT_SIDECAR_SKEW_FINDING_ID = "cli_agent_skew";
+
+/** True when this finding can use one-click agent sidecar repair. */
+export function isAgentSidecarSkewFinding(
+  row: Pick<DoctorFindingRow, "rawId" | "source"> | null | undefined,
+): boolean {
+  if (!row || row.source !== "app") return false;
+  return row.rawId === APP_AGENT_SIDECAR_SKEW_FINDING_ID;
+}
+
 /** Map a host App `DoctorCheck` into a triage row. */
 export function normalizeAppDoctorCheck(
   check: DoctorCheck | null | undefined,

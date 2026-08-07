@@ -16,6 +16,8 @@ import {
   doctorFindingsExportTextFilename,
   filterDoctorFindings,
   formatDoctorFindingsExportText,
+  APP_AGENT_SIDECAR_SKEW_FINDING_ID,
+  isAgentSidecarSkewFinding,
   normalizeAppDoctorCheck,
   normalizeCliDoctorCheck,
   presentDoctorFindingDetail,
@@ -130,6 +132,26 @@ describe("classifyDoctorFindingCategory", () => {
 
   it("maps synthetic clean id to cli", () => {
     expect(classifyDoctorFindingCategory("cli-doctor-clean")).toBe("cli");
+  });
+});
+
+describe("isAgentSidecarSkewFinding", () => {
+  it("matches app cli_agent_skew only", () => {
+    expect(
+      isAgentSidecarSkewFinding({
+        rawId: APP_AGENT_SIDECAR_SKEW_FINDING_ID,
+        source: "app",
+      }),
+    ).toBe(true);
+    expect(isAgentSidecarSkewFinding({ rawId: "cli", source: "app" })).toBe(
+      false,
+    );
+    expect(
+      isAgentSidecarSkewFinding({
+        rawId: APP_AGENT_SIDECAR_SKEW_FINDING_ID,
+        source: "cli",
+      }),
+    ).toBe(false);
   });
 });
 

@@ -9,7 +9,10 @@ import * as api from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import {
+  WORKFLOW_RUN_PROGRESS_EVENT,
+  appendWorkflowRunLiveLog,
   formatDiscoveredWorkflowNames,
+  formatWorkflowRunElapsed,
   formatWorkflowRunStatusLine,
   isValidWorkflowName,
   isWorkflowRunOk,
@@ -17,6 +20,7 @@ import {
   workflowRunReasonKey,
   type WorkflowDefLike,
   type WorkflowRunMode,
+  type WorkflowRunProgressPayload,
   type WorkflowRunResultLike,
   type WorkflowScope,
 } from "@/lib/workflows";
@@ -70,6 +74,10 @@ type RunState = {
   busy: boolean;
   result: WorkflowRunResultLike | null;
   error: string | null;
+  /** Progressive headless log while busy (host `workflows://run-progress`). */
+  liveLog: string;
+  /** Last elapsedMs from progress events. */
+  elapsedMs: number;
 };
 
 function formatHistoryWhen(at: string, locale: Locale): string {
@@ -275,6 +283,8 @@ export function WorkflowsDiscoveryBlock({
           mode,
         },
         error: null,
+        liveLog: "",
+        elapsedMs: 0,
       });
       recordWorkflowRunHistory({
         name,
@@ -285,8 +295,38 @@ export function WorkflowsDiscoveryBlock({
       });
       return;
     }
-    setRunState({ name, mode, busy: true, result: null, error: null });
+    setRunState({
+      name,
+      mode,
+      busy: true,
+      result: null,
+      error: null,
+      liveLog: "",
+      elapsedMs: 0,
+    });
+    let unlisten: (() => void) | undefined;
     try {
+      if (api.isTauri()) {
+        unlisten = await api.listen<WorkflowRunProgressPayload>(
+          WORKFLOW_RUN_PROGRESS_EVENT,
+          (p) => {
+            if (!p) return;
+            const wn = String(p.workflowName ?? "").trim();
+            if (wn && wn !== name) return;
+            setRunState((prev) => {
+              if (!prev || !prev.busy || prev.name !== name) return prev;
+              return {
+                ...prev,
+                liveLog: appendWorkflowRunLiveLog(prev.liveLog, p),
+                elapsedMs:
+                  typeof p.elapsedMs === "number" && p.elapsedMs >= 0
+                    ? p.elapsedMs
+                    : prev.elapsedMs,
+              };
+            });
+          },
+        );
+      }
       const res = await api.workflowsRun({
         name,
         projectPath,
@@ -303,13 +343,15 @@ export function WorkflowsDiscoveryBlock({
         cliPath: res.cliPath ?? null,
         cliVersion: res.cliVersion ?? null,
       };
-      setRunState({
+      setRunState((prev) => ({
         name,
         mode,
         busy: false,
         result,
         error: null,
-      });
+        liveLog: prev?.liveLog ?? "",
+        elapsedMs: result.durationMs ?? prev?.elapsedMs ?? 0,
+      }));
       recordWorkflowRunHistory({
         name: result.workflowName ?? name,
         mode,
@@ -322,7 +364,7 @@ export function WorkflowsDiscoveryBlock({
     } catch (e) {
       // Soft-fail: never throw into Settings root.
       const log = String(e ?? "workflows_run failed");
-      setRunState({
+      setRunState((prev) => ({
         name,
         mode,
         busy: false,
@@ -334,7 +376,9 @@ export function WorkflowsDiscoveryBlock({
           log,
         },
         error: log,
-      });
+        liveLog: prev?.liveLog ?? "",
+        elapsedMs: prev?.elapsedMs ?? 0,
+      }));
       recordWorkflowRunHistory({
         name,
         mode,
@@ -343,6 +387,12 @@ export function WorkflowsDiscoveryBlock({
         log,
         source: "settings",
       });
+    } finally {
+      try {
+        unlisten?.();
+      } catch {
+        /* ignore */
+      }
     }
   };
 
@@ -404,6 +454,10 @@ export function WorkflowsDiscoveryBlock({
   const displayLog = runState?.result
     ? prepareWorkflowRunLogForDisplay(runState.result.log)
     : null;
+  const liveLogDisplay =
+    runState?.busy && runState.liveLog
+      ? prepareWorkflowRunLogForDisplay(runState.liveLog)
+      : null;
 
   const statusLine = runState?.result
     ? formatWorkflowRunStatusLine(runState.result, {
@@ -539,7 +593,21 @@ export function WorkflowsDiscoveryBlock({
           {runState.busy ? (
             <div className="settings-row__hint">
               {t("settings.workflows.run.running")}
+              {runState.elapsedMs > 0
+                ? ` · ${formatWorkflowRunElapsed(runState.elapsedMs)}`
+                : ""}
+              {" · "}
+              {t("settings.workflows.run.liveLogHint")}
             </div>
+          ) : null}
+          {liveLogDisplay?.text ? (
+            <pre
+              className="settings-workflows-run-result__log settings-workflows-run-result__log--live"
+              data-testid="workflows-run-live-log"
+            >
+              {liveLogDisplay.text}
+              {liveLogDisplay.truncated ? "…" : ""}
+            </pre>
           ) : null}
           {statusLine ? (
             <div className="settings-workflows-run-result__status">

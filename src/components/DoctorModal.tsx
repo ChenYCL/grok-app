@@ -39,6 +39,8 @@ import {
   doctorFindingsExportJsonFilename,
   filterDoctorFindings,
   formatDoctorFindingsExportText,
+  APP_AGENT_SIDECAR_SKEW_FINDING_ID,
+  isAgentSidecarSkewFinding,
   presentDoctorFindingDetail,
   serializeDoctorFindingsExport,
   type DoctorFindingCategory,
@@ -238,7 +240,13 @@ export function DoctorModal({
   const [copied, setCopied] = useState(false);
   const [copiedFindingKey, setCopiedFindingKey] = useState<string | null>(null);
   const [busy, setBusy] = useState<
-    "zip" | "reset" | "fix" | "findings-export" | "dayuse-copy" | null
+    | "zip"
+    | "reset"
+    | "fix"
+    | "findings-export"
+    | "dayuse-copy"
+    | "agent-skew-repair"
+    | null
   >(null);
   /** Extra probes for Windows day-use card (projects / mirror / updater). */
   const [dayuseProbe, setDayuseProbe] = useState<{
@@ -542,6 +550,43 @@ export function DoctorModal({
     },
     [fixHostDetail, t],
   );
+
+  /** One-click: align ~/.grok/bin/agent with grok (App-managed, not CLI doctor fix). */
+  const repairAgentSidecarSkew = useCallback(async () => {
+    setBusy("agent-skew-repair");
+    setFixingId(APP_AGENT_SIDECAR_SKEW_FINDING_ID);
+    setError(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.cliRepairAgentSidecar();
+      await run();
+      if (res.ok && !res.agentBinarySkew) {
+        setStatusMsg(
+          t("doctor.agentSkewRepaired", {
+            agentVersion: res.agentVersion || res.grokVersion || "—",
+          }),
+        );
+      } else if (res.ok) {
+        setStatusMsg(
+          t("doctor.agentSkewStillSkewed", {
+            agentVersion: res.agentVersion || "—",
+            grokVersion: res.grokVersion || "—",
+          }),
+        );
+      } else {
+        setError(t("doctor.agentSkewRepairFailed", { error: "unknown" }));
+      }
+    } catch (e) {
+      setError(
+        t("doctor.agentSkewRepairFailed", {
+          error: redact(String(e)).slice(0, 240),
+        }),
+      );
+    } finally {
+      setBusy(null);
+      setFixingId(null);
+    }
+  }, [run, t]);
 
   const applyFix = useCallback(
     async (fixId: string) => {
@@ -1345,6 +1390,21 @@ export function DoctorModal({
                                 {isThisFixing
                                   ? "…"
                                   : t("doctor.cliDoctorFix")}
+                              </button>
+                            ) : null}
+                            {isAgentSidecarSkewFinding(row) ? (
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                disabled={!!busy || loading}
+                                onClick={() => void repairAgentSidecarSkew()}
+                                title={t("doctor.agentSkewRepairHint")}
+                                data-testid="doctor-repair-agent-skew"
+                              >
+                                {busy === "agent-skew-repair" &&
+                                fixingId === APP_AGENT_SIDECAR_SKEW_FINDING_ID
+                                  ? t("doctor.agentSkewRepairing")
+                                  : t("doctor.agentSkewRepair")}
                               </button>
                             ) : null}
                           </div>

@@ -589,12 +589,21 @@ describe("pickLatestGoalOrchEvent / session indicator", () => {
         sessionId: "s1",
       }),
     ).toBeNull();
+    const waiting = resolveGoalOrchSessionIndicator({
+      uiEnabled: true,
+      events: [],
+      sessionId: "s1",
+      goalMode: true,
+    });
+    expect(waiting?.kind).toBe("waiting");
+    expect(waiting?.phase).toBe("status");
     const ind = resolveGoalOrchSessionIndicator({
       uiEnabled: true,
       events,
       sessionId: "s1",
     });
     expect(ind?.show).toBe(true);
+    expect(ind?.kind).toBe("active");
     expect(ind?.phase).toBe("strategist");
     expect(ind?.progress).toBe("0/2");
   });

@@ -22,10 +22,151 @@ use crate::process_util::{self, user_home};
 /// placement in `acp_client::spawn_with_home`.
 pub const MIN_CLI_VERSION: (u64, u64, u64) = (0, 2, 112);
 
+/// Product **recommended** CLI line (Grok Build 1.0). Below this still boots when
+/// ≥ [`MIN_CLI_VERSION`]; UI shows a soft upgrade chip, never a hard block.
+pub const RECOMMENDED_CLI_VERSION: (u64, u64, u64) = (1, 0, 0);
+
 /// Render [`MIN_CLI_VERSION`] as `x.y.z` for UI copy.
 pub fn min_cli_version_str() -> String {
     let (a, b, c) = MIN_CLI_VERSION;
     format!("{a}.{b}.{c}")
+}
+
+/// Render [`RECOMMENDED_CLI_VERSION`] as `x.y.z` for UI copy.
+pub fn recommended_cli_version_str() -> String {
+    let (a, b, c) = RECOMMENDED_CLI_VERSION;
+    format!("{a}.{b}.{c}")
+}
+
+/// Whether a raw `--version` banner meets the product recommended line.
+///
+/// - `Some(true)`  — ≥ 1.0.0  
+/// - `Some(false)` — parseable but older (still may pass min floor)  
+/// - `None`        — unparseable (fail-open, no chip pressure)
+pub fn cli_meets_recommended(raw_version: &str) -> Option<bool> {
+    let token = extract_version_token(raw_version)?;
+    let parsed = crate::app_update::parse_semver(&token)?;
+    Some(parsed >= RECOMMENDED_CLI_VERSION)
+}
+
+/// Normalize two version banners to semver cores and report skew.
+///
+/// `true` only when both parse and cores differ. Missing / unparseable → no skew.
+pub fn version_tokens_skew(a: Option<&str>, b: Option<&str>) -> bool {
+    let ta = a.and_then(extract_version_token);
+    let tb = b.and_then(extract_version_token);
+    match (ta, tb) {
+        (Some(x), Some(y)) => x != y,
+        _ => false,
+    }
+}
+
+/// Resolve the sibling `agent` launcher next to a `grok` path (or official
+/// `~/.grok/bin/agent`). Used for install skew detection only — App ACP always
+/// spawns `grok`, never this binary.
+pub fn resolve_agent_sidecar_path(grok_path: Option<&str>) -> Option<PathBuf> {
+    if let Some(g) = grok_path.map(str::trim).filter(|s| !s.is_empty()) {
+        let p = PathBuf::from(g);
+        if let Some(dir) = p.parent() {
+            #[cfg(target_os = "windows")]
+            {
+                let candidate = dir.join("agent.exe");
+                if candidate.is_file() || candidate.is_symlink() {
+                    return Some(candidate);
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let candidate = dir.join("agent");
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    let home_agent = {
+        #[cfg(target_os = "windows")]
+        {
+            user_home().join(r".grok\bin\agent.exe")
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            user_home().join(".grok/bin/agent")
+        }
+    };
+    if home_agent.exists() {
+        Some(home_agent)
+    } else {
+        None
+    }
+}
+
+/// Probe version of the `agent` sidecar if present (best-effort, same timeout).
+pub fn probe_agent_sidecar(grok_path: Option<&str>) -> (Option<String>, Option<String>) {
+    let Some(path) = resolve_agent_sidecar_path(grok_path) else {
+        return (None, None);
+    };
+    let path_s = path.display().to_string();
+    if !is_executable(&path) {
+        return (Some(path_s), None);
+    }
+    let ver = read_version(&path);
+    (Some(path_s), ver)
+}
+
+/// Relink/copy official `~/.grok/bin/agent` to match `~/.grok/bin/grok` (or the
+/// probed grok path when under `~/.grok/bin`). Soft-fail when paths missing.
+pub fn repair_agent_sidecar_link(grok_path: Option<&str>) -> Result<String, String> {
+    let home_bin = user_home().join(".grok").join("bin");
+    #[cfg(target_os = "windows")]
+    let grok_bin = home_bin.join("grok.exe");
+    #[cfg(not(target_os = "windows"))]
+    let grok_bin = home_bin.join("grok");
+
+    let grok = grok_path
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .filter(|p| p.exists())
+        .unwrap_or(grok_bin);
+
+    if !grok.exists() {
+        return Err("grok binary not found — install or locate CLI first".into());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let agent = home_bin.join("agent.exe");
+        std::fs::create_dir_all(&home_bin).map_err(|e| e.to_string())?;
+        let old = PathBuf::from(format!("{}.old", agent.display()));
+        let _ = std::fs::remove_file(&old);
+        if std::fs::copy(&grok, &agent).is_err() {
+            let _ = std::fs::rename(&agent, &old);
+            std::fs::copy(&grok, &agent).map_err(|e| format!("copy agent.exe: {e}"))?;
+        }
+        return Ok(agent.display().to_string());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let agent = home_bin.join("agent");
+        std::fs::create_dir_all(&home_bin).map_err(|e| e.to_string())?;
+        // Prefer same relative target as grok when it is a symlink.
+        let link_target = if grok
+            .symlink_metadata()
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false)
+        {
+            std::fs::read_link(&grok).unwrap_or_else(|_| grok.clone())
+        } else {
+            // Absolute path to the real binary when grok is a plain file.
+            std::fs::canonicalize(&grok).unwrap_or_else(|_| grok.clone())
+        };
+        let _ = std::fs::remove_file(&agent);
+        std::os::unix::fs::symlink(&link_target, &agent)
+            .map_err(|e| format!("symlink agent → {}: {e}", link_target.display()))?;
+        Ok(agent.display().to_string())
+    }
 }
 
 /// Pull the first semver-looking token out of a `--version` line.
@@ -75,6 +216,22 @@ pub struct CliProbeResult {
     pub version_supported: Option<bool>,
     /// Minimum version this app requires, so the UI need not hardcode it.
     pub min_version: String,
+    /// Product recommended CLI line (Grok Build 1.0+). Soft guidance only.
+    #[serde(default)]
+    pub recommended_version: String,
+    /// `Some(true)` when version ≥ recommended; `Some(false)` when older;
+    /// `None` when unparseable / missing.
+    #[serde(default)]
+    pub meets_recommended: Option<bool>,
+    /// Path of sibling `agent` binary if found (not used for App ACP spawn).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_path: Option<String>,
+    /// `agent --version` banner when readable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_version: Option<String>,
+    /// True when both `grok` and `agent` versions parse and differ.
+    #[serde(default)]
+    pub agent_binary_skew: bool,
 }
 
 pub fn cli_auth_json_present() -> bool {
@@ -405,16 +562,16 @@ pub fn probe_cli(manual_path: Option<&str>) -> CliProbeResult {
         let source = classify_source(path, manual_set && i == 0);
         if let Some(version) = read_version(path) {
             let version_supported = cli_version_supported(&version);
-            return CliProbeResult {
-                found: true,
-                path: Some(path.display().to_string()),
-                version: Some(version),
+            let path_s = path.display().to_string();
+            return finish_probe_result(
+                true,
+                Some(path_s),
+                Some(version),
                 source,
-                candidates_tried: tried,
+                tried,
                 cli_auth_present,
                 version_supported,
-                min_version: min_cli_version_str(),
-            };
+            );
         }
         if fallback.is_none() {
             fallback = Some((path.clone(), source));
@@ -424,27 +581,61 @@ pub fn probe_cli(manual_path: Option<&str>) -> CliProbeResult {
     // Runnable file that failed --version still counts as "found" so the user
     // can try connecting; UI can show missing version.
     if let Some((path, source)) = fallback {
-        return CliProbeResult {
-            found: true,
-            path: Some(path.display().to_string()),
-            version: None,
+        return finish_probe_result(
+            true,
+            Some(path.display().to_string()),
+            None,
             source,
-            candidates_tried: tried,
+            tried,
             cli_auth_present,
-            version_supported: None,
-            min_version: min_cli_version_str(),
-        };
+            None,
+        );
     }
 
-    CliProbeResult {
-        found: false,
-        path: None,
-        version: None,
-        source: "not_found".into(),
-        candidates_tried: tried,
+    finish_probe_result(
+        false,
+        None,
+        None,
+        "not_found".into(),
+        tried,
         cli_auth_present,
-        version_supported: None,
+        None,
+    )
+}
+
+fn finish_probe_result(
+    found: bool,
+    path: Option<String>,
+    version: Option<String>,
+    source: String,
+    candidates_tried: Vec<String>,
+    cli_auth_present: bool,
+    version_supported: Option<bool>,
+) -> CliProbeResult {
+    let meets_recommended = version
+        .as_deref()
+        .and_then(cli_meets_recommended);
+    let (agent_path, agent_version) = if found {
+        probe_agent_sidecar(path.as_deref())
+    } else {
+        (None, None)
+    };
+    let agent_binary_skew =
+        version_tokens_skew(version.as_deref(), agent_version.as_deref());
+    CliProbeResult {
+        found,
+        path,
+        version,
+        source,
+        candidates_tried,
+        cli_auth_present,
+        version_supported,
         min_version: min_cli_version_str(),
+        recommended_version: recommended_cli_version_str(),
+        meets_recommended,
+        agent_path,
+        agent_version,
+        agent_binary_skew,
     }
 }
 
@@ -499,6 +690,27 @@ mod tests {
     #[test]
     fn min_version_string_matches_constant() {
         assert_eq!(min_cli_version_str(), "0.2.112");
+    }
+
+    #[test]
+    fn recommended_line_is_1_0_0() {
+        assert_eq!(recommended_cli_version_str(), "1.0.0");
+        assert_eq!(cli_meets_recommended("grok 1.0.0"), Some(true));
+        assert_eq!(cli_meets_recommended("grok 1.0.0 (abc)"), Some(true));
+        assert_eq!(cli_meets_recommended("grok 0.2.120"), Some(false));
+        assert_eq!(cli_meets_recommended("grok 0.2.112"), Some(false));
+        assert_eq!(cli_meets_recommended("nope"), None);
+    }
+
+    #[test]
+    fn version_tokens_skew_detects_mismatch() {
+        assert!(!version_tokens_skew(None, Some("1.0.0")));
+        assert!(!version_tokens_skew(Some("grok 1.0.0"), Some("1.0.0")));
+        assert!(version_tokens_skew(
+            Some("grok 1.0.0"),
+            Some("grok 0.2.118")
+        ));
+        assert!(!version_tokens_skew(Some("grok"), Some("1.0.0")));
     }
 
     #[test]

@@ -732,6 +732,8 @@ pub fn run() {
 
             commands::probe_cli,
 
+            commands::cli_repair_agent_sidecar,
+
             commands::acp_test_connection,
 
             commands::acp_server_probe,

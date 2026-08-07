@@ -38,14 +38,16 @@ Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极
 解析顺序（真实可选值）：
 
 1. **自定义通道 active** → 该提供商的 `efforts`（`app_efforts`）
-2. 否则官方 catalog 的 `reasoningEfforts`
-3. 再回退 `GROK_BUILD_EFFORTS`（`low` · `medium` · `high`，默认 medium）
+2. 否则官方 catalog 的 `reasoningEfforts`（**以 CLI `models_cache` / `isDefault` 为准**）
+3. 再回退 `GROK_BUILD_EFFORTS`（`low` · `medium` · `high`，默认 **high** — 对齐 Grok Build **1.0**）
 
 自定义通道默认档（`GROK_CHANNEL_EFFORTS`，点「恢复 Grok 默认」得到）：`low` · `medium` · `high` · `max`——4 档，`max` 映射极高 UI 槽（catalog kind `tier4`）。官方 `GROK_BUILD_EFFORTS` 仍为 3 档。
 
 展示标签走 UI 阶梯 i18n（`effort.low|medium|high|xhigh`），不直接用上游 id 文案。
 
-Spawn：`--reasoning-effort <spawnId>`。切换通道时按阶梯对齐（极高在 3 档上钳到「高」）。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
+Spawn：`--reasoning-effort <spawnId>`。Host **透传** catalog / 通道 id（含 `max` 等），不硬白名单仅 low/medium/high。切换通道时按阶梯对齐（极高在 3 档上钳到「高」）。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
+
+**产品默认（1.0）：** 官方冷启动与未设 prefs 时 effort = **high**（与 `models_cache` 一致）。用户可在 Composer 降为 medium/low 以缩短 TTFT。旧安装若全局 effort 仍为历史产品默认 `medium`，`load_settings` 一次性抬到 high（显式 low/high/max 不动）。
 
 **Apply honesty（UI）**：纯 helper `src/lib/modelEffortApply.ts`。Composer 改模型 / 推理后 toast + 菜单 footer 说明生效路径：
 
@@ -60,7 +62,7 @@ Spawn：`--reasoning-effort <spawnId>`。切换通道时按阶梯对齐（极高
 
 | 手段 | 说明 |
 |------|------|
-| 默认 medium effort | 比 high 更短 thinking / TTFT，比 low 更稳 |
+| （非默认压 effort） | CLI 1.0 默认 **high**；要更快请用户在 Composer 选 medium/low，不要用产品默认偷偷降档 |
 | `grok --no-auto-update agent … stdio` | 跳过启动时更新检查 |
 | 进程复用 | 同 cwd + effort + YOLO 标志时，切会话只 `session/load\|new`，不 respawn CLI |
 | 打开会话预热 | `openSession` 后台 `session_connect`，首发跳过冷启动 |
@@ -144,10 +146,27 @@ CLI enum（`grok --help`）：`default | acceptEdits | auto | dontAsk | bypassPe
 
 **优先级**：YOLO / `always_approve` → `bypassPermissions`；否则产品会话 mode=`plan` → `plan`；否则策略表。
 
-Spawn（CLI 0.2.x）示例：
+### Workflow 实时日志 + Goal 会话指示（1.0 GUI）
+
+| 面 | 行为 |
+|----|------|
+| Workflows Settings smoke/run | Host 边跑边 emit `workflows://run-progress`；面板展示 live log + 已用时 |
+| Goal 会话 chip | 有 `goal_updated` 时显示阶段/进度/摘要；Composer `/goal` 已开但无事件 → **waiting** 虚线 chip（不发明进度） |
+
+### CLI 版本芯片与 binary skew（1.0）
+
+
+| 项 | 说明 |
+|----|------|
+| 硬门槛 | `≥ 0.2.112`（`versionSupported`）；更旧 → setup/Doctor fail |
+| 推荐线 | **`≥ 1.0.0`**（`meetsRecommended`）；更旧仍可用，Runtime · CLI 软提示升级 |
+| 探测 | Host `probe_cli` → `CliProbeResult`（含 `recommendedVersion` / `agentBinarySkew`） |
+| `agent` sidecar | App **只 spawn `grok`**；若 `~/.grok/bin/agent` 版本与 grok 不一致 → Doctor warn + Settings「将 agent 对齐到 grok」（`cli_repair_agent_sidecar`） |
+
+Spawn（CLI **1.0** / 兼容 0.2.112+）示例：
 
 ```text
-grok --no-auto-update --permission-mode <mode> agent [--always-approve] … stdio
+grok --no-auto-update --permission-mode <mode> agent [--model <id>] [--reasoning-effort <e>] [--always-approve] … stdio
 ```
 
 `--permission-mode` 为 **top-level**；`--always-approve` 为 **agent** option。

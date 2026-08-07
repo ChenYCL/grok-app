@@ -14,6 +14,7 @@ describe("defaultPaletteActions", () => {
       "new-chat",
       "add-project",
       "open-automations",
+      "open-ops",
       "open-tasks",
       "open-agent-dashboard",
       "open-task-board",

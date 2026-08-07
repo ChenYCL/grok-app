@@ -84,19 +84,22 @@ export const DEFAULT_CUSTOM_CONTEXT_WINDOW = 200000;
 /**
  * Static fallback when the selected model has no `reasoning_efforts` in cache.
  * Order is the product ladder (low → high intensity).
+ * Default **high** matches Grok Build CLI 1.0 `models_cache` (`isDefault` on high).
+ * Prefer live catalog via `pickDefaultEffort(model)` whenever available.
  */
 export const GROK_BUILD_EFFORTS: EffortOption[] = [
   { id: "low" },
-  { id: "medium", isDefault: true },
-  { id: "high" },
+  { id: "medium" },
+  { id: "high", isDefault: true },
 ];
 
 /**
- * Default reasoning depth. `medium` balances speed vs quality for agentic use;
- * users can lower (faster) or raise (deeper) via the composer chip.
- * When a model lists a default effort, prefer `pickDefaultEffort(model)`.
+ * Cold-start default reasoning depth when no live catalog is loaded yet.
+ * Aligned with Grok Build 1.0 official default (**high**). Users can lower
+ * effort for faster turns via the composer chip. Prefer
+ * `pickDefaultEffort(model)` when the model lists a default.
  */
-export const DEFAULT_EFFORT = "medium";
+export const DEFAULT_EFFORT = "high";
 
 /**
  * Canonical composer effort ladder (low → high intensity).
@@ -182,7 +185,7 @@ export function isValidEffort(
   return effortsForModel(modelOrEfforts).some((e) => e.id === id);
 }
 
-/** Default effort for a model (catalog default flag, else first, else medium). */
+/** Default effort for a model (catalog default flag, else first, else DEFAULT_EFFORT). */
 export function pickDefaultEffort(
   model?: ModelOption | null,
   catalogEfforts?: EffortOption[] | null,
@@ -191,6 +194,17 @@ export function pickDefaultEffort(
   return (
     list.find((e) => e.isDefault)?.id ?? list[0]?.id ?? DEFAULT_EFFORT
   );
+}
+
+/**
+ * Whether a string is safe to pass as CLI `--reasoning-effort <id>`.
+ * Catalog may expose low/medium/high, custom `max`, or channel-specific tiers.
+ * Host spawn must not hard-allowlist only Grok 3-tier ids.
+ */
+export function isSpawnableReasoningEffort(id: string): boolean {
+  const t = id.trim();
+  if (!t || t.length > 64) return false;
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(t);
 }
 
 /** Classify an effort catalog for cross-channel / UI-ladder mapping. */

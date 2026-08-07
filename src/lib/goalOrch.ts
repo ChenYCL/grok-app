@@ -894,6 +894,11 @@ export function pickLatestGoalOrchEvent(
 /** Compact session-chrome indicator (soft; no fake progress meter). */
 export type GoalOrchSessionIndicator = {
   show: true;
+  /**
+   * `active` — real goal_updated observed.
+   * `waiting` — composer goal mode on but harness has not emitted yet (honest empty).
+   */
+  kind: "active" | "waiting";
   phase: GoalOrchPhase;
   label: string;
   detail: string | null;
@@ -903,26 +908,45 @@ export type GoalOrchSessionIndicator = {
 };
 
 /**
- * Soft session indicator when a real goal_updated event exists.
- * Hidden when UI is off or no events — never invents progress.
+ * Soft session indicator:
+ * - real `goal_updated` → active chip with phase / progress / detail
+ * - composer `goalMode` on but no events yet → waiting chip (never fake progress)
+ * Hidden when UI is off and not in goal mode.
  */
 export function resolveGoalOrchSessionIndicator(input: {
   uiEnabled: boolean;
   events: readonly GoalOrchEvent[];
   sessionId?: string | null;
+  /** Product composer /goal mode — waiting chip only when true and no events. */
+  goalMode?: boolean | null;
 }): GoalOrchSessionIndicator | null {
-  if (!input.uiEnabled) return null;
+  if (!input.uiEnabled && !input.goalMode) return null;
   const latest = pickLatestGoalOrchEvent(input.events, input.sessionId);
-  if (!latest) return null;
-  return {
-    show: true,
-    phase: latest.phase,
-    label: latest.label || latest.phase,
-    detail: latest.detail || null,
-    progress: latest.deliverableProgress,
-    goalId: latest.goalId,
-    at: latest.at,
-  };
+  if (latest) {
+    return {
+      show: true,
+      kind: "active",
+      phase: latest.phase,
+      label: latest.label || latest.phase,
+      detail: latest.detail || null,
+      progress: latest.deliverableProgress,
+      goalId: latest.goalId,
+      at: latest.at,
+    };
+  }
+  if (input.goalMode && input.uiEnabled) {
+    return {
+      show: true,
+      kind: "waiting",
+      phase: "status",
+      label: "waiting",
+      detail: null,
+      progress: null,
+      goalId: null,
+      at: Date.now(),
+    };
+  }
+  return null;
 }
 
 export function assembleGoalOrchView(opts: {

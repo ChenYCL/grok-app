@@ -32,6 +32,10 @@ import { IconArchive, IconDoctor } from "@/components/icons";
 import { NetworkProbeField } from "./NetworkProbeField";
 import { AcpServerField } from "./AcpServerField";
 import { resolveLocale, type MessageKey } from "@/i18n";
+import {
+  classifyCliVersionStatus,
+  cliVersionStatusMessageKey,
+} from "@/lib/cliVersionStatus";
 
 
 export function RuntimeSection() {
@@ -44,6 +48,8 @@ export function RuntimeSection() {
     allowUnverifiedCliInstall,
     auditLedgerRetentionDays,
     cliInfo,
+    cliAgentSkewRepairing,
+    onCliRepairAgentSidecar,
     costRollupProjects,
     costRollupSessions,
     includePartialMessages,
@@ -133,6 +139,84 @@ export function RuntimeSection() {
                           : ""}
                     </div>
                   )}
+                  {(() => {
+                    const status = classifyCliVersionStatus(cliInfo);
+                    const key = cliVersionStatusMessageKey(status);
+                    return (
+                      <div
+                        className={
+                          "settings-row__hint" +
+                          (status === "too_old" || status === "below_recommended"
+                            ? " settings-row__hint--warn"
+                            : status === "recommended"
+                              ? " settings-row__hint--ok"
+                              : "")
+                        }
+                        id="settings-anchor-cliVersionStatus"
+                      >
+                        {t(key, {
+                          version: cliInfo.version || "—",
+                          recommended:
+                            cliInfo.recommendedVersion || "1.0.0",
+                          min: cliInfo.minVersion || "0.2.112",
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {cliInfo.agentBinarySkew ? (
+                    <div className="settings-row settings-row--stack settings-row--compact">
+                      <div className="settings-row__hint settings-row__hint--warn">
+                        {t("settings.cliAgentSkew", {
+                          version: cliInfo.version || "—",
+                          agentVersion: cliInfo.agentVersion || "—",
+                        })}
+                      </div>
+                      {onCliRepairAgentSidecar ? (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          disabled={!!cliAgentSkewRepairing}
+                          onClick={() => {
+                            void (async () => {
+                              try {
+                                const r = await onCliRepairAgentSidecar();
+                                if (!r) return;
+                                if (r.ok) {
+                                  showSettingsToast?.(
+                                    t("settings.cliAgentSkewRepaired", {
+                                      agentVersion: r.agentVersion || "—",
+                                    }),
+                                    3200,
+                                  );
+                                } else {
+                                  showSettingsToast?.(
+                                    t("settings.cliAgentSkewRepairFailed", {
+                                      error: r.error || "unknown",
+                                    }),
+                                    4500,
+                                  );
+                                }
+                              } catch (e) {
+                                showSettingsToast?.(
+                                  t("settings.cliAgentSkewRepairFailed", {
+                                    error:
+                                      e instanceof Error
+                                        ? e.message
+                                        : String(e),
+                                  }),
+                                  4500,
+                                );
+                              }
+                            })();
+                          }}
+                        >
+                          {cliAgentSkewRepairing
+                            ? t("settings.cliAgentSkewRepairing")
+                            : t("settings.cliAgentSkewRepair")}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 {onAllowUnverifiedCliInstall ? (
                   <div

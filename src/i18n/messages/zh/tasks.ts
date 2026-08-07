@@ -1,6 +1,8 @@
 /** Simplified Chinese messages — domain: tasks */
 export const zhTasks = {
   "tasks.title": "任务",
+  "ops.palette": "Agent 运维",
+  "ops.paletteHint": "任务 · 仪表盘 · 会话看板 · 批量",
   "tasks.empty": "本轮暂无 Agent 任务",
   "tasks.emptyHint": "进行中与最近完成的工具调用（子代理、终端、监视器等）会从当前会话流中出现在这里。",
   "tasks.showPanel": "显示 Agent 任务",

@@ -1,6 +1,8 @@
 /** English messages — domain: tasks */
 export const enTasks = {
   "tasks.title": "Tasks",
+  "ops.palette": "Agent ops",
+  "ops.paletteHint": "Tasks · dashboard · session board · batch",
   "tasks.empty": "No agent tasks in this turn",
   "tasks.emptyHint": "In-flight and recent tool calls (subagents, shell, monitors, and other tools) appear here from the live session stream.",
   "tasks.showPanel": "Show agent tasks",

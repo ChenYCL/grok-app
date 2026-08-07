@@ -30,10 +30,11 @@ export function paletteActionIcon(id: string) {
       return <IconFolder size={size} />;
     case "open-automations":
       return <IconScheduled size={size} />;
-    case "open-tasks":
-      return <IconList size={size} />;
+    case "open-ops":
     case "open-agent-dashboard":
       return <IconActivity size={size} />;
+    case "open-tasks":
+    case "open-task-board":
     case "open-batch-agents":
       return <IconList size={size} />;
     case "doctor":

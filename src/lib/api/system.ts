@@ -198,19 +198,40 @@ export async function probeStreamingAcpNdjson(opts?: {
   });
 }
 
+export type CliProbeInfo = {
+  found: boolean;
+  path: string | null;
+  version: string | null;
+  source: string;
+  cliAuthPresent?: boolean;
+  candidatesTried?: string[];
+  /** false ⇒ CLI older than minVersion; null/undefined ⇒ version unknown. */
+  versionSupported?: boolean | null;
+  /** Minimum grok CLI version this app requires (from the host). */
+  minVersion?: string;
+  /** Product recommended line (Grok Build 1.0+). Soft guidance only. */
+  recommendedVersion?: string;
+  /** true when version ≥ recommended; false when older; null when unknown. */
+  meetsRecommended?: boolean | null;
+  agentPath?: string | null;
+  agentVersion?: string | null;
+  /** grok vs sibling agent binary version mismatch. */
+  agentBinarySkew?: boolean;
+};
+
 export async function probeCli(manualPath?: string) {
+  return invoke<CliProbeInfo>("probe_cli", { manualPath: manualPath ?? null });
+}
+
+/** Relink/copy `~/.grok/bin/agent` to match grok (install skew repair). */
+export async function cliRepairAgentSidecar(grokPath?: string | null) {
   return invoke<{
-    found: boolean;
-    path: string | null;
-    version: string | null;
-    source: string;
-    cliAuthPresent?: boolean;
-    candidatesTried?: string[];
-    /** false ⇒ CLI older than minVersion; null/undefined ⇒ version unknown. */
-    versionSupported?: boolean | null;
-    /** Minimum grok CLI version this app requires (from the host). */
-    minVersion?: string;
-  }>("probe_cli", { manualPath: manualPath ?? null });
+    ok: boolean;
+    agentPath?: string;
+    agentBinarySkew?: boolean;
+    agentVersion?: string | null;
+    grokVersion?: string | null;
+  }>("cli_repair_agent_sidecar", { grokPath: grokPath ?? null });
 }
 
 export interface AcpProbeResult {

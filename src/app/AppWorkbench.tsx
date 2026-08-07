@@ -207,6 +207,7 @@ import { resolveTrayBusyBadgeCount } from "@/lib/trayNotifyPro";
 import {
   collectAgentDashboardRows
 } from "@/lib/agentDashboard";
+import { buildTaskBoard } from "@/lib/sessionTaskBoard";
 import {
   BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
   buildBatchPromptBody,
@@ -659,6 +660,7 @@ import {
   isCliVersionUnsupported,
   resolveSetupGateBoot
 } from "@/lib/setupGatePro";
+import { mapProbeToCliInfo } from "@/lib/cliVersionStatus";
 import {
   getComposerCaretOffset,
   resizeComposerInput,
@@ -882,6 +884,10 @@ const SideWorkbench = lazy(async () => {
 const AgentDashboardModal = lazy(async () => {
   const m = await import("@/components/AgentDashboardModal");
   return { default: m.AgentDashboardModal };
+});
+const SessionTaskBoardModal = lazy(async () => {
+  const m = await import("@/components/SessionTaskBoardModal");
+  return { default: m.SessionTaskBoardModal };
 });
 const BatchAgentsModal = lazy(async () => {
   const m = await import("@/components/BatchAgentsModal");
@@ -2178,13 +2184,10 @@ export function AppWorkbench() {
   const [localError, setLocalError] = useState<string | null>(null);
   /** Expand technical dump under the compact error banner. */
   const [errorDetailOpen, setErrorDetailOpen] = useState(false);
-  const [cliInfo, setCliInfo] = useState<{
-    found: boolean;
-    path: string | null;
-    version: string | null;
-    source: string;
-    cliAuthPresent: boolean;
-  }>({ found: false, path: null, version: null, source: "", cliAuthPresent: false });
+  const [cliInfo, setCliInfo] = useState(() =>
+    mapProbeToCliInfo({ found: false }),
+  );
+  const [cliAgentSkewRepairing, setCliAgentSkewRepairing] = useState(false);
   const [manualCliPath, setManualCliPath] = useState("");
   const [acpServerAddr, setAcpServerAddr] = useState("");
   const [proxyMode, setProxyMode] = useState("system");
@@ -2261,6 +2264,9 @@ export function AppWorkbench() {
   const didRestoreLastRef = useRef(false);
   const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
   const [agentDashboardOpen, setAgentDashboardOpen] = useState(false);
+  const [taskBoardOpen, setTaskBoardOpen] = useState(false);
+  const [taskBoardIncludeArchived, setTaskBoardIncludeArchived] =
+    useState(false);
   const [batchAgentsOpen, setBatchAgentsOpen] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
@@ -2337,6 +2343,7 @@ export function AppWorkbench() {
   const liveMap = useLiveMapWhen(
     showReliability ||
       agentDashboardOpen ||
+      taskBoardOpen ||
       tasksPanelOpen ||
       streamStall != null,
   );
@@ -2931,13 +2938,7 @@ export function AppWorkbench() {
         setLocale(resolveLocalePreference(pref));
       }
       setManualCliPath(settings.manualCliPath || cli.path || "");
-      setCliInfo({
-        found: cli.found,
-        path: cli.path,
-        version: cli.version,
-        source: cli.source || "",
-        cliAuthPresent: !!cli.cliAuthPresent,
-      });
+      setCliInfo(mapProbeToCliInfo(cli));
       const cliSeed: SetupCliInfo = {
         found: cli.found,
         path: cli.path,
@@ -6557,6 +6558,32 @@ export function AppWorkbench() {
       projects,
       liveMap,
       session.sessionId,
+      tr,
+      generalWorkspacePath,
+    ],
+  );
+  const sessionTaskBoard = useMemo(
+    () =>
+      buildTaskBoard({
+        sessions,
+        projects: projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          path: p.path,
+        })),
+        liveMap,
+        currentSessionId: session.sessionId,
+        includeArchived: taskBoardIncludeArchived,
+        untitledLabel: tr("session.untitled"),
+        generalWorkspacePath,
+        unboundProjectLabel: tr("sidebar.otherSessions"),
+      }),
+    [
+      sessions,
+      projects,
+      liveMap,
+      session.sessionId,
+      taskBoardIncludeArchived,
       tr,
       generalWorkspacePath,
     ],
@@ -12311,6 +12338,17 @@ export function AppWorkbench() {
       case "open-automations":
         navigateAutomations();
         break;
+      case "open-ops":
+        // Ops hub: multi-session dashboard (fleet + stop-all).
+        setAppView("workbench");
+        setAgentDashboardOpen(true);
+        if (
+          typeof window !== "undefined" &&
+          window.location.hash.includes("settings")
+        ) {
+          window.location.hash = "#/workbench";
+        }
+        break;
       case "open-tasks":
         setAppView("workbench");
         setMainPane("chat");
@@ -12325,6 +12363,16 @@ export function AppWorkbench() {
       case "open-agent-dashboard":
         setAppView("workbench");
         setAgentDashboardOpen(true);
+        if (
+          typeof window !== "undefined" &&
+          window.location.hash.includes("settings")
+        ) {
+          window.location.hash = "#/workbench";
+        }
+        break;
+      case "open-task-board":
+        setAppView("workbench");
+        setTaskBoardOpen(true);
         if (
           typeof window !== "undefined" &&
           window.location.hash.includes("settings")
@@ -12841,15 +12889,16 @@ export function AppWorkbench() {
     tr,
   ]);
 
-  /** Soft chip: latest observed goal_updated for this session (never invented). */
+  /** Soft chip: latest goal_updated, or waiting when /goal mode is on. */
   const goalOrchSessionChip = useMemo(
     () =>
       resolveGoalOrchSessionIndicator({
         uiEnabled: goalOrchUiEnabled,
         events: goalOrchEvents,
         sessionId: session.sessionId ?? null,
+        goalMode,
       }),
-    [goalOrchUiEnabled, goalOrchEvents, session.sessionId],
+    [goalOrchUiEnabled, goalOrchEvents, session.sessionId, goalMode],
   );
 
   // T15: announce stream start/end once (avoid token-level noise).
@@ -15501,13 +15550,7 @@ export function AppWorkbench() {
           }
           onAccountLoginOauth={() => runAccountLogin("oauth")}
           onComplete={(cli) => {
-            setCliInfo({
-              found: cli.found,
-              path: cli.path,
-              version: cli.version,
-              source: cli.source,
-              cliAuthPresent: cli.cliAuthPresent,
-            });
+            setCliInfo(mapProbeToCliInfo(cli));
             if (cli.path) setManualCliPath(cli.path);
             setSetup((s) => ({
               ...s,
@@ -15660,13 +15703,7 @@ export function AppWorkbench() {
           api.settingsSet({ ...s, manualCliPath: v || null }),
           );
           void api.probeCli(v || undefined).then((cli) => {
-          setCliInfo({
-          found: cli.found,
-          path: cli.path,
-          version: cli.version,
-          source: cli.source || "",
-          cliAuthPresent: !!cli.cliAuthPresent,
-          });
+          setCliInfo(mapProbeToCliInfo(cli));
           setSetup((prev) => ({
           ...prev,
           cli: cli.found,
@@ -16036,6 +16073,35 @@ export function AppWorkbench() {
           setAskUserTimeoutSec(v);
           }}
           cliInfo={cliInfo}
+          cliAgentSkewRepairing={cliAgentSkewRepairing}
+          onCliRepairAgentSidecar={async () => {
+            if (cliAgentSkewRepairing) {
+              return { ok: false, error: "busy" };
+            }
+            setCliAgentSkewRepairing(true);
+            try {
+              const r = await api.cliRepairAgentSidecar(cliInfo.path);
+              const again = await api.probeCli(
+                manualCliPath || cliInfo.path || undefined,
+              );
+              setCliInfo(mapProbeToCliInfo(again));
+              return {
+                ok: !!r.ok && !again.agentBinarySkew,
+                agentVersion:
+                  again.agentVersion ?? r.agentVersion ?? again.version,
+                error: again.agentBinarySkew
+                  ? "still_skewed"
+                  : null,
+              };
+            } catch (e) {
+              return {
+                ok: false,
+                error: e instanceof Error ? e.message : String(e),
+              };
+            } finally {
+              setCliAgentSkewRepairing(false);
+            }
+          }}
           onDoctor={() => void openDoctor()}
           onOpenReliability={() => openReliability()}
           onOpenBatchAgents={() => openBatchAgents()}
@@ -17591,35 +17657,61 @@ export function AppWorkbench() {
           )}
 
           {mainPane === "chat" && goalOrchSessionChip ? (
-            <button
-              type="button"
-              className="goal-orch-session-chip"
-              data-testid="goal-orch-session-chip"
-              title={[
-                tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
-                goalOrchSessionChip.label,
-                goalOrchSessionChip.progress,
-                goalOrchSessionChip.detail,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-              aria-label={tr("reliability.goal.sessionChipAria", {
-                phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
-              })}
-              onClick={() => openReliability()}
-            >
-              <span className="goal-orch-session-chip__dot" aria-hidden />
-              <span className="goal-orch-session-chip__label">
-                {tr("reliability.goal.sessionChip", {
-                  phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
-                })}
-              </span>
-              {goalOrchSessionChip.progress ? (
-                <span className="goal-orch-session-chip__meta">
-                  {goalOrchSessionChip.progress}
+            <div className="goal-orch-session-chip-wrap">
+              <button
+                type="button"
+                className={
+                  "goal-orch-session-chip" +
+                  (goalOrchSessionChip.kind === "waiting"
+                    ? " goal-orch-session-chip--waiting"
+                    : "")
+                }
+                data-testid="goal-orch-session-chip"
+                data-kind={goalOrchSessionChip.kind}
+                title={[
+                  goalOrchSessionChip.kind === "waiting"
+                    ? tr("reliability.goal.sessionChipWaitingTitle")
+                    : tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+                  goalOrchSessionChip.label,
+                  goalOrchSessionChip.progress,
+                  goalOrchSessionChip.detail,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                aria-label={
+                  goalOrchSessionChip.kind === "waiting"
+                    ? tr("reliability.goal.sessionChipWaitingAria")
+                    : tr("reliability.goal.sessionChipAria", {
+                        phase: tr(
+                          goalOrchPhaseLabelKey(goalOrchSessionChip.phase),
+                        ),
+                      })
+                }
+                onClick={() => openReliability()}
+              >
+                <span className="goal-orch-session-chip__dot" aria-hidden />
+                <span className="goal-orch-session-chip__label">
+                  {goalOrchSessionChip.kind === "waiting"
+                    ? tr("reliability.goal.sessionChipWaiting")
+                    : tr("reliability.goal.sessionChip", {
+                        phase: tr(
+                          goalOrchPhaseLabelKey(goalOrchSessionChip.phase),
+                        ),
+                      })}
+                  {goalOrchSessionChip.kind === "active" &&
+                  goalOrchSessionChip.detail
+                    ? ` · ${goalOrchSessionChip.detail.slice(0, 48)}${
+                        goalOrchSessionChip.detail.length > 48 ? "…" : ""
+                      }`
+                    : ""}
                 </span>
-              ) : null}
-            </button>
+                {goalOrchSessionChip.progress ? (
+                  <span className="goal-orch-session-chip__meta">
+                    {goalOrchSessionChip.progress}
+                  </span>
+                ) : null}
+              </button>
+            </div>
           ) : null}
 
           {mainPane === "chat" && showChatFind && (
@@ -19897,6 +19989,25 @@ export function AppWorkbench() {
         onOpenBatchAgents={() => {
           setAgentDashboardOpen(false);
           openBatchAgents();
+        }}
+      />
+      </Suspense>
+      ) : null}
+      {(taskBoardOpen) ? (
+      <Suspense fallback={null}>
+      <SessionTaskBoardModal
+        open={taskBoardOpen}
+        locale={locale}
+        board={sessionTaskBoard}
+        includeArchived={taskBoardIncludeArchived}
+        onIncludeArchivedChange={setTaskBoardIncludeArchived}
+        onClose={() => setTaskBoardOpen(false)}
+        onSelectSession={(id) => {
+          setTaskBoardOpen(false);
+          const row = sessions.find((s) => s.id === id);
+          if (!row) return;
+          const proj = projects.find((p) => p.id === row.projectId) || null;
+          void openSession(row, proj);
         }}
       />
       </Suspense>

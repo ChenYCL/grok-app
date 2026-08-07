@@ -470,6 +470,9 @@
 }
 
 /* Soft goal-orch session chip (only when CLI emitted goal_updated). */
+.goal-orch-session-chip-wrap .goal-orch-session-chip {
+  margin: 0;
+}
 .goal-orch-session-chip {
   display: inline-flex;
   align-items: center;
@@ -508,6 +511,35 @@
   flex: 0 0 auto;
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
+}
+.goal-orch-session-chip--waiting {
+  border-style: dashed;
+  opacity: 0.92;
+}
+.goal-orch-session-chip--waiting .goal-orch-session-chip__dot {
+  animation: goal-orch-chip-pulse 1.4s ease-in-out infinite;
+}
+@keyframes goal-orch-chip-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.settings-workflows-run-result__log--live {
+  max-height: 180px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 30%, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg-card)) 92%, var(--accent));
+  font-size: 11.5px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Sticky plan/goal bar above the chat stage — accent blue-violet, theme-aware */

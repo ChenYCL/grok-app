@@ -166,6 +166,13 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
             "version": probe.version,
             "source": probe.source,
             "checksumVerified": settings.last_cli_checksum_verified,
+            "minVersion": probe.min_version,
+            "recommendedVersion": probe.recommended_version,
+            "meetsRecommended": probe.meets_recommended,
+            "versionSupported": probe.version_supported,
+            "agentPath": probe.agent_path,
+            "agentVersion": probe.agent_version,
+            "agentBinarySkew": probe.agent_binary_skew,
         },
         "auth": {
             "cliAuthJson": auth_ok,
@@ -204,17 +211,39 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
             Some(false) => " · last install missing checksum sidecar",
             None => "",
         };
+        let rec_note = match probe.meets_recommended {
+            Some(true) => format!(" · recommended ≥ {}", probe.recommended_version),
+            Some(false) => format!(
+                " · below recommended {} (still supported if ≥ {})",
+                probe.recommended_version, probe.min_version
+            ),
+            None => String::new(),
+        };
+        let level = if probe.version_supported == Some(false) {
+            "fail"
+        } else if probe.meets_recommended == Some(false) {
+            "warn"
+        } else {
+            "ok"
+        };
         checks.push(doctor_check(
             "cli",
-            "ok",
+            level,
             "Grok Build CLI",
-            format!("Found {ver} ({}) at {path}{checksum_note}", probe.source),
+            format!(
+                "Found {ver} ({}) at {path}{checksum_note}{rec_note}",
+                probe.source
+            ),
             serde_json::json!({
                 "found": true,
                 "path": probe.path,
                 "version": probe.version,
                 "source": probe.source,
                 "checksumVerified": checksum_verified,
+                "minVersion": probe.min_version,
+                "recommendedVersion": probe.recommended_version,
+                "meetsRecommended": probe.meets_recommended,
+                "versionSupported": probe.version_supported,
             }),
         ));
     } else {
@@ -231,6 +260,27 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
                 "source": probe.source,
                 "candidatesTried": probe.candidates_tried,
                 "checksumVerified": checksum_verified,
+            }),
+        ));
+    }
+
+    // 1a) grok vs agent binary skew (App spawns grok only; TUI/external may use agent).
+    if probe.agent_binary_skew {
+        checks.push(doctor_check(
+            "cli_agent_skew",
+            "warn",
+            "CLI agent binary skew",
+            format!(
+                "grok reports {:?} but sibling agent reports {:?}. App ACP uses grok; \
+                 external `agent` may be stale. Repair from Settings → Runtime · CLI or reinstall.",
+                probe.version, probe.agent_version
+            ),
+            serde_json::json!({
+                "grokPath": probe.path,
+                "grokVersion": probe.version,
+                "agentPath": probe.agent_path,
+                "agentVersion": probe.agent_version,
+                "repairable": true,
             }),
         ));
     }
