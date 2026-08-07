@@ -485,6 +485,7 @@ import {
   clearAllUnread as clearAllSessionUnread,
   clearUnread as clearSessionUnread,
   loadUnreadSessionIds,
+  markUnread as markSessionUnread,
   SESSION_UNREAD_CHANGE_EVENT,
   shouldConfirmClearAllUnread,
 } from "@/lib/sessionUnread";
@@ -801,6 +802,7 @@ import {
   IconDeviceMobile,
   IconShield,
   IconCheck,
+  IconCircle,
   IconList,
   IconListNumbers,
   IconRobot,
@@ -958,7 +960,7 @@ import {
 import { Tip } from "@/components/ui/tooltip";
 import {
   WindowControls,
-  toggleMaximizeFromTitlebar
+  titlebarMaximizeHandlers
 } from "@/components/WindowControls";
 
 import { paletteActionIcon } from "@/app/paletteActionIcon";
@@ -1078,6 +1080,28 @@ export function AppWorkbench() {
         next.delete(id);
         return next;
       });
+    },
+    [],
+  );
+  /**
+   * Manual "mark as unread" while the chat is still open: hold the badge until
+   * the user leaves and re-opens the thread (auto clear-on-view still applies).
+   */
+  const manualUnreadHoldIdsRef = useRef<Set<string>>(new Set());
+  const applyMarkSessionUnread = useCallback(
+    (sessionId: string | null | undefined) => {
+      const id = typeof sessionId === "string" ? sessionId.trim() : "";
+      if (!id) return;
+      markSessionUnread(id);
+      setUnreadSessionIds((prev) => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      if (viewingSessionIdRef.current === id) {
+        manualUnreadHoldIdsRef.current.add(id);
+      }
     },
     [],
   );
@@ -2386,6 +2410,10 @@ export function AppWorkbench() {
   const platform = useMemo(() => detectAppPlatform(), []);
   /** Self-drawn chrome when OS title bar is disabled (Windows release config). */
   const useCustomWindowChrome = platform === "win" || platform === "other";
+  /** Titlebar / chrome-strip double-click → maximize on mac + win. */
+  const titlebarMax = titlebarMaximizeHandlers({
+    enabled: !phoneLayout && !isMirrorClient(),
+  });
   /** Right inset so resource chrome icons clear min/max/close. */
   const windowControlsInset = useCustomWindowChrome ? WINDOW_CONTROLS_INSET : 0;
   const [windowMaximized, setWindowMaximized] = useState(false);
@@ -2475,14 +2503,31 @@ export function AppWorkbench() {
     const preferredAside = Math.max(
       cur.asideWidth || 0,
       DEFAULT_LAYOUT.asideWidth,
+      ASIDE_WIDTH_MIN,
     );
-    // Paint the pane first — do not block UI on window grow.
+    // Sync-clamp to the *current* viewport before paint. Opening at preferred
+    // width first (old path) made sidebar + main min + aside overflow narrow
+    // non-maximized windows, clipping the side chrome close control off-screen.
+    const syncWidth = clampAsideWidth(preferredAside, {
+      ...asideClampOpts(),
+      viewportWidth:
+        typeof window !== "undefined" ? window.innerWidth : undefined,
+      sidebarOccupiedWidth: cur.sidebarCollapsed
+        ? 0
+        : cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+    });
+    // If the frame is too tight for any aside (syncWidth 0), still paint a
+    // small pane and let window fit / expand try to recover.
+    const paintWidth =
+      syncWidth > 0
+        ? syncWidth
+        : Math.min(preferredAside, ASIDE_WIDTH_MIN);
     setLayout((l) => {
-      if (!l.asideCollapsed && (l.asideWidth || 0) >= preferredAside) return l;
+      if (!l.asideCollapsed && (l.asideWidth || 0) === paintWidth) return l;
       const n = {
         ...l,
         asideCollapsed: false,
-        asideWidth: Math.max(l.asideWidth || 0, preferredAside),
+        asideWidth: paintWidth,
       };
       saveLayout(localStorage, n);
       return n;
@@ -2503,7 +2548,20 @@ export function AppWorkbench() {
         return n;
       });
     });
-  }, [fitWindowThenClampAside, phoneLayout]);
+  }, [asideClampOpts, fitWindowThenClampAside, phoneLayout]);
+
+  /** Collapse the right Side Workbench (and exit expand / dock composer). */
+  const closeAsidePane = useCallback(() => {
+    planOpenedAsideRef.current = false;
+    setSideWorkbench((s) => (s.expanded ? { ...s, expanded: false } : s));
+    setSideDockComposer(false);
+    setLayout((l) => {
+      if (l.asideCollapsed) return l;
+      const n = { ...l, asideCollapsed: true };
+      saveLayout(localStorage, n);
+      return n;
+    });
+  }, []);
 
   /** Route chat context opens into Side Workbench tabs (Phase 6). */
   useEffect(() => {
@@ -2673,9 +2731,12 @@ export function AppWorkbench() {
     if (platform === "other") document.documentElement.classList.add("platform-other");
   }, [platform]);
 
+  // Track maximized on every desktop host (mac Overlay + Win frameless) so
+  // .is-maximized chrome + layout reclamp stay honest after titlebar dblclick.
   useEffect(() => {
-    if (!useCustomWindowChrome || !api.isTauri()) return;
-    let unlisten: (() => void) | undefined;
+    if (!api.isDesktopHost() || !api.isTauri()) return;
+    let unlistenResize: (() => void) | undefined;
+    let unlistenScale: (() => void) | undefined;
     let cancelled = false;
     void (async () => {
       try {
@@ -2689,19 +2750,30 @@ export function AppWorkbench() {
           }
         };
         await sync();
-        unlisten = await w.onResized(() => {
+        unlistenResize = await w.onResized(() => {
           void sync();
         });
-        if (cancelled) unlisten?.();
+        try {
+          unlistenScale = await w.onScaleChanged(() => {
+            void sync();
+          });
+        } catch {
+          /* older API */
+        }
+        if (cancelled) {
+          unlistenResize?.();
+          unlistenScale?.();
+        }
       } catch {
         /* ignore */
       }
     })();
     return () => {
       cancelled = true;
-      unlisten?.();
+      unlistenResize?.();
+      unlistenScale?.();
     };
-  }, [useCustomWindowChrome]);
+  }, []);
 
   // Apply always-on-top from localStorage on boot (and whenever state is set).
   useEffect(() => {
@@ -6353,6 +6425,7 @@ export function AppWorkbench() {
 
   const applyClearAllSessionUnread = useCallback(() => {
     clearAllSessionUnread();
+    manualUnreadHoldIdsRef.current.clear();
     setUnreadSessionIds(loadUnreadSessionIds());
   }, []);
 
@@ -6403,15 +6476,26 @@ export function AppWorkbench() {
 
   const handleClearSessionUnread = useCallback(
     (sessionId: string) => {
+      // Explicit "mark as read" also drops any manual hold.
+      manualUnreadHoldIdsRef.current.delete(sessionId);
       applyClearSessionUnread(sessionId);
     },
     [applyClearSessionUnread],
   );
 
+  const handleMarkSessionUnread = useCallback(
+    (sessionId: string) => {
+      applyMarkSessionUnread(sessionId);
+    },
+    [applyMarkSessionUnread],
+  );
+
   // Any path that binds the workbench to a session clears its unread marker
   // (sidebar + dock/tray badge). Covers openSession, deep links, tray Recent.
+  // Also ends a manual "mark as unread" hold when the user re-opens the chat.
   useEffect(() => {
     if (session.sessionId) {
+      manualUnreadHoldIdsRef.current.delete(session.sessionId);
       applyClearSessionUnread(session.sessionId);
     }
   }, [session.sessionId, applyClearSessionUnread]);
@@ -6421,7 +6505,10 @@ export function AppWorkbench() {
   useEffect(() => {
     const clearViewingIfPresent = () => {
       const id = viewingSessionIdRef.current;
-      if (id) applyClearSessionUnread(id);
+      if (!id) return;
+      // Keep manual "mark as unread" until the user leaves this thread.
+      if (manualUnreadHoldIdsRef.current.has(id)) return;
+      applyClearSessionUnread(id);
     };
     const onVis = () => {
       if (
@@ -12596,15 +12683,7 @@ export function AppWorkbench() {
         openAsidePane();
         return;
       }
-      setLayout((l) => {
-        if (l.asideCollapsed) return l;
-        const n = { ...l, asideCollapsed: true };
-        saveLayout(localStorage, n);
-        return n;
-      });
-      setSideWorkbench((s) =>
-        s.expanded ? { ...s, expanded: false } : s,
-      );
+      closeAsidePane();
     },
     openSidePicker: (kind: SidePickerKind) => {
       setSideWorkbench((s) => {
@@ -15478,7 +15557,11 @@ export function AppWorkbench() {
 
       {appGate === "loading" && (
         <div className="setup-gate" data-testid="setup-booting">
-          <div className="setup-gate__drag" data-tauri-drag-region />
+          <div
+            className="setup-gate__drag"
+            data-tauri-drag-region
+            {...titlebarMax}
+          />
           <div className="setup-gate__center">
             <div className="setup-hero">
               <div
@@ -16301,9 +16384,7 @@ export function AppWorkbench() {
           <div
             className="sidebar-chrome"
             data-tauri-drag-region
-            onDoubleClick={() => {
-              if (useCustomWindowChrome) void toggleMaximizeFromTitlebar();
-            }}
+            {...titlebarMax}
           >
             <Tip label={tr("main.leftPaneHide")}>
               <button
@@ -16321,7 +16402,11 @@ export function AppWorkbench() {
                 <IconPanel size={16} />
               </button>
             </Tip>
-            <div className="sidebar-chrome__drag" data-tauri-drag-region />
+            <div
+              className="sidebar-chrome__drag"
+              data-tauri-drag-region
+              {...titlebarMax}
+            />
           </div>
 
           {/* Row 2: brand + search (Codex: title left, search right) */}
@@ -17074,9 +17159,7 @@ export function AppWorkbench() {
               "main__top" + (phoneLayout ? " main__top--phone" : "")
             }
             data-tauri-drag-region
-            onDoubleClick={() => {
-              if (useCustomWindowChrome) void toggleMaximizeFromTitlebar();
-            }}
+            {...titlebarMax}
           >
             <div className="main__title-row" data-tauri-drag-region>
               {/* Phone: always-visible hamburger (≥44px). Desktop: reopen when rail hidden. */}
@@ -17226,7 +17309,9 @@ export function AppWorkbench() {
                       stay as no-op cleanup. */}
                   {/* Codex Side Workbench chrome:
                       collapsed → open-with · env · side
-                      open      → open-with · env  (side/expand on side bar) */}
+                      open      → open-with · env · side (also on side bar)
+                      Main keeps a toggle when open so narrow/non-maximized
+                      windows can still close if side chrome is clipped. */}
                   {mainPane === "chat" &&
                     activeProject &&
                     !isMirrorClient() && (
@@ -17306,6 +17391,9 @@ export function AppWorkbench() {
                       }}
                     />
                   ) : null}
+                  {/* Always keep a main-chrome toggle: when the window is not
+                      maximized, the side pane can clip its own close control
+                      past the right edge — main column stays reachable. */}
                   {layout.asideCollapsed ? (
                     <Tip label={tr("main.rightPaneShow")}>
                       <button
@@ -17319,7 +17407,20 @@ export function AppWorkbench() {
                         <IconPanelRight size={16} />
                       </button>
                     </Tip>
-                  ) : null}
+                  ) : (
+                    <Tip label={tr("main.rightPaneHide")}>
+                      <button
+                        type="button"
+                        className="chrome-btn main__pane-toggle is-on"
+                        aria-label={tr("main.rightPaneHide")}
+                        aria-pressed
+                        data-testid="main-side-toggle"
+                        onClick={() => closeAsidePane()}
+                      >
+                        <IconPanelRight size={16} />
+                      </button>
+                    </Tip>
+                  )}
                 </>
               )}
             </div>
@@ -19057,18 +19158,7 @@ export function AppWorkbench() {
                 onDismissPlan={() => void dismissPlan()}
                 openRequest={resourceOpenTarget}
                 onOpenRequestConsumed={() => setResourceOpenTarget(null)}
-                onCloseSide={() => {
-                  planOpenedAsideRef.current = false;
-                  setSideWorkbench((s) =>
-                    s.expanded ? { ...s, expanded: false } : s,
-                  );
-                  setSideDockComposer(false);
-                  setLayout((l) => {
-                    const n = { ...l, asideCollapsed: true };
-                    saveLayout(localStorage, n);
-                    return n;
-                  });
-                }}
+                onCloseSide={closeAsidePane}
                 onExpandedChange={(expanded) => {
                   if (phoneLayout) return;
                   if (!expanded) setSideDockComposer(false);
@@ -23070,16 +23160,21 @@ export function AppWorkbench() {
                 ),
                 onClick: () => handleToggleSessionMute(s.id),
               },
-              ...(sessionUnread
-                ? [
-                    {
-                      id: "clear-unread",
-                      label: tr("session.clearUnread"),
-                      icon: <IconCheck size={16} />,
-                      onClick: () => handleClearSessionUnread(s.id),
-                    } satisfies ContextMenuItem,
-                  ]
-                : []),
+              {
+                id: sessionUnread ? "clear-unread" : "mark-unread",
+                label: sessionUnread
+                  ? tr("session.clearUnread")
+                  : tr("session.markUnread"),
+                icon: sessionUnread ? (
+                  <IconCheck size={16} />
+                ) : (
+                  <IconCircle size={16} />
+                ),
+                onClick: () => {
+                  if (sessionUnread) handleClearSessionUnread(s.id);
+                  else handleMarkSessionUnread(s.id);
+                },
+              },
               ...(unreadSessionIds.size > 0
                 ? [
                     {
