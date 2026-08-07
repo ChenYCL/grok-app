@@ -19,9 +19,15 @@ See `docs/llm-wiki/release.md`.
 
 ### Fixed
 - **Per-session composer drafts**: Switching threads no longer drops a half-typed follow-up. Each real session keeps text / attachments / goal mode in `localStorage` (`grok.composerSessionDrafts`); restore on open, debounced persist while typing, clear on send or explicit clear. New-chat still uses the existing per-project buffer.
+- **Right side pane closable (non-maximized)**: Sync-clamp aside width before paint, keep main top toggle while open, re-clamp window into the work area after grow, protect side chrome under narrow width (#532).
+- **Titlebar double-click maximize (mac)**: Enable maximize on all desktop hosts; `mousedown(detail=2)` fallback when drag regions swallow `dblclick` (#532).
+- **Mark as unread**: Session menu toggle uses existing unread storage; hold while the chat stays open so focus auto-clear does not wipe it instantly (#532).
 
 **中文 · 修复**
 - **按线程保留输入框草稿**：切换会话不再丢掉半截 follow-up。真实线程的文字/附件/Goal 模式写入 `localStorage`（`grok.composerSessionDrafts`），打开时恢复、输入防抖持久化、发送或清空时清除；新对话页仍用原有按项目草稿。
+- **非最大化时右侧栏可关闭**：打开前同步钳位宽度，保留主顶栏切换，增长后回钳到工作区，窄宽度下保护侧栏控件（#532）。
+- **标题栏双击最大化（mac）**：全桌面端启用；拖拽区吞掉 dblclick 时用 mousedown 回退（#532）。
+- **标为未读**：会话菜单切换未读标记；当前打开会话保持至离开再进入（#532）。
 
 ## [0.2.10] - 2026-08-07
 
