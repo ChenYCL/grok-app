@@ -6,6 +6,13 @@
 //! loopback callback → token exchange → persist Bearer header into agent-home
 //! (and user `~/.grok`) so doctor / ACP inject can authenticate.
 //!
+//! **Long-lived access (Codex parity):** ChatCut (and similar) issue short-lived
+//! access tokens (`expires_in` often 3600s) plus a `refresh_token` when
+//! `offline_access` is granted. We persist `refresh_token` + `client_id` +
+//! `token_endpoint` and silently refresh before session inject / when near
+//! expiry — so one browser authorization stays usable until the refresh
+//! grant is revoked.
+//!
 //! Tokens are never returned to the frontend (only status + auth URL).
 
 use std::collections::HashMap;
@@ -29,6 +36,10 @@ use crate::extensions::{
 use crate::store;
 
 const OAUTH_WAIT_SECS: u64 = 300;
+/// Default access-token TTL when the token response omits `expires_in`.
+const DEFAULT_ACCESS_TTL_SECS: u64 = 3600;
+/// Refresh this many seconds before `expires_at` (Codex: “expired or nearly expired”).
+const REFRESH_SKEW_SECS: u64 = 300;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -181,14 +192,193 @@ struct TokenResponse {
     #[serde(default)]
     refresh_token: Option<String>,
     #[serde(default)]
-    #[allow(dead_code)]
     expires_in: Option<u64>,
     #[serde(default)]
-    #[allow(dead_code)]
     token_type: Option<String>,
     #[serde(default)]
-    #[allow(dead_code)]
     scope: Option<String>,
+}
+
+/// Result of ensuring a usable access token for an MCP server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnsureMcpTokenResult {
+    /// Access token still valid (or no expiry known).
+    StillValid,
+    /// Obtained a new access token via refresh_token grant.
+    Refreshed,
+    /// No credentials on disk.
+    NoCredentials,
+    /// Credentials exist but cannot be refreshed (missing RT / client / permanent fail).
+    NeedsReauth,
+}
+
+/// Fields we persist under `mcp_credentials.json` for silent refresh.
+#[derive(Debug, Clone)]
+pub struct StoredMcpOAuth {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub token_endpoint: Option<String>,
+    pub resource: Option<String>,
+    pub expires_at: Option<u64>,
+    #[allow(dead_code)]
+    pub token_type: Option<String>,
+    pub scope: Option<String>,
+}
+
+/// Pure: whether access should be refreshed now (near or past expiry).
+pub fn mcp_access_needs_refresh(expires_at: Option<u64>, now_secs: u64, skew_secs: u64) -> bool {
+    match expires_at {
+        Some(exp) => exp <= now_secs.saturating_add(skew_secs),
+        // Legacy entries without expires_at: do not force refresh (may still work).
+        None => false,
+    }
+}
+
+/// Pure: compute `expires_at` unix seconds from token `expires_in`.
+pub fn expires_at_from_expires_in(now_secs: u64, expires_in: Option<u64>) -> u64 {
+    now_secs.saturating_add(expires_in.unwrap_or(DEFAULT_ACCESS_TTL_SECS))
+}
+
+fn now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn refresh_global_lock() -> &'static Mutex<()> {
+    use std::sync::OnceLock;
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn credential_homes() -> [PathBuf; 2] {
+    let settings = store::load_settings();
+    [
+        crate::paths::resolve_agent_grok_home(&settings.session_data_mode),
+        crate::process_util::user_home().join(".grok"),
+    ]
+}
+
+/// Load the richest credential entry for `server` from agent-home then `~/.grok`.
+pub fn load_stored_mcp_oauth(server: &str) -> Option<StoredMcpOAuth> {
+    let key = server.trim();
+    if key.is_empty() {
+        return None;
+    }
+    for home in &credential_homes() {
+        let path = home.join("mcp_credentials.json");
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(root) = serde_json::from_str::<Value>(&raw) else {
+            continue;
+        };
+        if let Some(stored) = parse_stored_mcp_oauth(&root, key) {
+            return Some(stored);
+        }
+    }
+    None
+}
+
+/// Pure parse for unit tests + loaders.
+pub fn parse_stored_mcp_oauth(root: &Value, server: &str) -> Option<StoredMcpOAuth> {
+    let key = server.trim();
+    if key.is_empty() {
+        return None;
+    }
+    let entry = root
+        .get("servers")
+        .and_then(|s| s.get(key))
+        .or_else(|| root.get(key))?;
+    // Codex-shaped nested token_response is accepted too.
+    let tr = entry.get("token_response").unwrap_or(entry);
+    let access = tr
+        .get("access_token")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?
+        .to_string();
+    let expires_at = entry
+        .get("expires_at")
+        .and_then(json_u64)
+        // Codex stores ms timestamps — normalize to seconds.
+        .map(|n| if n > 1_000_000_000_000 { n / 1000 } else { n })
+        // `expires_in` alone is not an absolute clock — never treat it as
+        // "fresh for TTL from now" on every load (that would never refresh).
+        // Prefer obtained_at + expires_in when available; else force refresh.
+        .or_else(|| {
+            let ttl = tr.get("expires_in").and_then(json_u64)?;
+            if let Some(obtained) = entry.get("obtained_at").and_then(json_u64) {
+                Some(obtained.saturating_add(ttl))
+            } else {
+                // Unknown mint time: treat as already expired so refresh runs.
+                Some(0)
+            }
+        });
+    Some(StoredMcpOAuth {
+        access_token: access,
+        refresh_token: tr
+            .get("refresh_token")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .or_else(|| {
+                entry
+                    .get("refresh_token")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+            }),
+        client_id: entry
+            .get("client_id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        client_secret: entry
+            .get("client_secret")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        token_endpoint: entry
+            .get("token_endpoint")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        resource: entry
+            .get("resource")
+            .or_else(|| entry.get("url"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        expires_at,
+        token_type: tr
+            .get("token_type")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        scope: tr
+            .get("scope")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    })
+}
+
+fn json_u64(v: &Value) -> Option<u64> {
+    v.as_u64()
+        .or_else(|| v.as_i64().map(|n| n as u64))
+        .or_else(|| {
+            v.as_f64()
+                .filter(|f| f.is_finite() && *f >= 0.0)
+                .map(|f| f as u64)
+        })
 }
 
 fn http_get_json(url: &str) -> Result<Value, String> {
@@ -471,9 +661,62 @@ fn exchange_token(
     serde_json::from_str(&text).map_err(|e| format!("token JSON: {e}"))
 }
 
-fn persist_bearer(
+fn refresh_token_grant(
+    token_url: &str,
+    client_id: &str,
+    client_secret: Option<&str>,
+    refresh_token: &str,
+    resource: Option<&str>,
+) -> Result<TokenResponse, String> {
+    let mut form = vec![
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token),
+        ("client_id", client_id),
+    ];
+    let resource_owned;
+    if let Some(r) = resource.filter(|s| !s.is_empty()) {
+        resource_owned = r.to_string();
+        form.push(("resource", resource_owned.as_str()));
+    }
+    let secret_owned;
+    if let Some(s) = client_secret {
+        secret_owned = s.to_string();
+        form.push(("client_secret", secret_owned.as_str()));
+    }
+    let body = form_encode(&form);
+    let client = crate::proxy::apply_to_reqwest_blocking(
+        reqwest::blocking::Client::builder().timeout(Duration::from_secs(30)),
+    )
+    .build()
+    .map_err(|e| e.to_string())?;
+    let mut req = client
+        .post(token_url)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(body);
+    if let Some(s) = client_secret {
+        let basic = STANDARD.encode(format!("{client_id}:{s}"));
+        req = req.header("Authorization", format!("Basic {basic}"));
+    }
+    let res = req.send().map_err(|e| e.to_string())?;
+    let status = res.status();
+    let text = res.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!(
+            "token refresh HTTP {status}: {}",
+            text.chars().take(240).collect::<String>()
+        ));
+    }
+    serde_json::from_str(&text).map_err(|e| format!("refresh token JSON: {e}"))
+}
+
+/// Persist access token into MCP config headers + credential store (full OAuth fields).
+fn persist_oauth_tokens(
     server: &str,
-    access_token: &str,
+    tok: &TokenResponse,
+    client_id: &str,
+    client_secret: Option<&str>,
+    token_endpoint: &str,
+    resource: &str,
     extra_headers: Option<&HashMap<String, String>>,
 ) -> Result<(), String> {
     let settings = store::load_settings();
@@ -503,7 +746,10 @@ fn persist_bearer(
             .entry("x-chatcut-mcp-surface".into())
             .or_insert_with(|| "codex".into());
     }
-    headers.insert("Authorization".into(), format!("Bearer {access_token}"));
+    headers.insert(
+        "Authorization".into(),
+        format!("Bearer {}", tok.access_token.trim()),
+    );
 
     // Write agent-home (independent) + user ~/.grok so doctor/CLI both see it.
     let paths: Vec<PathBuf> = {
@@ -523,7 +769,6 @@ fn persist_bearer(
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         let existing = std::fs::read_to_string(&path).unwrap_or_default();
-        // Ensure base table exists with url
         let next = upsert_mcp_http_in_toml(
             &existing,
             server,
@@ -535,35 +780,67 @@ fn persist_bearer(
         tracing::info!("mcp oauth: wrote Bearer for {server} → {}", path.display());
     }
 
-    // Best-effort credential store for native Grok OAuth reader
-    let _ = write_mcp_credentials_best_effort(server, access_token, url);
+    write_mcp_credentials_full(
+        server,
+        tok,
+        client_id,
+        client_secret,
+        token_endpoint,
+        resource,
+    )?;
 
     invalidate_mcp_cache();
     Ok(())
 }
 
-fn write_mcp_credentials_best_effort(
+fn write_mcp_credentials_full(
     server: &str,
-    access_token: &str,
+    tok: &TokenResponse,
+    client_id: &str,
+    client_secret: Option<&str>,
+    token_endpoint: &str,
     resource: &str,
 ) -> Result<(), String> {
-    let settings = store::load_settings();
-    let homes = [
-        crate::paths::resolve_agent_grok_home(&settings.session_data_mode),
-        crate::process_util::user_home().join(".grok"),
-    ];
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let entry = json!({
-        "access_token": access_token,
-        "token_type": "Bearer",
-        "expires_at": now + 3600,
+    let now = now_unix_secs();
+    let expires_at = expires_at_from_expires_in(now, tok.expires_in);
+    let prior = load_stored_mcp_oauth(server);
+
+    // Keep previous refresh_token / client_secret when the AS omits them on refresh.
+    let refresh_token = tok
+        .refresh_token
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| prior.as_ref().and_then(|p| p.refresh_token.clone()));
+    let client_secret = client_secret
+        .map(str::to_string)
+        .filter(|s| !s.is_empty())
+        .or_else(|| prior.as_ref().and_then(|p| p.client_secret.clone()));
+
+    let mut entry = json!({
+        "access_token": tok.access_token.trim(),
+        "token_type": tok.token_type.as_deref().unwrap_or("Bearer"),
+        "expires_at": expires_at,
+        "expires_in": tok.expires_in.unwrap_or(DEFAULT_ACCESS_TTL_SECS),
         "resource": resource,
+        "url": resource,
+        "token_endpoint": token_endpoint,
+        "client_id": client_id,
         "obtained_at": now,
+        "server_name": server,
     });
-    for home in &homes {
+    if let Some(rt) = refresh_token {
+        entry["refresh_token"] = json!(rt);
+    }
+    if let Some(sec) = client_secret {
+        entry["client_secret"] = json!(sec);
+    }
+    if let Some(scope) = tok.scope.as_ref().filter(|s| !s.is_empty()) {
+        entry["scope"] = json!(scope);
+    } else if let Some(scope) = prior.as_ref().and_then(|p| p.scope.clone()) {
+        entry["scope"] = json!(scope);
+    }
+
+    for home in &credential_homes() {
         let path = home.join("mcp_credentials.json");
         let mut root: Value = if path.exists() {
             std::fs::read_to_string(&path)
@@ -593,6 +870,165 @@ fn write_mcp_credentials_best_effort(
         }
     }
     Ok(())
+}
+
+/// Ensure `server` has a usable access token, refreshing with `refresh_token` when needed.
+///
+/// Called from ACP `mcpServers` inject so ChatCut (and other remote OAuth MCPs)
+/// stay connected after the short-lived access token expires.
+///
+/// When `force` is true (e.g. after CLI `AuthRequired`), always attempt a
+/// refresh-token grant even if local `expires_at` still looks valid — the AS
+/// may have revoked or rejected the access token early.
+pub fn ensure_mcp_access_token(server: &str) -> EnsureMcpTokenResult {
+    ensure_mcp_access_token_inner(server, false)
+}
+
+/// Force a refresh attempt when credentials include a refresh_token (AuthRequired path).
+pub fn ensure_mcp_access_token_forced(server: &str) -> EnsureMcpTokenResult {
+    ensure_mcp_access_token_inner(server, true)
+}
+
+fn ensure_mcp_access_token_inner(server: &str, force: bool) -> EnsureMcpTokenResult {
+    let server = server.trim();
+    if server.is_empty() {
+        return EnsureMcpTokenResult::NoCredentials;
+    }
+
+    // Serialize refresh across concurrent session opens (avoid RT double-spend).
+    let _guard = refresh_global_lock().lock().unwrap_or_else(|e| e.into_inner());
+
+    let Some(stored) = load_stored_mcp_oauth(server) else {
+        return EnsureMcpTokenResult::NoCredentials;
+    };
+
+    let now = now_unix_secs();
+    if !force && !mcp_access_needs_refresh(stored.expires_at, now, REFRESH_SKEW_SECS) {
+        return EnsureMcpTokenResult::StillValid;
+    }
+    // Forced path with no refresh_token cannot improve the situation.
+    if force
+        && stored
+            .refresh_token
+            .as_ref()
+            .map(|s| s.trim().is_empty())
+            .unwrap_or(true)
+    {
+        return EnsureMcpTokenResult::NeedsReauth;
+    }
+
+    let Some(refresh_token) = stored.refresh_token.as_deref().filter(|s| !s.is_empty()) else {
+        tracing::info!(
+            target: "mcp_oauth",
+            server,
+            "access near/expired but no refresh_token — re-auth required"
+        );
+        return EnsureMcpTokenResult::NeedsReauth;
+    };
+    let Some(client_id) = stored.client_id.as_deref().filter(|s| !s.is_empty()) else {
+        tracing::info!(
+            target: "mcp_oauth",
+            server,
+            "access near/expired but no client_id — re-auth required"
+        );
+        return EnsureMcpTokenResult::NeedsReauth;
+    };
+
+    let resource = stored
+        .resource
+        .clone()
+        .or_else(|| {
+            list_mcp_server_defs(None)
+                .into_iter()
+                .find(|d| d.name == server)
+                .and_then(|d| d.url)
+        })
+        .unwrap_or_default();
+
+    let token_endpoint = match stored
+        .token_endpoint
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+    {
+        Some(u) => u,
+        None => {
+            // Fallback: rediscover AS token endpoint from resource URL.
+            match discover_for_mcp_url(&resource) {
+                Ok((_, as_meta, _)) => as_meta.token_endpoint,
+                Err(e) => {
+                    tracing::warn!(
+                        target: "mcp_oauth",
+                        server,
+                        error = %e,
+                        "token_endpoint missing and discovery failed"
+                    );
+                    return EnsureMcpTokenResult::NeedsReauth;
+                }
+            }
+        }
+    };
+
+    tracing::info!(
+        target: "mcp_oauth",
+        server,
+        "access token expired or nearly expired, refreshing"
+    );
+
+    match refresh_token_grant(
+        &token_endpoint,
+        client_id,
+        stored.client_secret.as_deref(),
+        refresh_token,
+        if resource.is_empty() {
+            None
+        } else {
+            Some(resource.as_str())
+        },
+    ) {
+        Ok(tok) => {
+            if let Err(e) = persist_oauth_tokens(
+                server,
+                &tok,
+                client_id,
+                stored.client_secret.as_deref(),
+                &token_endpoint,
+                if resource.is_empty() {
+                    stored.resource.as_deref().unwrap_or("")
+                } else {
+                    resource.as_str()
+                },
+                None,
+            ) {
+                tracing::warn!(
+                    target: "mcp_oauth",
+                    server,
+                    error = %e,
+                    "refreshed token but failed to persist"
+                );
+                return EnsureMcpTokenResult::NeedsReauth;
+            }
+            tracing::info!(target: "mcp_oauth", server, "refreshed access token");
+            EnsureMcpTokenResult::Refreshed
+        }
+        Err(e) => {
+            tracing::warn!(
+                target: "mcp_oauth",
+                server,
+                error = %e,
+                "token refresh failed — re-authorization required"
+            );
+            EnsureMcpTokenResult::NeedsReauth
+        }
+    }
+}
+
+/// Best-effort: refresh every remote OAuth MCP that looks like it needs it.
+/// Used before building ACP `mcpServers` so inject sees fresh bearers.
+pub fn ensure_all_remote_mcp_tokens(server_names: &[String]) {
+    for name in server_names {
+        let _ = ensure_mcp_access_token(name);
+    }
 }
 
 /// Start OAuth for a configured MCP server: returns authorize URL immediately and
@@ -644,11 +1080,18 @@ pub fn mcp_oauth_start(server_name: &str) -> Result<McpOauthStartResult, String>
         return Err("authorization server has no registration_endpoint; use TUI /mcps → i".into());
     };
 
-    let scopes = if pr.scopes_supported.is_empty() {
+    // Always request offline_access so the AS can issue a refresh_token (Codex parity).
+    let mut scopes = if pr.scopes_supported.is_empty() {
         "openid profile email offline_access".to_string()
     } else {
         pr.scopes_supported.join(" ")
     };
+    if !scopes
+        .split_whitespace()
+        .any(|s| s.eq_ignore_ascii_case("offline_access"))
+    {
+        scopes.push_str(" offline_access");
+    }
 
     let auth_url = format!(
         "{}?{}",
@@ -693,20 +1136,47 @@ pub fn mcp_oauth_start(server_name: &str) -> Result<McpOauthStartResult, String>
                 &verifier,
                 &resource_owned,
             )?;
-            persist_bearer(&server_owned, &tok.access_token, existing_headers.as_ref())?;
-            // keep refresh_token in credentials file if present
-            if let Some(rt) = tok.refresh_token.as_deref() {
-                let _ = rt; // already stored access; refresh optional later
+            let missing_rt = tok
+                .refresh_token
+                .as_ref()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true);
+            if missing_rt {
+                tracing::warn!(
+                    target: "mcp_oauth",
+                    server = %server_owned,
+                    "token response has no refresh_token — access will expire without re-auth"
+                );
             }
+            persist_oauth_tokens(
+                &server_owned,
+                &tok,
+                &client_id,
+                client_secret.as_deref(),
+                &token_url,
+                &resource_owned,
+                existing_headers.as_ref(),
+            )?;
             Ok(())
         })();
         match result {
-            Ok(()) => set_phase(
-                &server_owned,
-                FlowPhase::Success {
-                    message: "OAuth complete — token stored for doctor and sessions".into(),
-                },
-            ),
+            Ok(()) => {
+                let msg = if load_stored_mcp_oauth(&server_owned)
+                    .and_then(|s| s.refresh_token)
+                    .filter(|s| !s.trim().is_empty())
+                    .is_some()
+                {
+                    "OAuth complete — access + refresh token stored for long-lived sessions"
+                } else {
+                    "OAuth complete — access token stored (no refresh_token; re-auth when it expires)"
+                };
+                set_phase(
+                    &server_owned,
+                    FlowPhase::Success {
+                        message: msg.into(),
+                    },
+                );
+            }
             Err(e) => set_phase(
                 &server_owned,
                 FlowPhase::Error {
@@ -748,5 +1218,70 @@ mod tests {
         let s = form_encode(&[("a", "b c"), ("x", "1")]);
         assert!(s.contains("a=b%20c") || s.contains("a=b+c") || s.contains("a=b%20c"));
         assert!(s.contains("x=1"));
+    }
+
+    #[test]
+    fn expires_at_and_refresh_skew_pure() {
+        assert_eq!(expires_at_from_expires_in(1_000, Some(3600)), 4_600);
+        assert_eq!(
+            expires_at_from_expires_in(1_000, None),
+            1_000 + DEFAULT_ACCESS_TTL_SECS
+        );
+        // Within skew of expiry → needs refresh.
+        assert!(mcp_access_needs_refresh(Some(1_200), 1_000, 300));
+        // Well before expiry → still valid.
+        assert!(!mcp_access_needs_refresh(Some(10_000), 1_000, 300));
+        // No expires_at → do not force refresh.
+        assert!(!mcp_access_needs_refresh(None, 1_000, 300));
+    }
+
+    #[test]
+    fn parse_stored_mcp_oauth_flat_and_codex_shape() {
+        let flat = json!({
+            "chatcut": {
+                "access_token": "at1",
+                "refresh_token": "rt1",
+                "client_id": "cid",
+                "token_endpoint": "https://api.chatcut.io/auth/mcp/token",
+                "resource": "https://api.chatcut.io/api/external-mcp/mcp",
+                "expires_at": 1_700_000_000_u64,
+                "scope": "openid profile email offline_access"
+            }
+        });
+        let s = parse_stored_mcp_oauth(&flat, "chatcut").unwrap();
+        assert_eq!(s.access_token, "at1");
+        assert_eq!(s.refresh_token.as_deref(), Some("rt1"));
+        assert_eq!(s.client_id.as_deref(), Some("cid"));
+        assert_eq!(
+            s.token_endpoint.as_deref(),
+            Some("https://api.chatcut.io/auth/mcp/token")
+        );
+        assert_eq!(s.expires_at, Some(1_700_000_000));
+
+        // Codex keychain-shaped payload (expires_at in ms, nested token_response).
+        let codex = json!({
+            "chatcut": {
+                "client_id": "cid2",
+                "expires_at": 1_700_000_000_000_u64,
+                "url": "https://api.chatcut.io/api/external-mcp/mcp",
+                "token_response": {
+                    "access_token": "at2",
+                    "refresh_token": "rt2",
+                    "expires_in": 3600,
+                    "token_type": "bearer",
+                    "scope": "openid profile email offline_access"
+                }
+            }
+        });
+        let s2 = parse_stored_mcp_oauth(&codex, "chatcut").unwrap();
+        assert_eq!(s2.access_token, "at2");
+        assert_eq!(s2.refresh_token.as_deref(), Some("rt2"));
+        assert_eq!(s2.client_id.as_deref(), Some("cid2"));
+        // ms → seconds
+        assert_eq!(s2.expires_at, Some(1_700_000_000));
+        assert_eq!(
+            s2.resource.as_deref(),
+            Some("https://api.chatcut.io/api/external-mcp/mcp")
+        );
     }
 }

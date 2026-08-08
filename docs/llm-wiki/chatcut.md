@@ -30,6 +30,16 @@ node scripts/chatcut-plugin-start.mjs --fetch
 
 Do **not** invent a `grok` surface value without upstream support — tools will break.
 
+## OAuth lifetime (Host responsibility)
+
+ChatCut’s AS issues **short-lived access tokens** (`expires_in` ≈ 3600s) plus a **`refresh_token`** when scope includes `offline_access`. The official plugin does **not** refresh; Codex does (Keychain + silent refresh). Grok App Host must:
+
+1. Persist `access_token` + `refresh_token` + `client_id` + `token_endpoint` in `mcp_credentials.json` (agent-home and `~/.grok`, mode `0600`).
+2. Before ACP `mcpServers` inject, **silent-refresh** when access is expired or within ~5 minutes of expiry.
+3. Update `Authorization: Bearer …` in MCP config after refresh.
+
+Without a stored `refresh_token` (legacy one-shot authorize), the user must **authorize once more** after upgrading; subsequent sessions stay long-lived until the refresh grant is revoked.
+
 ## Editor handoff → Resources browser
 
 Codex skills open ChatCut in the host **internal browser**. Grok maps that to **Resources → EmbeddedBrowser**:

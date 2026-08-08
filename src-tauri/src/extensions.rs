@@ -189,9 +189,26 @@ fn env_map_to_named_array(map: Option<&HashMap<String, String>>) -> Vec<Value> {
 /// Remote HTTP/SSE servers that would hit CLI `AuthRequired` (missing or
 /// expired OAuth bearer) are **skipped** so the MCP worker does not fatal and
 /// spam session stderr. Stdio servers are unaffected.
+///
+/// Before gating, OAuth remotes are silently refreshed (Codex parity) when a
+/// `refresh_token` is stored — so a one-time browser authorize stays usable
+/// across short access-token TTLs (e.g. ChatCut 1h).
 pub fn build_acp_mcp_servers(defs: &[McpServerDef], prefs: &ExtensionsPrefs) -> Value {
+    let enabled: Vec<&McpServerDef> = filter_enabled_mcp(defs, prefs);
+    // Proactive refresh for OAuth remotes (ChatCut etc.) before inject gate.
+    // Keep the caller's `defs` list (tests pass fixtures; live path already listed).
+    // Fresh access tokens are applied from mcp_credentials.json in the mapper.
+    let refresh_names: Vec<String> = enabled
+        .iter()
+        .filter(|d| mcp_def_is_remote_http(d) && mcp_remote_likely_needs_oauth(d))
+        .map(|d| d.name.clone())
+        .collect();
+    if !refresh_names.is_empty() {
+        crate::mcp_oauth::ensure_all_remote_mcp_tokens(&refresh_names);
+    }
+    // Re-read clock after possible network refresh.
     let now = mcp_auth_now_secs();
-    let arr: Vec<Value> = filter_enabled_mcp(defs, prefs)
+    let arr: Vec<Value> = enabled
         .into_iter()
         .filter_map(|def| mcp_def_to_acp_for_session(def, now))
         .collect();
@@ -227,28 +244,14 @@ pub struct McpCredentialEntry {
 }
 
 /// Parsed credential entry for `server` from `mcp_credentials.json` root.
+///
+/// Shares parsing with OAuth store (flat App shape + Codex nested
+/// `token_response`) so inject and silent refresh see the same access token.
 pub fn parse_mcp_credential_entry(root: &Value, server: &str) -> Option<McpCredentialEntry> {
-    let key = server.trim();
-    if key.is_empty() {
-        return None;
-    }
-    let entry = root
-        .get("servers")
-        .and_then(|s| s.get(key))
-        .or_else(|| root.get(key))?;
-    let token = entry
-        .get("access_token")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())?
-        .to_string();
-    let expires_at = entry
-        .get("expires_at")
-        .and_then(|v| v.as_u64())
-        .or_else(|| entry.get("expires_at").and_then(|v| v.as_i64()).map(|n| n as u64));
+    let stored = crate::mcp_oauth::parse_stored_mcp_oauth(root, server)?;
     Some(McpCredentialEntry {
-        access_token: token,
-        expires_at,
+        access_token: stored.access_token,
+        expires_at: stored.expires_at,
     })
 }
 
@@ -393,6 +396,10 @@ fn mcp_auth_rejects() -> &'static Mutex<HashMap<String, Instant>> {
 
 /// Record CLI `AuthRequired` so the next session open skips that host.
 /// Extracts host from `resource_metadata="https://…"` when present.
+///
+/// Also kicks a best-effort silent refresh for servers on that host. When a
+/// `refresh_token` exists, the next session inject (or MCP hot-swap) can use a
+/// fresh access token instead of staying suppressed for 30 minutes.
 pub fn note_mcp_auth_required_from_stderr(line: &str) {
     if !line.contains("AuthRequired") && !line.to_ascii_lowercase().contains("authrequired") {
         return;
@@ -408,8 +415,60 @@ pub fn note_mcp_auth_required_from_stderr(line: &str) {
     tracing::warn!(
         target: "mcp_inject",
         host = %host,
-        "skip future inject for host after AuthRequired (re-auth or wait TTL)"
+        "AuthRequired for host — suppress inject until refresh or re-auth"
     );
+    let host_for_refresh = host;
+    std::thread::spawn(move || {
+        try_silent_refresh_for_host(&host_for_refresh);
+    });
+}
+
+/// Match configured remote MCP servers to `host` and attempt OAuth refresh.
+fn try_silent_refresh_for_host(host: &str) {
+    let host = host.to_ascii_lowercase();
+    let defs = list_mcp_server_defs(None);
+    let mut any_ok = false;
+    for def in defs {
+        if !mcp_def_is_remote_http(&def) {
+            continue;
+        }
+        let Some(url) = def.url.as_deref() else {
+            continue;
+        };
+        let Some(h) = mcp_url_host(url) else {
+            continue;
+        };
+        if h != host {
+            continue;
+        }
+        // Force refresh: AS may have rejected a still-unexpired access token.
+        match crate::mcp_oauth::ensure_mcp_access_token_forced(&def.name) {
+            crate::mcp_oauth::EnsureMcpTokenResult::Refreshed => {
+                any_ok = true;
+                tracing::info!(
+                    target: "mcp_inject",
+                    server = %def.name,
+                    host = %host,
+                    "forced silent refresh after AuthRequired succeeded"
+                );
+            }
+            other => {
+                tracing::debug!(
+                    target: "mcp_inject",
+                    server = %def.name,
+                    host = %host,
+                    result = ?other,
+                    "forced silent refresh after AuthRequired did not restore token"
+                );
+            }
+        }
+    }
+    if any_ok {
+        // Allow re-inject on next session open / MCP hot-swap.
+        if let Ok(mut g) = mcp_auth_rejects().lock() {
+            g.remove(&host);
+        }
+    }
 }
 
 /// Pure: host from AuthRequired / resource_metadata text.
@@ -465,15 +524,26 @@ pub fn clear_mcp_auth_rejects() {
 
 /// Map def → ACP entry for session inject, applying the auth gate.
 fn mcp_def_to_acp_for_session(def: &McpServerDef, now_secs: u64) -> Option<Value> {
+    // Per-server ensure (cheap no-op when still valid) — covers non-chatcut OAuth
+    // remotes and any path that skipped the bulk pre-pass.
+    if mcp_def_is_remote_http(def) && mcp_remote_likely_needs_oauth(def) {
+        let _ = crate::mcp_oauth::ensure_mcp_access_token(&def.name);
+    }
+
     let cred = if mcp_def_is_remote_http(def) {
         load_mcp_credential_for_server(&def.name)
     } else {
         None
     };
-    let rejected = def
-        .url
-        .as_deref()
-        .is_some_and(mcp_host_is_auth_rejected);
+    let cred_usable = cred.as_ref().is_some_and(|c| {
+        !c.access_token.trim().is_empty() && !mcp_credential_is_expired(c, now_secs)
+    });
+    // After a successful silent refresh, drop AuthRequired suppress so inject proceeds.
+    let rejected = if cred_usable {
+        false
+    } else {
+        def.url.as_deref().is_some_and(mcp_host_is_auth_rejected)
+    };
     let decision = decide_mcp_inject_auth(def, cred.as_ref(), now_secs, rejected);
     match decision {
         McpInjectAuthDecision::NotRemote | McpInjectAuthDecision::Usable => {}
@@ -491,10 +561,10 @@ fn mcp_def_to_acp_for_session(def: &McpServerDef, now_secs: u64) -> Option<Value
     }
 
     let mut entry = mcp_def_to_acp(def)?;
-    // Merge non-expired credentials into Authorization when header is absent.
-    if mcp_def_is_remote_http(def) && mcp_def_authorization_header(def).is_none() {
+    // Prefer non-expired credentials for Authorization (override stale config header).
+    if mcp_def_is_remote_http(def) {
         if let Some(c) = cred.as_ref() {
-            if !mcp_credential_is_expired(c, now_secs) {
+            if !mcp_credential_is_expired(c, now_secs) && !c.access_token.trim().is_empty() {
                 let bearer = format!("Bearer {}", c.access_token.trim());
                 if let Some(obj) = entry.as_object_mut() {
                     let mut headers = obj
@@ -502,6 +572,12 @@ fn mcp_def_to_acp_for_session(def: &McpServerDef, now_secs: u64) -> Option<Value
                         .and_then(|h| h.as_array())
                         .cloned()
                         .unwrap_or_default();
+                    headers.retain(|h| {
+                        h.get("name")
+                            .and_then(|n| n.as_str())
+                            .map(|n| !n.eq_ignore_ascii_case("authorization"))
+                            .unwrap_or(true)
+                    });
                     headers.push(json!({
                         "name": "Authorization",
                         "value": bearer,
