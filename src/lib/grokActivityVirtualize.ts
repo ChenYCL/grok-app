@@ -25,6 +25,39 @@ export function shouldVirtualizeGrokActivitySteps(stepCount: number): boolean {
 }
 
 /**
+ * Fixed VirtualList row height cannot host expanded detail.
+ * Leave windowing whenever any step is expanded (parent owns expanded keys so
+ * the virtual→map remount does not wipe open state).
+ */
+export function shouldVirtualizeActivityWithExpand(
+  stepCount: number,
+  expandedKeyCount: number,
+): boolean {
+  return (
+    shouldVirtualizeGrokActivitySteps(stepCount) && expandedKeyCount === 0
+  );
+}
+
+/**
+ * Parent-owned expand set update. Remounts must call this only on real user
+ * toggles / running defaults — never clear a key solely because a row unmounted.
+ */
+export function applyActivityStepExpand(
+  prev: ReadonlySet<string>,
+  key: string,
+  open: boolean,
+): Set<string> {
+  const k = (key || "").trim();
+  if (!k) return prev instanceof Set ? prev : new Set(prev);
+  const has = prev.has(k);
+  if (open === has) return prev instanceof Set ? prev : new Set(prev);
+  const next = new Set(prev);
+  if (open) next.add(k);
+  else next.delete(k);
+  return next;
+}
+
+/**
  * maxHeight for the virtual steps scroller: min(visibleRows, count) × rowPx.
  * Empty / non-positive counts return 0.
  */

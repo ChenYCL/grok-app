@@ -44,8 +44,9 @@ import {
 } from "@/lib/toolDisplay";
 import {
   GROK_ACTIVITY_STEP_ROW_PX,
+  applyActivityStepExpand,
   grokActivityVirtualMaxHeightPx,
-  shouldVirtualizeGrokActivitySteps,
+  shouldVirtualizeActivityWithExpand,
 } from "@/lib/grokActivityVirtualize";
 import { VirtualList } from "@/components/VirtualList";
 import {
@@ -185,13 +186,15 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
   step,
   isLast,
   tr,
-  onExpandChange,
+  expanded,
+  onToggleExpand,
 }: {
   step: GrokActivityStep;
   isLast: boolean;
   tr: ReturnType<typeof createT>;
-  /** Notify parent when expand opens so VirtualList can leave fixed-row mode. */
-  onExpandChange?: (key: string, open: boolean) => void;
+  /** Parent-owned open state — survives VirtualList → map remount. */
+  expanded: boolean;
+  onToggleExpand?: (key: string, open: boolean) => void;
 }) {
   const failed =
     step.type !== "thought" && "failed" in step ? !!step.failed : false;
@@ -211,54 +214,48 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
     ? toolExpandBody(expandTool, failed)
     : { failHint: "", failHintShort: "", detailTail: "", hasBody: false };
 
-  const [autoCollapse, setAutoCollapse] = useState(() =>
-    loadToolStepsAutoCollapsePref(),
-  );
+  // Track whether the user manually overrode open/close for this step key.
   const userToggled = useRef(false);
   const runningRef = useRef(running);
   runningRef.current = running;
+  const [autoCollapse, setAutoCollapse] = useState(() =>
+    loadToolStepsAutoCollapsePref(),
+  );
 
   useEffect(() => {
-    const apply = (next: boolean) => {
-      setAutoCollapse(next);
-      if (!runningRef.current && !userToggled.current) {
-        setOpen(toolStepDefaultOpen(false, next));
-      }
-    };
     const onPref = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      apply(
-        typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref(),
-      );
+      const next =
+        typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref();
+      setAutoCollapse(next);
+      if (!runningRef.current && !userToggled.current && hasBody) {
+        onToggleExpand?.(step.key, toolStepDefaultOpen(false, next));
+      }
     };
     window.addEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
     return () => {
       window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
     };
-  }, []);
+  }, [hasBody, onToggleExpand, step.key]);
 
-  const [open, setOpen] = useState(() =>
-    toolStepDefaultOpen(running, loadToolStepsAutoCollapsePref()),
-  );
-
+  // Default open while running / follow auto-collapse when not user-toggled.
+  // Parent expandedKeys is source of truth across VirtualList → map remount:
+  // never clobber an already-open key (user expand survives leave-VL remount).
   useEffect(() => {
+    if (!hasBody || !onToggleExpand) return;
+    if (userToggled.current) return;
     if (running) {
-      if (!userToggled.current) setOpen(true);
+      if (!expanded) onToggleExpand(step.key, true);
       return;
     }
-    if (!userToggled.current) {
-      setOpen(toolStepDefaultOpen(false, autoCollapse));
-    }
-  }, [running, autoCollapse, step.key]);
+    // Remount after leave-VL keeps expanded=true — do not force-close.
+    if (expanded) return;
+    const wantOpen = toolStepDefaultOpen(false, autoCollapse);
+    if (wantOpen) onToggleExpand(step.key, true);
+  }, [running, autoCollapse, step.key, hasBody, onToggleExpand, expanded]);
 
-  useEffect(() => {
-    onExpandChange?.(step.key, hasBody && open);
-    return () => {
-      onExpandChange?.(step.key, false);
-    };
-  }, [hasBody, open, step.key, onExpandChange]);
-
-  const showBody = hasBody && open;
+  const open = hasBody && expanded;
+  const showBody = open;
 
   return (
     <div
@@ -288,7 +285,7 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
               aria-expanded={open}
               onClick={() => {
                 userToggled.current = true;
-                setOpen((v) => !v);
+                onToggleExpand?.(step.key, !expanded);
               }}
             >
               <StepMainText step={step} tr={tr} />
@@ -344,6 +341,7 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
  * Live phases pin the scroller to the tail (last step key).
  * When any step is expanded, leave VirtualList so fixed row height is not
  * broken — expanded body uses max-height + internal scroll instead.
+ * Expand keys live on the parent so the virtual→map remount keeps open state.
  */
 export function GrokActivitySteps({
   steps,
@@ -359,20 +357,14 @@ export function GrokActivitySteps({
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
     () => new Set(),
   );
-  const onExpandChange = useCallback((key: string, open: boolean) => {
-    setExpandedKeys((prev) => {
-      const has = prev.has(key);
-      if (open && has) return prev;
-      if (!open && !has) return prev;
-      const next = new Set(prev);
-      if (open) next.add(key);
-      else next.delete(key);
-      return next;
-    });
+  // Parent owns open set — never clear on row unmount (remount after leave-VL).
+  const onToggleExpand = useCallback((key: string, open: boolean) => {
+    setExpandedKeys((prev) => applyActivityStepExpand(prev, key, open));
   }, []);
-  // Fixed VirtualList row height cannot host expanded detail — fall back.
-  const virtualize =
-    shouldVirtualizeGrokActivitySteps(total) && expandedKeys.size === 0;
+  const virtualize = shouldVirtualizeActivityWithExpand(
+    total,
+    expandedKeys.size,
+  );
   const lastKey = total > 0 ? steps[total - 1]!.key : null;
 
   const getKey = useCallback((step: GrokActivityStep) => step.key, []);
@@ -382,10 +374,11 @@ export function GrokActivitySteps({
         step={step}
         isLast={idx === total - 1}
         tr={tr}
-        onExpandChange={onExpandChange}
+        expanded={expandedKeys.has(step.key)}
+        onToggleExpand={onToggleExpand}
       />
     ),
-    [total, tr, onExpandChange],
+    [total, tr, expandedKeys, onToggleExpand],
   );
 
   if (!total) return null;
@@ -399,7 +392,8 @@ export function GrokActivitySteps({
             step={step}
             isLast={idx === total - 1}
             tr={tr}
-            onExpandChange={onExpandChange}
+            expanded={expandedKeys.has(step.key)}
+            onToggleExpand={onToggleExpand}
           />
         ))}
       </div>
