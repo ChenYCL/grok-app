@@ -375,7 +375,11 @@ export async function resetAppData(keepSecrets = true) {
   });
 }
 
-/** List skills via `grok inspect --json` (optional project cwd). */
+/**
+ * List skills via `grok inspect --json` + project-disk scan
+ * (`{project}/.grok/skills`). Optional project cwd; project rows win on name
+ * collision and carry `source: "project"`.
+ */
 export async function skillsList(projectPath?: string | null) {
   return invoke<SkillsListResult>("skills_list", {
     projectPath: projectPath ?? null,

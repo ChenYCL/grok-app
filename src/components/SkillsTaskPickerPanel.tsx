@@ -13,6 +13,7 @@ import {
   type Ref,
 } from "react";
 import { IconPuzzle, IconSearch, IconSkills } from "@/components/icons";
+import { isProjectSkillSource } from "@/lib/extensionsUi";
 import {
   recentSkillChips,
   resolveSkillsPickerEmptyState,
@@ -32,6 +33,8 @@ export type SkillsTaskPickerLabels = {
   hostOnly: string;
   hostOnlyHint: string;
   clearFilter: string;
+  /** Compact `[Project]` / `[项目]` tag for project-local skills. */
+  projectBadge?: string;
 };
 
 export type SkillsTaskPickerPanelProps = {
@@ -220,6 +223,14 @@ export function SkillsTaskPickerPanel({
               >
                 <IconPuzzle size={12} aria-hidden />
                 <span>{s.name}</span>
+                {isProjectSkillSource(s.source) && labels.projectBadge ? (
+                  <span
+                    className="skill-scope-tag skill-scope-tag--project"
+                    title={labels.projectBadge}
+                  >
+                    [{labels.projectBadge}]
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -282,7 +293,19 @@ export function SkillsTaskPickerPanel({
                   <IconSkills size={16} />
                 </span>
                 <span className="skills-task-picker__item-main">
-                  <span className="skills-task-picker__item-name">{s.name}</span>
+                  <span className="skills-task-picker__item-name">
+                    <span className="skills-task-picker__item-name-text">
+                      {s.name}
+                    </span>
+                    {isProjectSkillSource(s.source) && labels.projectBadge ? (
+                      <span
+                        className="skill-scope-tag skill-scope-tag--project"
+                        title={labels.projectBadge}
+                      >
+                        [{labels.projectBadge}]
+                      </span>
+                    ) : null}
+                  </span>
                   {s.description ? (
                     <span className="skills-task-picker__item-desc">
                       {s.description}

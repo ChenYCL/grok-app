@@ -22,6 +22,7 @@ import {
 import {
   isCliMissingError,
   isExtensionEnabled,
+  isProjectSkillSource,
   mcpMetaLine,
   mergeInspectErrors,
   normalizePluginInstallSource,
@@ -2281,7 +2282,17 @@ export function ExtensionsPanel({
                       <IconSkills size={14} />
                     </div>
                     <div className="ext-ref-row__body">
-                      <div className="ext-ref-row__title">{s.name}</div>
+                      <div className="ext-ref-row__title">
+                        <span className="ext-ref-row__title-text">{s.name}</span>
+                        {isProjectSkillSource(s.source) ? (
+                          <span
+                            className="skill-scope-tag skill-scope-tag--project"
+                            title={tr("ext.skills.badge.project")}
+                          >
+                            [{tr("ext.skills.badge.project")}]
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="ext-ref-row__desc">
                         {s.description || skillMetaLine(s) || "—"}
                       </div>

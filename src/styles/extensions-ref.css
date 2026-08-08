@@ -731,6 +731,33 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.ext-ref-row__title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/** Compact scope tag after skill name — project only (global untagged). */
+.skill-scope-tag {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.skill-scope-tag--project {
+  color: var(--accent, var(--text-secondary));
+  opacity: 0.9;
 }
 
 .ext-ref-row__desc {

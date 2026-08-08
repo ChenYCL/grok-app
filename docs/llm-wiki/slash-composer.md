@@ -74,9 +74,18 @@ Full management surface: **Settings → Extensions** (`#/settings/extensions`).
 | `/mcp` slash | Quick `McpStatusModal`; **Manage in Settings** opens Extensions |
 | Composer `+` / slash skills | Invocable **and enabled** skills only (chips); loaded via `skills_list` |
 
+### Project vs global skills
+
+`skills_list` merges:
+
+1. **`grok inspect --json`** (user / plugin / bundled / project when CLI reports them)
+2. **Host disk scan** of `{activeProject}/.grok/skills/*/SKILL.md`
+
+**Name collision (case-insensitive): project wins.** Project rows show a compact **`[Project]` / `[项目]`** tag after the skill name in Extensions, `+` / slash skill rows, and the skills task picker; global/user/plugin rows stay untagged. Create-skill still supports user or project scope under Settings → Extensions → Skills.
+
 ### Auto-refresh after conversation install
 
-App slash / + palette is a **snapshot** from `skills_list` (`grok inspect`). Grok Build itself reloads skill files when they change on disk, but the App catalog does not until reloaded.
+App slash / + palette is a **snapshot** from `skills_list` (inspect + project disk). Grok Build itself reloads skill files when they change on disk, but the App catalog does not until reloaded.
 
 | Trigger | Behavior |
 |---------|----------|

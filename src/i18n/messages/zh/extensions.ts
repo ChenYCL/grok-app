@@ -244,6 +244,7 @@ export const zhExtensions = {
   "ext.skills.loading": "正在加载技能…",
   "ext.skills.empty": "未发现技能",
   "ext.skills.emptyCli": "安装 CLI 后才能查看技能。",
+  "ext.skills.badge.project": "项目",
   "ext.skills.invocable": "斜杠",
   "ext.skills.edit": "编辑 SKILL.md",
   "ext.skills.editTitle": "编辑技能 · {name}",

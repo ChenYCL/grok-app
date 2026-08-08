@@ -32,25 +32,41 @@ export type SkillInfo = {
 /**
  * Skills shown in composer `+` / `/` pickers.
  * Keeps only enabled + user-invocable skills with a non-empty name.
+ * Name collision (case-insensitive): project source wins over global/user.
  */
 export function filterPickerSkills(skills: SkillInfo[]): SkillInfo[] {
-  const seen = new Set<string>();
-  const out: SkillInfo[] = [];
+  const byKey = new Map<string, SkillInfo>();
   for (const s of skills) {
     if (s.enabled === false) continue;
     if (s.userInvocable === false) continue;
     const name = (s.name ?? "").trim();
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
-    out.push({
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const next: SkillInfo = {
       name,
       description: (s.description ?? "").trim(),
       source: s.source,
       userInvocable: true,
       enabled: true,
-    });
+    };
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, next);
+      continue;
+    }
+    // Prefer project when both present (host also merges this way).
+    const prevProject = isProjectSource(prev.source);
+    const nextProject = isProjectSource(next.source);
+    if (nextProject && !prevProject) {
+      byKey.set(key, next);
+    }
   }
-  return out;
+  return Array.from(byKey.values());
+}
+
+function isProjectSource(source: string | null | undefined): boolean {
+  const s = (source ?? "").trim().toLowerCase();
+  return s === "project" || s === "workspace" || s === "local";
 }
 
 /** Built-in slash commands (modes, prompts, host actions). */

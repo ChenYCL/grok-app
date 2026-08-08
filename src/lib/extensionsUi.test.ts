@@ -10,6 +10,7 @@ import {
   mcpMetaLine,
   normalizePluginInstallSource,
   normalizePluginUpdateName,
+  isProjectSkillSource,
   normalizeSkillSource,
   pluginLoadLabel,
   pluginMetaLine,
@@ -87,6 +88,15 @@ describe("normalizeSkillSource / skillSourceTone", () => {
     expect(skillSourceTone("project")).toBe("project");
     expect(skillSourceTone("plugin")).toBe("plugin");
     expect(skillSourceTone("something-else")).toBe("muted");
+  });
+
+  it("detects project skill source for name tag", () => {
+    expect(isProjectSkillSource("project")).toBe(true);
+    expect(isProjectSkillSource("  Project  ")).toBe(true);
+    expect(isProjectSkillSource("workspace")).toBe(true);
+    expect(isProjectSkillSource("user")).toBe(false);
+    expect(isProjectSkillSource("plugin")).toBe(false);
+    expect(isProjectSkillSource(null)).toBe(false);
   });
 });
 

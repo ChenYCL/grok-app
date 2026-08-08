@@ -104,13 +104,24 @@ export function normalizeSkillSource(source: string | null | undefined): string 
   return s || "unknown";
 }
 
+/**
+ * True when a skill is project-local (`{project}/.grok/skills`).
+ * Used for the compact `[项目]` / `[Project]` name tag (global sources stay untagged).
+ */
+export function isProjectSkillSource(
+  source: string | null | undefined,
+): boolean {
+  const s = normalizeSkillSource(source).toLowerCase();
+  return s === "project" || s === "workspace" || s === "local";
+}
+
 /** Badge tone for skill source. */
 export function skillSourceTone(
   source: string | null | undefined,
 ): "user" | "project" | "plugin" | "muted" {
   const s = normalizeSkillSource(source).toLowerCase();
   if (s === "user" || s === "global") return "user";
-  if (s === "project" || s === "workspace" || s === "local") return "project";
+  if (isProjectSkillSource(s)) return "project";
   if (s === "plugin" || s === "builtin" || s === "built-in") return "plugin";
   return "muted";
 }
