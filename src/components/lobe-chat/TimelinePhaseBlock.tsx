@@ -38,7 +38,8 @@ import {
   type GrokActivityStep,
 } from "@/lib/grokActivitySteps";
 import {
-  toolLabelKeyFor,
+  resolveToolPrimaryLabel,
+  toolExpandBody,
   type ToolDisplayKind,
 } from "@/lib/toolDisplay";
 import {
@@ -170,20 +171,13 @@ function StepMainText({
           <span className="grok-act__label-url"> {step.url}</span>
         </span>
       );
-    case "tool":
-      return (
-        <span className="grok-act__label-text">
-          {step.hostTitle ||
-            tr(
-              toolLabelKeyFor(step.tool.toolKind, step.bucket) as MessageKey,
-            )}
-          {step.inputLabel ? (
-            <span className="grok-act__label-path"> · {step.inputLabel}</span>
-          ) : !step.hostTitle && step.pathBase ? (
-            <span className="grok-act__label-path"> · {step.pathBase}</span>
-          ) : null}
-        </span>
+    case "tool": {
+      // Same primary-label resolver as bare TimelineToolRow.
+      const label = resolveToolPrimaryLabel(step.tool, (key, params) =>
+        tr(key as MessageKey, params as Record<string, string> | undefined),
       );
+      return <span className="grok-act__label-text">{label}</span>;
+    }
   }
 }
 
@@ -191,10 +185,13 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
   step,
   isLast,
   tr,
+  onExpandChange,
 }: {
   step: GrokActivityStep;
   isLast: boolean;
   tr: ReturnType<typeof createT>;
+  /** Notify parent when expand opens so VirtualList can leave fixed-row mode. */
+  onExpandChange?: (key: string, open: boolean) => void;
 }) {
   const failed =
     step.type !== "thought" && "failed" in step ? !!step.failed : false;
@@ -209,16 +206,72 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
   const domains =
     step.type === "web-search" ? step.resultDomains : undefined;
 
+  const expandTool = step.type === "tool" ? step.tool : null;
+  const { failHint, failHintShort, detailTail, hasBody } = expandTool
+    ? toolExpandBody(expandTool, failed)
+    : { failHint: "", failHintShort: "", detailTail: "", hasBody: false };
+
+  const [autoCollapse, setAutoCollapse] = useState(() =>
+    loadToolStepsAutoCollapsePref(),
+  );
+  const userToggled = useRef(false);
+  const runningRef = useRef(running);
+  runningRef.current = running;
+
+  useEffect(() => {
+    const apply = (next: boolean) => {
+      setAutoCollapse(next);
+      if (!runningRef.current && !userToggled.current) {
+        setOpen(toolStepDefaultOpen(false, next));
+      }
+    };
+    const onPref = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      apply(
+        typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref(),
+      );
+    };
+    window.addEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+    return () => {
+      window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+    };
+  }, []);
+
+  const [open, setOpen] = useState(() =>
+    toolStepDefaultOpen(running, loadToolStepsAutoCollapsePref()),
+  );
+
+  useEffect(() => {
+    if (running) {
+      if (!userToggled.current) setOpen(true);
+      return;
+    }
+    if (!userToggled.current) {
+      setOpen(toolStepDefaultOpen(false, autoCollapse));
+    }
+  }, [running, autoCollapse, step.key]);
+
+  useEffect(() => {
+    onExpandChange?.(step.key, hasBody && open);
+    return () => {
+      onExpandChange?.(step.key, false);
+    };
+  }, [hasBody, open, step.key, onExpandChange]);
+
+  const showBody = hasBody && open;
+
   return (
     <div
       className={
         "grok-act__step" +
         (failed ? " is-error" : "") +
         (running ? " is-running" : "") +
-        (isLast ? " is-last" : "")
+        (isLast ? " is-last" : "") +
+        (showBody ? " lobe-timeline-tool is-expanded" : "")
       }
       role="listitem"
       data-step-type={step.type}
+      data-expanded={hasBody ? (open ? "1" : "0") : undefined}
     >
       <div className="grok-act__icon-col" aria-hidden>
         <span className="grok-act__icon">
@@ -228,7 +281,27 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
       </div>
       <div className="grok-act__main">
         <div className="grok-act__label-row">
-          <StepMainText step={step} tr={tr} />
+          {hasBody ? (
+            <button
+              type="button"
+              className="grok-act__step-btn grok-act__step-btn--grow"
+              aria-expanded={open}
+              onClick={() => {
+                userToggled.current = true;
+                setOpen((v) => !v);
+              }}
+            >
+              <StepMainText step={step} tr={tr} />
+              <span
+                className={"grok-act__mini-caret" + (open ? " is-open" : "")}
+                aria-hidden
+              >
+                <IconChevronRight size={11} />
+              </span>
+            </button>
+          ) : (
+            <StepMainText step={step} tr={tr} />
+          )}
           {resultCount != null || (domains && domains.length > 0) ? (
             <span className="grok-act__meta">
               {resultCount != null ? (
@@ -246,6 +319,20 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
             </span>
           ) : null}
         </div>
+        {showBody ? (
+          <div className="lobe-timeline-tool__body grok-act__expand-body">
+            {failHintShort ? (
+              <div className="lobe-timeline-tool__fail-hint" title={failHint}>
+                {failHintShort}
+              </div>
+            ) : null}
+            {detailTail &&
+            detailTail !== failHint &&
+            detailTail !== failHintShort ? (
+              <pre className="lobe-timeline-tool__detail">{detailTail}</pre>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -255,6 +342,8 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
  * Grok activity step list. Short lists map fully; long lists window via
  * VirtualList so multi-turn phases with 20–100+ steps stay light.
  * Live phases pin the scroller to the tail (last step key).
+ * When any step is expanded, leave VirtualList so fixed row height is not
+ * broken — expanded body uses max-height + internal scroll instead.
  */
 export function GrokActivitySteps({
   steps,
@@ -267,7 +356,23 @@ export function GrokActivitySteps({
   live?: boolean;
 }) {
   const total = steps.length;
-  const virtualize = shouldVirtualizeGrokActivitySteps(total);
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const onExpandChange = useCallback((key: string, open: boolean) => {
+    setExpandedKeys((prev) => {
+      const has = prev.has(key);
+      if (open && has) return prev;
+      if (!open && !has) return prev;
+      const next = new Set(prev);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+  // Fixed VirtualList row height cannot host expanded detail — fall back.
+  const virtualize =
+    shouldVirtualizeGrokActivitySteps(total) && expandedKeys.size === 0;
   const lastKey = total > 0 ? steps[total - 1]!.key : null;
 
   const getKey = useCallback((step: GrokActivityStep) => step.key, []);
@@ -277,9 +382,10 @@ export function GrokActivitySteps({
         step={step}
         isLast={idx === total - 1}
         tr={tr}
+        onExpandChange={onExpandChange}
       />
     ),
-    [total, tr],
+    [total, tr, onExpandChange],
   );
 
   if (!total) return null;
@@ -293,6 +399,7 @@ export function GrokActivitySteps({
             step={step}
             isLast={idx === total - 1}
             tr={tr}
+            onExpandChange={onExpandChange}
           />
         ))}
       </div>

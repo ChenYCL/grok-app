@@ -328,3 +328,118 @@ export function toolDetailTail(
   if (kept.length <= maxLines) return kept.join("\n");
   return kept.slice(-maxLines).join("\n");
 }
+
+/** Minimal tool fields needed for primary label / expand body. */
+export type ToolLabelSource = {
+  toolCallId?: string | null;
+  toolKind?: string | null;
+  title?: string | null;
+  input?: string | null;
+  path?: string | null;
+  detail?: string | null;
+};
+
+/** i18n translator — accepts message keys used by chat.tool.* / chat.browsed. */
+export type ToolLabelTr = (
+  key: string,
+  params?: Record<string, string | number>,
+) => string;
+
+/**
+ * One-line primary label for a tool step (phase rail + bare TimelineToolRow).
+ * Never includes stdout/detail body — only type + call args (or host title).
+ */
+export function resolveToolPrimaryLabel(
+  tool: ToolLabelSource,
+  tr: ToolLabelTr,
+): string {
+  const hostVision =
+    (tool.toolCallId || "").toLowerCase().startsWith("host-vision") ||
+    (tool.toolKind || "").toLowerCase() === "vision";
+  const hostX = (tool.toolCallId || "").toLowerCase().startsWith("host-x");
+  if (hostVision || hostX) {
+    const title = (tool.title || "").trim();
+    if (title) return title;
+    return (
+      summarizeToolDisplay({
+        kind: tool.toolKind,
+        title: tool.title,
+        detail: tool.detail,
+        path: tool.path,
+        toolCallId: tool.toolCallId,
+        input: tool.input,
+      }).summary || tr("chat.tool.generic")
+    );
+  }
+  if (isBrowseToolKind(tool.toolKind, tool.title, tool.toolCallId)) {
+    const url = browseUrlForPrimaryLabel(tool);
+    return tr("chat.browsed", { url });
+  }
+  if (isSearchToolKind(tool.toolKind, tool.title, tool.toolCallId)) {
+    return tr("chat.ranSearch");
+  }
+  const bucket = classifyToolKind(
+    tool.toolKind,
+    tool.title,
+    tool.toolCallId,
+  );
+  let summary = tr(toolLabelKeyFor(tool.toolKind, bucket));
+  const specific = toolInputDisplay(tool.input, bucket);
+  if (specific) {
+    summary += ` · ${specific}`;
+  } else {
+    const pathBase = toolPathBase(tool.path);
+    if (pathBase) summary += ` · ${pathBase}`;
+  }
+  return summary;
+}
+
+/** URL host/path for browse primary label (no stdout). */
+function browseUrlForPrimaryLabel(tool: ToolLabelSource): string {
+  const titleFetch = (tool.title || "").match(/^fetch:\s*(https?:\/\/\S+)/i);
+  const candidates = [tool.path, tool.detail, titleFetch?.[1], tool.title]
+    .map((x) => (x || "").trim())
+    .filter(Boolean);
+  for (const c of candidates) {
+    const http = c.match(/https?:\/\/[^\s)\]"'<>]+/i);
+    if (http) {
+      try {
+        const raw = http[0]!.replace(/[.,;]+$/, "");
+        const u = new URL(raw);
+        const host = u.host || u.hostname;
+        const path = u.pathname === "/" ? "" : u.pathname;
+        return `${host}${path}` || raw;
+      } catch {
+        return http[0]!;
+      }
+    }
+  }
+  const fallback = (tool.path || tool.title || "").trim();
+  return fallback || "…";
+}
+
+/**
+ * Expand body for tool step secondary detail (fail hint + detail tail).
+ * Shared by TimelineToolRow and phase GrokActivityStepRow.
+ */
+export function toolExpandBody(
+  seg: ToolLabelSource & { isError?: boolean; status?: string },
+  failed: boolean,
+): {
+  failHint: string;
+  failHintShort: string;
+  detailTail: string;
+  hasBody: boolean;
+} {
+  const failHint = failed
+    ? (seg.path || seg.detail || "").trim().split("\n")[0] || ""
+    : "";
+  const failHintShort =
+    failHint.length > 72 ? `${failHint.slice(0, 71)}…` : failHint;
+  const hostSide = /^(host-vision|host-x)/i.test(seg.toolCallId || "");
+  const detailTail = toolDetailTail(seg.detail, hostSide ? 24 : 8);
+  const hasBody =
+    !!failHintShort ||
+    (!!detailTail && detailTail !== failHint && detailTail !== failHintShort);
+  return { failHint, failHintShort, detailTail, hasBody };
+}

@@ -301,7 +301,7 @@
   animation: none;
 }
 
-/* Bare tool expand body (failures) */
+/* Bare tool expand body (failures) + phase step secondary expand */
 .lobe-timeline-tool {
   flex-wrap: wrap;
 }
@@ -314,6 +314,13 @@
   flex-direction: column;
   gap: 2px;
 }
+/* Phase rail: expand sits under label inside .grok-act__main (no extra left margin). */
+.grok-act__expand-body {
+  margin: 2px 0 4px;
+  max-height: 160px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
 .lobe-timeline-tool__detail {
   margin: 0;
   padding: 0;
@@ -325,6 +332,8 @@
   font-size: 12px;
   line-height: 1.4;
   color: var(--chat-text-3);
+  /* Cap height so phase expand never blows VirtualList outer chrome. */
+  max-height: 140px;
 }
 .lobe-timeline-tool__fail-hint {
   margin: 0;

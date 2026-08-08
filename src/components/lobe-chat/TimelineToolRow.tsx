@@ -17,11 +17,8 @@ import {
   isContextToolKind,
   isSearchToolKind,
   classifyToolKind,
-  summarizeToolDisplay,
-  toolInputDisplay,
-  toolLabelKeyFor,
-  toolPathBase,
-  toolDetailTail,
+  resolveToolPrimaryLabel,
+  toolExpandBody,
 } from "@/lib/toolDisplay";
 import { normalizeTaskStatus } from "@/lib/sessionTasks";
 import {
@@ -29,7 +26,6 @@ import {
   toolStepDefaultOpen,
   TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT,
 } from "@/lib/toolStepsAutoCollapsePref";
-import { extractBrowseUrl } from "@/lib/grokActivitySteps";
 import {
   IconChevronRight,
   IconSearch,
@@ -48,38 +44,6 @@ export function toolSegmentFailed(seg: MessageToolSegment): boolean {
   if (seg.isError) return true;
   const s = (seg.status || "").toLowerCase();
   return s === "failed" || s === "error" || s === "rejected" || s === "denied";
-}
-
-function toolSummary(seg: MessageToolSegment): string {
-  const display = summarizeToolDisplay({
-    kind: seg.toolKind,
-    title: seg.title,
-    detail: seg.detail,
-    path: seg.path,
-    input: seg.input,
-  });
-  return display.summary || seg.title || seg.toolKind || seg.toolCallId;
-}
-
-function toolExpandBody(seg: MessageToolSegment, failed: boolean): {
-  failHint: string;
-  failHintShort: string;
-  detailTail: string;
-  hasBody: boolean;
-} {
-  const failHint = failed
-    ? (seg.path || seg.detail || "").trim().split("\n")[0] || ""
-    : "";
-  const failHintShort =
-    failHint.length > 72 ? `${failHint.slice(0, 71)}…` : failHint;
-  // Host vision/X stream bodies can be long — show more lines when expanded
-  // (same rail as native tools, not a 2-line scroller).
-  const hostSide = /^(host-vision|host-x)/i.test(seg.toolCallId || "");
-  const detailTail = toolDetailTail(seg.detail, hostSide ? 24 : 8);
-  const hasBody =
-    !!failHintShort ||
-    (!!detailTail && detailTail !== failHint && detailTail !== failHintShort);
-  return { failHint, failHintShort, detailTail, hasBody };
 }
 
 function ToolKindIcon({ tool }: { tool: MessageToolSegment }) {
@@ -114,34 +78,10 @@ export const TimelineToolRow = memo(function TimelineToolRow({
   const failed = toolSegmentFailed(tool);
   const running = toolSegmentIsRunning(tool);
 
-  let summary: string;
-  const hostVision =
-    (tool.toolCallId || "").toLowerCase().startsWith("host-vision") ||
-    (tool.toolKind || "").toLowerCase() === "vision";
-  const hostX = (tool.toolCallId || "").toLowerCase().startsWith("host-x");
-  if (hostVision || hostX) {
-    // Prefer Host title ("识别图片内容" / "搜索 X 信息"); never "执行了1次搜索".
-    summary = (tool.title || "").trim() || toolSummary(tool);
-  } else if (isBrowseToolKind(tool.toolKind, tool.title)) {
-    summary = tr("chat.browsed", { url: extractBrowseUrl(tool) });
-  } else if (isSearchToolKind(tool.toolKind, tool.title)) {
-    summary = tr("chat.ranSearch");
-  } else {
-    // Typed, localized label + specific call detail — never raw output.
-    const bucket = classifyToolKind(
-      tool.toolKind,
-      tool.title,
-      tool.toolCallId,
-    );
-    summary = tr(toolLabelKeyFor(tool.toolKind, bucket) as MessageKey);
-    const specific = toolInputDisplay(tool.input, bucket);
-    if (specific) {
-      summary += ` · ${specific}`;
-    } else {
-      const pathBase = toolPathBase(tool.path);
-      if (pathBase) summary += ` · ${pathBase}`;
-    }
-  }
+  // Shared with phase GrokActivityStepRow — type + call args, never stdout.
+  const summary = resolveToolPrimaryLabel(tool, (key, params) =>
+    tr(key as MessageKey, params as Record<string, string> | undefined),
+  );
 
   // Host tools use the same expand body as native tools (full detail / stream
   // dump), not a special 2-line scroller under a second title.
