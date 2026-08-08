@@ -69,7 +69,7 @@ describe("billing vs editor classification", () => {
 });
 
 describe("resolveChatcutHandoff — shipped policy", () => {
-  it("prefers browserHandoff.url over editorUrl and preserves internal params", () => {
+  it("defaults editor handoff to system browser with clean URL", () => {
     const action = resolveChatcutHandoff(
       {
         editorUrl: CLEAN,
@@ -80,13 +80,12 @@ describe("resolveChatcutHandoff — shipped policy", () => {
       },
       { locale: "en" },
     );
-    expect(action.kind).toBe("open_in_app_browser");
-    if (action.kind !== "open_in_app_browser") return;
-    expect(action.url).toContain("dockviewLayout=media");
-    expect(action.url).toContain("editor-boot-token=tok123");
-    expect(action.source).toBe("browserHandoff");
-    expect(action.displayUrl).not.toContain("dockviewLayout");
-    expect(action.displayUrl).not.toContain("editor-boot-token");
+    expect(action.kind).toBe("open_external");
+    if (action.kind !== "open_external") return;
+    expect(action.reason).toBe("editor");
+    expect(action.url).toContain("/editor/proj_abc");
+    expect(action.url).not.toContain("dockviewLayout");
+    expect(action.url).not.toContain("editor-boot-token");
   });
 
   it("falls back to editorUrl when browserHandoff.url missing", () => {
@@ -94,20 +93,38 @@ describe("resolveChatcutHandoff — shipped policy", () => {
       editorUrl: CLEAN,
       browserHandoff: { required: true },
     });
-    expect(action.kind).toBe("open_in_app_browser");
-    if (action.kind !== "open_in_app_browser") return;
+    expect(action.kind).toBe("open_external");
+    if (action.kind !== "open_external") return;
+    expect(action.reason).toBe("editor");
     expect(action.url).toContain("/editor/proj_abc");
-    expect(action.source).toBe("editorUrl");
   });
 
-  it("opens in-app when preferredMode is codex-internal-browser", () => {
+  it("opens system browser when preferredMode is codex-internal-browser", () => {
     const action = resolveChatcutHandoff({
       editorUrl: CLEAN,
       liveProject: {
         openStrategy: { preferredMode: "codex-internal-browser" },
       },
     });
+    expect(action.kind).toBe("open_external");
+    if (action.kind === "open_external") {
+      expect(action.reason).toBe("editor");
+    }
+  });
+
+  it("forceEditorInApp keeps EmbeddedBrowser path and internal params", () => {
+    const action = resolveChatcutHandoff(
+      {
+        editorUrl: CLEAN,
+        browserHandoff: { required: true, url: INTERNAL },
+      },
+      { forceEditorInApp: true },
+    );
     expect(action.kind).toBe("open_in_app_browser");
+    if (action.kind !== "open_in_app_browser") return;
+    expect(action.url).toContain("dockviewLayout=media");
+    expect(action.url).toContain("editor-boot-token=tok123");
+    expect(action.displayUrl).not.toContain("dockviewLayout");
   });
 
   it("classifies billing as external", () => {
@@ -122,10 +139,16 @@ describe("resolveChatcutHandoff — shipped policy", () => {
     });
   });
 
-  it("maps to ResourceOpenTarget { type: url }", () => {
-    const target = resourceOpenTargetFromChatcutPayload({
-      browserHandoff: { required: true, url: INTERNAL },
-    });
+  it("maps ResourceOpenTarget only when forceEditorInApp", () => {
+    expect(
+      resourceOpenTargetFromChatcutPayload({
+        browserHandoff: { required: true, url: INTERNAL },
+      }),
+    ).toBeNull();
+    const target = resourceOpenTargetFromChatcutPayload(
+      { browserHandoff: { required: true, url: INTERNAL } },
+      { forceEditorInApp: true },
+    );
     expect(target).toEqual({
       type: "url",
       url: expect.stringContaining("dockviewLayout=media"),
@@ -134,15 +157,15 @@ describe("resolveChatcutHandoff — shipped policy", () => {
     expect(chatcutHandoffToResourceOpenTarget({ kind: "none" })).toBeNull();
   });
 
-  it("localizes internal open URL for zh", () => {
+  it("localizes system open URL for zh and strips internal params", () => {
     const action = resolveChatcutHandoff(
       { browserHandoff: { required: true, url: INTERNAL } },
       { locale: "zh-CN" },
     );
-    expect(action.kind).toBe("open_in_app_browser");
-    if (action.kind !== "open_in_app_browser") return;
+    expect(action.kind).toBe("open_external");
+    if (action.kind !== "open_external") return;
     expect(action.url).toContain("/zh/editor/");
-    expect(action.url).toContain("dockviewLayout=media");
+    expect(action.url).not.toContain("dockviewLayout");
   });
 
   it("parses structuredContent nesting and JSON strings", () => {
@@ -161,12 +184,15 @@ describe("resolveChatcutHandoff — shipped policy", () => {
         browserHandoff: { required: true, url: INTERNAL },
       }),
     );
-    expect(fromText.kind).toBe("open_in_app_browser");
+    expect(fromText.kind).toBe("open_external");
+    if (fromText.kind === "open_external") {
+      expect(fromText.reason).toBe("editor");
+    }
   });
 });
 
 describe("tool event + link click paths", () => {
-  it("scans tool detail/path for handoff", () => {
+  it("scans tool detail/path for handoff → system browser", () => {
     const action = resolveChatcutHandoffFromToolEvent({
       title: "chatcut__create_project",
       detail: JSON.stringify({
@@ -175,16 +201,19 @@ describe("tool event + link click paths", () => {
       }),
       path: null,
     });
-    expect(action.kind).toBe("open_in_app_browser");
-    if (action.kind !== "open_in_app_browser") return;
-    expect(action.url).toContain("editor-boot-token");
+    expect(action.kind).toBe("open_external");
+    if (action.kind !== "open_external") return;
+    expect(action.reason).toBe("editor");
+    expect(action.url).not.toContain("editor-boot-token");
+    expect(action.url).toContain("/editor/proj_abc");
   });
 
-  it("editor link click → in-app; billing → external", () => {
+  it("editor link click → system browser; billing → external", () => {
     const ed = resolveChatcutLinkClick(INTERNAL, { locale: "en" });
-    expect(ed.kind).toBe("open_in_app_browser");
-    if (ed.kind === "open_in_app_browser") {
-      expect(ed.url).toContain("dockviewLayout");
+    expect(ed.kind).toBe("open_external");
+    if (ed.kind === "open_external") {
+      expect(ed.reason).toBe("editor");
+      expect(ed.url).not.toContain("dockviewLayout");
     }
     const bill = resolveChatcutLinkClick(BILLING);
     expect(bill.kind).toBe("open_external");

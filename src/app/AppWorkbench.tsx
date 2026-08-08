@@ -5439,8 +5439,8 @@ export function AppWorkbench() {
   /** Open chat markdown http(s) links via desktop shell; optional confirm pref. */
   const openExternalLinkFromChat = useCallback(
     (url: string) => {
-      // ChatCut editor handoff → side Resources browser (Codex parity).
-      // Billing/pricing stays system browser.
+      // ChatCut editor/billing → system default browser (EmbeddedBrowser cannot
+      // reliably play media). Opt-in only: forceEditorInApp → side Resources.
       const action = resolveChatcutLinkClick(url, { locale });
       if (action.kind === "open_in_app_browser") {
         const target = chatcutHandoffToResourceOpenTarget(action);
@@ -5451,19 +5451,22 @@ export function AppWorkbench() {
           return;
         }
       }
+      // Prefer resolved external URL (locale + stripped Codex-only params).
+      const openUrl =
+        action.kind === "open_external" ? action.url : url;
       const doOpen = () => {
         if (api.isTauri()) {
-          void api.openExternalUrl(url).catch((e) => {
+          void api.openExternalUrl(openUrl).catch((e) => {
             console.error("[chat] openExternalUrl failed", e);
             // Fallback for hosts that reject shell open.
             try {
-              window.open(url, "_blank", "noopener,noreferrer");
+              window.open(openUrl, "_blank", "noopener,noreferrer");
             } catch {
               /* ignore */
             }
           });
         } else {
-          window.open(url, "_blank", "noopener,noreferrer");
+          window.open(openUrl, "_blank", "noopener,noreferrer");
         }
       };
       if (loadConfirmExternalLinksPref()) {

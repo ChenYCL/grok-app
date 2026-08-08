@@ -40,16 +40,17 @@ ChatCut’s AS issues **short-lived access tokens** (`expires_in` ≈ 3600s) plu
 
 Without a stored `refresh_token` (legacy one-shot authorize), the user must **authorize once more** after upgrading; subsequent sessions stay long-lived until the refresh grant is revoked.
 
-## Editor handoff → Resources browser
+## Editor handoff → system default browser
 
-Codex skills open ChatCut in the host **internal browser**. Grok maps that to **Resources → EmbeddedBrowser**:
+Codex skills may request an in-app / “codex-internal-browser” handoff. Grok App **defaults to the OS system browser** instead: the side **Resources → EmbeddedBrowser** WebView cannot reliably play ChatCut media or run the full editor.
 
 1. Tool result / link contains `browserHandoff`, `editorUrl`, `liveProject`, or `openStrategy.preferredMode: codex-internal-browser`.
 2. Pure helpers in `src/lib/chatcutHandoff.ts` choose:
-   - **In-app open URL** = `browserHandoff.url` preferred (preserve `dockviewLayout`, `editor-boot-token`) → `ResourceOpenTarget { type: "url", url, title? }`.
-   - **Display / Markdown URL** = clean `editorUrl` (strip those Codex-only params).
-   - **Billing/pricing** = system external browser only.
-3. Host `session://tool` path (and chat link clicks) call `setResourceOpenTarget` + open the aside pane.
+   - **Default open** = system browser via `openExternalUrl` / shell open.
+   - **URL** = prefer `browserHandoff.url`, else `editorUrl`; apply locale; **strip** Codex-only params (`dockviewLayout`, `editor-boot-token`).
+   - **Billing/pricing** = system browser (same path).
+   - **Opt-in only** = `forceEditorInApp: true` → side Resources EmbeddedBrowser (legacy; keeps internal params).
+3. Host `session://tool` path and chat link clicks open the system browser (deduped). They do **not** open the aside EmbeddedBrowser by default.
 
 Locale path rule (same as Codex skills): zh → `/zh/…`, es → `/es/…`, else English default.
 

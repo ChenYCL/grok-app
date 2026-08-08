@@ -123,6 +123,25 @@ export type SessionHostEventsCtx = {
 const chatcutHandoffRecent = new Map<string, number>();
 const CHATCUT_HANDOFF_DEDUP_MS = 8_000;
 
+function openChatcutUrlInSystemBrowser(url: string) {
+  if (api.isTauri()) {
+    void api.openExternalUrl(url).catch((e) => {
+      console.error("[chatcut] openExternalUrl failed", e);
+      try {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } catch {
+        /* ignore */
+      }
+    });
+  } else {
+    try {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function maybeOpenChatcutHandoffFromTool(
   c: {
     localeRef?: { current?: string };
@@ -170,18 +189,20 @@ function maybeOpenChatcutHandoffFromTool(
     },
     { locale },
   );
-  if (action.kind === "open_external" && action.reason === "billing") {
-    // Billing stays system browser — Host shell open is handled by link clicks;
-    // do not force external here from tool stream (agent may still show the link).
-    return;
-  }
-  const target = chatcutHandoffToResourceOpenTarget(action);
-  if (!target) return;
+  if (action.kind === "none") return;
+
+  const openUrl =
+    action.kind === "open_external"
+      ? action.url
+      : action.kind === "open_in_app_browser"
+        ? action.url
+        : null;
+  if (!openUrl) return;
 
   const now = Date.now();
-  const last = chatcutHandoffRecent.get(target.url) ?? 0;
+  const last = chatcutHandoffRecent.get(openUrl) ?? 0;
   if (now - last < CHATCUT_HANDOFF_DEDUP_MS) return;
-  chatcutHandoffRecent.set(target.url, now);
+  chatcutHandoffRecent.set(openUrl, now);
   // Bound map size
   if (chatcutHandoffRecent.size > 40) {
     for (const [k, t] of chatcutHandoffRecent) {
@@ -194,6 +215,17 @@ function maybeOpenChatcutHandoffFromTool(
     // Background session: skip auto-open so we do not steal focus.
     return;
   }
+
+  // Default: system browser (editor / billing / other). Embedded WebView cannot
+  // reliably play ChatCut media.
+  if (action.kind === "open_external") {
+    openChatcutUrlInSystemBrowser(action.url);
+    return;
+  }
+
+  // Opt-in only: side Resources EmbeddedBrowser (forceEditorInApp).
+  const target = chatcutHandoffToResourceOpenTarget(action);
+  if (!target) return;
 
   try {
     c.navigateWorkbench?.();
@@ -942,7 +974,7 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
               toolCallId: p.toolCallId,
             });
             toolEventCoalescer?.push({ ...p, sessionId: sid });
-            // ChatCut Codex handoff → Resources EmbeddedBrowser (in-app).
+            // ChatCut handoff → system default browser (EmbeddedBrowser cannot play media).
             // Run on each event (not only batch flush) so terminal handoffs open promptly.
             maybeOpenChatcutHandoffFromTool(c, p);
             // Conversation skill/plugin install → refresh App skills_list (debounced

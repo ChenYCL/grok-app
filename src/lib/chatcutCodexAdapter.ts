@@ -394,7 +394,7 @@ export function chatcutParityChecklist(adapted: AdaptedChatcutPlugin): Array<{
       id: "handoff_host_mapping",
       ok: true,
       detail:
-        "Codex control-in-app-browser / node_repl → Grok Resources EmbeddedBrowser (not identical browser-control API)",
+        "Codex control-in-app-browser / node_repl → Grok system default browser for ChatCut editor (EmbeddedBrowser WebView cannot play media; forceEditorInApp opt-in only)",
     },
   ];
 }

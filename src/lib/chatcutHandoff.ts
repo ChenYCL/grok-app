@@ -1,15 +1,17 @@
 /**
  * ChatCut Codex browser-handoff policy (pure helpers).
  *
- * Codex skills instruct hosts to open ChatCut editor URLs in an in-app browser
- * when tool results include browserHandoff / liveProject / openStrategy.
- * Grok App maps that to Resources EmbeddedBrowser via ResourceOpenTarget.
+ * Codex skills may request an in-app / “codex-internal-browser” handoff via
+ * browserHandoff / liveProject / openStrategy. Grok App’s **default** is the
+ * **system browser** — the side EmbeddedBrowser WebView cannot reliably play
+ * ChatCut media or run the full editor. Opt into the side Resources browser
+ * only with `forceEditorInApp: true`.
  *
  * Protocol notes:
- * - Prefer browserHandoff.url over editorUrl for in-app open (preserve query).
- * - User-facing Markdown / external links use clean editorUrl (strip Codex-only
- *   params dockviewLayout + editor-boot-token).
- * - Billing/pricing URLs stay external system browser — never editor handoff.
+ * - Prefer browserHandoff.url, then editorUrl, for the open target.
+ * - System open uses a clean URL (strip Codex-only params dockviewLayout +
+ *   editor-boot-token). In-app open (opt-in) may keep those params.
+ * - Billing/pricing always uses the system browser.
  * - Locale path: zh → /zh/…, es → /es/…, else default English (no prefix).
  */
 
@@ -39,7 +41,8 @@ export type ChatcutHandoffAction =
   | {
       kind: "open_external";
       url: string;
-      reason: "billing" | "non_editor";
+      /** editor = ChatCut editor (default system browser); billing; other hosts. */
+      reason: "billing" | "non_editor" | "editor";
     }
   | { kind: "none" };
 
@@ -92,7 +95,7 @@ export function isChatcutBillingUrl(url: string): boolean {
 }
 
 /**
- * Editor / project URLs that may be handed off to the in-app browser.
+ * Editor / project URLs that should open ChatCut (system browser by default).
  */
 export function isChatcutEditorUrl(url: string): boolean {
   if (!isHttpUrl(url)) return false;
@@ -343,8 +346,9 @@ export type ResolveChatcutHandoffOptions = {
   /** UI / conversation locale for path prefix (zh / es / en). */
   locale?: string | null;
   /**
-   * When true, open editor URLs even without explicit browserHandoff.required
-   * or codex-internal-browser mode (e.g. user clicked a ChatCut editor link).
+   * When true, open the editor in the side Resources EmbeddedBrowser instead of
+   * the system default browser. Default is **false** (system browser) because
+   * the in-app WebView cannot reliably play ChatCut media.
    */
   forceEditorInApp?: boolean;
 };
@@ -352,10 +356,13 @@ export type ResolveChatcutHandoffOptions = {
 /**
  * Decide how to open a ChatCut tool result / link.
  *
- * Preference order for in-app URL:
- * 1. browserHandoff.url (exact internal handoff, preserve params)
+ * Preference order for the open URL:
+ * 1. browserHandoff.url
  * 2. editorUrl
  * 3. any editor-like URL found in the payload
+ *
+ * Default open mode is **system browser** (`open_external` / reason `editor`).
+ * Pass `forceEditorInApp: true` for the legacy side EmbeddedBrowser path.
  */
 export function resolveChatcutHandoff(
   payload: unknown,
@@ -373,14 +380,13 @@ export function resolveChatcutHandoff(
     };
   }
 
-  const wantsInternal =
+  const hasHandoffSignal =
     fields.browserHandoffRequired ||
     fields.browserHandoffUrl != null ||
     (fields.preferredMode ?? "")
       .toLowerCase()
       .includes("codex-internal-browser") ||
-    (fields.preferredMode ?? "").toLowerCase().includes("internal-browser") ||
-    opts.forceEditorInApp === true;
+    (fields.preferredMode ?? "").toLowerCase().includes("internal-browser");
 
   const rawInternal =
     fields.browserHandoffUrl ||
@@ -400,23 +406,13 @@ export function resolveChatcutHandoff(
     };
   }
 
-  if (!wantsInternal && !isChatcutEditorUrl(rawInternal)) {
+  const isEditor = isChatcutEditorUrl(rawInternal) || hasHandoffSignal;
+  if (!isEditor) {
     return {
       kind: "open_external",
       url: rawInternal.trim(),
       reason: "non_editor",
     };
-  }
-
-  if (!wantsInternal && !opts.forceEditorInApp) {
-    // No handoff signal — still allow clean editor URL as external default.
-    if (isChatcutEditorUrl(rawInternal)) {
-      // Prefer in-app for known editor URLs when force not set but clearly editor:
-      // Grok product goal is side Resources browser for ChatCut editor.
-      // Treat editor-like URLs as in-app open.
-    } else {
-      return { kind: "none" };
-    }
   }
 
   const source: "browserHandoff" | "editorUrl" | "liveProject" | "url" =
@@ -428,19 +424,26 @@ export function resolveChatcutHandoff(
           ? "url"
           : "liveProject";
 
-  // Internal open: preserve query params, apply locale.
-  let openUrl = rawInternal.trim();
-  openUrl = applyChatcutLocalePath(openUrl, locale);
+  // Locale first, then strip Codex-only params for system browser.
+  let localized = applyChatcutLocalePath(rawInternal.trim(), locale);
+  const displayUrl = stripChatcutInternalParams(localized);
 
-  // Display / external-facing: strip internal params after locale.
-  const displayUrl = stripChatcutInternalParams(openUrl);
+  // Opt-in only: side EmbeddedBrowser (legacy Codex parity).
+  if (opts.forceEditorInApp === true) {
+    return {
+      kind: "open_in_app_browser",
+      // Preserve dockviewLayout / editor-boot-token for embedded layout.
+      url: localized,
+      displayUrl,
+      title: "ChatCut",
+      source,
+    };
+  }
 
   return {
-    kind: "open_in_app_browser",
-    url: openUrl,
-    displayUrl,
-    title: "ChatCut",
-    source,
+    kind: "open_external",
+    url: displayUrl,
+    reason: "editor",
   };
 }
 
@@ -473,7 +476,8 @@ export function resourceOpenTargetFromChatcutPayload(
 
 /**
  * When the user clicks an http(s) link in chat, decide open strategy.
- * Editor → in-app Resources browser; billing → external; other ChatCut → external.
+ * Editor → system browser (default); billing → system browser; other ChatCut → external.
+ * Pass `forceEditorInApp: true` for the side Resources browser.
  */
 export function resolveChatcutLinkClick(
   href: string,
@@ -487,17 +491,17 @@ export function resolveChatcutLinkClick(
     return { kind: "open_external", url, reason: "billing" };
   }
 
-  if (isChatcutEditorUrl(url) || opts.forceEditorInApp) {
+  if (isChatcutEditorUrl(url)) {
     return resolveChatcutHandoff(
       {
         editorUrl: stripChatcutInternalParams(url),
         browserHandoff: {
-          // Click on a link that still has internal params → preserve them.
+          // Keep raw href so forceEditorInApp can still preserve internal params.
           url,
           required: true,
         },
       },
-      { ...opts, forceEditorInApp: true },
+      opts,
     );
   }
 
@@ -533,14 +537,21 @@ export function resolveChatcutHandoffFromToolEvent(
   }
   if (chunks.length === 0) return { kind: "none" };
 
-  // Prefer first decisive action (billing external > in-app > none).
+  // Prefer first decisive action (billing > editor external > in-app opt-in > none).
   let best: ChatcutHandoffAction = { kind: "none" };
   for (const chunk of chunks) {
     const action = resolveChatcutHandoff(chunk, opts);
     if (action.kind === "open_external" && action.reason === "billing") {
       return action;
     }
-    if (action.kind === "open_in_app_browser" && best.kind !== "open_in_app_browser") {
+    if (action.kind === "open_external" && action.reason === "editor") {
+      // Default product path — system browser for ChatCut editor.
+      if (best.kind !== "open_external" || best.reason !== "editor") {
+        best = action;
+      }
+      continue;
+    }
+    if (action.kind === "open_in_app_browser" && best.kind === "none") {
       best = action;
     } else if (action.kind === "open_external" && best.kind === "none") {
       best = action;
