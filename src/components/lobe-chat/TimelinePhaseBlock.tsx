@@ -44,9 +44,12 @@ import {
 } from "@/lib/toolDisplay";
 import {
   GROK_ACTIVITY_STEP_ROW_PX,
-  applyActivityStepExpand,
+  applyActivityStepExpandPolicy,
+  applyActivityStepUserToggle,
+  emptyActivityStepExpandState,
   grokActivityVirtualMaxHeightPx,
   shouldVirtualizeActivityWithExpand,
+  type ActivityStepExpandState,
 } from "@/lib/grokActivityVirtualize";
 import { VirtualList } from "@/components/VirtualList";
 import {
@@ -187,14 +190,25 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
   isLast,
   tr,
   expanded,
-  onToggleExpand,
+  onUserToggle,
+  onPolicySync,
 }: {
   step: GrokActivityStep;
   isLast: boolean;
   tr: ReturnType<typeof createT>;
   /** Parent-owned open state — survives VirtualList → map remount. */
   expanded: boolean;
-  onToggleExpand?: (key: string, open: boolean) => void;
+  /** User click: mark user-toggled + set open (parent). */
+  onUserToggle?: (key: string, open: boolean) => void;
+  /**
+   * Running / auto-collapse policy sync (parent). Applies even when currently
+   * expanded so running→finished collapses under default autoCollapse.
+   * Never called on unmount.
+   */
+  onPolicySync?: (
+    key: string,
+    opts: { hasBody: boolean; running: boolean; autoCollapse: boolean },
+  ) => void;
 }) {
   const failed =
     step.type !== "thought" && "failed" in step ? !!step.failed : false;
@@ -214,8 +228,6 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
     ? toolExpandBody(expandTool, failed)
     : { failHint: "", failHintShort: "", detailTail: "", hasBody: false };
 
-  // Track whether the user manually overrode open/close for this step key.
-  const userToggled = useRef(false);
   const runningRef = useRef(running);
   runningRef.current = running;
   const [autoCollapse, setAutoCollapse] = useState(() =>
@@ -228,31 +240,24 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
       const next =
         typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref();
       setAutoCollapse(next);
-      if (!runningRef.current && !userToggled.current && hasBody) {
-        onToggleExpand?.(step.key, toolStepDefaultOpen(false, next));
-      }
     };
     window.addEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
     return () => {
       window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
     };
-  }, [hasBody, onToggleExpand, step.key]);
+  }, []);
 
-  // Default open while running / follow auto-collapse when not user-toggled.
-  // Parent expandedKeys is source of truth across VirtualList → map remount:
-  // never clobber an already-open key (user expand survives leave-VL remount).
+  // Policy: running → open; finished → toolStepDefaultOpen (autoCollapse).
+  // User-toggled keys are ignored inside parent applyActivityStepExpandPolicy.
+  // Do not skip when expanded=true — that blocked running→finished collapse.
   useEffect(() => {
-    if (!hasBody || !onToggleExpand) return;
-    if (userToggled.current) return;
-    if (running) {
-      if (!expanded) onToggleExpand(step.key, true);
-      return;
-    }
-    // Remount after leave-VL keeps expanded=true — do not force-close.
-    if (expanded) return;
-    const wantOpen = toolStepDefaultOpen(false, autoCollapse);
-    if (wantOpen) onToggleExpand(step.key, true);
-  }, [running, autoCollapse, step.key, hasBody, onToggleExpand, expanded]);
+    if (!hasBody || !onPolicySync) return;
+    onPolicySync(step.key, {
+      hasBody: true,
+      running,
+      autoCollapse,
+    });
+  }, [running, autoCollapse, step.key, hasBody, onPolicySync]);
 
   const open = hasBody && expanded;
   const showBody = open;
@@ -284,8 +289,7 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
               className="grok-act__step-btn grok-act__step-btn--grow"
               aria-expanded={open}
               onClick={() => {
-                userToggled.current = true;
-                onToggleExpand?.(step.key, !expanded);
+                onUserToggle?.(step.key, !expanded);
               }}
             >
               <StepMainText step={step} tr={tr} />
@@ -341,7 +345,8 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
  * Live phases pin the scroller to the tail (last step key).
  * When any step is expanded, leave VirtualList so fixed row height is not
  * broken — expanded body uses max-height + internal scroll instead.
- * Expand keys live on the parent so the virtual→map remount keeps open state.
+ * Expand + userToggled keys live on the parent so remount keeps open state
+ * and running→finished still auto-collapses when the user did not toggle.
  */
 export function GrokActivitySteps({
   steps,
@@ -354,16 +359,25 @@ export function GrokActivitySteps({
   live?: boolean;
 }) {
   const total = steps.length;
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
-    () => new Set(),
+  const [expandState, setExpandState] = useState<ActivityStepExpandState>(() =>
+    emptyActivityStepExpandState(),
   );
-  // Parent owns open set — never clear on row unmount (remount after leave-VL).
-  const onToggleExpand = useCallback((key: string, open: boolean) => {
-    setExpandedKeys((prev) => applyActivityStepExpand(prev, key, open));
+  // Parent owns open + user-toggled sets — never clear on row unmount.
+  const onUserToggle = useCallback((key: string, open: boolean) => {
+    setExpandState((prev) => applyActivityStepUserToggle(prev, key, open));
   }, []);
+  const onPolicySync = useCallback(
+    (
+      key: string,
+      opts: { hasBody: boolean; running: boolean; autoCollapse: boolean },
+    ) => {
+      setExpandState((prev) => applyActivityStepExpandPolicy(prev, key, opts));
+    },
+    [],
+  );
   const virtualize = shouldVirtualizeActivityWithExpand(
     total,
-    expandedKeys.size,
+    expandState.expandedKeys.size,
   );
   const lastKey = total > 0 ? steps[total - 1]!.key : null;
 
@@ -374,11 +388,12 @@ export function GrokActivitySteps({
         step={step}
         isLast={idx === total - 1}
         tr={tr}
-        expanded={expandedKeys.has(step.key)}
-        onToggleExpand={onToggleExpand}
+        expanded={expandState.expandedKeys.has(step.key)}
+        onUserToggle={onUserToggle}
+        onPolicySync={onPolicySync}
       />
     ),
-    [total, tr, expandedKeys, onToggleExpand],
+    [total, tr, expandState.expandedKeys, onUserToggle, onPolicySync],
   );
 
   if (!total) return null;
@@ -392,8 +407,9 @@ export function GrokActivitySteps({
             step={step}
             isLast={idx === total - 1}
             tr={tr}
-            expanded={expandedKeys.has(step.key)}
-            onToggleExpand={onToggleExpand}
+            expanded={expandState.expandedKeys.has(step.key)}
+            onUserToggle={onUserToggle}
+            onPolicySync={onPolicySync}
           />
         ))}
       </div>
