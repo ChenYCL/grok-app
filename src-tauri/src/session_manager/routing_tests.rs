@@ -7,7 +7,7 @@ use std::time::Instant;
 use crate::acp_client::{AcpEvent, StreamKind};
 use crate::journal_throttle::JournalWriteThrottle;
 use crate::permission::{PermissionPolicy, SessionAllowCache};
-use crate::session_fsm::SessionFsm;
+use crate::session_fsm::{SessionFsm, SessionState};
 use crate::store::{self, ChatMessageStored, SessionMeta};
 
 use super::*;
@@ -194,6 +194,79 @@ fn session_load_replay_gate_matches_prompt_in_flight() {
     assert!(SessionManager::is_session_load_replay(false));
     // Live turn (prompt in flight): apply all side effects.
     assert!(!SessionManager::is_session_load_replay(true));
+}
+
+#[test]
+fn provider_retry_abort_skips_idle_and_connecting_reconnect() {
+    // Diagnostic 65fa7759: session/load residual retry_state while Connecting/Ready
+    // must not write NETWORK_PROVIDER or fail_with without a host turn.
+    assert!(!should_apply_provider_retry_abort_flags(
+        false,
+        false,
+        false,
+        false,
+        SessionState::Connecting,
+    ));
+    assert!(!should_apply_provider_retry_abort_flags(
+        false,
+        false,
+        false,
+        false,
+        SessionState::Ready,
+    ));
+    assert!(!should_apply_provider_retry_abort_flags(
+        false,
+        false,
+        false,
+        false,
+        SessionState::Disconnected,
+    ));
+    // Real host turn: prompt open.
+    assert!(should_apply_provider_retry_abort_flags(
+        true,
+        false,
+        false,
+        false,
+        SessionState::Streaming,
+    ));
+    // Early prompt_complete but stream still open.
+    assert!(should_apply_provider_retry_abort_flags(
+        false,
+        true,
+        false,
+        false,
+        SessionState::Ready,
+    ));
+    // Open tools / deferred complete still count as host-owned.
+    assert!(should_apply_provider_retry_abort_flags(
+        false,
+        false,
+        true,
+        false,
+        SessionState::Ready,
+    ));
+    assert!(should_apply_provider_retry_abort_flags(
+        false,
+        false,
+        false,
+        true,
+        SessionState::Ready,
+    ));
+    // Explicit mid-turn FSM without prompt flag (stream path).
+    assert!(should_apply_provider_retry_abort_flags(
+        false,
+        false,
+        false,
+        false,
+        SessionState::Streaming,
+    ));
+    assert!(should_apply_provider_retry_abort_flags(
+        false,
+        false,
+        false,
+        false,
+        SessionState::AwaitingPermission,
+    ));
 }
 
 #[test]

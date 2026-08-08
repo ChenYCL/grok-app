@@ -1532,3 +1532,27 @@ pub(super) fn connect_should_preserve_live_process(state: SessionState, busy: bo
         SessionState::Idle | SessionState::Disconnected => false,
     }
 }
+
+/// Pure policy: may a provider `retry_state` fail the host turn / write chat error?
+///
+/// Excludes `Connecting` so `session/load` reconnect residual retries cannot
+/// journal-poison an idle chat. See diagnostic session 65fa7759 (NETWORK_PROVIDER
+/// rows on reconnect without `session/prompt`).
+pub(super) fn should_apply_provider_retry_abort_flags(
+    prompt_in_flight: bool,
+    has_streaming_message: bool,
+    has_open_tools: bool,
+    deferred_prompt_complete: bool,
+    state: SessionState,
+) -> bool {
+    if prompt_in_flight {
+        return true;
+    }
+    if has_streaming_message || has_open_tools || deferred_prompt_complete {
+        return true;
+    }
+    matches!(
+        state,
+        SessionState::Streaming | SessionState::AwaitingPermission
+    )
+}

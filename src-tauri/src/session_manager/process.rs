@@ -162,6 +162,27 @@ impl SessionManager {
         false
     }
 
+    /// Whether a provider `retry_state` may fail the host turn and write a chat error.
+    ///
+    /// Residual retries during `session/load` reconnect (or shared-process noise
+    /// while idle) must **not** append NETWORK_PROVIDER rows or flip the FSM to
+    /// Disconnected. Unlike [`Self::live_session_is_busy`], this deliberately
+    /// excludes `Connecting` — reconnect is busy for process policy but has no
+    /// user turn to abort.
+    ///
+    /// Host-owned turn = prompt RPC open, stream/tools still live after early
+    /// `prompt_complete`, or explicit Streaming / AwaitingPermission.
+    #[inline]
+    pub(super) fn should_apply_provider_retry_abort(s: &LiveSession) -> bool {
+        should_apply_provider_retry_abort_flags(
+            s.prompt_in_flight,
+            s.streaming_message_id.is_some(),
+            !s.open_tool_ids.is_empty(),
+            s.deferred_prompt_complete.is_some(),
+            s.fsm.state(),
+        )
+    }
+
     /// Whether connect/respawn must keep the existing agent process.
     ///
     /// Terminal FSM states (`Disconnected` / `Idle`) never preserve the process —

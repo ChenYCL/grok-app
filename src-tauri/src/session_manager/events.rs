@@ -997,7 +997,17 @@ impl SessionManager {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         s.provider_retry_attempt = attempt;
-                        if s.provider_retry_aborted {
+                        // Reconnect / session/load residual retries (and shared-
+                        // process noise while idle) must not fail the shell or
+                        // append NETWORK_PROVIDER rows without a host-owned turn.
+                        if !Self::should_apply_provider_retry_abort(s) {
+                            tracing::debug!(
+                                "acp retry_state ignored: no host turn (fsm={:?} pif={} attempt={attempt})",
+                                s.fsm.state(),
+                                s.prompt_in_flight
+                            );
+                            false
+                        } else if s.provider_retry_aborted {
                             false
                         } else {
                             should_abort_provider_retry_ex(
@@ -1031,13 +1041,17 @@ impl SessionManager {
                                 (None, None)
                             } else {
                                 s.provider_retry_aborted = true;
+                                // `attempt` is how many tries the host saw; `cap`
+                                // is the agent/host budget — do not claim we ran
+                                // the full budget when hard-transport fail-fast
+                                // aborts early (e.g. attempt 3 of 12).
                                 let msg = if reason.trim().is_empty() {
                                     format!(
-                                        "Provider request failed after {cap} retries (attempt {attempt})"
+                                        "Provider request failed after {attempt} attempts (budget {cap})"
                                     )
                                 } else {
                                     format!(
-                                        "Provider request failed after {cap} retries (attempt {attempt}): {reason}"
+                                        "Provider request failed after {attempt} attempts (budget {cap}): {reason}"
                                     )
                                 };
                                 let err = AgentError::new(AgentErrorCode::NetworkProvider, msg);
