@@ -36,8 +36,11 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 | `model` | **Active** request body model id (written to config `model = …`) |
 | `models` | Multi-model catalog (`[{id, name}]`); App field `app_models` JSON in TOML (ignored by Grok Build). Each entry has request id + **display name** for composer chip |
 | `efforts` | Reasoning-effort options for this channel (`[{id, name, isDefault}]`); App field `app_efforts` JSON. Composer effort menu uses this on custom route. Empty → Grok `low`/`medium`/`high` fallback |
+| `contextWindow` | Optional token cap → TOML `context_window` as a **bare integer** (never `"1000000"`). Grok Build rejects string type and falls back to 200k (#538). Composer can set it; list/upsert preserves and reloads. Missing → UI chip uses `DEFAULT_CUSTOM_CONTEXT_WINDOW` (200k) only. |
 | `apiBackend` | Message format: `responses` (default) \| `chat_completions` \| `messages` |
 | `isDefault` | Maps to `[models].default` (set only via **Use** / composer pick activate, not a form checkbox) |
+
+**Integer TOML fields:** Host writes `context_window = 1000000` (CLI-compatible). On `providers_list`, legacy quoted string forms are repaired in place. Other model edits must not drop or re-quote this field.
 
 ### Presets (add provider)
 
