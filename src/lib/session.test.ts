@@ -37,6 +37,8 @@ import {
   mergeAssistantFragments,
   pickAssistantFragmentCarrierIdx,
   filterTranscriptMessages,
+  toolSegmentFromFields,
+  upsertToolInSegments,
   stripAnsi,
   truncateBeforeLastUser,
   truncateThroughUserPrompt,
@@ -1722,6 +1724,84 @@ describe("tool activity", () => {
     expect(m).toHaveLength(1);
     expect(m[0]?.streaming).toBe(false);
     expect(m[0]?.content).toContain("Read");
+  });
+
+  it("applyToolEvent keeps input across status-only ticks (no downgrade)", () => {
+    let m: ChatMessage[] = [
+      {
+        id: "u1",
+        role: "user",
+        content: "run",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "",
+        segments: [{ kind: "thought", text: "plan" }],
+        streaming: true,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    m = applyToolEvent(m, {
+      toolCallId: "bash-1",
+      title: "run_terminal_command",
+      kind: "run_terminal_command",
+      status: "in_progress",
+      input: "ls -la src/lib/session.ts",
+    });
+    // Sparse status tick — no input field (live wire often omits on progress).
+    m = applyToolEvent(m, {
+      toolCallId: "bash-1",
+      title: "run_terminal_command",
+      kind: "run_terminal_command",
+      status: "in_progress",
+      detail: "working…",
+    });
+    m = applyToolEvent(m, {
+      toolCallId: "bash-1",
+      title: "run_terminal_command",
+      kind: "run_terminal_command",
+      status: "completed",
+      detail: "total 12\nsession.ts",
+    });
+    const asst = m.find((x) => x.id === "a1");
+    expect(asst).toBeTruthy();
+    const tools = (asst!.segments || []).filter(
+      (s): s is Extract<typeof s, { kind: "tool" }> => s.kind === "tool",
+    );
+    expect(tools).toHaveLength(1);
+    expect(tools[0]!.input).toBe("ls -la src/lib/session.ts");
+    // Standalone tool row also keeps toolInput for reload weave path.
+    const row = m.find((x) => x.toolCallId === "bash-1");
+    expect(row?.toolInput).toBe("ls -la src/lib/session.ts");
+  });
+
+  it("upsertToolInSegments and compactMessageSegments preserve prior input", () => {
+    const withInput = toolSegmentFromFields({
+      toolCallId: "r1",
+      title: "read_file",
+      toolKind: "read_file",
+      status: "in_progress",
+      input: "/Users/me/proj/SKILL.md",
+    });
+    const statusOnly = toolSegmentFromFields({
+      toolCallId: "r1",
+      title: "read_file",
+      toolKind: "read_file",
+      status: "completed",
+      detail: "ok",
+    });
+    const upserted = upsertToolInSegments([withInput], statusOnly);
+    expect(upserted).toHaveLength(1);
+    expect((upserted[0] as { input?: string }).input).toBe(
+      "/Users/me/proj/SKILL.md",
+    );
+    const compacted = compactMessageSegments([withInput, statusOnly]);
+    expect(compacted).toHaveLength(1);
+    expect((compacted[0] as { input?: string }).input).toBe(
+      "/Users/me/proj/SKILL.md",
+    );
   });
 
   it("parseToolStepContent", () => {

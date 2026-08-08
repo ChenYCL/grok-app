@@ -134,6 +134,8 @@ export interface ToolEventPayload {
   status?: string;
   path?: string | null;
   detail?: string | null;
+  /** Call argument (target file / command / query) from live session://tool. */
+  input?: string | null;
   /** Parent tool call id when the wire event includes nesting. */
   parentId?: string | null;
 }
@@ -340,6 +342,8 @@ export function upsertToolInSegments(
       title,
       detail,
       path: tool.path || prev.path,
+      // Status-only ticks must not wipe a known call argument.
+      input: tool.input || prev.input,
       toolKind: tool.toolKind || prev.toolKind,
     };
     return next;
@@ -968,6 +972,9 @@ export function applyToolEvent(
     "";
   const toolKind = payload.kind || prev?.toolKind || undefined;
   const toolPath = payload.path?.trim() || prev?.toolPath || undefined;
+  // Status-only ticks omit input; keep the first non-empty call argument.
+  const toolInput =
+    (payload.input || "").trim() || prev?.toolInput || undefined;
   const isError = status === "failed" || status === "error";
 
   // Host vision / X: **only** live on the assistant timeline. A separate
@@ -999,6 +1006,7 @@ export function applyToolEvent(
         toolStatus: status || "in_progress",
         toolDetail: mergedDetail,
         toolPath,
+        toolInput,
         toolParentId: parentId,
         streaming: running,
         marker: "tool_step",
@@ -1015,6 +1023,7 @@ export function applyToolEvent(
       status: status || "in_progress",
       detail: mergedDetail,
       path: toolPath,
+      input: toolInput,
       streaming: running,
       isError,
       createdAt: prev?.createdAt || now,
@@ -1036,6 +1045,7 @@ export function applyToolEvent(
     toolStatus: status || "in_progress",
     toolDetail: mergedDetail,
     toolPath,
+    toolInput,
     toolParentId: parentId,
     streaming: running,
     marker: "tool_step",
@@ -1055,6 +1065,7 @@ export function applyToolEvent(
       content: mergedTitle,
       toolDetail: mergedDetail,
       toolPath: toolPath || prev!.toolPath,
+      toolInput: toolInput || prev!.toolInput,
       toolKind: toolKind || prev!.toolKind,
       toolParentId: parentId || prev!.toolParentId,
     };
@@ -1072,6 +1083,7 @@ export function applyToolEvent(
     status: row.toolStatus || status,
     detail: row.toolDetail,
     path: row.toolPath,
+    input: row.toolInput,
     streaming: running,
     isError: !!row.isError,
     createdAt: row.createdAt || prev?.createdAt || now,
@@ -1465,9 +1477,17 @@ function preferRicherTool(
   const aDone = !toolSegmentLooksRunning(a);
   const bDone = !toolSegmentLooksRunning(b);
   // Prefer completed over in-progress when both exist.
-  if (aDone !== bDone) return aDone ? a : b;
-  if (bDetail !== aDetail) return bDetail > aDetail ? b : a;
-  return b;
+  let pick: MessageToolSegment;
+  if (aDone !== bDone) pick = aDone ? a : b;
+  else if (bDetail !== aDetail) pick = bDetail > aDetail ? b : a;
+  else pick = b;
+  const other = pick === a ? b : a;
+  // Never drop a known call argument when coalescing host-family rows.
+  return {
+    ...pick,
+    input: pick.input || other.input,
+    path: pick.path || other.path,
+  };
 }
 
 function toolSegmentLooksRunning(t: MessageToolSegment): boolean {
@@ -1508,6 +1528,8 @@ export function compactMessageSegments(
           title,
           detail: mergedDetail,
           path: raw.path || prev.path,
+          // Coalesce must not wipe a known call argument.
+          input: raw.input || prev.input,
           toolKind: raw.toolKind || prev.toolKind,
         };
         continue;

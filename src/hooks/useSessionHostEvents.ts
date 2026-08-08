@@ -589,6 +589,8 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
           status?: string;
           path?: string | null;
           detail?: string | null;
+          /** Call argument (target file / command / query) for primary labels. */
+          input?: string | null;
           before?: string | null;
           after?: string | null;
         };

@@ -459,6 +459,8 @@ impl SessionManager {
                         "status": st,
                         "path": path_out,
                         "detail": detail,
+                        // Call argument (target file / command / query) for primary labels.
+                        "input": input2,
                     }),
                 );
                 if finished {

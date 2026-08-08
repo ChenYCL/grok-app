@@ -645,6 +645,8 @@ impl SessionManager {
                         "status": if status.is_empty() { "in_progress" } else { &status },
                         "path": path_out,
                         "detail": detail,
+                        // Call argument (target file / command / query) for primary labels.
+                        "input": input2,
                         // Optional content snippets for the session Changes / diff panel.
                         "before": before_snip,
                         "after": after_snip,
