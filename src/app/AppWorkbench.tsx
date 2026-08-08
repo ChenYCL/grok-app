@@ -11173,6 +11173,9 @@ export function AppWorkbench() {
               apiBackend: provider.apiBackend,
               models: catalog,
               efforts: provider.efforts,
+              // Preserve channel context window (Host also keeps on omit; pass
+              // explicitly so load/fillback never drops a 1M custom cap).
+              contextWindow: provider.contextWindow ?? undefined,
               setAsDefault: false,
             });
           }

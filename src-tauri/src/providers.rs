@@ -178,6 +178,99 @@ fn quote(v: &str) -> String {
     serde_json::to_string(v).unwrap_or_else(|_| format!("\"{v}\""))
 }
 
+/// `[model.*]` keys Grok Build expects as bare TOML integers (not strings).
+///
+/// Writing `context_window = "1000000"` makes CLI reject the field
+/// (`context_window invalid type: string`) and silently fall back to 200k.
+/// See GitHub #538.
+const TOML_INTEGER_FIELD_KEYS: &[&str] = &["context_window"];
+
+/// Encode a `[model.*]` field value for agent-home `config.toml`.
+///
+/// Strings stay JSON-quoted; integer keys write bare digits so the CLI type
+/// check matches native `~/.grok/config.toml` (CLI writes integers).
+fn format_toml_field_value(key: &str, value: &str) -> String {
+    if TOML_INTEGER_FIELD_KEYS.contains(&key) {
+        let raw = unquote(value.trim());
+        if let Ok(n) = raw.parse::<u64>() {
+            return n.to_string();
+        }
+    }
+    // App-managed bool flags: write bare `true` / `false` when clearly boolean.
+    if key == APP_BASE_URL_FULL_PATH_KEY {
+        let raw = unquote(value.trim());
+        match raw.to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" | "on" => return "true".into(),
+            "false" | "0" | "no" | "off" => return "false".into(),
+            _ => {}
+        }
+    }
+    quote(value)
+}
+
+/// Rewrite quoted integer fields (`context_window = "1000000"` → bare int).
+/// Idempotent; preserves comments and non-matching lines.
+pub(crate) fn repair_quoted_integer_fields(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut changed = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            if let Some(eq) = trimmed.find('=') {
+                let key = trimmed[..eq].trim();
+                if TOML_INTEGER_FIELD_KEYS.contains(&key) {
+                    let val = trimmed[eq + 1..].trim();
+                    let bare = unquote(val);
+                    if bare.parse::<u64>().is_ok()
+                        && (val.starts_with('"') || val.starts_with('\''))
+                    {
+                        let indent_len = line.len() - line.trim_start().len();
+                        let indent = &line[..indent_len];
+                        out.push_str(indent);
+                        out.push_str(key);
+                        out.push_str(" = ");
+                        out.push_str(&bare);
+                        out.push('\n');
+                        changed = true;
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if !changed {
+        return text.to_string();
+    }
+    if text.ends_with('\n') {
+        out
+    } else {
+        out.trim_end_matches('\n').to_string()
+    }
+}
+
+/// If agent-home config has string-typed integer fields, rewrite and save.
+/// Returns true when the file was modified.
+pub fn ensure_model_integer_fields() -> Result<bool, String> {
+    let _ = ensure_agent_home()?;
+    let path = agent_config_toml();
+    if !path.exists() {
+        return Ok(false);
+    }
+    let text = read_text(&path);
+    let repaired = repair_quoted_integer_fields(&text);
+    if repaired == text {
+        return Ok(false);
+    }
+    write_text(&path, &repaired)?;
+    tracing::info!(
+        target: "providers",
+        "repaired quoted integer fields (e.g. context_window) in agent-home config.toml"
+    );
+    Ok(true)
+}
+
 fn sanitize_id(raw: &str) -> Result<String, String> {
     let id = raw
         .trim()
@@ -574,7 +667,7 @@ fn append_section(text: &str, id: &str, fields: &[(String, String)]) -> String {
     let body: String = fields
         .iter()
         .filter(|(_, v)| !v.is_empty())
-        .map(|(k, v)| format!("{k} = {}", quote(v)))
+        .map(|(k, v)| format!("{k} = {}", format_toml_field_value(k, v)))
         .collect::<Vec<_>>()
         .join("\n");
     let block = format!("\n{}\n{body}\n", model_header(id));
@@ -907,6 +1000,8 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
 pub fn list_custom_providers() -> Result<ProvidersListResult, String> {
     let home = ensure_agent_home()?;
     let path = agent_config_toml();
+    // Heal legacy App writes that stringified context_window (#538).
+    let _ = ensure_model_integer_fields();
     let text = read_text(&path);
     Ok(build_list_result(home, path, &text))
 }
@@ -2190,8 +2285,17 @@ api_backend = \"responses\"";
                 ("name".into(), "Demo".into()),
                 ("api_key".into(), "sk-test".into()),
                 ("api_backend".into(), "chat_completions".into()),
-                ("context_window".into(), "200000".into()),
+                ("context_window".into(), "1000000".into()),
             ],
+        );
+        // Grok Build requires a bare integer — never a quoted string (#538).
+        assert!(
+            text.contains("context_window = 1000000"),
+            "expected bare integer, got:\n{text}"
+        );
+        assert!(
+            !text.contains("context_window = \"1000000\""),
+            "must not quote context_window:\n{text}"
         );
         let sections = parse_model_sections(&text);
         assert_eq!(sections.len(), 1);
@@ -2202,7 +2306,7 @@ api_backend = \"responses\"";
             .get("context_window")
             .and_then(|v| v.parse::<u64>().ok())
             .filter(|n| *n > 0);
-        assert_eq!(cw, Some(200000));
+        assert_eq!(cw, Some(1000000));
 
         // Zero / missing → filtered to None (mirrors build_list_result semantics).
         let text0 = append_section(
@@ -2224,5 +2328,71 @@ api_backend = \"responses\"";
             .and_then(|v| v.parse::<u64>().ok())
             .filter(|n| *n > 0);
         assert_eq!(cw0, None);
+    }
+
+    #[test]
+    fn repair_quoted_context_window_heals_legacy_string_writes() {
+        let broken = r#"
+[model.opencode-go]
+model = "go"
+base_url = "https://ex/v1"
+name = "OpenCode"
+api_key = "sk-test"
+api_backend = "chat_completions"
+context_window = "1000000"
+"#;
+        let fixed = repair_quoted_integer_fields(broken);
+        assert!(fixed.contains("context_window = 1000000"));
+        assert!(!fixed.contains("context_window = \"1000000\""));
+        // Idempotent.
+        assert_eq!(repair_quoted_integer_fields(&fixed), fixed);
+        let s = parse_model_sections(&fixed)[0].clone();
+        let cw = s
+            .fields
+            .get("context_window")
+            .and_then(|v| v.parse::<u64>().ok());
+        assert_eq!(cw, Some(1_000_000));
+    }
+
+    #[test]
+    fn edit_without_context_window_keeps_integer_on_rewrite() {
+        // Simulate: user set 1M, then GUI rewrites section for model/effort only.
+        let mut text = append_section(
+            "",
+            "ch",
+            &[
+                ("model".into(), "m1".into()),
+                ("base_url".into(), "https://ex/v1".into()),
+                ("name".into(), "Ch".into()),
+                ("api_key".into(), "sk".into()),
+                ("api_backend".into(), "chat_completions".into()),
+                ("context_window".into(), "1000000".into()),
+            ],
+        );
+        // Rewrite like upsert with preserved context_window value from parse.
+        let sections = parse_model_sections(&text);
+        let cw = sections[0]
+            .fields
+            .get("context_window")
+            .cloned()
+            .unwrap();
+        text = remove_section(&text, "ch");
+        text = append_section(
+            &text,
+            "ch",
+            &[
+                ("model".into(), "m2".into()),
+                ("base_url".into(), "https://ex/v1".into()),
+                ("name".into(), "Ch".into()),
+                ("api_key".into(), "sk".into()),
+                ("api_backend".into(), "chat_completions".into()),
+                ("context_window".into(), cw),
+            ],
+        );
+        assert!(
+            text.contains("context_window = 1000000"),
+            "rewrite must keep bare int:\n{text}"
+        );
+        assert!(!text.contains("context_window = \"1000000\""));
     }
 }

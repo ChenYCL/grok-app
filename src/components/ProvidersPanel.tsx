@@ -621,6 +621,11 @@ export function ProvidersPanel({
       models,
       efforts,
       baseUrlFullPath: form.baseUrlFullPath,
+      // Keep composer-set context_window on provider form save (#538).
+      contextWindow:
+        !isCreate && existing?.contextWindow != null && existing.contextWindow > 0
+          ? existing.contextWindow
+          : undefined,
     };
     try {
       // Wall-clock budget so a hung host IPC cannot leave the UI on “Saving…”.
