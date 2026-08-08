@@ -1,7 +1,7 @@
 # 交接 — 工具/命令时间线活动 UX
 
 > **给新会话**：先读本文件 + `2026-08-08-tool-timeline-activity-ux-GOAL.md`，再按 P0→P1→P2 改代码。  
-> **状态**：调研完成 · 工作树已开 · **产品代码未改**  
+> **状态**：Done（P0–P2 已落地 · 相关 vitest / tsc 绿）  
 > **日期**：2026-08-08  
 > **联审**：pi 只读审查（同意根因 A–F，并指出 events_bg / compact 第二缺口）
 
@@ -164,15 +164,15 @@ cargo check
 | 调研 | Done | 主会话 + pi |
 | 工作树 | Done | `feat/tool-timeline-activity-ux` |
 | GOAL/HANDOFF | Done | 本目录 |
-| P0 数据 | Pending | |
-| P1 展示 | Pending | |
-| P2 一致+清理 | Pending | |
-| PR | Pending | |
+| P0 数据 | Done | 双路径 emit `input`；apply/upsert/compact 保底；status-only 单测 |
+| P1 展示 | Done | `resolveToolPrimaryLabel` / `toolExpandBody` 同源；phase 二级展开；展开时退 VirtualList |
+| P2 一致+清理 | Done | live vs journal 一级标签对账；删除死代码 `TurnActivityBlock` |
+| PR | Pending | 分支就绪，待开 PR |
 
 **Residual / 已知限制**：
 
-- start 通知 sparse 且无 rawInput → 仍可能仅 bucket 标签（可接受回退）  
-- VirtualList 固定行高 vs 展开（P1 用内部滚动规避）
+- start 通知 sparse 且无 rawInput → 仍可能仅 bucket 标签（可接受回退；管道与 UI 统一已完成）  
+- VirtualList：有步展开时整表退回非虚拟 map；expand body 用 max-height 内部滚动
 
 ---
 

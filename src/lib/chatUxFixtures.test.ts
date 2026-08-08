@@ -10,7 +10,9 @@ import {
   buildSegmentsFromLegacy,
   isFailedToolStepMessage,
   messageSegments,
+  weaveToolsIntoAssistantSegments,
   type ChatMessage,
+  type MessageToolSegment,
 } from "./session";
 import { extractThinkingSummary } from "./thinkingSummary";
 import { buildTurnActivity } from "./turnActivity";
@@ -23,6 +25,25 @@ import {
   canSendWithStopLatch,
   STOP_LATCH_MS,
 } from "./stopLatch";
+import { mapStoredMessageToChat } from "./mapStoredMessages";
+import { resolveToolPrimaryLabel } from "./toolDisplay";
+import { buildGrokActivitySteps } from "./grokActivitySteps";
+
+const enTr = (key: string, params?: Record<string, string | number>) => {
+  const table: Record<string, string> = {
+    "chat.tool.bash": "Run command",
+    "chat.tool.read": "Read file",
+    "chat.tool.edit": "Edit file",
+    "chat.tool.search": "Search",
+    "chat.tool.browse": "Browse",
+    "chat.tool.agent": "Subagent",
+    "chat.tool.generic": "Tool",
+    "chat.tool.list": "List directory",
+    "chat.ranSearch": "Ran 1 search",
+    "chat.browsed": `Browsed ${params?.url ?? ""}`,
+  };
+  return table[key] ?? key;
+};
 
 describe("chat UX fixtures (shipped path)", () => {
   it("a) multi-phase thoughts with empty-assistant-style new hints merge", () => {
@@ -264,5 +285,124 @@ describe("chat UX fixtures (shipped path)", () => {
     const r = tickStopLatch(latch, "streaming", STOP_LATCH_MS);
     expect(r.forceComplete).toBe(true);
     expect(canSendWithStopLatch("streaming", r.latch)).toBe(true);
+  });
+
+  it("e) live completed primary labels match journal history reload", () => {
+    // Live path: start with input → status-only → completed.
+    let live: ChatMessage[] = [
+      { id: "u1", role: "user", content: "run tools" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "",
+        segments: [{ kind: "thought", text: "plan" }],
+        streaming: true,
+      },
+    ];
+    live = applyToolEvent(live, {
+      toolCallId: "bash-live",
+      title: "run_terminal_command",
+      kind: "run_terminal_command",
+      status: "in_progress",
+      input: "ls -la src/lib/session.ts",
+    });
+    live = applyToolEvent(live, {
+      toolCallId: "bash-live",
+      title: "run_terminal_command",
+      kind: "run_terminal_command",
+      status: "completed",
+      detail: "total 12\nsession.ts",
+    });
+    live = applyToolEvent(live, {
+      toolCallId: "read-live",
+      title: "read_file",
+      kind: "read_file",
+      status: "completed",
+      input: "/Users/me/proj/docs/SKILL.md",
+      path: "/Users/me/proj/docs/SKILL.md",
+    });
+    live = applyStreamChunk(live, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "done",
+      done: true,
+      kind: "assistant",
+    });
+
+    const liveAsst = live.find((m) => m.id === "a1")!;
+    const liveTools = messageSegments(liveAsst).filter(
+      (s): s is MessageToolSegment => s.kind === "tool",
+    );
+    const liveLabels = liveTools.map((t) => resolveToolPrimaryLabel(t, enTr));
+    expect(liveLabels.some((l) => l.includes("ls -la"))).toBe(true);
+    expect(liveLabels.some((l) => l.includes("SKILL.md"))).toBe(true);
+    // Phase steps use the same label source after turn ends.
+    const liveSteps = buildGrokActivitySteps(
+      liveTools.map((t) => ({ kind: "tool" as const, tool: t })),
+      { messageStreaming: false },
+    );
+    const liveStepTools = liveSteps.filter((s) => s.type === "tool");
+    for (const step of liveStepTools) {
+      if (step.type !== "tool") continue;
+      expect(resolveToolPrimaryLabel(step.tool, enTr)).toBe(
+        resolveToolPrimaryLabel(
+          liveTools.find((t) => t.toolCallId === step.tool.toolCallId)!,
+          enTr,
+        ),
+      );
+    }
+
+    // History path: journal tool_step rows with input: lines → weave.
+    const journalAsst = mapStoredMessageToChat({
+      id: "a1",
+      role: "assistant",
+      content: "done",
+      thought: "plan",
+      createdAt: new Date().toISOString(),
+      isError: false,
+    });
+    const journalBash = mapStoredMessageToChat({
+      id: "tool-bash-live",
+      role: "tool",
+      content:
+        "tool_step|completed|run_terminal_command|run_terminal_command\ninput:ls -la src/lib/session.ts\ntotal 12\nsession.ts",
+      createdAt: new Date().toISOString(),
+      isError: false,
+      marker: "tool_step",
+    });
+    const journalRead = mapStoredMessageToChat({
+      id: "tool-read-live",
+      role: "tool",
+      content:
+        "tool_step|completed|read_file|read_file\ninput:/Users/me/proj/docs/SKILL.md\n/Users/me/proj/docs/SKILL.md",
+      createdAt: new Date().toISOString(),
+      isError: false,
+      marker: "tool_step",
+    });
+    const history = weaveToolsIntoAssistantSegments([
+      { id: "u1", role: "user", content: "run tools" },
+      journalAsst,
+      journalBash,
+      journalRead,
+    ]);
+    const histAsst = history.find((m) => m.id === "a1")!;
+    const histTools = messageSegments(histAsst).filter(
+      (s): s is MessageToolSegment => s.kind === "tool",
+    );
+    const histLabels = histTools.map((t) => resolveToolPrimaryLabel(t, enTr));
+
+    // Same concrete fragments — live completed == history reload.
+    for (const fragment of ["ls -la", "SKILL.md"]) {
+      expect(liveLabels.some((l) => l.includes(fragment))).toBe(true);
+      expect(histLabels.some((l) => l.includes(fragment))).toBe(true);
+    }
+    // Pair by toolCallId when present.
+    for (const lt of liveTools) {
+      const ht = histTools.find((t) => t.toolCallId === lt.toolCallId);
+      if (!ht) continue;
+      expect(resolveToolPrimaryLabel(ht, enTr)).toBe(
+        resolveToolPrimaryLabel(lt, enTr),
+      );
+    }
   });
 });
