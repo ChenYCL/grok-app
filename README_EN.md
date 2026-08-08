@@ -163,8 +163,9 @@ Community / unsigned Windows builds show SmartScreen “Windows protected your P
 Grok backends (`auth.x.ai` / `grok.com` / `cli-chat-proxy.grok.com`) may be unreachable by direct connection. If sign-in hangs or every message times out with `NETWORK_PROVIDER`:
 
 1. **Settings → Runtime → Network**: set the proxy (System / Manual, e.g. `http://127.0.0.1:7890`), then use **Test connection** to verify all three endpoints  
-2. If your `grok` CLI is already signed in, reuse it via the setup wizard (or switch **Session data mode** to *shared*) instead of Browser OAuth  
-3. No launcher scripts or manually exported `HTTP_PROXY` variables are needed — the app injects the configured proxy into all agent processes  
+2. Prefer **System HTTP** or **Manual** `http://127.0.0.1:7890` (Clash / Surge mixed-port) over TUN. The app resolves loopback PAC and injects `HTTP_PROXY` into agent processes — TUN is only needed when nothing else can route traffic  
+3. If your `grok` CLI is already signed in, reuse it via the setup wizard (or switch **Session data mode** to *shared*) instead of Browser OAuth  
+4. No launcher scripts or manually exported `HTTP_PROXY` variables are needed — the app injects the configured proxy into all agent processes  
 
 ---
 

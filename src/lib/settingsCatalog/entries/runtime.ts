@@ -356,6 +356,8 @@ export const RUNTIME_ENTRIES: readonly SettingsEntry[] = [
       "settings.netProbe.empty.idle",
       "settings.netProbe.empty.noTargets",
       "settings.netProbe.empty.error",
+      "settings.netProbe.effective.use",
+      "settings.netProbe.effective.none",
     ],
     keywords: [
       "proxy",
@@ -374,6 +376,9 @@ export const RUNTIME_ENTRIES: readonly SettingsEntry[] = [
       "net probe",
       "network probe",
       "bypass",
+      "PAC",
+      "TUN",
+      "mixed-port",
       "代理",
       "網路",
       "网络",
@@ -384,6 +389,7 @@ export const RUNTIME_ENTRIES: readonly SettingsEntry[] = [
       "socks",
       "system",
       "manual",
+      "系统代理",
     ],
   },
   {

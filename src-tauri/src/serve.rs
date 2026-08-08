@@ -487,6 +487,8 @@ fn spawn_serve_process(
     if let Some(path_env) = process_util::enriched_path_env() {
         cmd.env("PATH", path_env);
     }
+    // `--remote` upstream may need the app proxy (NEW-02).
+    crate::proxy::apply_to_std_command(&mut cmd);
     // Prefer explicit secret over env bleed; clear accidental env secret pollution.
     cmd.env_remove("GROK_AGENT_SECRET");
 

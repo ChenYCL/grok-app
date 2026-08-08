@@ -155,9 +155,18 @@ export interface NetworkProbeTarget {
   millis: number;
 }
 
+/** Redacted effective proxy from Host `proxy::effective_snapshot`. */
+export interface NetworkProbeEffective {
+  decision?: string;
+  source?: string;
+  url?: string | null;
+}
+
 export interface NetworkProbeResult {
   allOk: boolean;
   targets: NetworkProbeTarget[];
+  /** What proxy path Host actually used for this probe (credentials redacted). */
+  effective?: NetworkProbeEffective;
 }
 
 /** Probe Grok endpoints through the effective proxy. */
@@ -399,6 +408,19 @@ export async function appForceQuit() {
     await invoke<void>("app_force_quit");
   } catch {
     /* ignore — process may already be exiting */
+  }
+}
+
+/**
+ * Disarm the host pending-quit failsafe (user cancelled busy-quit confirm).
+ * No-op outside Tauri / mirror clients.
+ */
+export async function appCancelPendingQuit() {
+  if (!isDesktopHost()) return;
+  try {
+    await invoke<void>("app_cancel_pending_quit");
+  } catch {
+    /* ignore */
   }
 }
 

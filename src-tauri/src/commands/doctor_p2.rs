@@ -168,17 +168,29 @@ fn save_and_reveal_file_blocking(
     let path_s = final_path.display().to_string();
     // Cheap metadata only — never read archive contents into the App.
     let size_bytes = std::fs::metadata(&final_path).ok().map(|m| m.len());
+    // Reveal is best-effort and must never block export/close. `open -R` /
+    // `explorer /select,` can hang when the shell is wedged — fire and forget.
     #[cfg(target_os = "macos")]
     {
-        let _ = crate::process_util::command("open")
-            .args(["-R", &path_s])
-            .status();
+        let p = path_s.clone();
+        let _ = std::thread::Builder::new()
+            .name("reveal-export".into())
+            .spawn(move || {
+                let _ = crate::process_util::command("open")
+                    .args(["-R", &p])
+                    .status();
+            });
     }
     #[cfg(target_os = "windows")]
     {
-        let _ = crate::process_util::command("explorer")
-            .args(["/select,", &path_s])
-            .status();
+        let p = path_s.clone();
+        let _ = std::thread::Builder::new()
+            .name("reveal-export".into())
+            .spawn(move || {
+                let _ = crate::process_util::command("explorer")
+                    .args(["/select,", &p])
+                    .status();
+            });
     }
 
     Ok(serde_json::json!({

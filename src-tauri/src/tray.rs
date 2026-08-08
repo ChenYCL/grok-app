@@ -272,9 +272,11 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     match id {
         // Real exit: show the window so the in-app busy confirm can render, then
         // let the frontend decide (same event as window close when not close-to-tray).
+        // Arm host failsafe so a wedged FE cannot trap Quit forever.
         "quit" => {
             show_main_window(app);
             let _ = app.emit("app://close-requested", ());
+            crate::pending_quit::schedule_pending_quit(app);
         }
         "open_app" => show_main_window(app),
         "new_chat" => {

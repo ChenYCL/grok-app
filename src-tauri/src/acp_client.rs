@@ -4789,19 +4789,57 @@ mod classify_rpc_error_tests {
     }
 }
 
+/// Hard transport failures (no HTTP response) — fail after a few attempts so
+/// a broken proxy / DNS outage cannot pin the UI as "thinking" for minutes.
+const HARD_TRANSPORT_ABORT_ATTEMPTS: u32 = 3;
+
+/// True when the retry reason looks like a hard transport failure (not a flaky 5xx).
+pub fn is_hard_transport_retry_reason(reason: &str) -> bool {
+    let r = reason.to_ascii_lowercase();
+    if r.is_empty() {
+        return false;
+    }
+    r.contains("error sending request")
+        || r.contains("connection reset")
+        || r.contains("connection refused")
+        || r.contains("network is unreachable")
+        || r.contains("name or service not known")
+        || r.contains("dns error")
+        || r.contains("failed to lookup address")
+        || r.contains("no route to host")
+        || (r.contains("timed out") && (r.contains("connect") || r.contains("sending request")))
+        || (r.contains("timeout") && r.contains("connect"))
+}
+
 /// Whether host should stop waiting and fail the turn.
 ///
 /// - Terminal statuses (`exhausted` / `gave_up`) always abort.
+/// - Hard transport reasons (see [`is_hard_transport_retry_reason`]) abort after
+///   a few attempts so the chat does not stay busy for the full 15-retry budget.
 /// - Bare `failed` / `error` only abort once we have used most of the budget —
 ///   some relays emit `failed` on a single stream blip while still retrying.
 /// - Otherwise abort when `attempt` reaches the host/agent cap.
 pub fn should_abort_provider_retry(attempt: u32, max_retries: u32, status: &str) -> bool {
+    should_abort_provider_retry_ex(attempt, max_retries, status, "")
+}
+
+/// Like [`should_abort_provider_retry`] but consults the human-readable reason
+/// for hard-transport fail-fast.
+pub fn should_abort_provider_retry_ex(
+    attempt: u32,
+    max_retries: u32,
+    status: &str,
+    reason: &str,
+) -> bool {
     let status = status.to_lowercase();
     if status.contains("exhaust")
         || status.contains("gave_up")
         || status.contains("give_up")
         || status.contains("abort")
     {
+        return true;
+    }
+    if is_hard_transport_retry_reason(reason) && attempt >= HARD_TRANSPORT_ABORT_ATTEMPTS {
         return true;
     }
     let cap = max_retries.clamp(1, HOST_PROVIDER_MAX_RETRIES);
@@ -5124,6 +5162,23 @@ mod retry_tests {
     fn respect_lower_agent_max() {
         assert!(!should_abort_provider_retry(1, 3, "retrying"));
         assert!(should_abort_provider_retry(3, 3, "retrying"));
+    }
+
+    #[test]
+    fn hard_transport_fails_fast() {
+        let reason = "request error: error sending request for url (https://cli-chat-proxy.grok.com/v1/responses)";
+        assert!(!should_abort_provider_retry_ex(1, 15, "retrying", reason));
+        assert!(!should_abort_provider_retry_ex(2, 15, "retrying", reason));
+        assert!(should_abort_provider_retry_ex(3, 15, "retrying", reason));
+        // Transient 5xx-style reasons still use the full budget when status is retrying.
+        assert!(!should_abort_provider_retry_ex(
+            3,
+            15,
+            "retrying",
+            "HTTP 503 Service Unavailable"
+        ));
+        assert!(is_hard_transport_retry_reason(reason));
+        assert!(!is_hard_transport_retry_reason("HTTP 503 Service Unavailable"));
     }
 }
 

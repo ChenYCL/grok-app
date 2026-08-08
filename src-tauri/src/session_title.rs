@@ -137,6 +137,7 @@ fn llm_title_via_cli(message: &str) -> Option<String> {
     if let Some(path_env) = crate::process_util::enriched_path_env() {
         cmd.env("PATH", path_env);
     }
+    crate::proxy::apply_to_std_command(&mut cmd);
 
     let output = std::thread::spawn(move || cmd.output()).join().ok()?.ok()?;
 

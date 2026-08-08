@@ -75,7 +75,19 @@ export function useAppDialogs() {
   const appDialogRef = useRef<AppDialog>(null);
   appDialogRef.current = appDialog;
 
-  const closeDialog = useCallback(() => setAppDialog(null), []);
+  /** Dismiss without confirm/submit — invoke optional onDismiss first. */
+  const dismissDialog = useCallback(() => {
+    const d = appDialogRef.current;
+    setAppDialog(null);
+    if (d && "onDismiss" in d && typeof d.onDismiss === "function") {
+      try {
+        d.onDismiss();
+      } catch {
+        /* ignore dismiss errors */
+      }
+    }
+  }, []);
+  const closeDialog = dismissDialog;
   const openDialog = useCallback(
     (d: NonNullable<AppDialog>) => setAppDialog(d),
     [],
@@ -107,13 +119,13 @@ export function useAppDialogs() {
   useEffect(() => {
     if (!appDialog) return;
     return installDialogFocus(() => appDialogPanelRef.current, {
-      onEscape: () => setAppDialog(null),
+      onEscape: () => dismissDialog(),
       capture: true,
       // Initial focus handled by the prompt/confirm effect above.
       initialFocus: "none",
       restoreFocus: true,
     });
-  }, [appDialog]);
+  }, [appDialog, dismissDialog]);
 
   useEffect(() => {
     if (!appDialog) return;
@@ -221,6 +233,7 @@ export function useAppDialogs() {
     appDialog,
     setAppDialog: setAppDialog as Dispatch<SetStateAction<AppDialog>>,
     closeDialog,
+    dismissDialog,
     openDialog,
     dialogInput,
     setDialogInput,

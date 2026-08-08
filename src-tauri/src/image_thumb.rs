@@ -264,11 +264,13 @@ pub fn ensure_remote_image_thumb(url: &str) -> Result<ImageThumbResult, String> 
         });
     }
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
+    let client = crate::proxy::apply_to_reqwest_blocking(
+        reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .redirect(reqwest::redirect::Policy::limited(5)),
+    )
+    .build()
+    .map_err(|e| format!("http client: {e}"))?;
     let resp = client
         .get(url)
         .header(reqwest::header::ACCEPT, "image/*,*/*;q=0.8")

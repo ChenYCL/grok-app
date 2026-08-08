@@ -4,7 +4,8 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::sync::mpsc;
+use std::time::{Duration, SystemTime};
 
 use chrono::Utc;
 use zip::write::SimpleFileOptions;
@@ -13,6 +14,36 @@ use zip::ZipWriter;
 
 use crate::paths;
 use crate::store;
+
+/// Wall-clock budget for CLI probe during diagnostic export (must not block).
+const EXPORT_CLI_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Best-effort CLI probe with a hard wall-clock timeout so export never stalls
+/// when `grok --version` hangs on a bad path.
+fn soft_cli_probe_for_export(manual_path: Option<&str>) -> serde_json::Value {
+    let manual = manual_path.map(|s| s.to_string());
+    let (tx, rx) = mpsc::channel();
+    let _ = std::thread::Builder::new()
+        .name("export-cli-probe".into())
+        .spawn(move || {
+            let probe = crate::cli_probe::probe_cli(manual.as_deref());
+            let _ = tx.send(serde_json::json!({
+                "found": probe.found,
+                "path": probe.path,
+                "version": probe.version,
+                "source": probe.source,
+            }));
+        });
+    match rx.recv_timeout(EXPORT_CLI_PROBE_TIMEOUT) {
+        Ok(v) => v,
+        Err(_) => serde_json::json!({
+            "found": null,
+            "skipped": true,
+            "reason": "cli_probe_timeout",
+            "timeoutSecs": EXPORT_CLI_PROBE_TIMEOUT.as_secs(),
+        }),
+    }
+}
 
 const MAX_LOG_FILES: usize = 12;
 const MAX_LOG_BYTES_EACH: u64 = 512 * 1024;
@@ -295,13 +326,9 @@ pub fn write_session_bundle(
     }
 
     // ── host/cli_probe.json ────────────────────────────────────────────────
-    let probe = crate::cli_probe::probe_cli(settings.manual_cli_path.as_deref());
-    let probe_json = serde_json::json!({
-        "found": probe.found,
-        "path": probe.path,
-        "version": probe.version,
-        "source": probe.source,
-    });
+    // Soft budget: probe can walk multiple candidates with --version timeouts.
+    // Export must never wait unbounded — drop probe after a short wall clock.
+    let probe_json = soft_cli_probe_for_export(settings.manual_cli_path.as_deref());
     write_zip_str(
         &mut zip,
         opts,

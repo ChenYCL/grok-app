@@ -132,3 +132,30 @@ export function countBusyLiveMapSessions(liveMap: SessionLiveMap): number {
   }
   return n;
 }
+
+/**
+ * Sessions that should prompt before quit.
+ *
+ * **Excludes `connecting`** — dead reconnect / NETWORK_PROVIDER loops often
+ * stick in Connecting with no live agent. Counting them as quit-busy trapped
+ * Windows users behind prevent_close until Task Manager kill.
+ *
+ * Activity badges still use {@link isActiveSessionSnapshot} (includes connecting).
+ */
+export function isQuitBlockingSnapshot(
+  snap: SessionLiveSnapshot | undefined | null,
+): boolean {
+  if (!snap) return false;
+  if (snap.awaitingPermission) return true;
+  if (isSessionLiveStreaming(snap.state)) return true;
+  return false;
+}
+
+/** Count sessions that should show the busy-quit confirm. */
+export function countQuitBlockingSessions(liveMap: SessionLiveMap): number {
+  let n = 0;
+  for (const snap of Object.values(liveMap)) {
+    if (isQuitBlockingSnapshot(snap)) n += 1;
+  }
+  return n;
+}

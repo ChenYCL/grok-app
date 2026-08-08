@@ -564,7 +564,13 @@ pub async fn network_probe() -> Result<serde_json::Value, String> {
     let all_ok = results
         .iter()
         .all(|r| r.get("ok").and_then(|v| v.as_bool()).unwrap_or(false));
-    Ok(serde_json::json!({ "allOk": all_ok, "targets": results }))
+    // Include redacted effective proxy so Settings can show system/PAC/manual
+    // honesty (avoids "probe ok but only TUN works" confusion).
+    Ok(serde_json::json!({
+        "allOk": all_ok,
+        "targets": results,
+        "effective": crate::proxy::effective_snapshot(),
+    }))
 }
 
 /// Headless probe: `grok -p … --output-format streaming-json` (CLI ≥ 0.2.117).
@@ -648,6 +654,9 @@ pub async fn export_support_bundle(
 
 /// Full session diagnostic zip: messages, meta, settings, CLI probe, agent trail, logs.
 /// Redacts secrets. Opens a save dialog and reveals the file.
+///
+/// Never blocks the app indefinitely: zip build and save dialog each run on
+/// blocking threads; reveal is fire-and-forget; zip has a wall-clock budget.
 #[tauri::command]
 pub async fn export_session_bundle(
     session_id: String,
@@ -657,15 +666,27 @@ pub async fn export_session_bundle(
     if sid.is_empty() {
         return Err("session id is empty".into());
     }
+    // Snapshot runtime under the session lock *before* long zip work so we do
+    // not hold SessionManager while packing files / opening dialogs.
     let runtime = mgr.diagnostic_runtime_for(&sid);
     let sid_for_zip = sid.clone();
-    let tmp = tauri::async_runtime::spawn_blocking(move || {
+    let zip_fut = tauri::async_runtime::spawn_blocking(move || {
         crate::support_bundle::write_session_bundle(&sid_for_zip, runtime)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    });
+    // Generous but finite — huge agent trails / slow disks must not hang forever.
+    let tmp = match tokio::time::timeout(std::time::Duration::from_secs(90), zip_fut).await {
+        Ok(join) => join.map_err(|e| e.to_string())??,
+        Err(_) => {
+            return Err(
+                "diagnostic export timed out while packing files (90s). Try again or free disk."
+                    .into(),
+            )
+        }
+    };
     let short: String = sid.chars().take(8).collect();
     let suggested = format!("grok-app-session-{short}.zip");
+    // Save dialog can wait on the user, but runs on a blocking pool thread so
+    // other Tauri commands (including force-quit) keep working.
     save_and_reveal_file(
         tmp,
         "Save session diagnostic bundle",

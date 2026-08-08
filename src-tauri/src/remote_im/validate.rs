@@ -309,7 +309,9 @@ async fn test_telegram(secrets: &HashMap<String, String>) -> Result<TestConnecti
             mock: false,
         });
     }
-    let client = reqwest::Client::new();
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
+        .build()
+        .map_err(|e| e.to_string())?;
     let url = format!("https://api.telegram.org/bot{token}/getMe");
     match client.get(&url).send().await {
         Ok(res) => {
@@ -360,7 +362,9 @@ async fn test_discord(secrets: &HashMap<String, String>) -> Result<TestConnectio
             mock: false,
         });
     }
-    let client = reqwest::Client::new();
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
+        .build()
+        .map_err(|e| e.to_string())?;
     match client
         .get("https://discord.com/api/v10/users/@me")
         .header("Authorization", format!("Bot {token}"))
@@ -396,7 +400,9 @@ async fn test_slack(secrets: &HashMap<String, String>) -> Result<TestConnectionD
             mock: false,
         });
     }
-    let client = reqwest::Client::new();
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
+        .build()
+        .map_err(|e| e.to_string())?;
     match client
         .post("https://slack.com/api/auth.test")
         .header("Authorization", format!("Bearer {token}"))

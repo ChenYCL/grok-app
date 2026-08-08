@@ -312,7 +312,9 @@ pub async fn transcribe_base64(
             .text("format", "true");
     }
 
-    let client = reqwest::Client::new();
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
+        .build()
+        .map_err(|e| format!("http client: {e}"))?;
     let resp = client
         .post(STT_URL)
         .header("Authorization", format!("Bearer {token}"))

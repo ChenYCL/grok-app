@@ -74,6 +74,7 @@ export function AppearanceSection() {
     onSection,
     onShowMessageTimestamps,
     onShowReplyLength,
+    onReplaceProviderBrandLogo,
     onSidebarDensity,
     onSidebarShowRelativeTime,
     onSkin,
@@ -103,6 +104,7 @@ export function AppearanceSection() {
     setWallpaperSourceOpen,
     showMessageTimestamps,
     showReplyLength,
+    replaceProviderBrandLogo,
     sidebarDensity,
     sidebarShowRelativeTime,
     skin,
@@ -1156,6 +1158,35 @@ export function AppearanceSection() {
                           onGoalOrchUiEnabled(!goalOrchUiEnabled)
                         }
                         ariaLabel={t("settings.goalOrchUi")}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {onReplaceProviderBrandLogo ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight(
+                        "settings-anchor-replaceProviderBrandLogo",
+                      )
+                    }
+                    id="settings-anchor-replaceProviderBrandLogo"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.replaceProviderBrandLogo")}
+                          tip={t("settings.replaceProviderBrandLogoDesc")}
+                        />
+                      </div>
+                      <UiCheck
+                        checked={!!replaceProviderBrandLogo}
+                        onChange={() =>
+                          onReplaceProviderBrandLogo(
+                            !replaceProviderBrandLogo,
+                          )
+                        }
+                        ariaLabel={t("settings.replaceProviderBrandLogo")}
                       />
                     </div>
                   </div>

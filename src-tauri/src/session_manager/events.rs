@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use crate::acp_client::{
-    should_abort_provider_retry, AcpEvent, PermissionOutcome, StreamKind, HOST_PROVIDER_MAX_RETRIES,
+    should_abort_provider_retry_ex, AcpEvent, PermissionOutcome, StreamKind, HOST_PROVIDER_MAX_RETRIES,
 };
 use crate::error::{AgentError, AgentErrorCode};
 use crate::journal_throttle::is_paragraph_break;
@@ -1000,7 +1000,12 @@ impl SessionManager {
                         if s.provider_retry_aborted {
                             false
                         } else {
-                            should_abort_provider_retry(attempt, max_retries, &status)
+                            should_abort_provider_retry_ex(
+                                attempt,
+                                max_retries,
+                                &status,
+                                &reason,
+                            )
                         }
                     } else {
                         false

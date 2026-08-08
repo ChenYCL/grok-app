@@ -594,10 +594,11 @@ pub async fn provider_ping() -> Result<serde_json::Value, String> {
     // Prefer relay if configured, else probe public xAI-ish endpoint with key presence only.
     if let (Some(base), Some(key)) = (&secrets.relay_base_url, &secrets.relay_api_key) {
         let url = format!("{}/models", base.trim_end_matches('/'));
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(12))
-            .build()
-            .map_err(|e| e.to_string())?;
+        let client = crate::proxy::apply_to_reqwest(
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(12)),
+        )
+        .build()
+        .map_err(|e| e.to_string())?;
         let resp = client
             .get(&url)
             .header("Authorization", format!("Bearer {key}"))

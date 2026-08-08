@@ -515,6 +515,7 @@ fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorRepo
         if let Some(path_env) = crate::process_util::enriched_path_env() {
             cmd.env("PATH", path_env);
         }
+        crate::proxy::apply_to_std_command(&mut cmd);
         let _ = tx.send(cmd.output());
     });
 

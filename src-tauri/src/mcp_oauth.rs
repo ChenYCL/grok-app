@@ -192,10 +192,11 @@ struct TokenResponse {
 }
 
 fn http_get_json(url: &str) -> Result<Value, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::proxy::apply_to_reqwest_blocking(
+        reqwest::blocking::Client::builder().timeout(Duration::from_secs(30)),
+    )
+    .build()
+    .map_err(|e| e.to_string())?;
     let res = client.get(url).send().map_err(|e| e.to_string())?;
     if !res.status().is_success() {
         return Err(format!("GET {url} → HTTP {}", res.status()));
@@ -204,10 +205,11 @@ fn http_get_json(url: &str) -> Result<Value, String> {
 }
 
 fn http_post_json(url: &str, body: &Value) -> Result<Value, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::proxy::apply_to_reqwest_blocking(
+        reqwest::blocking::Client::builder().timeout(Duration::from_secs(30)),
+    )
+    .build()
+    .map_err(|e| e.to_string())?;
     let res = client
         .post(url)
         .json(body)
@@ -443,10 +445,11 @@ fn exchange_token(
         form.push(("client_secret", secret.as_str()));
     }
     let body = form_encode(&form);
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::proxy::apply_to_reqwest_blocking(
+        reqwest::blocking::Client::builder().timeout(Duration::from_secs(30)),
+    )
+    .build()
+    .map_err(|e| e.to_string())?;
     let mut req = client
         .post(token_url)
         .header("Content-Type", "application/x-www-form-urlencoded")

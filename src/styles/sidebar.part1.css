@@ -575,6 +575,33 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   letter-spacing: -0.02em;
 }
 
+/* Swappable provider brand marks — height-locked for size parity.
+ * Wordmarks (DeepSeek / OpenCode) scale by height; icon-only (Volcengine /
+ * Amux) use the same height via ProviderBrandIcon `size`. Override welcome
+ * composer max-widths so sidebar marks stay compact. */
+.sidebar-brand-row__left .sidebar-brand-mark--wordmark,
+.sidebar-brand-row__left .deepseek-full-mark.sidebar-brand-mark,
+.sidebar-brand-row__left .opencode-wordmark.sidebar-brand-mark {
+  display: block;
+  height: 18px;
+  width: auto;
+  max-width: min(140px, 48vw);
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.sidebar-brand-row__left .sidebar-brand-mark--icon {
+  flex-shrink: 0;
+  display: block;
+}
+
+.sidebar-brand-row__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chrome-btn {
   /* relative: rp-chrome__badge is position:absolute; without this it
      anchors to .main / window and drifts to the top-right corner. */

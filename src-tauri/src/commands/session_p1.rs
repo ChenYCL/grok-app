@@ -736,9 +736,17 @@ pub async fn session_set_scheduled(
 
 /// Force-quit the process after frontend busy-session confirm (or when no confirm needed).
 /// Bypasses CloseRequested so we do not re-enter the confirm loop.
+/// Clears any host pending-quit failsafe timer first.
 #[tauri::command]
 pub fn app_force_quit(app: tauri::AppHandle) {
-    app.exit(0);
+    crate::pending_quit::clear_and_exit(app);
+}
+
+/// User dismissed the busy-quit confirm (or cancelled exit). Disarms the host
+/// failsafe so the app stays open. No-op when no pending quit is armed.
+#[tauri::command]
+pub fn app_cancel_pending_quit() {
+    crate::pending_quit::cancel_pending_quit();
 }
 
 /// Primary workbench window label (matches tauri.conf.json + frontend multiWindow).

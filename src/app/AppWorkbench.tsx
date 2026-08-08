@@ -25,6 +25,11 @@ import {
   SHOW_REPLY_LENGTH_CHANGE_EVENT
 } from "@/lib/messageLength";
 import {
+  loadReplaceProviderBrandLogoPref,
+  REPLACE_PROVIDER_BRAND_LOGO_CHANGE_EVENT,
+  saveReplaceProviderBrandLogoPref,
+} from "@/lib/replaceProviderBrandLogoPref";
+import {
   loadMessageTimeFormatPref,
   MESSAGE_TIME_FORMAT_CHANGE_EVENT,
   saveMessageTimeFormatPref,
@@ -191,7 +196,7 @@ import {
 } from "@/lib/planSession";
 import {
   collectActivitySessions,
-  countBusyLiveMapSessions,
+  countQuitBlockingSessions,
   stoppableActivitySessions
 } from "@/lib/agentActivity";
 import {
@@ -659,6 +664,7 @@ import {
 } from "@/lib/sidebarDensity";
 import { sortSessionsForSidebar } from "@/lib/sidebarDateGroups";
 import { GrokLogo } from "@/components/GrokLogo";
+import { SidebarBrand } from "@/components/SidebarBrand";
 import type { SetupCliInfo } from "@/components/SetupWizard";
 import {
   buildAuthDeferredFlags,
@@ -1026,6 +1032,10 @@ export function AppWorkbench() {
   const [showReplyLength, setShowReplyLength] = useState(() =>
     loadShowReplyLengthPref(localStorage),
   );
+  /** Sidebar top-left: swap Grok mark for branded custom providers. */
+  const [replaceProviderBrandLogo, setReplaceProviderBrandLogo] = useState(
+    () => loadReplaceProviderBrandLogoPref(localStorage),
+  );
   /** Display-only: Reliability “Goal orchestration” section (default on). */
   const [goalOrchUiEnabled, setGoalOrchUiEnabled] = useState(() =>
     loadGoalOrchUiEnabled(localStorage),
@@ -1138,6 +1148,7 @@ export function AppWorkbench() {
   const {
     appDialog,
     setAppDialog,
+    dismissDialog,
     dialogInput,
     setDialogInput,
     dialogInputRef,
@@ -3596,6 +3607,26 @@ export function AppWorkbench() {
     window.addEventListener(SHOW_REPLY_LENGTH_CHANGE_EVENT, onChange);
     return () =>
       window.removeEventListener(SHOW_REPLY_LENGTH_CHANGE_EVENT, onChange);
+  }, []);
+
+  // Sidebar brand logo follows active custom provider (localStorage; Settings).
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<unknown>).detail;
+      if (typeof detail === "boolean") {
+        setReplaceProviderBrandLogo(detail);
+        return;
+      }
+      setReplaceProviderBrandLogo(
+        loadReplaceProviderBrandLogoPref(localStorage),
+      );
+    };
+    window.addEventListener(REPLACE_PROVIDER_BRAND_LOGO_CHANGE_EVENT, onChange);
+    return () =>
+      window.removeEventListener(
+        REPLACE_PROVIDER_BRAND_LOGO_CHANGE_EVENT,
+        onChange,
+      );
   }, []);
 
   // Message time format absolute/relative (localStorage; Settings change event).
@@ -13004,14 +13035,24 @@ export function AppWorkbench() {
 
   /**
    * Real app exit (window close when not close-to-tray, or tray Quit).
-   * Host always prevent_close + emits app://close-requested; we confirm if busy.
-   * When confirming, optionally append an honest automations-after-quit note
-   * (no fake detached daemon — schedules pause until the app is reopened).
+   * Host always prevent_close + emits app://close-requested + arms a 3s
+   * force-exit failsafe. We confirm only for truly busy turns (stream /
+   * permission) — never for stuck Connecting. Dialog opens synchronously
+   * (no await) so a hung automationsList cannot trap quit.
+   * Second close while the confirm is open → force quit immediately.
    * Secondary windows never quit the process from their chrome.
    */
+  const quitBusyDialogOpenRef = useRef(false);
   const requestAppQuit = useCallback(() => {
     if (isSecondaryWindowRef.current) return;
-    let busyCount = countBusyLiveMapSessions(liveMapRef.current);
+    // Second OS close / tray Quit while confirming → leave now.
+    if (quitBusyDialogOpenRef.current) {
+      quitBusyDialogOpenRef.current = false;
+      void api.appForceQuit();
+      return;
+    }
+    // Quit-busy excludes Connecting (dead reconnect must not trap exit).
+    let busyCount = countQuitBlockingSessions(liveMapRef.current);
     // liveHost may be streaming before liveMap has the row (same as sidebar busyIds).
     const host = liveHostRef.current;
     if (
@@ -13028,9 +13069,26 @@ export function AppWorkbench() {
       return;
     }
     const busyMessage = tr("app.quitBusy.message", { n: String(busyCount) });
-    // Enrich with automations note when list is available; fail soft.
+    const dismissQuit = () => {
+      quitBusyDialogOpenRef.current = false;
+      void api.appCancelPendingQuit();
+    };
+    // Open immediately — never await network before showing quit UI.
+    quitBusyDialogOpenRef.current = true;
+    setAppDialog({
+      kind: "confirm",
+      title: tr("app.quitBusy.title"),
+      message: busyMessage,
+      confirmLabel: tr("app.quitBusy.confirm"),
+      danger: true,
+      onConfirm: () => {
+        quitBusyDialogOpenRef.current = false;
+        void api.appForceQuit();
+      },
+      onDismiss: dismissQuit,
+    });
+    // Optional enrichment (automations note) — fail soft, never blocks dialog.
     void (async () => {
-      let message = busyMessage;
       try {
         const rows = await api.automationsList();
         const enabledCount = rows.filter((r) => r.enabled).length;
@@ -13039,24 +13097,25 @@ export function AppWorkbench() {
           enabledCount,
           runnerKnown: api.isTauri(),
         });
-        if (bg.quitNoteKey) {
-          message = `${busyMessage}\n\n${tr(bg.quitNoteKey)}`;
+        if (!bg.quitNoteKey) return;
+        // Only enrich if still the quit dialog.
+        const cur = appDialogRef.current;
+        if (
+          !cur ||
+          cur.kind !== "confirm" ||
+          cur.title !== tr("app.quitBusy.title")
+        ) {
+          return;
         }
+        setAppDialog({
+          ...cur,
+          message: `${busyMessage}\n\n${tr(bg.quitNoteKey)}`,
+        });
       } catch {
         /* ignore — busy confirm still works without the note */
       }
-      setAppDialog({
-        kind: "confirm",
-        title: tr("app.quitBusy.title"),
-        message,
-        confirmLabel: tr("app.quitBusy.confirm"),
-        danger: true,
-        onConfirm: () => {
-          void api.appForceQuit();
-        },
-      });
     })();
-  }, [tr, launchAtLogin]);
+  }, [tr, launchAtLogin, setAppDialog]);
 
   useEffect(() => {
     if (!api.isTauri()) return;
@@ -14603,7 +14662,10 @@ export function AppWorkbench() {
     ],
   );
 
-  /** Full diagnostic zip (messages + agent trail + logs) for bug reports. */
+  /** Full diagnostic zip (messages + agent trail + logs) for bug reports.
+   * Always available — never gated on busy/connecting. Host packs on a
+   * blocking pool; reveal is fire-and-forget so export cannot freeze quit.
+   */
   const exportSessionDiagnostic = useCallback(
     async (sessionId?: string | null) => {
       const id = sessionId || session.sessionId;
@@ -14611,9 +14673,13 @@ export function AppWorkbench() {
         showToast(tr("session.exportBundleFail"));
         return;
       }
+      // Immediate feedback so long zip/save never looks like a freeze.
+      showToast(tr("session.exportBundle"), 2500);
       try {
         const res = await api.exportSessionBundle(id);
-        if (!(res?.ok && res.path)) {
+        if (res?.ok && res.path) {
+          showToast(tr("session.exportBundleDone"), 4000);
+        } else {
           showToast(tr("session.exportBundleFail"));
         }
       } catch (e) {
@@ -15898,6 +15964,11 @@ export function AppWorkbench() {
           saveShowReplyLengthPref(v, localStorage);
           setShowReplyLength(v);
           }}
+          replaceProviderBrandLogo={replaceProviderBrandLogo}
+          onReplaceProviderBrandLogo={(v) => {
+          saveReplaceProviderBrandLogoPref(v, localStorage);
+          setReplaceProviderBrandLogo(v);
+          }}
           goalOrchUiEnabled={goalOrchUiEnabled}
           onGoalOrchUiEnabled={(v) => {
           saveGoalOrchUiEnabled(v, localStorage);
@@ -16627,8 +16698,29 @@ export function AppWorkbench() {
           {/* Row 2: brand + search (Codex: title left, search right) */}
           <div className="sidebar-brand-row">
             <div className="sidebar-brand-row__left">
-              <GrokLogo size={20} />
-              <span>Grok</span>
+              <SidebarBrand
+                replaceLogo={replaceProviderBrandLogo}
+                brandId={
+                  replaceProviderBrandLogo &&
+                  customRouteActive &&
+                  activeCustomProvider
+                    ? resolveProviderBrandId({
+                        providerId: activeCustomProvider.id,
+                        baseUrl: activeCustomProvider.baseUrl,
+                      })
+                    : null
+                }
+                label={
+                  // Only use provider name when actually swapping the brand
+                  // (icon-only marks need a text label). Off → always "Grok".
+                  replaceProviderBrandLogo &&
+                  customRouteActive &&
+                  activeCustomProvider
+                    ? activeCustomProvider.name.trim() ||
+                      activeCustomProvider.id
+                    : "Grok"
+                }
+              />
             </div>
             <Tip label={tr("sidebar.search")}>
               <button
@@ -22627,7 +22719,7 @@ export function AppWorkbench() {
             className="overlay app-dialog-overlay"
             role="presentation"
             onMouseDown={(e) => {
-              if (e.target === e.currentTarget) setAppDialog(null);
+              if (e.target === e.currentTarget) dismissDialog();
             }}
           >
             <div
@@ -22645,7 +22737,7 @@ export function AppWorkbench() {
                 <button
                   type="button"
                   className="icon-btn modal-close"
-                  onClick={() => setAppDialog(null)}
+                  onClick={() => dismissDialog()}
                   aria-label={tr("common.close")}
                 >
                   <IconClose size={16} />
@@ -22670,7 +22762,7 @@ export function AppWorkbench() {
                     <button
                       type="button"
                       className="btn btn--ghost"
-                      onClick={() => setAppDialog(null)}
+                      onClick={() => dismissDialog()}
                     >
                       {tr("common.cancel")}
                     </button>
@@ -22709,7 +22801,7 @@ export function AppWorkbench() {
                     <button
                       type="button"
                       className="btn btn--ghost"
-                      onClick={() => setAppDialog(null)}
+                      onClick={() => dismissDialog()}
                     >
                       {tr("common.cancel")}
                     </button>

@@ -158,6 +158,7 @@ mod store_lock;
 mod stream_emit;
 
 mod stream_stall;
+mod pending_quit;
 
 mod streaming_acp_ndjson;
 
@@ -401,9 +402,13 @@ pub fn run() {
 
                 } else {
 
+                    // Always prevent_close so FE can confirm when busy — but arm a
+                    // host failsafe so a wedged WebView cannot trap the process.
                     api.prevent_close();
 
+                    let app = window.app_handle().clone();
                     let _ = window.emit("app://close-requested", ());
+                    crate::pending_quit::schedule_pending_quit(&app);
 
                 }
 
@@ -1148,6 +1153,7 @@ pub fn run() {
             tray::tray_set_busy_count,
 
             commands::app_force_quit,
+            commands::app_cancel_pending_quit,
 
             commands::fs_read_absolute,
 

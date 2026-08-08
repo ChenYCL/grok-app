@@ -21,6 +21,11 @@ export type AppDialog =
       confirmLabel?: string;
       danger?: boolean;
       onConfirm: () => void | Promise<void>;
+      /**
+       * Called when the user dismisses without confirming (Cancel, Escape,
+       * overlay click, close button). Used e.g. to cancel host pending-quit.
+       */
+      onDismiss?: () => void;
     }
   | {
       kind: "prompt";
@@ -32,5 +37,7 @@ export type AppDialog =
       /** Primary submit button label (default: common.save). */
       submitLabel?: string;
       onSubmit: (value: string) => void | Promise<void>;
+      /** Called when dismissed without submit (Cancel / Escape / overlay). */
+      onDismiss?: () => void;
     }
   | null;
