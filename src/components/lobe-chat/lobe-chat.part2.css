@@ -739,6 +739,7 @@
   align-items: flex-start;
   gap: 10px;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   margin: 6px 0 10px;
   padding: 10px 12px;
@@ -746,6 +747,9 @@
   border: 1px solid var(--chat-border, var(--border-subtle, rgba(255, 255, 255, 0.08)));
   background: color-mix(in srgb, var(--chat-text-3, #6e6e73) 12%, transparent);
   color: var(--chat-text-2);
+  /* Long compact notes / shell one-liners must not widen the chat column (#537). */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .lobe-chat-compact__icon {
   display: inline-flex;
@@ -756,23 +760,34 @@
 .lobe-chat-compact__body {
   min-width: 0;
   flex: 1;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .lobe-chat-compact__title {
   font-size: var(--chat-fs-sm);
   font-weight: 560;
   color: var(--chat-text);
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .lobe-chat-compact__detail {
   margin-top: 2px;
   font-size: var(--chat-fs-xs);
   color: var(--chat-text-3);
   font-variant-numeric: tabular-nums;
+  /* Compact note often contains long paths / CLI flags with few spaces. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 .lobe-chat-compact__summary {
   margin-top: 6px;
   font-size: var(--chat-fs-xs);
   color: var(--chat-text-3);
+  max-width: 100%;
 }
 .lobe-chat-compact__summary summary {
   cursor: pointer;
@@ -782,8 +797,11 @@
 .lobe-chat-compact__summary p {
   margin: 6px 0 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   line-height: var(--chat-lh-sm);
   color: var(--chat-text-2);
+  max-width: 100%;
 }
 
 /* ── Turn notice (Codex-style soft pill — not a red alert box) ── */
