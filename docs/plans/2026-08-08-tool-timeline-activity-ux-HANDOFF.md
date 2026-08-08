@@ -172,7 +172,7 @@ cargo check
 **Residual / 已知限制**：
 
 - start 通知 sparse 且无 rawInput → 仍可能仅 bucket 标签（可接受回退；管道与 UI 统一已完成）  
-- VirtualList：有步展开时整表退回非虚拟 map；expand body 用 max-height 内部滚动
+- VirtualList：有步展开时整表退回非虚拟 map；`expandedKeys` 由父级持有，remount 不抹开；expand body 用 max-height 内部滚动
 
 ---
 
