@@ -86,8 +86,11 @@ export const zhChat = {
   "chat.thinkingLabel": "思考中",
   /** 进行中裸思考折叠头：思考中 + 计时（与工作中对称）。 */
   "chat.thinkingFor": "思考中 {duration}",
+  /** 已完成工作阶段 + 时长（与思考了对称）。 */
   "chat.workedFor": "工作了 {duration}",
-  "chat.worked": "已工作",
+  /** 无时长时的已完成折叠头（统一「工作了」，不用「已工作/工作」）。 */
+  "chat.worked": "工作了",
+  /** 进行中工作阶段 + 计时。 */
   "chat.workingFor": "工作中 {duration}",
   "chat.working": "工作中",
   "chat.duration.seconds": "{n}秒",

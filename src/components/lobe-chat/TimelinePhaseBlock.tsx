@@ -33,6 +33,7 @@ import {
   formatWorkDuration,
   resolveWorkDurationSec,
 } from "@/lib/formatWorkDuration";
+import { resolveWorkChromeLabel } from "@/lib/workChromeLabel";
 import {
   buildGrokActivitySteps,
   type GrokActivityStep,
@@ -570,16 +571,15 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
 
   // Prefer the larger of wall-clock and timestamp span (see resolveWorkDurationSec).
   const durationSec = resolveWorkDurationSec({ liveSec, historySec });
-  const durationText =
-    durationSec != null ? formatWorkDuration(durationSec, locale) : null;
-  const workedLabel =
-    durationText != null
-      ? tr("chat.workedFor", { duration: durationText })
-      : tr("chat.worked");
-  const workingLabel =
-    durationText != null
-      ? tr("chat.workingFor", { duration: durationText })
-      : tr("chat.working");
+  // Unified with thinking chrome: live always “工作中 + 计时”; done “工作了 + 时长”.
+  const phaseChromeLabel = resolveWorkChromeLabel({
+    live: phaseRunning,
+    durationSec: phaseRunning ? (durationSec ?? liveSec ?? 0) : durationSec,
+    workingFor: (duration) => tr("chat.workingFor", { duration }),
+    workedFor: (duration) => tr("chat.workedFor", { duration }),
+    doneLabel: tr("chat.worked"),
+    formatDuration: (sec) => formatWorkDuration(sec, locale),
+  });
 
   if (phaseRunning) {
     return (
@@ -594,7 +594,7 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
           <span className="grok-act__working-icon" aria-hidden>
             <IconGridDots size={15} stroke={1.5} />
           </span>
-          <span className="grok-act__working-label">{workingLabel}</span>
+          <span className="grok-act__working-label">{phaseChromeLabel}</span>
         </div>
       </div>
     );
@@ -620,7 +620,7 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
         <span className="grok-act__header-icon" aria-hidden>
           <IconGridDots size={15} stroke={1.5} />
         </span>
-        <span className="grok-act__header-text">{workedLabel}</span>
+        <span className="grok-act__header-text">{phaseChromeLabel}</span>
         <span className="grok-act__header-caret" aria-hidden>
           {open ? (
             <IconChevronDown size={12} stroke={2} />

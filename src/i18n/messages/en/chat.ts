@@ -86,8 +86,11 @@ export const enChat = {
   "chat.thinkingLabel": "Thinking",
   /** Live bare-thought chrome with wall-clock (matches Working for …). */
   "chat.thinkingFor": "Thinking for {duration}",
+  /** Finished work phase with duration (matches Thought for …). */
   "chat.workedFor": "Worked for {duration}",
+  /** Finished work phase without a usable duration. */
   "chat.worked": "Worked",
+  /** Live work phase with wall-clock. */
   "chat.workingFor": "Working for {duration}",
   "chat.working": "Working",
   "chat.duration.seconds": "{n}s",
