@@ -365,55 +365,53 @@ pub fn run() {
         // Force exit: `app_force_quit`.
 
         .on_window_event(|window, event| {
+            use tauri::{Emitter, Manager, WindowEvent};
 
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    // Only the primary workbench owns tray-hide / quit-confirm.
+                    // Secondary session windows (`session-*`) close for real.
+                    if window.label() != "main" {
+                        return;
+                    }
 
-                use tauri::{Emitter, Manager};
+                    let settings = store::load_settings();
+                    let any_enabled = store::load_automations().iter().any(|a| a.enabled);
+                    let hide = automation_runner::should_hide_to_tray_on_close(
+                        settings.close_to_tray,
+                        settings.keep_tray_for_schedules,
+                        any_enabled,
+                    );
 
-                // Only the primary workbench owns tray-hide / quit-confirm.
-
-                // Secondary session windows (`session-*`) close for real.
-
-                if window.label() != "main" {
-
-                    return;
-
+                    if hide {
+                        api.prevent_close();
+                        // hide_to_tray persists geometry before hide (plugin only
+                        // flushes on Exit by default).
+                        tray::hide_to_tray(window.app_handle());
+                    } else {
+                        // Always prevent_close so FE can confirm when busy — but arm a
+                        // host failsafe so a wedged WebView cannot trap the process.
+                        api.prevent_close();
+                        // Flush latest size before quit-confirm so a kill during the
+                        // dialog still restores the resized frame next launch.
+                        persist_main_window_state(window.app_handle());
+                        let app = window.app_handle().clone();
+                        let _ = window.emit("app://close-requested", ());
+                        crate::pending_quit::schedule_pending_quit(&app);
+                    }
                 }
-
-                let settings = store::load_settings();
-
-                let any_enabled = store::load_automations().iter().any(|a| a.enabled);
-
-                let hide = automation_runner::should_hide_to_tray_on_close(
-
-                    settings.close_to_tray,
-
-                    settings.keep_tray_for_schedules,
-
-                    any_enabled,
-
-                );
-
-                if hide {
-
-                    api.prevent_close();
-
-                    tray::hide_to_tray(window.app_handle());
-
-                } else {
-
-                    // Always prevent_close so FE can confirm when busy — but arm a
-                    // host failsafe so a wedged WebView cannot trap the process.
-                    api.prevent_close();
-
-                    let app = window.app_handle().clone();
-                    let _ = window.emit("app://close-requested", ());
-                    crate::pending_quit::schedule_pending_quit(&app);
-
+                // Plugin keeps in-memory state on Resized/Moved but only writes disk
+                // on process Exit. Debounce-persist so force-quit / crash / tauri-dev
+                // restart / OS reboot still remember the last user size.
+                WindowEvent::Resized(_)
+                | WindowEvent::Moved(_)
+                | WindowEvent::ScaleFactorChanged { .. } => {
+                    if window.label() == "main" {
+                        schedule_persist_main_window_state(window.app_handle());
+                    }
                 }
-
+                _ => {}
             }
-
         })
 
         .setup(|app| {
@@ -1475,6 +1473,36 @@ fn os_prefers_dark() -> bool {
         // GNOME etc. — soft default dark when unknown
         true
     }
+}
+
+/// Flags we persist for the primary workbench (must match plugin builder).
+fn main_window_state_flags() -> tauri_plugin_window_state::StateFlags {
+    use tauri_plugin_window_state::StateFlags;
+    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED | StateFlags::FULLSCREEN
+}
+
+/// Immediately write main-window geometry to `.window-state.json`.
+fn persist_main_window_state(app: &tauri::AppHandle) {
+    use tauri_plugin_window_state::AppHandleExt;
+    if let Err(e) = app.save_window_state(main_window_state_flags()) {
+        tracing::debug!(error = %e, "window-state save failed");
+    }
+}
+
+/// Debounced disk flush after resize/move (coalesces rapid drag events).
+fn schedule_persist_main_window_state(app: &tauri::AppHandle) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static GENERATION: AtomicU64 = AtomicU64::new(0);
+    let gen = GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        if GENERATION.load(Ordering::Relaxed) != gen {
+            return;
+        }
+        persist_main_window_state(&app);
+    });
 }
 
 /// Saved main-window bounds from the window-state plugin's file (physical px).

@@ -669,13 +669,15 @@ impl SessionManager {
                     } else {
                         label
                     };
-                    let mut content = format!("tool_step|{st}|{kind_store}|{label}");
+                    let label_line = tool_journal_one_line(&label, 240);
+                    let mut content = format!("tool_step|{st}|{kind_store}|{label_line}");
                     if let Some(inp) = input2.as_deref().filter(|s| !s.trim().is_empty()) {
                         // Call argument (target file / command / query) — the
                         // UI shows this as the specific tool detail.
+                        // One line only so `input:` is always rest[0] for the parser.
                         content.push('\n');
                         content.push_str("input:");
-                        content.push_str(&inp.chars().take(400).collect::<String>());
+                        content.push_str(&tool_journal_one_line(inp, 400));
                     }
                     if let Some(ref d) = detail {
                         content.push('\n');

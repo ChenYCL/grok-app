@@ -381,11 +381,14 @@ impl SessionManager {
                         if matches!(st.as_str(), "completed" | "failed" | "error" | "cancelled")
                             && !tool_call_id.is_empty()
                         {
-                            let mut content = format!("tool_step|{st}|{kind_store}|{live_title}");
+                            let title_line = tool_journal_one_line(&live_title, 240);
+                            let mut content =
+                                format!("tool_step|{st}|{kind_store}|{title_line}");
                             if let Some(inp) = input2.as_deref().filter(|s| !s.trim().is_empty()) {
                                 content.push('\n');
                                 content.push_str("input:");
-                                content.push_str(&inp.chars().take(400).collect::<String>());
+                                // One line only so `input:` is always rest[0] for the parser.
+                                content.push_str(&tool_journal_one_line(inp, 400));
                             }
                             if let Some(ref d) = detail {
                                 content.push('\n');

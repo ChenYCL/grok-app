@@ -240,7 +240,18 @@ export function toolInputDisplay(
   const v = (input || "").trim();
   if (!v) return undefined;
   if (bucket === "bash") {
-    const first = v.split(/[;|&]\s*/)[0]?.trim() || v;
+    // Multi-line scripts often start with a comment or env assignment; prefer
+    // the first line that looks like real work for the activity rail.
+    const lines = v
+      .split(/\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const meaningful =
+      lines.find((l) => !l.startsWith("#") && !/^[A-Za-z_][\w]*=/.test(l)) ||
+      lines.find((l) => !l.startsWith("#")) ||
+      lines[0] ||
+      v;
+    const first = meaningful.split(/[;|&]\s*/)[0]?.trim() || meaningful;
     const one = first.replace(/\s+/g, " ").trim();
     return one.length > 44 ? `${one.slice(0, 43)}…` : one;
   }
@@ -252,6 +263,24 @@ export function toolInputDisplay(
   const parts = p.split("/").filter(Boolean);
   const last = parts[parts.length - 1] || p;
   return last.length > 40 ? `${last.slice(0, 39)}…` : last;
+}
+
+/**
+ * Recover a shell command snippet from CLI titles like `Execute \`ls\`` when
+ * the structured `input` field was lost (legacy multi-line journals).
+ */
+export function bashArgFromToolTitle(
+  title: string | null | undefined,
+): string | undefined {
+  const t = (title || "").trim();
+  if (!t) return undefined;
+  const closed = t.match(
+    /^(?:Execute|Run(?:\s+Command)?)\s*`([\s\S]+?)`\s*$/i,
+  );
+  if (closed?.[1]?.trim()) return closed[1].trim();
+  const open = t.match(/^(?:Execute|Run(?:\s+Command)?)\s*`([\s\S]+)/i);
+  if (open?.[1]?.trim()) return open[1].replace(/`\s*$/, "").trim() || undefined;
+  return undefined;
 }
 
 /**
@@ -384,7 +413,11 @@ export function resolveToolPrimaryLabel(
     tool.toolCallId,
   );
   let summary = tr(toolLabelKeyFor(tool.toolKind, bucket));
-  const specific = toolInputDisplay(tool.input, bucket);
+  const specific =
+    toolInputDisplay(tool.input, bucket) ||
+    (bucket === "bash"
+      ? toolInputDisplay(bashArgFromToolTitle(tool.title), bucket)
+      : undefined);
   if (specific) {
     summary += ` · ${specific}`;
   } else {

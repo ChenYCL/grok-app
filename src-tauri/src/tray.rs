@@ -205,7 +205,8 @@ fn usage_status_label(tr: &TrayStrings) -> String {
 /// Hide main window to tray only: no Dock (macOS) / no taskbar button (Windows).
 pub fn hide_to_tray(app: &AppHandle) {
     // Persist geometry before hide so force-kill while tray-resident still restores
-    // the last size/position on next launch (plugin also saves on process Exit).
+    // the last size/position on next launch (plugin also saves on process Exit;
+    // resize is additionally debounced to disk from lib.rs window events).
     {
         use tauri_plugin_window_state::{AppHandleExt, StateFlags};
         let flags = StateFlags::SIZE

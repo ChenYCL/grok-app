@@ -1636,6 +1636,43 @@ describe("tool activity", () => {
     expect(p?.detail).not.toContain("input:");
   });
 
+  it("parseToolStepContent recovers multi-line Execute titles and buried input:", () => {
+    // Real journal shape from multi-line shell: title spans lines, input: is late.
+    const body = [
+      "tool_step|completed|execute|Execute `# Scroll to load all content",
+      "curl -s http://localhost:3456/scroll",
+      "sleep 1`",
+      "input:# Scroll to load all content",
+      "exit: 0",
+      "scrolled",
+    ].join("\n");
+    const p = parseToolStepContent(body);
+    expect(p?.kind).toBe("execute");
+    expect(p?.input).toBeTruthy();
+    // Prefer rejoined title command over truncated input: first line.
+    expect(p?.input).toContain("curl -s http://localhost:3456/scroll");
+    expect(p?.input).toContain("sleep 1");
+    // Title collapsed once input is known.
+    expect(p?.title).toBe("Execute");
+    // input: marker stripped from detail.
+    expect(p?.detail).not.toMatch(/^input:/m);
+    expect(p?.detail).toContain("exit: 0");
+  });
+
+  it("parseToolStepContent finds input: after non-title body noise", () => {
+    const body = [
+      "tool_step|completed|run_terminal_command|Run Command",
+      "some stdout line",
+      "input:ls -la /tmp",
+      "more stdout",
+    ].join("\n");
+    const p = parseToolStepContent(body);
+    expect(p?.input).toBe("ls -la /tmp");
+    expect(p?.detail).toContain("some stdout line");
+    expect(p?.detail).toContain("more stdout");
+    expect(p?.detail).not.toContain("input:");
+  });
+
   it("weave session b54735c8 shape: one host-x tool + full detail", () => {
     const toolBody = [
       "tool_step|completed|search|搜索 X 信息",

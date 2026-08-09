@@ -12,11 +12,15 @@ See `docs/llm-wiki/release.md`.
 ## [Unreleased]
 
 ### Fixed
+- **Empty “运行命令 / Run command” tool rows**: Multi-line shell titles (`Execute \`…\``) broke `tool_step` journal parsing so `input:` was buried and the activity rail showed bare type labels. Journal write now forces one-line title/input; parser rejoins multi-line Execute headers, scans for buried `input:`, and recovers command text from the title; primary labels also fall back to `Execute \`…\`` when structured input is missing.
+- **Main window size not remembered after resize**: `tauri-plugin-window-state` only flushed geometry on process Exit (plus hide-to-tray). Drag-resize now debounced-persists size/position/maximize to `.window-state.json` (~400ms after the last move), and quit-confirm also flushes immediately so force-quit mid-dialog keeps the resized frame.
 - **Linux AppImage black window docs + helper (#539)**: Document Wayland/AMD + bundled WebKitGTK `EGL_BAD_PARAMETER` black-screen class (host still runs). README (en/zh) troubleshooting prefers `.deb`/`.rpm` or system-WebKit extract path; `scripts/run-linux-appimage-system-webkit.sh` wraps the confirmed workaround. No Rust env-only change — reporter proved `WEBKIT_DISABLE_*` alone is insufficient against the AppImage-bundled WebKit.
 - **Linux sandbox / userns denial → `SANDBOX_BLOCKED` (#541)**: Classify bubblewrap `uid map: Permission denied` (Ubuntu 24.04 `apparmor_restrict_unprivileged_userns`) as a dedicated host error + error deck (sysctl fix or Sandbox → off), not generic crash/network. Doctor warns on Linux when the sysctl is restricted and sandbox ≠ off. README documents the caveat.
 - **Remote IM `grok -p` proxy (#540)**: Confirm headless Remote IM turns inject Settings proxy via `apply_to_tokio_command` (landed with proxy honesty batch; same path as ACP). Manual/system proxy now reaches `cli-chat-proxy` for Weixin and other channels.
 
 **中文 · 修复**
+- **工具行只显示「运行命令」无具体内容**：多行 shell 标题（`Execute \`…\``）破坏 `tool_step` 日志解析，导致 `input:` 被埋在 body 里、活动条只剩类型标签。写入时强制 title/input 单行；解析端重拼多行 Execute 头、扫描埋藏的 `input:`、从标题恢复命令；一级文案在缺 input 时回退 `Execute \`…\``。
+- **主窗口调整大小后未及时记忆**：原先仅在进程退出（及隐藏到托盘）时落盘。拖拽缩放/移动后约 400ms 防抖写入 `.window-state.json`；退出确认前也会立即刷新，避免确认期间强退后恢复成旧尺寸。
 - **Linux AppImage 黑屏说明与脚本（#539）**：文档化 Wayland/AMD 下内置 WebKitGTK `EGL_BAD_PARAMETER` 全黑窗（宿主仍运行）；README 推荐 `.deb`/`.rpm` 或系统 WebKit 解压运行；提供 `scripts/run-linux-appimage-system-webkit.sh`。不在 Rust 里硬塞 env——对照实验已证明仅对 AppImage 内置 WebKit 设 `WEBKIT_DISABLE_*` 不够。
 - **Linux 沙箱 / 用户命名空间拦截 → `SANDBOX_BLOCKED`（#541）**：将 bwrap `uid map: Permission denied`（Ubuntu 24.04 AppArmor 限制）归类为独立错误与引导文案（sysctl 修复或沙箱 off），不再显示泛化崩溃/网络。Doctor 在 Linux 上于 sysctl 受限且沙箱非 off 时告警；README 补充说明。
 - **Remote IM `grok -p` 代理（#540）**：确认无头 Remote IM 与 ACP 一样注入 Settings 代理（已随 proxy honesty 合入）。手动/系统代理可到达 `cli-chat-proxy`，覆盖微信等通道。

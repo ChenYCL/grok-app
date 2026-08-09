@@ -559,7 +559,7 @@ pub(super) struct ToolIdentity {
 pub(crate) fn extract_tool_input(raw: &serde_json::Value) -> Option<String> {
     let ri = raw.get("rawInput").or_else(|| raw.get("raw_input"))?;
     let obj = ri.as_object()?;
-    const ORDER: [&str; 10] = [
+    const ORDER: [&str; 11] = [
         "target_file",
         "target_directory",
         "file_path",
@@ -567,6 +567,7 @@ pub(crate) fn extract_tool_input(raw: &serde_json::Value) -> Option<String> {
         "folder",
         "dir",
         "command",
+        "cmd",
         "query",
         "url",
         "description",
@@ -579,6 +580,13 @@ pub(crate) fn extract_tool_input(raw: &serde_json::Value) -> Option<String> {
                     return Some(t.to_string());
                 }
             }
+        }
+    }
+    // rawInput may be a bare string (some shell wrappers).
+    if let Some(s) = ri.as_str() {
+        let t = s.trim();
+        if !t.is_empty() && t != "null" {
+            return Some(t.to_string());
         }
     }
     None
@@ -842,6 +850,20 @@ pub(super) fn journal_host_tool_step(
     }
 }
 
+/// Collapse newlines/whitespace so `tool_step|status|kind|title` stays one line.
+/// Multi-line shell titles (`Execute \`line1\nline2\``) previously broke journal
+/// parsing: only the first line was header, and the `input:` marker got buried.
+pub(super) fn tool_journal_one_line(raw: &str, max_chars: usize) -> String {
+    let collapsed = raw
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if collapsed.chars().count() <= max_chars {
+        return collapsed;
+    }
+    collapsed.chars().take(max_chars).collect()
+}
+
 /// Prefer human-readable journal labels (never bare “tool” when we have better).
 pub(super) fn tool_journal_label(
     title: &str,
@@ -851,7 +873,8 @@ pub(super) fn tool_journal_label(
 ) -> String {
     let t = title.trim();
     if !t.is_empty() && !t.eq_ignore_ascii_case("tool") && t != "web_fetch" && t != "web_search" {
-        return t.to_string();
+        // Always single-line — header format is `tool_step|…|title`.
+        return tool_journal_one_line(t, 240);
     }
     // "Fetch: https://…" style titles from tool_call_update
     if t.to_ascii_lowercase().starts_with("fetch:") {

@@ -6,6 +6,7 @@ import {
   summarizeToolDisplay,
   toolDetailTail,
   toolExpandBody,
+  toolInputDisplay,
 } from "./toolDisplay";
 
 const enTr = (key: string, params?: Record<string, string | number>) => {
@@ -107,6 +108,30 @@ describe("toolDisplay", () => {
     );
     // Fallback bucket still surfaces the call argument.
     expect(mcpish).toMatch(/weather|query/i);
+  });
+
+  it("resolveToolPrimaryLabel recovers bash args from Execute `…` title when input missing", () => {
+    const label = resolveToolPrimaryLabel(
+      {
+        toolKind: "execute",
+        title: "Execute `curl -s http://localhost:3456/info`",
+        detail: "exit: 0\n{ok:true}",
+      },
+      enTr,
+    );
+    expect(label).toContain("Run command");
+    expect(label).toContain("curl -s");
+    expect(label).not.toContain("exit: 0");
+  });
+
+  it("toolInputDisplay prefers non-comment lines in multi-line shell scripts", () => {
+    const bucket = classifyToolKind("execute");
+    const shown = toolInputDisplay(
+      "# scroll more\ncurl -s http://localhost:3456/scroll\nsleep 1",
+      bucket,
+    );
+    expect(shown).toContain("curl");
+    expect(shown).not.toMatch(/^#/);
   });
 
   it("toolExpandBody surfaces detail tail when present", () => {

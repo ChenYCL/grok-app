@@ -11,7 +11,7 @@ import type {
   ErrorDeckCode,
   ErrorDeckResolveOpts,
 } from "./errorDeck";
-import { inferKindFromToolCallId } from "./toolDisplay";
+import { bashArgFromToolTitle, inferKindFromToolCallId } from "./toolDisplay";
 
 export type SessionState =
   | "idle"
@@ -1250,14 +1250,56 @@ export function parseToolStepContent(content: string): {
   // tool_step|status|kind|title
   const status = parts[1] || "completed";
   const kind = parts[2] || "";
-  const title = parts.slice(3).join("|") || kind || "tool";
-  // Host records the call argument (target file / command / query) as a
-  // leading `input:` line — the specific tool detail for the UI.
-  let input: string | undefined;
-  if (rest.length && rest[0]?.startsWith("input:")) {
-    input = rest[0]!.slice("input:".length).trim() || undefined;
-    rest = rest.slice(1);
+  let title = parts.slice(3).join("|") || kind || "tool";
+
+  // Legacy / multi-line shell titles: ACP often journals
+  // `Execute \`line1\nline2...\`` so only line1 is in the header and the
+  // rest of the command (and the `input:` line) sits in the body. Rejoin
+  // until backticks balance (even count) or an `input:` marker.
+  const execOpen =
+    /^(?:Execute|Run(?:\s+Command)?)\s*`/i.test(title) &&
+    !/`[^`\n]*`\s*$/.test(title);
+  if (execOpen && rest.length) {
+    const tickCount = (s: string) => (s.match(/`/g) || []).length;
+    const joined = [title];
+    let consumed = 0;
+    for (let i = 0; i < rest.length; i++) {
+      const line = rest[i] ?? "";
+      if (line.startsWith("input:")) break;
+      joined.push(line);
+      consumed = i + 1;
+      // Stop when Execute `…` closes (even number of backticks overall).
+      if (tickCount(joined.join("\n")) % 2 === 0) break;
+    }
+    title = joined.join("\n").trim();
+    rest = rest.slice(consumed);
   }
+
+  // Host records the call argument (target file / command / query) as an
+  // `input:` line. Prefer the first body line; also scan deeper for legacy
+  // multi-line titles that pushed `input:` past the command body.
+  let input: string | undefined;
+  const inputIdx = rest.findIndex((l) => l.startsWith("input:"));
+  if (inputIdx >= 0) {
+    input = rest[inputIdx]!.slice("input:".length).trim() || undefined;
+    rest = [...rest.slice(0, inputIdx), ...rest.slice(inputIdx + 1)];
+  }
+
+  // Recover from Execute `…` title text. For multi-line shell journals the
+  // rejoined title often has the full script while `input:` only kept the
+  // first line (comment / env assignment) — prefer the richer source.
+  const fromTitle = bashArgFromToolTitle(title);
+  if (fromTitle) {
+    if (!input || fromTitle.length > input.length) {
+      input = fromTitle;
+    }
+  }
+  // Collapse multi-line Execute titles to a short stable label once the
+  // command lives in `input` (keeps activity rail readable).
+  if (input && /^(?:Execute|Run(?:\s+Command)?)\s*`/i.test(title)) {
+    title = /^Execute/i.test(title) ? "Execute" : "Run Command";
+  }
+
   // Host side-channels journal multi-line bodies (vision / X results).
   // Legacy native rows used: detail\npath (exactly 2 trailing lines, path-like).
   let detail: string | undefined;
