@@ -1011,6 +1011,7 @@ import { useLiveMapWhen } from "@/hooks/useSessionLiveMap";
 import { useComposerController } from "@/hooks/useComposerController";
 import { useAppDialogs } from "@/hooks/useAppDialogs";
 import { useSessionHostEvents } from "@/hooks/useSessionHostEvents";
+import { useGhostStreamingHeal } from "@/hooks/useGhostStreamingHeal";
 import { createDebouncedSkillsReload } from "@/lib/skillCatalogRefresh";
 
 /** App-local plan chrome state (session-scoped via planBySessionRef). */
@@ -1470,6 +1471,11 @@ export function AppWorkbench() {
   const [jsonSchemaDraft, setJsonSchemaDraft] = useState("");
   /** Prevent overlapping executeSend / queue auto-flush races. */
   const sendInFlightRef = useRef(false);
+  /**
+   * Bumped when a send is superseded (ghost heal / new attempt) so a hung
+   * `sessionSend` await cannot re-apply liveMap busy after UI already healed.
+   */
+  const sendEpochRef = useRef(0);
   const executeSendFromQueueRef = useRef<ExecuteSendFromQueue>(
     async () => false,
   );
@@ -7286,6 +7292,7 @@ export function AppWorkbench() {
     }
     if (sendInFlightRef.current) return false;
     sendInFlightRef.current = true;
+    const sendEpoch = ++sendEpochRef.current;
     const { storedDisplay, att, goalMode: useGoal, fromQueue } = opts;
     const segments = parseStoredContent(storedDisplay);
     if (isDraftEmpty(segments) && !att.length) {
@@ -7497,13 +7504,17 @@ export function AppWorkbench() {
         // (idle recycle / crash while `liveHost` still looked ready).
         // Cold-connect that chat once, then retry the same turn.
         if (!isSessionNotLiveError(sendErr)) throw sendErr;
+        if (sendEpoch !== sendEpochRef.current) return false;
         const reconnected = await ensureConnected({
           sessionId,
           force: true,
         });
         if (reconnected !== sessionId) throw sendErr;
+        if (sendEpoch !== sendEpochRef.current) return false;
         await api.sessionSend(agentText, storedDisplay, sessionId, att);
       }
+      // Ghost heal / newer send superseded this await — do not re-dirty UI.
+      if (sendEpoch !== sendEpochRef.current) return false;
       // Keep liveMap busy for this session if the user already left the thread.
       setLiveMap((prev) =>
         projectHostIntoLiveMap(prev, {
@@ -7542,11 +7553,14 @@ export function AppWorkbench() {
       }
       return true;
     } catch (e) {
+      if (sendEpoch !== sendEpochRef.current) return false;
       failStrip();
       if (viewingTarget()) setLocalError(String(e));
       return false;
     } finally {
-      sendInFlightRef.current = false;
+      if (sendEpoch === sendEpochRef.current) {
+        sendInFlightRef.current = false;
+      }
     }
   };
 
@@ -9755,6 +9769,39 @@ export function AppWorkbench() {
     executeSendRef: executeSendFromQueueRef,
     showToast,
     labels: sendQueueLabels,
+  });
+
+  /**
+   * Optimistic "Thinking…" with no Host turn (liveMap never streaming) — after
+   * grace, strip the ghost pair, unlock busy, restore text to composer.
+   * Power users can Stop; everyone else gets automatic recovery.
+   */
+  useGhostStreamingHeal({
+    enabled: api.hasHost() && canLiveParticipate(isSecondaryWindow),
+    sessionState: session.state,
+    sessionId: session.sessionId,
+    messages,
+    turnStartedAt,
+    liveMapRef,
+    liveHostRef,
+    sendEpochRef,
+    sendInFlightRef,
+    messagesBySessionRef,
+    patchSessionMessages,
+    setMessages,
+    setSession,
+    setLiveHost,
+    setLiveMap,
+    setTurnStartedAt,
+    setStreamStall: (v) => setStreamStall(v),
+    restoreComposer: (text) => {
+      setDraft(text);
+      requestComposerFocus();
+    },
+    onHealed: () => {
+      showToast(tr("agent.ghostStreamingHealed"), 5200);
+      setLocalError(tr("agent.ghostStreamingHealed"));
+    },
   });
 
   const canGuideQueuedMessage =

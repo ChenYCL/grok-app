@@ -101,6 +101,24 @@ stack full open pipelines.
 4. Host: `session_messages` / `paths_classify` run disk work on `spawn_blocking`
    so concurrent opens do not block the async runtime.
 
+**Ghost streaming heal (optimistic send never reached Host):**
+
+Send paints user bubble + empty streaming assistant immediately, then awaits
+`ensureConnected` / `sessionSend`. If Host never enters a turn for that chat
+(`liveMap[sid]` never becomes streaming), Host stream-stall does **not** run
+(it only watches true Host Streaming). Client policy in
+`src/lib/ghostStreamingHeal.ts` + `useGhostStreamingHeal`:
+
+1. Empty trailing streaming assistant, no tools/body.  
+2. Grace **30s** after `turnStartedAt`.  
+3. `liveMap` for the viewed session is idle/missing (do **not** trust optimistic
+   `liveHost.state`).  
+4. Heal: strip optimistic user+assistant, unlock busy, bump `sendEpoch` so a
+   hung `sessionSend` cannot re-dirty UI, restore text to composer, toast
+   `agent.ghostStreamingHealed`.  
+
+Real mid-turn silence still uses Host `STREAM_STALL` (soft banner; user End turn).
+
 ### 2. Fallback — journal bootstrap (reasonable turns)
 
 When a **new** agent session is created but the App journal already has turns:
