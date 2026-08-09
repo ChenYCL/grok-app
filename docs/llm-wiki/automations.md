@@ -101,6 +101,8 @@
 
 原则：能力不删；SoT 仍在 AppSettings + Host runner；页面只做任务管理 + 风险就近修复。
 
+**滚动（#543）**：`.auto-page` 使用 `overflow-y: auto`（禁止 `overflow: hidden` 锁死整页）。首屏大块 `flex-shrink: 0`（诚实矩阵 / LaunchAgent / one-shot 等）超出视口时必须能滚轮/触控板滑动；任务列表在仍有剩余高度时由 `.auto-page__body` 内部滚动。
+
 ## Tauri 命令
 
 - `automations_list`

@@ -65,7 +65,15 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: hidden;
+  /*
+   * Must allow page-level scroll when fixed chrome (head / honesty / LaunchAgent
+   * / one-shot / history) exceeds the viewport. overflow:hidden clipped those
+   * flex-shrink:0 blocks with no scroll container → #543 (wheel/trackpad dead).
+   * Task list still scrolls inside .auto-page__body when it has remaining height.
+   */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .auto-page__head {
