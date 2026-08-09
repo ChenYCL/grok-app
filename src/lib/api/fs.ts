@@ -64,6 +64,7 @@ export interface PathEntry {
 
 /** Classify absolute paths as file/dir for drag-drop. */
 export async function pathsClassify(paths: string[]) {
+  if (!paths.length) return [];
   return invoke<PathEntry[]>("paths_classify", { paths });
 }
 

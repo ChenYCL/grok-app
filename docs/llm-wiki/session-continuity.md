@@ -88,6 +88,19 @@ array under the new id. Rules:
 3. Journal rehydrate upgrades only `messagesBySession[sid]`, never React prev
    from another project.
 
+**Fast switch (Windows freeze / open storm):** rapid sidebar clicks must not
+stack full open pipelines.
+
+1. **Generation token** — every `openSession` / `newChat` bumps `openSessionGen`;
+   after each `await`, abort UI writes when gen or viewing id no longer match.  
+2. **Journal load without reconcile** — switch calls `session_messages` with
+   `reconcile: false` (App `messages.json` only). Agent `chat_history` merge is
+   **deferred** (~500ms) only if the user is still on that chat.  
+3. **Warm connect debounce** (~350ms) — only the settled viewing session may
+   call `sessionConnect`; pending timers clear on the next navigation.  
+4. Host: `session_messages` / `paths_classify` run disk work on `spawn_blocking`
+   so concurrent opens do not block the async runtime.
+
 ### 2. Fallback — journal bootstrap (reasonable turns)
 
 When a **new** agent session is created but the App journal already has turns:

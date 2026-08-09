@@ -627,6 +627,12 @@ import {
   saveComposerSessionDraft,
 } from "@/lib/composerSessionDraft";
 import {
+  DEFERRED_RECONCILE_MS,
+  WARM_CONNECT_DEBOUNCE_MS,
+  sessionJournalLooksUnchanged,
+  shouldApplyOpenSessionResult,
+} from "@/lib/sessionOpenSwitch";
+import {
   PromptHistoryPanel,
   type PromptHistoryScope
 } from "@/components/PromptHistoryPanel";
@@ -1631,6 +1637,20 @@ export function AppWorkbench() {
   const automationAppliedRef = useRef<Set<string>>(new Set());
   /** While openSession loads, do not let session.sessionId effect clobber viewing id. */
   const openingSessionIdRef = useRef<string | null>(null);
+  /**
+   * Monotonic openSession generation: rapid sidebar switches bump this so
+   * in-flight journal load / media classify / warm connect abort after await
+   * (Windows freeze under concurrent open pipelines).
+   */
+  const openSessionGenRef = useRef(0);
+  /** Debounced warm sessionConnect timer (cleared on next navigation). */
+  const warmConnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  /** Deferred agent-journal reconcile after a fast open (no reconcile). */
+  const deferredReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // ContextMenu handles outside click + Escape for sidebar menus.
 
@@ -4021,6 +4041,10 @@ export function AppWorkbench() {
   /**
    * Open a stored session. Loads journal immediately; warms the ACP agent in
    * the background so the first send skips cold process spawn when possible.
+   *
+   * Rapid switches: bump openSessionGen, skip agent reconcile on the first
+   * journal load, debounce warm connect, and abort after each await when the
+   * user has already moved on (Windows Not Responding under open storms).
    */
   const openSession = async (s: SessionRow, project?: Project | null) => {
     const proj =
@@ -4051,6 +4075,24 @@ export function AppWorkbench() {
 
     // User navigation: invalidate any in-flight work that wants the workbench.
     bumpViewEpoch();
+    // Cancel pending warm-connect / deferred reconcile from a previous click.
+    if (warmConnectTimerRef.current) {
+      clearTimeout(warmConnectTimerRef.current);
+      warmConnectTimerRef.current = null;
+    }
+    if (deferredReconcileTimerRef.current) {
+      clearTimeout(deferredReconcileTimerRef.current);
+      deferredReconcileTimerRef.current = null;
+    }
+    const openGen = ++openSessionGenRef.current;
+    const stillThisOpen = () =>
+      shouldApplyOpenSessionResult({
+        currentGen: openSessionGenRef.current,
+        startedGen: openGen,
+        viewingSessionId: viewingSessionIdRef.current,
+        targetSessionId: s.id,
+      });
+
     // Snapshot the outgoing thread so a mid-turn switch does not lose the user bubble.
     const leavingId = leavingBeforeOpen;
     if (leavingId) {
@@ -4111,7 +4153,7 @@ export function AppWorkbench() {
           api.sessionPlanChromeGet(openId),
           api.sessionAgentPlanSnapshot(openId),
         ]);
-        if (viewingSessionIdRef.current !== openId) return;
+        if (!stillThisOpen()) return;
         // Live map with a live rpcId wins over stale disk (session still warm).
         const mem = planBySessionRef.current.get(openId);
         if (mem && mem.rpcId != null) return;
@@ -4125,7 +4167,7 @@ export function AppWorkbench() {
         }
         planBySessionRef.current.set(openId, restored);
         markPlanPendingBadge(openId, restored);
-        if (viewingSessionIdRef.current === openId) {
+        if (stillThisOpen()) {
           setPlan(restored);
         }
       } catch {
@@ -4142,7 +4184,28 @@ export function AppWorkbench() {
     setShowJsonSchemaModal(false);
 
     try {
-      const stored = await api.sessionMessages(s.id);
+      // Fast path: App journal only. Agent reconcile is deferred after settle
+      // so rapid switches do not re-parse chat_history/updates jsonl.
+      const stored = await api.sessionMessages(s.id, { reconcile: false });
+      if (!stillThisOpen()) {
+        // Keep cache warm for a future return, but skip remaining heavy work.
+        try {
+          const mappedEarly = mapStoredMessagesToChat(stored);
+          messagesBySessionRef.current.set(
+            s.id,
+            preferSessionMessages(
+              messagesBySessionRef.current.get(s.id),
+              mappedEarly,
+            ),
+          );
+        } catch {
+          /* ignore */
+        }
+        if (openingSessionIdRef.current === s.id) {
+          openingSessionIdRef.current = null;
+        }
+        return;
+      }
       let mapped: ChatMessage[] = mapStoredMessagesToChat(stored);
       // Short paths like `images/1.jpg` → agent session dir → image cards
       if (api.isTauri()) {
@@ -4150,6 +4213,12 @@ export function AppWorkbench() {
         if (rels.length) {
           try {
             const list = await api.sessionResolveRelativeMedia(s.id, rels);
+            if (!stillThisOpen()) {
+              if (openingSessionIdRef.current === s.id) {
+                openingSessionIdRef.current = null;
+              }
+              return;
+            }
             if (list.length) {
               mapped = applyResolvedSessionMedia(
                 mapped,
@@ -4185,6 +4254,13 @@ export function AppWorkbench() {
       if (allPaths.length && api.isTauri()) {
         try {
           const list = await api.pathsClassify(allPaths);
+          if (!stillThisOpen()) {
+            messagesBySessionRef.current.set(s.id, chosen);
+            if (openingSessionIdRef.current === s.id) {
+              openingSessionIdRef.current = null;
+            }
+            return;
+          }
           if (list.length) {
             const byPath = new Map(list.map((c) => [c.path, c]));
             chosen = chosen.map((msg) => {
@@ -4237,7 +4313,7 @@ export function AppWorkbench() {
           };
         });
       }
-      if (viewingSessionIdRef.current !== s.id) {
+      if (!stillThisOpen()) {
         // User switched again while we were loading — keep cache warm, skip UI write.
         messagesBySessionRef.current.set(s.id, chosen);
         if (openingSessionIdRef.current === s.id) {
@@ -4296,8 +4372,58 @@ export function AppWorkbench() {
           void api.sessionSetScheduled(s.id, true).catch(() => {});
         }
       }
+
+      // Deferred agent reconcile: recover missing assistant bodies once the
+      // user has settled on this chat (skips work if they already switched).
+      if (api.isTauri()) {
+        if (deferredReconcileTimerRef.current) {
+          clearTimeout(deferredReconcileTimerRef.current);
+        }
+        deferredReconcileTimerRef.current = setTimeout(() => {
+          deferredReconcileTimerRef.current = null;
+          void (async () => {
+            if (!stillThisOpen()) return;
+            try {
+              const reconciled = await api.sessionMessages(s.id, {
+                reconcile: true,
+              });
+              if (!stillThisOpen()) return;
+              const mappedR = mapStoredMessagesToChat(reconciled);
+              const chosenR = weaveToolsIntoAssistantSegments(
+                preferSessionMessages(
+                  messagesBySessionRef.current.get(s.id),
+                  mappedR,
+                ),
+              );
+              if (
+                sessionJournalLooksUnchanged(
+                  messagesBySessionRef.current.get(s.id),
+                  chosenR,
+                )
+              ) {
+                return;
+              }
+              messagesBySessionRef.current.set(s.id, chosenR);
+              if (!stillThisOpen()) return;
+              const strippedR = chosenR.map((m) => {
+                if (m.role !== "assistant" || !m.content) return m;
+                const { cleanText } = extractAutomationPayload(m.content);
+                return cleanText === m.content
+                  ? m
+                  : { ...m, content: cleanText };
+              });
+              setMessages(strippedR);
+              setContextUsage(
+                restoreContextUsageForSession(s.id, strippedR),
+              );
+            } catch {
+              /* soft-fail reconcile */
+            }
+          })();
+        }, DEFERRED_RECONCILE_MS);
+      }
     } catch {
-      if (viewingSessionIdRef.current !== s.id) {
+      if (!stillThisOpen()) {
         if (openingSessionIdRef.current === s.id) {
           openingSessionIdRef.current = null;
         }
@@ -4307,7 +4433,7 @@ export function AppWorkbench() {
       setMessages(cached ?? []);
       setContextUsage(restoreContextUsageForSession(s.id, cached ?? []));
     }
-    if (viewingSessionIdRef.current !== s.id) {
+    if (!stillThisOpen()) {
       if (openingSessionIdRef.current === s.id) {
         openingSessionIdRef.current = null;
       }
@@ -4349,7 +4475,7 @@ export function AppWorkbench() {
     }
 
     // Secondary windows must not rewrite "last session" for the main workbench.
-    if (api.isTauri() && !isSecondaryWindowRef.current) {
+    if (api.isTauri() && !isSecondaryWindowRef.current && stillThisOpen()) {
       setLastSessionId(s.id);
       void api
         .settingsRememberLastSession(s.id, proj?.id ?? null)
@@ -4365,6 +4491,9 @@ export function AppWorkbench() {
     // background (never kills), so secondary may warm-connect immediately.
     // The next send still runs ensureConnected if warm was deferred.
     // Skip when project folder is missing (D05) — user must relocate first.
+    //
+    // Debounce: rapid switches used to queue many sessionConnect under
+    // connect_lock (park/unpark/load) even after the user had left the chat.
     if (shouldSkipWarmConnect(isSecondaryWindowRef.current)) {
       return;
     }
@@ -4392,37 +4521,46 @@ export function AppWorkbench() {
       !(live.sessionId === s.id && live.state === "ready")
     ) {
       const warmId = s.id;
-      void (async () => {
-        if (viewingSessionIdRef.current !== warmId) return;
+      const warmProjPath = proj?.path || generalWorkspacePath || undefined;
+      const warmTitle = s.title;
+      if (warmConnectTimerRef.current) {
+        clearTimeout(warmConnectTimerRef.current);
+      }
+      warmConnectTimerRef.current = setTimeout(() => {
+        warmConnectTimerRef.current = null;
+        if (!stillThisOpen()) return;
         if (sendInFlightRef.current || connectingRef.current) return;
         if (shouldSkipWarmConnect(isSecondaryWindowRef.current)) return;
-        try {
-          const snap = await api.sessionConnect({
-            projectPath:
-              proj?.path || generalWorkspacePath || undefined,
-            sessionId: warmId,
-          });
-          if (viewingSessionIdRef.current !== warmId) return;
-          setLiveHost(snap);
-          liveHostRef.current = snap;
-          if (snap.sessionId === warmId) {
-            setSession((prev) => ({
-              ...snap,
-              title: prev.title || s.title || snap.title || "Untitled",
-            }));
+        void (async () => {
+          if (!stillThisOpen()) return;
+          if (sendInFlightRef.current || connectingRef.current) return;
+          try {
+            const snap = await api.sessionConnect({
+              projectPath: warmProjPath,
+              sessionId: warmId,
+            });
+            if (!stillThisOpen()) return;
+            setLiveHost(snap);
+            liveHostRef.current = snap;
+            if (snap.sessionId === warmId) {
+              setSession((prev) => ({
+                ...snap,
+                title: prev.title || warmTitle || snap.title || "Untitled",
+              }));
+            }
+            if (snap.lastError && snap.state !== "ready") {
+              // Soft: keep chat readable; send will retry via ensureConnected.
+              console.warn(
+                "warm connect:",
+                snap.lastError.code,
+                snap.lastError.message,
+              );
+            }
+          } catch (e) {
+            console.warn("warm connect failed", e);
           }
-          if (snap.lastError && snap.state !== "ready") {
-            // Soft: keep chat readable; send will retry via ensureConnected.
-            console.warn(
-              "warm connect:",
-              snap.lastError.code,
-              snap.lastError.message,
-            );
-          }
-        } catch (e) {
-          console.warn("warm connect failed", e);
-        }
-      })();
+        })();
+      }, WARM_CONNECT_DEBOUNCE_MS);
     }
   };
 
@@ -4766,6 +4904,16 @@ export function AppWorkbench() {
     // User navigation: a connect/send still in flight for the previous chat must
     // not drag the workbench back here once it resolves.
     bumpViewEpoch();
+    // Invalidate openSession pipelines + pending warm connect / reconcile.
+    openSessionGenRef.current += 1;
+    if (warmConnectTimerRef.current) {
+      clearTimeout(warmConnectTimerRef.current);
+      warmConnectTimerRef.current = null;
+    }
+    if (deferredReconcileTimerRef.current) {
+      clearTimeout(deferredReconcileTimerRef.current);
+      deferredReconcileTimerRef.current = null;
+    }
     // Preserve outgoing thread in cache before clearing the draft UI.
     // Always snapshot current messages (not only if already cached) so a mid-send
     // switch does not drop the optimistic user/assistant bubbles.

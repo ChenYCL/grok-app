@@ -648,7 +648,16 @@ export async function sessionDelete(id: string) {
   return invoke("session_delete", { id });
 }
 
-export async function sessionMessages(id: string) {
+/**
+ * Load App journal messages.
+ * @param opts.reconcile When true (default), Host merges missing rows from the
+ *   linked agent chat_history. Session **switch** should pass `false` and
+ *   optionally re-request with reconcile after the user settles.
+ */
+export async function sessionMessages(
+  id: string,
+  opts?: { reconcile?: boolean },
+) {
   return invoke<
     Array<{
       id: string;
@@ -664,7 +673,10 @@ export async function sessionMessages(id: string) {
         isDir?: boolean;
       }> | null;
     }>
-  >("session_messages", { id });
+  >("session_messages", {
+    id,
+    reconcile: opts?.reconcile ?? true,
+  });
 }
 
 /** Agent session folder under GROK_HOME (contains images/, etc.). */

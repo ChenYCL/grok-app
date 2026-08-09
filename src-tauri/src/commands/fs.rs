@@ -434,8 +434,21 @@ fn urlencoding_lite_decode(input: &str) -> Result<String, ()> {
     String::from_utf8(out).map_err(|_| ())
 }
 
+/// Classify absolute paths (exists / isDir) and grant path_scope for media previews.
+///
+/// Async + `spawn_blocking`: rapid session switches with many attachments used to
+/// stack sync metadata/canonicalize work on the IPC path (Windows freeze risk).
 #[tauri::command]
-pub fn paths_classify(paths: Vec<String>) -> Vec<PathEntry> {
+pub async fn paths_classify(paths: Vec<String>) -> Vec<PathEntry> {
+    if paths.is_empty() {
+        return Vec::new();
+    }
+    tauri::async_runtime::spawn_blocking(move || paths_classify_sync(paths))
+        .await
+        .unwrap_or_default()
+}
+
+fn paths_classify_sync(paths: Vec<String>) -> Vec<PathEntry> {
     paths
         .into_iter()
         .filter(|p| !p.trim().is_empty())

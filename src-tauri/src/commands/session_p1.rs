@@ -1023,14 +1023,28 @@ pub async fn session_set_no_ask_user(
     Ok(meta)
 }
 
+/// Load the App journal for a session.
+///
+/// `reconcile` (default **true**): merge missing assistant / tool rows from the
+/// linked agent `chat_history.jsonl` / `updates.jsonl`. Fast session **switch**
+/// paths pass `false` so rapid sidebar clicks do not re-parse large agent logs
+/// (Windows freeze under concurrent opens). Callers may re-request with
+/// `reconcile: true` once the user settles on a chat.
 #[tauri::command]
 pub async fn session_messages(
     id: String,
+    reconcile: Option<bool>,
 ) -> Result<Vec<store::ChatMessageStored>, String> {
-    // If Host dropped the final assistant stream, agent chat_history still has
-    // it — merge before serving so reload / re-open recovers the answer.
-    let _ = crate::cli_sessions::try_reconcile_linked_session(&id);
-    Ok(store::load_messages(&id))
+    let do_reconcile = reconcile.unwrap_or(true);
+    // Disk + optional full jsonl parse must not block the async runtime.
+    tauri::async_runtime::spawn_blocking(move || {
+        if do_reconcile {
+            let _ = crate::cli_sessions::try_reconcile_linked_session(&id);
+        }
+        Ok(store::load_messages(&id))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Absolute path of the agent session folder under GROK_HOME (images/, etc.).
