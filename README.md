@@ -49,11 +49,12 @@
 3. [Screenshots](#screenshots)
 4. [Install & first run](#install--first-run)
 5. [macOS “damaged” / Gatekeeper](#macos-damaged--gatekeeper)
-6. [Config paths](#config-paths)
-7. [Develop & build](#develop--build)
-8. [Docs & contributing](#docs--contributing)
-9. [Contributors](#contributors)
-10. [Follow the author](#follow-the-author)
+6. [Linux blank/black window (WebKit)](#linux-blankblack-window-webkit)
+7. [Config paths](#config-paths)
+8. [Develop & build](#develop--build)
+9. [Docs & contributing](#docs--contributing)
+10. [Contributors](#contributors)
+11. [Follow the author](#follow-the-author)
 
 ---
 
@@ -124,7 +125,7 @@ Get installers from [Releases](https://github.com/RongleCat/grok-app/releases):
 
 The bundle product name is **Grok** (matches the window title).
 
-**Arch / Manjaro / EndeavourOS:** prefer the **AppImage** (`chmod +x` then run). Official CI does not publish a separate AUR package; AppImage is distro-agnostic.
+**Arch / Manjaro / EndeavourOS:** the **AppImage** is distro-agnostic (`chmod +x` then run). Official CI does not publish a separate AUR package. On **Wayland (e.g. Hyprland) + AMD**, some hosts hit a black window with the stock AppImage — prefer **`.deb` / `.rpm`** (system WebKit) or the [Linux blank/black window](#linux-blankblack-window-webkit) workaround.
 
 > **Prebuilt packages need no build tools.** Node / pnpm / Rust are only required if you [build from source](#develop--build) — do not run `pnpm install && tauri build` just to use the app.
 
@@ -186,6 +187,45 @@ open /Applications/Grok.app
 - **System Settings → Privacy & Security** → **Open Anyway**  
 
 Only download from this repo’s official [Releases](https://github.com/RongleCat/grok-app/releases).
+
+---
+
+## Linux blank/black window (WebKit)
+
+On some **Wayland** desktops (notably **Hyprland + AMD**), the official **AppImage** can open a window that stays **fully black**. The host process still runs (media server, agent ACP, auth), but the bundled WebKitGTK never paints. Logs often include:
+
+```text
+Could not create default EGL display: EGL_BAD_PARAMETER
+```
+
+This is a known **Tauri 2 + AppImage + WebKitGTK** class of issues: the AppImage ships WebKit built in the CI container (Ubuntu 22.04), which can fail against newer host Mesa/DRI stacks. `.deb` / `.rpm` link **system** WebKit and are usually fine on the same machine. See issue [#539](https://github.com/RongleCat/grok-app/issues/539) and [Tauri Linux graphics notes](https://v2.tauri.app/develop/debug/linux-graphics/).
+
+**Try in order:**
+
+1. **Prefer `.deb` or `.rpm`** from the same Release (system WebKit). On Arch, convert with `debtap` or extract the `.deb` and run the binary.
+2. **Run the AppImage against system WebKit** (confirmed on Arch + Hyprland + AMD):
+
+```bash
+# one-time extract
+./Grok_*.AppImage --appimage-extract
+# or: bash scripts/run-linux-appimage-system-webkit.sh ./Grok_*.AppImage
+
+export LD_LIBRARY_PATH=/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export WEBKIT_EXEC_PATH=/usr/lib/webkit2gtk-4.1
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export GDK_BACKEND=x11
+unset APPDIR APPIMAGE
+./squashfs-root/usr/bin/grok-app
+```
+
+On Debian/Ubuntu multiarch hosts, use `/usr/lib/x86_64-linux-gnu` and `/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1` if the paths above are missing. Install system WebKit if needed (`webkit2gtk-4.1` on Arch; `libwebkit2gtk-4.1-0` on Debian/Ubuntu).
+
+3. Quick env-only attempt (helps NVIDIA/DMABUF cases; **often not enough** for the EGL abort above):
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 ./Grok_*.AppImage
+```
 
 ---
 

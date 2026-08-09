@@ -74,6 +74,18 @@ pnpm build:linux
 
 构建 RPM 需要 `rpm` 工具：`sudo apt install rpm`（Debian/Ubuntu CI 已装）。
 
+#### 已知问题：AppImage 黑屏（AMD + Hyprland / Wayland）
+
+AppImage 内置 Ubuntu 22.04 CI 容器的 WebKitGTK。部分 AMD + Hyprland 环境会报  
+`Could not create default EGL display: EGL_BAD_PARAMETER`，窗口全黑，但宿主进程（媒体、ACP、登录）仍正常。
+
+Issue [#539](https://github.com/RongleCat/grok-app/issues/539) 对照实验：相同 env 下仅换用**系统 WebKit** 即可恢复 UI——根因是**内置 WebKit 的 EGL 栈**，不是应用业务代码。`.deb` / `.rpm` 链接系统 WebKit，不受影响。
+
+用户侧缓解：各 README 的「Linux blank/black window」段，或仓库脚本  
+`scripts/run-linux-appimage-system-webkit.sh`。
+
+长期方向（未合入）：CI 打包后改写 AppRun，在检测到系统 WebKit 时优先加载（需多机验证，且重打包后需重签 updater `.sig`）。不要为了此问题单独把 Linux CI 升到 Ubuntu 24.04——会抬高 glibc 底线，且不保证 bundled-vs-system 类问题消失。
+
 ## 2. 本地构建命令
 
 ```bash

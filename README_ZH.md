@@ -49,11 +49,12 @@
 3. [界面预览](#界面预览)
 4. [安装与使用](#安装与使用)
 5. [macOS 无法打开 / 提示已损坏](#macos-无法打开--提示已损坏)
-6. [配置目录](#配置目录)
-7. [开发与构建](#开发与构建)
-8. [文档与贡献](#文档与贡献)
-9. [贡献者](#贡献者)
-10. [关注作者](#关注作者)
+6. [Linux 黑屏 / 空白窗（WebKit）](#linux-黑屏--空白窗webkit)
+7. [配置目录](#配置目录)
+8. [开发与构建](#开发与构建)
+9. [文档与贡献](#文档与贡献)
+10. [贡献者](#贡献者)
+11. [关注作者](#关注作者)
 
 ---
 
@@ -124,7 +125,7 @@
 
 安装包产品名为 **Grok**（与窗口标题一致）。
 
-**Arch / Manjaro / EndeavourOS 等：** 优先下载 **AppImage**（`chmod +x` 后运行），不依赖发行版打包格式。`.deb` 可用 `debtap` 等转换，但官方 CI 不单独发布 AUR 包。
+**Arch / Manjaro / EndeavourOS 等：** **AppImage** 不依赖发行版打包格式（`chmod +x` 后运行）。官方 CI 不单独发布 AUR 包。在 **Wayland（如 Hyprland）+ AMD** 上，部分主机的 AppImage 会黑屏——可改用 **`.deb` / `.rpm`**（系统 WebKit），或见 [Linux 黑屏 / 空白窗](#linux-黑屏--空白窗webkit)。
 
 ### 2. 首次使用
 
@@ -159,6 +160,45 @@ open /Applications/Grok.app
 - **系统设置 → 隐私与安全性** → 对拦截项点 **仍要打开**  
 
 请仅从本仓库官方 [Releases](https://github.com/RongleCat/grok-app/releases) 下载。
+
+---
+
+## Linux 黑屏 / 空白窗（WebKit）
+
+部分 **Wayland** 桌面（尤其是 **Hyprland + AMD**）上，官方 **AppImage** 可能只弹出**全黑窗口**。宿主进程仍在跑（媒体服务、Agent ACP、登录），但内置 WebKitGTK 无法绘制。日志常见：
+
+```text
+Could not create default EGL display: EGL_BAD_PARAMETER
+```
+
+这是 **Tauri 2 + AppImage + WebKitGTK** 一类问题：AppImage 内置的是 CI 容器（Ubuntu 22.04）里的 WebKit，可能与主机较新的 Mesa/DRI 栈不兼容。同一机器上的 **`.deb` / `.rpm`** 链接**系统** WebKit，通常正常。详见 [#539](https://github.com/RongleCat/grok-app/issues/539) 与 [Tauri Linux 图形说明](https://v2.tauri.app/develop/debug/linux-graphics/)。
+
+**按顺序尝试：**
+
+1. **优先用 `.deb` / `.rpm`**（系统 WebKit）。Arch 可用 `debtap` 转换，或解压 `.deb` 后直接跑二进制。
+2. **用系统 WebKit 跑 AppImage**（Arch + Hyprland + AMD 已验证）：
+
+```bash
+# 一次性解压
+./Grok_*.AppImage --appimage-extract
+# 或：bash scripts/run-linux-appimage-system-webkit.sh ./Grok_*.AppImage
+
+export LD_LIBRARY_PATH=/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export WEBKIT_EXEC_PATH=/usr/lib/webkit2gtk-4.1
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export GDK_BACKEND=x11
+unset APPDIR APPIMAGE
+./squashfs-root/usr/bin/grok-app
+```
+
+Debian/Ubuntu 多架构路径请改用 `/usr/lib/x86_64-linux-gnu` 与 `/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1`。系统需已安装 WebKit（Arch：`webkit2gtk-4.1`；Debian/Ubuntu：`libwebkit2gtk-4.1-0`）。
+
+3. 仅设环境变量试一下（对 NVIDIA/DMABUF 有时有效；**对上面的 EGL 报错往往不够**）：
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 ./Grok_*.AppImage
+```
 
 ---
 
