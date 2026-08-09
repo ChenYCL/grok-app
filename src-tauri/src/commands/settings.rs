@@ -282,6 +282,9 @@ pub async fn settings_set(
     if let Err(e) = crate::tray::refresh_menu(&app) {
         tracing::warn!("settings_set tray refresh: {e}");
     }
+    if let Err(e) = crate::app_menu::refresh(&app) {
+        tracing::warn!("settings_set app menu refresh: {e}");
+    }
     // Apply audit ledger retention when the preset changes (soft-fail I/O).
     if audit_retention_flip {
         let days = settings.audit_ledger_retention_days;

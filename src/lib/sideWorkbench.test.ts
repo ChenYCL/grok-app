@@ -5,10 +5,12 @@ import {
   openSideTab,
   openSideTabFromPicker,
   closeSideTab,
+  closeActiveSideTab,
   closeOtherSideTabs,
   closeAllSideTabs,
   closeSideTabsToLeft,
   closeSideTabsToRight,
+  isCloseSideTabChord,
   setActiveSideTab,
   sidePickerOptions,
   SIDE_PICKER_EXCLUDED,
@@ -114,6 +116,70 @@ describe("openSideTab / close / activate", () => {
     s = closeSideTab(s, id);
     expect(s.tabs).toHaveLength(1);
     expect(activeSideTab(s)?.kind).toBe("browser");
+  });
+
+  it("closeActiveSideTab closes the focused tab", () => {
+    let s = emptySideWorkbenchState();
+    s = openSideTab(s, "file", { path: "/a", id: "a" });
+    s = openSideTab(s, "browser", { url: "https://b", id: "b" });
+    // open prepends → [b, a], active b
+    expect(s.activeId).toBe("b");
+    s = closeActiveSideTab(s);
+    expect(s.tabs.map((t) => t.id)).toEqual(["a"]);
+    expect(s.activeId).toBe("a");
+    s = closeActiveSideTab(s);
+    expect(s.tabs).toEqual([]);
+    expect(s.activeId).toBeNull();
+    // empty strip is a no-op
+    expect(closeActiveSideTab(s)).toEqual(s);
+  });
+
+  it("isCloseSideTabChord matches mod+w without alt/shift", () => {
+    expect(
+      isCloseSideTabChord({
+        key: "w",
+        metaKey: true,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(true);
+    expect(
+      isCloseSideTabChord({
+        key: "W",
+        metaKey: false,
+        ctrlKey: true,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(true);
+    expect(
+      isCloseSideTabChord({
+        key: "w",
+        metaKey: true,
+        ctrlKey: false,
+        altKey: true,
+        shiftKey: false,
+      }),
+    ).toBe(false);
+    expect(
+      isCloseSideTabChord({
+        key: "w",
+        metaKey: true,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: true,
+      }),
+    ).toBe(false);
+    expect(
+      isCloseSideTabChord({
+        key: "w",
+        metaKey: false,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(false);
   });
 
   it("toggles expanded", () => {

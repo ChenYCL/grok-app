@@ -113,6 +113,7 @@ export const enCore = {
   "shortcuts.sideFiles": "Side workbench · Files",
   "shortcuts.sideBrowser": "Side workbench · Browser",
   "shortcuts.sideTerminal": "Side workbench · Terminal",
+  "shortcuts.closeSideTab": "Close side tab (window when none open)",
   "shortcuts.sidebarSessionNav": "Next / previous chat in sidebar (focus in list)",
   "shortcuts.doctor": "Doctor",
   "shortcuts.liveVoice": "Start Live Voice",

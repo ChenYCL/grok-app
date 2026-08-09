@@ -50,6 +50,7 @@ import { loadStopAllSkipConfirmPref } from "@/lib/stopAllSkipConfirmPref";
 import { detectAppPlatform, revealInOsLabel } from "@/lib/appPlatform";
 import {
   APP_CLOSE_REQUESTED_EVENT,
+  APP_CLOSE_TAB_OR_WINDOW_EVENT,
   loadAlwaysQuitWithoutAskingPref,
   shouldConfirmQuit
 } from "@/lib/confirmQuit";
@@ -867,6 +868,7 @@ import {
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import { EnvInfoButton } from "@/components/side-workbench/EnvInfoButton";
 import {
+  closeActiveSideTab,
   emptySideWorkbenchState,
   openSideTab,
   openSideTabFromPicker,
@@ -1270,6 +1272,8 @@ export function AppWorkbench() {
   const [sideWorkbench, setSideWorkbench] = useState<SideWorkbenchState>(
     emptySideWorkbenchState,
   );
+  const sideWorkbenchRef = useRef(sideWorkbench);
+  sideWorkbenchRef.current = sideWorkbench;
   /**
    * When side is expanded: optional bottom-docked compressed composer (icon toggle).
    * Resets whenever expand ends.
@@ -13142,6 +13146,52 @@ export function AppWorkbench() {
       unlisten?.();
     };
   }, [requestAppQuit]);
+
+  /**
+   * Host menu ⌘W / Ctrl+W (replaces native Close Window). Close the active
+   * side tab when the strip has any; otherwise close the window (tray / quit).
+   */
+  const closeSideTabOrWindow = useCallback(() => {
+    const s = sideWorkbenchRef.current;
+    // Only steal ⌘W when the side pane is visible with open tabs. Collapsed
+    // leftover tabs must not block closing the window.
+    if (s.tabs.length > 0 && !layoutRef.current.asideCollapsed) {
+      const next = closeActiveSideTab(s);
+      setSideWorkbench(next);
+      if (next.tabs.length === 0) {
+        closeAsidePane();
+      }
+      return;
+    }
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().close();
+      } catch (e) {
+        console.warn("close window after empty side tabs failed", e);
+      }
+    })();
+  }, [closeAsidePane]);
+
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        unlisten = await api.listen(APP_CLOSE_TAB_OR_WINDOW_EVENT, () => {
+          closeSideTabOrWindow();
+        });
+        if (cancelled) unlisten();
+      } catch (e) {
+        console.warn("close-tab-or-window listener failed", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [closeSideTabOrWindow]);
 
   const error = session.lastError;
   const errorBanner = useMemo(

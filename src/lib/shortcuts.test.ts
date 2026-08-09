@@ -105,6 +105,18 @@ describe("shortcuts catalog", () => {
     ).toBe(false);
   });
 
+  it("lists close side tab as display-only ⌘W / Ctrl+W", () => {
+    const row = SHORTCUTS.find((s) => s.id === "closeSideTab");
+    expect(row).toBeDefined();
+    expect(row!.labelKey).toBe("shortcuts.closeSideTab");
+    expect(row!.group).toBe("navigation");
+    expect(row!.mac).toMatch(/⌘.*W|W.*⌘/i);
+    expect(row!.win.toLowerCase()).toMatch(/ctrl/);
+    expect(
+      (GLOBAL_MOD_SHORTCUT_IDS as readonly string[]).includes("closeSideTab"),
+    ).toBe(false);
+  });
+
   it("lists default send as plain Enter", () => {
     const row = SHORTCUTS.find((s) => s.id === "send");
     expect(row).toBeDefined();

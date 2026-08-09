@@ -39,6 +39,8 @@ mod agent_workflows;
 
 mod agents_catalog;
 
+mod app_menu;
+
 mod app_update;
 
 mod audit_ledger;
@@ -364,6 +366,9 @@ pub fn run() {
 
         // Force exit: `app_force_quit`.
 
+        .on_menu_event(|app, event| {
+            app_menu::handle_menu_event(app, event);
+        })
         .on_window_event(|window, event| {
             use tauri::{Emitter, Manager, WindowEvent};
 
@@ -566,6 +571,12 @@ pub fn run() {
                         tracing::warn!(error = %e, "relay stream proxy base_url repair failed");
                     }
                 });
+            }
+
+            // App menu: own ⌘W / Ctrl+W so FE can close side tabs before the window.
+            // Replaces Tauri's default PredefinedMenuItem::close_window binding.
+            if let Err(e) = app_menu::install(app.handle()) {
+                tracing::warn!("app menu setup: {e}");
             }
 
             // Menu-bar / system tray — logo.svg tray icon (not dock app icon)

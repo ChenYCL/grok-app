@@ -75,6 +75,8 @@ export const DEFAULT_SHORTCUT_CHORDS: Record<ShortcutId, ChordString> = {
   sideBrowser: "mod+t",
   /** Terminal — common editor binding (VS Code / Cursor). */
   sideTerminal: "mod+`",
+  /** Close active side tab when open; otherwise window close (host). Display-only. */
+  closeSideTab: "mod+w",
   // Display-only (j/k pair); App handles when focus is in the sidebar list.
   sidebarSessionNav: "j",
   settings: "mod+,",
@@ -396,10 +398,12 @@ export function buildEffectiveChordMap(
  * collision in the App mod-key path:
  * - `sidebarSessionNav` — j/k when the sidebar list is focused (not a single global chord)
  * - `send` — Composer Enter / mod-enter preference (not remappable here)
+ * - `closeSideTab` — SideWorkbench ⌘W only while tabs exist (else window close)
  */
 export const CHORD_CONFLICT_IGNORE_IDS: ReadonlySet<ShortcutId> = new Set([
   "sidebarSessionNav",
   "send",
+  "closeSideTab",
 ]);
 
 /** One normalized chord shared by two or more catalog ids. */

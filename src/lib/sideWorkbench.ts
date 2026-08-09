@@ -292,6 +292,33 @@ export function closeSideTab(
 }
 
 /**
+ * Close the active side tab (falls back to the first tab).
+ * No-op when the strip is empty.
+ */
+export function closeActiveSideTab(
+  state: SideWorkbenchState,
+): SideWorkbenchState {
+  const id = state.activeId ?? state.tabs[0]?.id;
+  if (!id) return state;
+  return closeSideTab(state, id);
+}
+
+/**
+ * ⌘W / Ctrl+W — close the active side tab when the strip has tabs
+ * (browser-style; empty strip leaves the chord for window close).
+ */
+export function isCloseSideTabChord(e: {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): boolean {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return false;
+  return e.key === "w" || e.key === "W";
+}
+
+/**
  * Keep only `tabId`; close every other tab.
  * No-op when tab missing or already alone.
  */

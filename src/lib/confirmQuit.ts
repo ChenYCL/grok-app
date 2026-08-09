@@ -17,6 +17,13 @@ export const DEFAULT_ALWAYS_QUIT_WITHOUT_ASKING = false;
 /** Event from Host when the user requests a real app exit (not hide-to-tray). */
 export const APP_CLOSE_REQUESTED_EVENT = "app://close-requested";
 
+/**
+ * Event from Host when File/Window → Close (⌘W / Ctrl+W) is chosen.
+ * FE closes an open side tab when present; otherwise calls window.close().
+ * Replaces native PredefinedMenuItem::close_window so tabs win over the window.
+ */
+export const APP_CLOSE_TAB_OR_WINDOW_EVENT = "app://close-tab-or-window";
+
 /** Minimal storage surface so unit tests need no jsdom. */
 export interface AlwaysQuitWithoutAskingStorage {
   getItem(key: string): string | null;

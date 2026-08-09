@@ -10,12 +10,14 @@ import type { PlanReviewState } from "@/lib/planBody";
 import type { SessionFileChange } from "@/lib/sessionChanges";
 import {
   activeSideTab,
+  closeActiveSideTab,
   closeAllSideTabs,
   closeOtherSideTabs,
   closeSideTab,
   closeSideTabsToLeft,
   closeSideTabsToRight,
   emptySideWorkbenchState,
+  isCloseSideTabChord,
   openSideTab,
   openSideTabFromPicker,
   setActiveSideTab,
@@ -24,6 +26,8 @@ import {
   type SidePickerKind,
   type SideWorkbenchState,
 } from "@/lib/sideWorkbench";
+import { isShortcutRecordingActive } from "@/lib/shortcutRemap";
+import * as api from "@/lib/api";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import { FilesWorkspace } from "./FilesWorkspace";
 import { PlanTab } from "./PlanTab";
@@ -103,6 +107,27 @@ export function SideWorkbench({
     },
     [setState, onCloseSide],
   );
+
+  /**
+   * Browser / non-Tauri preview: ⌘W closes the active side tab.
+   * In the desktop host, File → Close (⌘W) is owned by the native app menu
+   * and routed via `app://close-tab-or-window` (see AppWorkbench) so the OS
+   * does not close the window before JS can run.
+   */
+  useEffect(() => {
+    if (!paneActive || api.isTauri()) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
+      if (isShortcutRecordingActive()) return;
+      if (!isCloseSideTabChord(e)) return;
+      if (state.tabs.length === 0) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      applyCloseState(closeActiveSideTab(state));
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [paneActive, state, applyCloseState]);
 
   const active = useMemo(() => activeSideTab(state), [state]);
   const hasFileTabs = state.tabs.some((t) => t.kind === "file");
