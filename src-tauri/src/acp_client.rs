@@ -3621,21 +3621,12 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let title_l = title.to_ascii_lowercase();
-            let kind_l = k.to_ascii_lowercase();
-            if status == "completed"
-                && (title_l.contains("compact")
-                    || kind_l.contains("compact")
-                    || tool_call_id.to_ascii_lowercase().contains("compact"))
-            {
-                out.push(AcpEvent::ContextCompact {
-                    trigger: "manual".into(),
-                    tokens_before: None,
-                    tokens_after: None,
-                    summary_preview: None,
-                    note: Some(title.clone()),
-                });
-            }
+            // Never treat tool titles as compaction. Shell/scripts often embed
+            // the word "compact" (e.g. `print("=== ALL POSTS compact ===")`) and
+            // tool_call_update titles are the full command — substring matching
+            // caused false context_compact|manual journal rows while CLI
+            // compactionCount stayed 0. Real compact is sessionUpdate
+            // auto_compact_completed / context_compact (+ tokens_before/after).
             out.push(AcpEvent::ToolCall {
                 tool_call_id,
                 title,
@@ -3761,6 +3752,7 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
             if let Some(ev) = parse_usage_update(kind, update) {
                 out.push(ev);
             }
+            // Structured compact only: before/after counters (not free-text titles).
             if update.get("tokens_before").is_some()
                 || update.get("tokensBefore").is_some()
                 || update.get("tokens_after").is_some()
@@ -3779,27 +3771,7 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                     return out;
                 }
             }
-            let title = update
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            if title.contains("compact") {
-                out.push(AcpEvent::ContextCompact {
-                    trigger: if title.contains("auto") {
-                        "auto".into()
-                    } else {
-                        "manual".into()
-                    },
-                    tokens_before: None,
-                    tokens_after: None,
-                    summary_preview: None,
-                    note: update
-                        .get("title")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                });
-            }
+            // Do not invent ContextCompact from title text containing "compact".
         }
     }
 
@@ -4549,6 +4521,83 @@ mod context_tokens_tests {
             _ => None,
         });
         assert_eq!(compact, Some((Some(402603), Some(34179), "auto".to_string())));
+    }
+
+    /// Regression: session 08dddbec — tool_call_update title carried a python
+    /// script with `print("=== ALL POSTS compact ===")`. Host used to emit
+    /// ContextCompact(manual) and write false journal markers while CLI
+    /// compactionCount stayed 0 and window was only ~26% full.
+    #[test]
+    fn decode_tool_title_with_compact_word_is_not_context_compact() {
+        let title = "[bg] python3 << 'PY'\n\
+#!/usr/bin/env python3\n\
+# Re-fetch and keep ONLY tweets authored by target rest_id\n\
+print(\"\\n=== ALL POSTS compact ===\")\n\
+for t in posts:\n\
+    print(t)\n\
+PY";
+        let evs = decode_session_update(&json!({
+            "sessionId": "019fe423-886c-7951-b4f6-49c26b7276b7",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call-61d634aa-c1ae-424d-bc82-750e5377b990-27",
+                "status": "completed",
+                "kind": "execute",
+                "title": title
+            }
+        }));
+        assert!(
+            evs.iter().all(|e| !matches!(e, AcpEvent::ContextCompact { .. })),
+            "tool title containing the word compact must not be ContextCompact: {evs:?}"
+        );
+        assert!(
+            evs.iter().any(|e| matches!(
+                e,
+                AcpEvent::ToolCall { status, .. } if status == "completed"
+            )),
+            "expected ToolCall completed: {evs:?}"
+        );
+    }
+
+    #[test]
+    fn decode_unknown_update_title_with_compact_word_is_not_context_compact() {
+        let evs = decode_session_update(&json!({
+            "sessionId": "s1",
+            "update": {
+                "sessionUpdate": "mystery_status",
+                "title": "Execute print('ALL POSTS compact') finished"
+            }
+        }));
+        assert!(
+            evs.iter().all(|e| !matches!(e, AcpEvent::ContextCompact { .. })),
+            "unknown update title must not invent compact: {evs:?}"
+        );
+    }
+
+    #[test]
+    fn decode_unknown_update_with_token_counters_still_emits_context_compact() {
+        let evs = decode_session_update(&json!({
+            "sessionId": "s1",
+            "update": {
+                "sessionUpdate": "custom_compaction_done",
+                "tokens_before": 100_000,
+                "tokens_after": 20_000,
+                "trigger": "manual"
+            }
+        }));
+        let compact = evs.iter().find_map(|e| match e {
+            AcpEvent::ContextCompact {
+                tokens_before,
+                tokens_after,
+                trigger,
+                ..
+            } => Some((*tokens_before, *tokens_after, trigger.clone())),
+            _ => None,
+        });
+        assert_eq!(
+            compact,
+            Some((Some(100_000), Some(20_000), "manual".to_string()))
+        );
     }
 }
 
