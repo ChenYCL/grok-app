@@ -202,6 +202,9 @@ pub(crate) struct LiveSession {
     /// optionIds so UI fallbacks like `always-allow` never override a
     /// tool-scoped id such as `allow-always-command`).
     pub(super) pending_permission_options: Option<serde_json::Value>,
+    /// Tool name for the pending permission (empty-options session fallback
+    /// needs family-aware wire ids — shell → allow-always-command, #542).
+    pub(super) pending_permission_tool_name: Option<String>,
     /// Last user/agent activity (send, stream, permission, connect).
     pub(super) last_activity: Instant,
     /// Last stream chunk or tool event (I06 stall watchdog). Permission waits do not update this.

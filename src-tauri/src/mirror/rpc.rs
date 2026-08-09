@@ -289,6 +289,8 @@ pub async fn dispatch(
                 .ok_or_else(|| RpcError::bad_params("decision required"))?;
             let option_id = param_string(&params, &["optionId", "option_id"]);
             let scope_key = param_string(&params, &["scopeKey", "scope_key", "scope"]);
+            let client_options = params.get("options").cloned();
+            let client_tool = param_string(&params, &["toolName", "tool_name"]);
             let snap = mgr
                 .resolve_permission(
                     app,
@@ -297,6 +299,8 @@ pub async fn dispatch(
                     option_id,
                     scope_key,
                     param_string(&params, &["sessionId", "session_id"]),
+                    client_options,
+                    client_tool,
                 )
                 .await
                 .map_err(RpcError::host)?;

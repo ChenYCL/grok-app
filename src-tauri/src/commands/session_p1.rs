@@ -264,9 +264,21 @@ pub async fn session_resolve_permission(
     option_id: Option<String>,
     scope_key: Option<String>,
     session_id: Option<String>,
+    // Optional UI options snapshot for wire-id coerce when Host pending is empty (#542).
+    options: Option<serde_json::Value>,
+    tool_name: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.resolve_permission(app, rpc_id, decision, option_id, scope_key, session_id)
-        .await
+    mgr.resolve_permission(
+        app,
+        rpc_id,
+        decision,
+        option_id,
+        scope_key,
+        session_id,
+        options,
+        tool_name,
+    )
+    .await
 }
 
 #[tauri::command]

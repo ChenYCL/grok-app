@@ -3345,13 +3345,44 @@ pub fn decode_permission_request(rpc_id: u64, params: &Value) -> AcpEvent {
         .and_then(|v| v.as_str())
         .unwrap_or("Tool permission")
         .to_string();
+    // Prefer real tool name over ACP kind labels like "execute" / "read".
+    // Kind alone breaks tool-scoped session fallbacks (#542 shell →
+    // allow-always-command).
     let tool_name = tool_call
-        .get("kind")
+        .pointer("/_meta/x.ai/tool/name")
+        .or_else(|| tool_call.pointer("/_meta/tool/name"))
         .or_else(|| tool_call.get("name"))
         .and_then(|v| v.as_str())
-        .unwrap_or("tool")
-        .to_string();
-    let options = params.get("options").cloned().unwrap_or(json!([]));
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty() && s != "tool")
+        .or_else(|| {
+            // Title is often the tool id for Grok Build tools.
+            let t = title.trim();
+            if !t.is_empty()
+                && t != "Tool permission"
+                && !t.contains(' ')
+                && t.contains('_')
+            {
+                Some(t.to_string())
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            tool_call
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "tool".into());
+    // Options are usually top-level; accept a few alternate shapes so empty
+    // lists don't force UI/Host generic fallbacks that CLI rejects (#542).
+    let options = params
+        .get("options")
+        .cloned()
+        .or_else(|| params.get("permissionOptions").cloned())
+        .or_else(|| tool_call.get("options").cloned())
+        .unwrap_or_else(|| json!([]));
     AcpEvent::PermissionRequest {
         rpc_id,
         tool_call_id,

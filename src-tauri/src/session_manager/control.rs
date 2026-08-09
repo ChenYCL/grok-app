@@ -225,6 +225,7 @@ impl SessionManager {
         let row = Self::pending_gate_invalidation_row(s)?;
         s.pending_permission_rpc_id = None;
         s.pending_permission_options = None;
+        s.pending_permission_tool_name = None;
         s.pending_plan_rpc_id = None;
         s.pending_ask_user_rpc_id = None;
         Some(row)
@@ -286,6 +287,7 @@ impl SessionManager {
                 s.pending_ask_user_rpc_id = None;
                 s.pending_permission_rpc_id = None;
                 s.pending_permission_options = None;
+                s.pending_permission_tool_name = None;
                 s.provider_retry_attempt = 0;
                 s.provider_retry_aborted = false;
                 // Leave AwaitingPermission / Streaming so UI busy clears after recycle.
@@ -323,6 +325,7 @@ impl SessionManager {
             Self::maybe_flush_stream_journal(&mut s, true, false);
             s.pending_permission_rpc_id = None;
             s.pending_permission_options = None;
+            s.pending_permission_tool_name = None;
             s.pending_plan_rpc_id = None;
             s.pending_ask_user_rpc_id = None;
             s.prompt_in_flight = false;
@@ -567,9 +570,13 @@ impl SessionManager {
         option_id: Option<String>,
         scope: Option<String>,
         session_id: Option<String>,
+        // UI options snapshot when Host pending list is empty (#542).
+        client_options: Option<serde_json::Value>,
+        // UI tool name when Host pending tool was cleared (#542).
+        client_tool_name: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let target = self.resolve_target_session(session_id)?;
-        let (acp, empty_run, project_path, pending_options) = self
+        let (acp, empty_run, project_path, pending_options, tool_name) = self
             .with_session_mut(&target, |s| {
                 Self::touch_activity_locked(s);
                 // "allow_session" decision caches scope_key for H05 (works under Ask chip too)
@@ -586,9 +593,38 @@ impl SessionManager {
                 let opts = s.pending_permission_options.clone().unwrap_or_else(|| {
                     serde_json::json!([])
                 });
-                (s.acp.clone(), empty, s.project_path.clone(), opts)
+                let tool = s
+                    .pending_permission_tool_name
+                    .clone()
+                    .filter(|t| !t.is_empty())
+                    .or_else(|| {
+                        client_tool_name
+                            .as_ref()
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                    })
+                    .unwrap_or_default();
+                (s.acp.clone(), empty, s.project_path.clone(), opts, tool)
             })
             .ok_or("no session")?;
+
+        // Prefer Host-stored options; if empty, accept the UI snapshot so we
+        // can still coerce tool-scoped ids (shell allow-always-command, …).
+        let options = {
+            let host_nonempty = pending_options
+                .as_array()
+                .map(|a| !a.is_empty())
+                .unwrap_or(false);
+            if host_nonempty {
+                pending_options
+            } else if let Some(co) = client_options.filter(|v| {
+                v.as_array().map(|a| !a.is_empty()).unwrap_or(false)
+            }) {
+                co
+            } else {
+                pending_options
+            }
+        };
 
         if let Some(acp) = acp {
             // Dead agent after recycle/provider switch: refuse stale UI answers (#524).
@@ -605,17 +641,19 @@ impl SessionManager {
                     // generic fallback not published for this tool (e.g.
                     // `always-allow` vs shell `allow-always-command`).
                     // Otherwise CLI returns "unknown permission option" and
-                    // cancels the turn (session f4f2b156 / #523 follow-up).
-                    let wire = crate::permission::coerce_wire_option_id(
+                    // cancels the turn (#523 / #542).
+                    let wire = crate::permission::coerce_wire_option_id_for_tool(
                         other,
                         option_id.as_deref(),
-                        &pending_options,
+                        &options,
+                        &tool_name,
                     );
                     if option_id.as_deref() != Some(wire.as_str()) {
                         tracing::info!(
                             decision = %other,
                             client = ?option_id,
                             wire = %wire,
+                            tool = %tool_name,
                             "permission optionId coerced to CLI wire id"
                         );
                     }
@@ -628,6 +666,7 @@ impl SessionManager {
                 if s.pending_permission_rpc_id == Some(rpc_id) {
                     s.pending_permission_rpc_id = None;
                     s.pending_permission_options = None;
+                    s.pending_permission_tool_name = None;
                 }
             });
         } else {

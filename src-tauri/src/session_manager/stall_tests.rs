@@ -92,6 +92,7 @@ fn streaming_session(now: Instant, mut patch: impl FnMut(&mut LiveSession)) -> L
         pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,
             pending_permission_options: None,
+            pending_permission_tool_name: None,
         pending_ask_user_rpc_id: None,
         last_activity: now,
         last_stream_progress: now,

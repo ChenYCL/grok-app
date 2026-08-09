@@ -593,9 +593,52 @@ pub fn resolve_allow_once_option_id(options: &serde_json::Value) -> String {
         .unwrap_or_else(|| FALLBACK_ALLOW_ONCE.into())
 }
 
+/// When the ACP options list is missing/empty, guess a tool-scoped session id.
+/// Shell never publishes generic `always-allow` — only `allow-always-command`
+/// (#523 / #542). Sending the wrong fallback is treated as
+/// `unknown permission option` and cancels the turn.
+pub fn fallback_always_allow_for_tool(tool_name: &str) -> &'static str {
+    let t = tool_name.trim().to_ascii_lowercase();
+    // Normalize kind-ish labels from toolCall.kind (execute) and real tool names.
+    if t.contains("terminal")
+        || t.contains("bash")
+        || t.contains("shell")
+        || t == "execute"
+        || t == "run_terminal_command"
+        || t == "run-terminal-command"
+    {
+        return "allow-always-command";
+    }
+    if t.contains("web_fetch")
+        || t.contains("webfetch")
+        || t.contains("web-fetch")
+        || t == "fetch"
+    {
+        return "allow-always-domain";
+    }
+    if t.contains("mcp")
+        || t == "use_tool"
+        || t == "use-tool"
+        || t.starts_with("mcp_")
+        || t.starts_with("mcp-")
+    {
+        return "allow-always-mcp";
+    }
+    FALLBACK_ALWAYS_ALLOW
+}
+
 /// Resolve session / always-allow wire id (CLI uses `always-allow`, plus
 /// tool-scoped `allow-always-command` / `allow-always-mcp` / `allow-always-domain`).
 pub fn resolve_always_allow_option_id(options: &serde_json::Value) -> String {
+    resolve_always_allow_option_id_for_tool(options, "")
+}
+
+/// Like [`resolve_always_allow_option_id`] but tool-aware when the options list
+/// is empty (see [`fallback_always_allow_for_tool`]).
+pub fn resolve_always_allow_option_id_for_tool(
+    options: &serde_json::Value,
+    tool_name: &str,
+) -> String {
     pick_option_id(options, "allow_always")
         .or_else(|| pick_option_id(options, "always_allow"))
         .or_else(|| pick_option_id(options, "always-allow"))
@@ -608,7 +651,7 @@ pub fn resolve_always_allow_option_id(options: &serde_json::Value) -> String {
         // Shell / bash often use kind `allow_always_bash` with wire id
         // `allow-always-command` — exact kind match above misses the suffix.
         .or_else(|| pick_session_scoped_option_id(options))
-        .unwrap_or_else(|| FALLBACK_ALWAYS_ALLOW.into())
+        .unwrap_or_else(|| fallback_always_allow_for_tool(tool_name).into())
 }
 
 /// Scan options for session-scoped allow kinds/ids (`allow_always*`, `allow-always-*`).
@@ -695,10 +738,23 @@ pub fn wire_option_id_from_list(options: &serde_json::Value, option_id: &str) ->
 /// published `allow-always-command`, CLI rejects with
 /// `unknown permission option` and cancels the turn. Prefer the client id when
 /// it is on the options list; otherwise re-pick by decision from the list.
+///
+/// `tool_name` is used only when the options list is empty so session-allow
+/// can fall back to a tool-scoped wire id (#542).
 pub fn coerce_wire_option_id(
     decision: &str,
     client_option_id: Option<&str>,
     options: &serde_json::Value,
+) -> String {
+    coerce_wire_option_id_for_tool(decision, client_option_id, options, "")
+}
+
+/// Tool-aware variant of [`coerce_wire_option_id`] (#523 / #542).
+pub fn coerce_wire_option_id_for_tool(
+    decision: &str,
+    client_option_id: Option<&str>,
+    options: &serde_json::Value,
+    tool_name: &str,
 ) -> String {
     let client = client_option_id
         .map(str::trim)
@@ -712,7 +768,21 @@ pub fn coerce_wire_option_id(
 
     if let Some(ref id) = client {
         if !has_list {
-            // No options to validate against — keep client / legacy fallbacks.
+            // No options to validate against — rewrite known-generic session
+            // fallbacks to tool-scoped ids when we know the tool family.
+            let d = decision.trim().to_ascii_lowercase();
+            let is_session = matches!(
+                d.as_str(),
+                "allow_session" | "allow_for_session" | "allow_always" | "allow-always"
+            ) || id == FALLBACK_ALWAYS_ALLOW
+                || id == "allow-always"
+                || id == "allow_always";
+            if is_session {
+                let tool_fb = fallback_always_allow_for_tool(tool_name);
+                if tool_fb != FALLBACK_ALWAYS_ALLOW {
+                    return tool_fb.into();
+                }
+            }
             return id.clone();
         }
         if let Some(wire) = wire_option_id_from_list(options, id) {
@@ -725,7 +795,7 @@ pub fn coerce_wire_option_id(
     match decision {
         "deny" => resolve_reject_option_id(options),
         "allow_session" | "allow_for_session" | "allow_always" | "allow-always" => {
-            resolve_always_allow_option_id(options)
+            resolve_always_allow_option_id_for_tool(options, tool_name)
         }
         "allow_once" | "allow-once" | "allow" => resolve_allow_once_option_id(options),
         // Default allow path (unknown decision strings from older UI).
@@ -1151,6 +1221,53 @@ mod tests {
         assert_eq!(
             coerce_wire_option_id("deny", Some("reject-once"), &bash),
             "reject-once"
+        );
+    }
+
+    #[test]
+    fn empty_options_session_fallback_is_tool_scoped() {
+        let empty = serde_json::json!([]);
+        // #542: shell + empty options must not send generic always-allow.
+        assert_eq!(
+            coerce_wire_option_id_for_tool(
+                "allow_session",
+                Some("always-allow"),
+                &empty,
+                "run_terminal_command",
+            ),
+            "allow-always-command"
+        );
+        assert_eq!(
+            coerce_wire_option_id_for_tool(
+                "allow_session",
+                Some("always-allow"),
+                &empty,
+                "web_fetch",
+            ),
+            "allow-always-domain"
+        );
+        assert_eq!(
+            coerce_wire_option_id_for_tool(
+                "allow_session",
+                Some("always-allow"),
+                &empty,
+                "use_tool",
+            ),
+            "allow-always-mcp"
+        );
+        assert_eq!(
+            fallback_always_allow_for_tool("execute"),
+            "allow-always-command"
+        );
+        // Unknown tools still use the generic CLI session id.
+        assert_eq!(
+            coerce_wire_option_id_for_tool(
+                "allow_session",
+                Some("always-allow"),
+                &empty,
+                "search_replace",
+            ),
+            "always-allow"
         );
     }
 

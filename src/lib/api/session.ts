@@ -224,6 +224,10 @@ export async function sessionResolvePermission(args: {
   optionId?: string;
   scopeKey?: string;
   sessionId?: string | null;
+  /** Same options list as the permission bar — helps Host coerce wire ids (#542). */
+  options?: unknown;
+  /** Tool name from the permission payload (shell → allow-always-command, #542). */
+  toolName?: string | null;
 }): Promise<SessionSnapshot> {
   return invoke("session_resolve_permission", {
     rpcId: args.rpcId,
@@ -231,6 +235,8 @@ export async function sessionResolvePermission(args: {
     optionId: args.optionId ?? null,
     scopeKey: args.scopeKey ?? null,
     sessionId: args.sessionId ?? null,
+    options: args.options ?? null,
+    toolName: args.toolName ?? null,
   });
 }
 

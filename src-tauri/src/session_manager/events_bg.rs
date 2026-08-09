@@ -8,8 +8,8 @@ use uuid::Uuid;
 use crate::acp_client::{AcpEvent, PermissionOutcome, StreamKind};
 use crate::journal_throttle::is_paragraph_break;
 use crate::permission::{
-    extract_path_target, extract_shell_command, may_auto_allow, may_auto_deny,
-    resolve_allow_once_option_id, resolve_reject_option_id, scope_key,
+    coerce_wire_option_id_for_tool, extract_path_target, extract_shell_command, may_auto_allow,
+    may_auto_deny, resolve_reject_option_id, scope_key,
 };
 use crate::session_fsm::SessionState;
 use crate::store::{self, ChatMessageStored};
@@ -207,8 +207,13 @@ impl SessionManager {
                 };
                 if auto {
                     if let Some(acp) = acp {
-                        // Hyphenated CLI wire optionIds (#523).
-                        let option_id = resolve_allow_once_option_id(&options);
+                        // Hyphenated CLI wire optionIds (#523 / #542).
+                        let option_id = coerce_wire_option_id_for_tool(
+                            "allow_once",
+                            None,
+                            &options,
+                            &tool_name,
+                        );
                         let _ = acp
                             .respond_permission(rpc_id, PermissionOutcome::Selected { option_id })
                             .await;
@@ -258,6 +263,7 @@ impl SessionManager {
                         if let Some(s) = bg.get_mut(app_session_id) {
                             s.pending_permission_rpc_id = Some(rpc_id);
                             s.pending_permission_options = Some(options.clone());
+                            s.pending_permission_tool_name = Some(tool_name.clone());
                         }
                     }
                     let req = UiPermissionRequest {

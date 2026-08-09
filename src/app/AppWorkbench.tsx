@@ -13486,6 +13486,9 @@ export function AppWorkbench() {
           scopeKey: p.scopeKey,
           // Background turns raise permissions on their own ACP child.
           sessionId: p.sessionId,
+          // Host re-coerces wire optionIds from this list when pending is empty (#542).
+          options: p.options,
+          toolName: p.toolName,
         })
         .then(() => {
           clearPendingGates(p.sessionId);

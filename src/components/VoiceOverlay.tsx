@@ -245,6 +245,8 @@ export function VoiceOverlay({
           optionId,
           scopeKey: prompt.scopeKey || undefined,
           sessionId: prompt.sessionId,
+          options: prompt.options,
+          toolName: prompt.toolName,
         });
         setPendingPermission(null);
         if (isPermissionDenyDecision(decision)) {
