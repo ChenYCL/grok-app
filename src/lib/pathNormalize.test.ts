@@ -15,18 +15,22 @@ describe("isFusedQueryKeyPath", () => {
     // `?t=TOKEN&p=/Users/…` → `t:/Users/…`
     expect(isFusedQueryKeyPath("t:/Users/me/pic.png")).toBe(true);
     expect(isFusedQueryKeyPath("p:/Users/me/pic.png")).toBe(true);
-    expect(isFusedQueryKeyPath("a:/tmp/x.png")).toBe(true);
-    expect(isFusedQueryKeyPath("x:/var/folders/75/xx/a.jpg")).toBe(true);
-    expect(isFusedQueryKeyPath("q:/Users/me")).toBe(true);
     expect(isFusedQueryKeyPath("t:/Users/me/Library/Application Support/a.png")).toBe(true);
+    expect(isFusedQueryKeyPath("t:/tmp/x.png")).toBe(true);
+    expect(isFusedQueryKeyPath("p:/var/folders/75/xx/a.jpg")).toBe(true);
   });
 
-  it("keeps real Windows drive paths", () => {
+  it("keeps real Windows drive paths (incl. non-CDE volumes)", () => {
     expect(isFusedQueryKeyPath("C:\\Users\\me\\pic.png")).toBe(false);
     expect(isFusedQueryKeyPath("C:/Users/me/pic.png")).toBe(false);
     expect(isFusedQueryKeyPath("D:/data/project/x.png")).toBe(false);
     expect(isFusedQueryKeyPath("E:/media/1.jpg")).toBe(false);
+    expect(isFusedQueryKeyPath("F:/Users/me/a.mp4")).toBe(false);
+    expect(isFusedQueryKeyPath("G:/home/media/1.jpg")).toBe(false);
     expect(isFusedQueryKeyPath("C:/Program Files/App/a.png")).toBe(false);
+    // Unrelated single-letter prefixes are not media query keys.
+    expect(isFusedQueryKeyPath("a:/tmp/x.png")).toBe(false);
+    expect(isFusedQueryKeyPath("x:/var/folders/75/xx/a.jpg")).toBe(false);
   });
 
   it("keeps plain Unix paths and relatives", () => {

@@ -11,19 +11,81 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-08-09
+
+> **Highlight:** Tool/activity rail polish, reliable media paths, ChatCut/MCP longevity, proxy honesty, and Linux sandbox/AppImage fixes — plus a pre-release hardening pass on quit, media allowlist, and shell tool labels.
+>
+> **中文 · 亮点：** 工具活动轨体验统一、本地媒体路径更稳、ChatCut/MCP 长授权与代理更诚实、Linux 沙箱/AppImage 可诊断；发版前补强退出确认、媒体 allowlist 与 shell 工具文案。
+
+### Added
+- **Tool activity rail primary labels**: Unified type + call-arg labels for live and history tool steps (phase rail + bare rows); secondary expand shows fail hint / detail tail only. Host `session://tool` now carries `input` for accurate primary text.
+- **Thinking / work chrome timers**: Live **Thinking for…** / **Working for…** and finished **Thought for…** / **Worked for…** (中文：思考中/思考了、工作中/工作了) with duration; no gist-as-chrome.
+- **Project skills scan + tag**: `skills_list` merges `grok inspect` with disk scan of `{project}/.grok/skills/*/SKILL.md`; name collision prefers project; **[Project] / [项目]** badge on project rows only.
+- **Provider brand logos (optional)**: Appearance setting can show known provider logos in the route UI (local assets; no invented remote fetch of secrets).
+- **Network probe shows effective proxy**: Settings probe surfaces redacted decision/source/url so system vs manual vs env is honest.
+- **⌘W closes side workbench tabs first**: App menu owns Close so File preview + ⌘W closes the active side tab before the window (browser-style).
+
+**中文 · 新增**
+- **工具活动轨一级文案**：统一类型 + 调用参数（含 live `input`）；二级展开仅失败提示/详情尾。
+- **思考/工作阶段计时 chrome**：思考中/思考了、工作中/工作了 + 时长。
+- **项目 Skills 扫描与标签**：合并 inspect 与项目磁盘技能；同名项目优先；仅项目行显示 [项目]。
+- **可选供应商品牌 Logo**：外观设置可开。
+- **网络探测展示生效代理**：决策/来源/URL（凭证脱敏）。
+- **⌘W 先关侧栏标签**：有侧栏标签时优先关 tab，空 strip 再关窗。
+
+### Changed
+- **ChatCut editor opens in system browser by default**: Embedded WebView cannot reliably play ChatCut media; billing/editor use OS browser. Opt-in side Resources embedded browser remains for `forceEditorInApp`.
+- **Finished phase tools auto-collapse**: Default collapse when a step finishes unless the user manually expanded/collapsed; expand keys live on the parent so VirtualList remount does not wipe open state.
+- **Quit busy excludes stuck Connecting**: Dead reconnect loops no longer trap Windows users behind quit confirm; host 3s failsafe still covers a wedged WebView.
+- **Proxy resolution honesty**: System PAC/SOCKS/HTTP merge, `socks5h`, effective snapshot for Settings; Remote IM `grok -p` uses the same child proxy inject as ACP (#540).
+
+**中文 · 变更**
+- **ChatCut 默认系统浏览器打开编辑器**（内嵌 WebView 播不了媒体）；仍可 opt-in 应用内 Resources。
+- **完成的阶段工具默认折叠**（用户手动展开优先；expand 状态父级持有）。
+- **退出忙碌不计 Connecting 死循环**；WebView 卡死仍有 host 3s failsafe。
+- **代理解析更诚实**（PAC/SOCKS/系统；Remote IM 同 ACP 注入）（#540）。
+
 ### Fixed
-- **Empty “运行命令 / Run command” tool rows**: Multi-line shell titles (`Execute \`…\``) broke `tool_step` journal parsing so `input:` was buried and the activity rail showed bare type labels. Journal write now forces one-line title/input; parser rejoins multi-line Execute headers, scans for buried `input:`, and recovers command text from the title; primary labels also fall back to `Execute \`…\`` when structured input is missing.
-- **Main window size not remembered after resize**: `tauri-plugin-window-state` only flushed geometry on process Exit (plus hide-to-tray). Drag-resize now debounced-persists size/position/maximize to `.window-state.json` (~400ms after the last move), and quit-confirm also flushes immediately so force-quit mid-dialog keeps the resized frame.
-- **Linux AppImage black window docs + helper (#539)**: Document Wayland/AMD + bundled WebKitGTK `EGL_BAD_PARAMETER` black-screen class (host still runs). README (en/zh) troubleshooting prefers `.deb`/`.rpm` or system-WebKit extract path; `scripts/run-linux-appimage-system-webkit.sh` wraps the confirmed workaround. No Rust env-only change — reporter proved `WEBKIT_DISABLE_*` alone is insufficient against the AppImage-bundled WebKit.
-- **Linux sandbox / userns denial → `SANDBOX_BLOCKED` (#541)**: Classify bubblewrap `uid map: Permission denied` (Ubuntu 24.04 `apparmor_restrict_unprivileged_userns`) as a dedicated host error + error deck (sysctl fix or Sandbox → off), not generic crash/network. Doctor warns on Linux when the sysctl is restricted and sandbox ≠ off. README documents the caveat.
-- **Remote IM `grok -p` proxy (#540)**: Confirm headless Remote IM turns inject Settings proxy via `apply_to_tokio_command` (landed with proxy honesty batch; same path as ACP). Manual/system proxy now reaches `cli-chat-proxy` for Weixin and other channels.
+- **Busy quit confirm no longer force-exits after 3s**: When the FE successfully opens the busy-confirm dialog, host `pending_quit` is disarmed (still force-exits if the WebView never answers; second close still quits).
+- **Media HTTP path existence oracle closed**: Allowlist check runs before `exists()` so untrusted missing paths stay **403**, allowed-but-missing stay honest **404**.
+- **Windows multi-disk media paths**: Fused query-key rejection only targets media keys `t`/`p` (e.g. `t:/Users/…`); real drives like `F:/…` are no longer misclassified.
+- **Shell tool `rawInput` bare string**: `extract_tool_input` now reads string-form `rawInput` before object fields (was dead code after `as_object()?`).
+- **Empty “运行命令 / Run command” tool rows**: Multi-line shell titles (`Execute \`…\``) broke `tool_step` journal parsing so `input:` was buried. Journal write forces one-line title/input; parser recovers buried `input:` and title command snippets.
+- **Main window size not remembered after resize**: Debounced persist (~400ms) of size/position/maximize to `.window-state.json`; quit-confirm flushes immediately.
+- **False `context_compact` from tool titles**: Host no longer treats tool titles containing the word “compact” (e.g. python `print("… compact …")`) as compaction; only structured compact sessionUpdates + token counters count.
+- **Media mid-path false absolutes**: Bare extract no longer yields `/file.mp4` tails after space+CJK folders (`…/grok 美女视频/file.mp4`); fused `t:/Users/…` query keys rejected across pathNormalize / imageSrc / thumbs.
+- **Linux AppImage black window docs + helper (#539)**: Document Wayland/AMD + bundled WebKitGTK black-screen class; README prefers `.deb`/`.rpm` or system-WebKit extract; `scripts/run-linux-appimage-system-webkit.sh`.
+- **Linux sandbox / userns denial → `SANDBOX_BLOCKED` (#541)**: bwrap `uid map: Permission denied` → dedicated error + Doctor/README guidance (sysctl or Sandbox → off).
+- **Reconnect residual provider retries**: `session/load` / idle shared-process `retry_state` no longer journals NETWORK_PROVIDER or flips FSM without a host-owned turn.
+- **MCP silent OAuth refresh**: Persist refresh_token + refresh near expiry so ChatCut (and similar) stay authorized without re-browser every hour.
+- **Custom provider `context_window` TOML integer (#538)**: Write bare integer (not quoted string); heal legacy quoted values on list; docs note.
+- **Context compact banner long text wrap (#537)**: Long summary lines wrap instead of overflowing the chrome.
+- **Provider brand / proxy child env**: Direct mode strips proxy env; Use mode sets redacted logging; quit failsafe second-close force exit.
 
 **中文 · 修复**
-- **工具行只显示「运行命令」无具体内容**：多行 shell 标题（`Execute \`…\``）破坏 `tool_step` 日志解析，导致 `input:` 被埋在 body 里、活动条只剩类型标签。写入时强制 title/input 单行；解析端重拼多行 Execute 头、扫描埋藏的 `input:`、从标题恢复命令；一级文案在缺 input 时回退 `Execute \`…\``。
-- **主窗口调整大小后未及时记忆**：原先仅在进程退出（及隐藏到托盘）时落盘。拖拽缩放/移动后约 400ms 防抖写入 `.window-state.json`；退出确认前也会立即刷新，避免确认期间强退后恢复成旧尺寸。
-- **Linux AppImage 黑屏说明与脚本（#539）**：文档化 Wayland/AMD 下内置 WebKitGTK `EGL_BAD_PARAMETER` 全黑窗（宿主仍运行）；README 推荐 `.deb`/`.rpm` 或系统 WebKit 解压运行；提供 `scripts/run-linux-appimage-system-webkit.sh`。不在 Rust 里硬塞 env——对照实验已证明仅对 AppImage 内置 WebKit 设 `WEBKIT_DISABLE_*` 不够。
-- **Linux 沙箱 / 用户命名空间拦截 → `SANDBOX_BLOCKED`（#541）**：将 bwrap `uid map: Permission denied`（Ubuntu 24.04 AppArmor 限制）归类为独立错误与引导文案（sysctl 修复或沙箱 off），不再显示泛化崩溃/网络。Doctor 在 Linux 上于 sysctl 受限且沙箱非 off 时告警；README 补充说明。
-- **Remote IM `grok -p` 代理（#540）**：确认无头 Remote IM 与 ACP 一样注入 Settings 代理（已随 proxy honesty 合入）。手动/系统代理可到达 `cli-chat-proxy`，覆盖微信等通道。
+- **忙碌退出确认不再 3 秒后被强杀**：FE 弹出 confirm 时解除 pending_quit。
+- **媒体 HTTP 路径存在性侧信道关闭**：先 allowlist 再 exists。
+- **Windows 多盘媒体路径**：fused 仅 `t`/`p`。
+- **Shell bare-string `rawInput`**：字符串形态可被提取。
+- **工具行「运行命令」无内容**：多行 Execute 标题/input 解析修复。
+- **主窗口尺寸记忆**：缩放后防抖落盘。
+- **假 context_compact**：工具标题含 compact 字样不再当压缩。
+- **媒体 mid-path 假绝对路径与 fused `t:/`**。
+- **Linux AppImage 黑屏文档/脚本（#539）**。
+- **Linux 沙箱 userns → SANDBOX_BLOCKED（#541）**。
+- **重连残留 provider retry 不污染会话**。
+- **MCP 静默 OAuth refresh（ChatCut 长授权）**。
+- **`context_window` 写 bare TOML 整数（#538）**。
+- **上下文压缩横幅长文换行（#537）**。
+- **代理 Direct/Use 环境与二次关闭 failsafe**。
+
+### Notes
+- ChatCut embedded browser remains available only when explicitly forced in-app; default is system browser for media reliability.
+- Linux sandbox block is diagnostic guidance — App does not change host sysctl automatically.
+
+**中文 · 说明**
+- ChatCut 默认系统浏览器；仅强制 in-app 时走内嵌。
+- Linux 沙箱拦截只给引导，不自动改 sysctl。
 
 ## [0.2.11] - 2026-08-08
 

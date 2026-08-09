@@ -13085,6 +13085,11 @@ export function AppWorkbench() {
     };
     // Open immediately — never await network before showing quit UI.
     quitBusyDialogOpenRef.current = true;
+    // Host arms a 3s force-exit when CloseRequested fires. We answered and are
+    // waiting on the user: disarm so the confirm is not killed mid-read.
+    // Second close still force-quits (ref above); if FE dies after this, a
+    // further CloseRequested re-arms the failsafe.
+    void api.appCancelPendingQuit();
     setAppDialog({
       kind: "confirm",
       title: tr("app.quitBusy.title"),

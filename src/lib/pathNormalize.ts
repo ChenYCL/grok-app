@@ -46,14 +46,16 @@ const POSIX_ROOT_AFTER_DRIVE =
  *
  * Real Windows media keeps working:
  * - backslash paths (`C:\Users\…`) never match (forward-slash only);
- * - the canonical profile root `C:/Users/…` and common data drives
- *   (`d`, `e`) are allowed.
+ * - any real drive letter (`C`–`Z`, including `F:/…`) is never treated as fused;
+ * - only known media query keys `t` / `p` + a POSIX-root remainder count.
  */
 export function isFusedQueryKeyPath(s: string): boolean {
   const t = (s ?? "").trim();
   if (!/^[A-Za-z]:\//.test(t)) return false;
   const drive = t[0]!.toLowerCase();
-  if (drive === "c" || drive === "d" || drive === "e") return false;
+  // Media HTTP query keys only — never invent fused hits for real volumes
+  // (`F:/media/…`, `G:/Users/…` on multi-disk Windows).
+  if (drive !== "t" && drive !== "p") return false;
   const rest = t.slice(2).replace(/^\/+/, "");
   return POSIX_ROOT_AFTER_DRIVE.test(rest);
 }

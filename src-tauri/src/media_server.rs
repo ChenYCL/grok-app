@@ -255,8 +255,14 @@ async fn media_get(
     }
     let path = PathBuf::from(path_raw);
 
-    // Missing files are 404 (not found), not 403 (path_scope denial) — so the
-    // frontend can tell “file gone” from “not allowed” and never blames a
+    // Allowlist BEFORE exists() — never leak path existence outside trusted
+    // roots (404 vs 403 oracle). `is_allowed` works without the file on disk.
+    if !crate::path_scope::is_allowed(&path) {
+        tracing::warn!(path = %path.display(), "media server: path not allowed");
+        return text_status_cors(StatusCode::FORBIDDEN, "path not allowed", acao);
+    }
+
+    // Allowed but missing → honest 404 (not 403), so the UI does not blame a
     // corrupt blob for an allowlist failure.
     if !path.exists() {
         return text_status_cors(StatusCode::NOT_FOUND, "file not found", acao);
@@ -660,6 +666,21 @@ mod tests {
         assert_eq!(res.status(), 404);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn outside_allowlist_is_403_even_when_missing() {
+        // No existence oracle: untrusted missing paths stay 403 (not 404).
+        let missing = std::env::temp_dir().join(format!(
+            "grok-media-untrusted-missing-{}/nope.png",
+            uuid::Uuid::new_v4()
+        ));
+        // Do NOT grant_path — outside allowlist.
+        let handle = start().await.expect("start");
+        let url = url_for_path(&handle.endpoint(), &missing.to_string_lossy());
+        let client = reqwest::Client::new();
+        let res = client.get(&url).send().await.expect("get");
+        assert_eq!(res.status(), 403);
     }
 
     #[test]

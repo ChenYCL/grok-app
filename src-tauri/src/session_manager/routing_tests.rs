@@ -197,6 +197,20 @@ fn session_load_replay_gate_matches_prompt_in_flight() {
 }
 
 #[test]
+fn extract_tool_input_accepts_bare_string_raw_input() {
+    // Shell wrappers may send rawInput as a plain string (not an object).
+    let bare = serde_json::json!({ "rawInput": "ls -la /tmp" });
+    assert_eq!(
+        extract_tool_input(&bare).as_deref(),
+        Some("ls -la /tmp")
+    );
+    let obj = serde_json::json!({ "rawInput": { "command": "pwd" } });
+    assert_eq!(extract_tool_input(&obj).as_deref(), Some("pwd"));
+    let empty = serde_json::json!({ "rawInput": "   " });
+    assert_eq!(extract_tool_input(&empty), None);
+}
+
+#[test]
 fn provider_retry_abort_skips_idle_and_connecting_reconnect() {
     // Diagnostic 65fa7759: session/load residual retry_state while Connecting/Ready
     // must not write NETWORK_PROVIDER or fail_with without a host turn.

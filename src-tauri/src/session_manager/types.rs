@@ -558,6 +558,14 @@ pub(super) struct ToolIdentity {
 /// (`rawInput` from the start notification).
 pub(crate) fn extract_tool_input(raw: &serde_json::Value) -> Option<String> {
     let ri = raw.get("rawInput").or_else(|| raw.get("raw_input"))?;
+    // Bare string first — some shell wrappers send `rawInput: "ls -la"`.
+    // Must run before `as_object()?` or the string branch is dead code.
+    if let Some(s) = ri.as_str() {
+        let t = s.trim();
+        if !t.is_empty() && t != "null" {
+            return Some(t.to_string());
+        }
+    }
     let obj = ri.as_object()?;
     const ORDER: [&str; 11] = [
         "target_file",
@@ -580,13 +588,6 @@ pub(crate) fn extract_tool_input(raw: &serde_json::Value) -> Option<String> {
                     return Some(t.to_string());
                 }
             }
-        }
-    }
-    // rawInput may be a bare string (some shell wrappers).
-    if let Some(s) = ri.as_str() {
-        let t = s.trim();
-        if !t.is_empty() && t != "null" {
-            return Some(t.to_string());
         }
     }
     None
