@@ -2828,6 +2828,8 @@ export function formatTurnErrorBody(
 
   // Infer codes from common agent/host phrases when payload lacks a code.
   // Map only host AgentErrorCode values into the typed bubble path below.
+  // SANDBOX_BLOCKED is already returned above via errorCopyFromDeck — do not
+  // re-list it here (TS narrows it out of the deckish union after the return).
   if (!code) {
     if (
       deckish === "CONNECT_FAILED" ||
@@ -2836,8 +2838,7 @@ export function formatTurnErrorBody(
       deckish === "NETWORK_PROVIDER" ||
       deckish === "AGENT_CRASHED" ||
       deckish === "PROCESS_LIMIT" ||
-      deckish === "CLI_TOO_OLD" ||
-      deckish === "SANDBOX_BLOCKED"
+      deckish === "CLI_TOO_OLD"
     ) {
       code = deckish;
     } else if (
