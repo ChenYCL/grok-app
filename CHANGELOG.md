@@ -13,9 +13,13 @@ See `docs/llm-wiki/release.md`.
 
 ### Fixed
 - **Linux AppImage black window docs + helper (#539)**: Document Wayland/AMD + bundled WebKitGTK `EGL_BAD_PARAMETER` black-screen class (host still runs). README (en/zh) troubleshooting prefers `.deb`/`.rpm` or system-WebKit extract path; `scripts/run-linux-appimage-system-webkit.sh` wraps the confirmed workaround. No Rust env-only change — reporter proved `WEBKIT_DISABLE_*` alone is insufficient against the AppImage-bundled WebKit.
+- **Linux sandbox / userns denial → `SANDBOX_BLOCKED` (#541)**: Classify bubblewrap `uid map: Permission denied` (Ubuntu 24.04 `apparmor_restrict_unprivileged_userns`) as a dedicated host error + error deck (sysctl fix or Sandbox → off), not generic crash/network. Doctor warns on Linux when the sysctl is restricted and sandbox ≠ off. README documents the caveat.
+- **Remote IM `grok -p` proxy (#540)**: Confirm headless Remote IM turns inject Settings proxy via `apply_to_tokio_command` (landed with proxy honesty batch; same path as ACP). Manual/system proxy now reaches `cli-chat-proxy` for Weixin and other channels.
 
 **中文 · 修复**
 - **Linux AppImage 黑屏说明与脚本（#539）**：文档化 Wayland/AMD 下内置 WebKitGTK `EGL_BAD_PARAMETER` 全黑窗（宿主仍运行）；README 推荐 `.deb`/`.rpm` 或系统 WebKit 解压运行；提供 `scripts/run-linux-appimage-system-webkit.sh`。不在 Rust 里硬塞 env——对照实验已证明仅对 AppImage 内置 WebKit 设 `WEBKIT_DISABLE_*` 不够。
+- **Linux 沙箱 / 用户命名空间拦截 → `SANDBOX_BLOCKED`（#541）**：将 bwrap `uid map: Permission denied`（Ubuntu 24.04 AppArmor 限制）归类为独立错误与引导文案（sysctl 修复或沙箱 off），不再显示泛化崩溃/网络。Doctor 在 Linux 上于 sysctl 受限且沙箱非 off 时告警；README 补充说明。
+- **Remote IM `grok -p` 代理（#540）**：确认无头 Remote IM 与 ACP 一样注入 Settings 代理（已随 proxy honesty 合入）。手动/系统代理可到达 `cli-chat-proxy`，覆盖微信等通道。
 
 ## [0.2.11] - 2026-08-08
 

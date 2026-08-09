@@ -55,6 +55,8 @@ export type ErrorDeckCode =
   | "CONNECT_FAILED"
   | "PROCESS_LIMIT"
   | "CLI_TOO_OLD"
+  /** Linux bubblewrap / unprivileged user-namespace restriction (#541). */
+  | "SANDBOX_BLOCKED"
   | "TURN_TIMEOUT"
   | "AGENT_DISCONNECTED"
   | "STREAM_STALL"
@@ -191,6 +193,14 @@ const DECK: Record<ErrorDeckCode, DeckSpec> = {
     secondaryId: "open_doctor",
     secondaryLabel: "error.action.openDoctor",
   },
+  SANDBOX_BLOCKED: {
+    problem: "error.deck.sandbox.problem",
+    cause: "error.deck.sandbox.cause",
+    primaryId: "open_runtime",
+    primaryLabel: "error.action.openRuntime",
+    secondaryId: "open_doctor",
+    secondaryLabel: "error.action.openDoctor",
+  },
   TURN_TIMEOUT: {
     problem: "error.deck.timeout.problem",
     cause: "error.deck.timeout.cause",
@@ -298,6 +308,7 @@ const AGENT_DECK_CODES: ErrorDeckCode[] = [
   "CONNECT_FAILED",
   "PROCESS_LIMIT",
   "CLI_TOO_OLD",
+  "SANDBOX_BLOCKED",
   "WORKSPACE_UNTRUSTED",
   "PROJECT_MISSING",
   "PERMISSION_DENIED",
@@ -317,6 +328,36 @@ export function deckCodeFromAgent(
     return code as ErrorDeckCode;
   }
   return "GENERIC";
+}
+
+/**
+ * Linux bubblewrap / unprivileged user-namespace denial (Ubuntu 24.04 AppArmor).
+ * Keep markers specific — bare "permission denied" is tool/FS, not sandbox.
+ */
+export function looksLikeLinuxSandboxBlock(
+  raw: string | null | undefined,
+): boolean {
+  const s = (raw ?? "").toLowerCase();
+  if (!s.trim()) return false;
+  if (s.includes("bwrap")) return true;
+  if (s.includes("setting up uid map")) return true;
+  if (
+    s.includes("uid map") &&
+    (s.includes("permission denied") || s.includes("operation not permitted"))
+  ) {
+    return true;
+  }
+  if (s.includes("apparmor_restrict_unprivileged_userns")) return true;
+  if (
+    s.includes("unprivileged user namespace") ||
+    (s.includes("user namespace") &&
+      (s.includes("permission denied") ||
+        s.includes("operation not permitted") ||
+        s.includes("restricted")))
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -385,6 +426,11 @@ export function isAuthDeckCode(code: ErrorDeckCode | string | null | undefined):
 export function classifyErrorMessage(raw: string | null | undefined): ErrorDeckCode {
   const s = (raw ?? "").toLowerCase();
   if (!s.trim()) return "GENERIC";
+
+  // ── Linux sandbox / userns (before bare "permission denied") ──
+  if (looksLikeLinuxSandboxBlock(raw) || s.includes("sandbox_blocked")) {
+    return "SANDBOX_BLOCKED";
+  }
 
   // ── App project gates (setLocalError from trust / path / select) ──
   if (
@@ -570,6 +616,15 @@ export function resolveErrorDeckCode(
   message?: string | null,
   opts?: ErrorDeckResolveOpts,
 ): ErrorDeckCode {
+  // bwrap/userns text wins even when host still emits AGENT_CRASHED / NETWORK_PROVIDER
+  // (stderr may sit after "stream closed" and previously looked like a network flap).
+  if (
+    looksLikeLinuxSandboxBlock(message) ||
+    looksLikeLinuxSandboxBlock(code) ||
+    code === "SANDBOX_BLOCKED"
+  ) {
+    return "SANDBOX_BLOCKED";
+  }
   const fromCode = deckCodeFromAgent(code, opts);
   // Host often emits plain AUTH_FAILED — refine with message + active route.
   if (fromCode === "AUTH_FAILED") {

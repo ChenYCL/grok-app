@@ -50,11 +50,12 @@
 4. [Install & first run](#install--first-run)
 5. [macOS “damaged” / Gatekeeper](#macos-damaged--gatekeeper)
 6. [Linux blank/black window (WebKit)](#linux-blankblack-window-webkit)
-7. [Config paths](#config-paths)
-8. [Develop & build](#develop--build)
-9. [Docs & contributing](#docs--contributing)
-10. [Contributors](#contributors)
-11. [Follow the author](#follow-the-author)
+7. [Linux sandbox / user namespaces (Ubuntu 24.04+)](#linux-sandbox--user-namespaces-ubuntu-2404)
+8. [Config paths](#config-paths)
+9. [Develop & build](#develop--build)
+10. [Docs & contributing](#docs--contributing)
+11. [Contributors](#contributors)
+12. [Follow the author](#follow-the-author)
 
 ---
 
@@ -226,6 +227,29 @@ On Debian/Ubuntu multiarch hosts, use `/usr/lib/x86_64-linux-gnu` and `/usr/lib/
 ```bash
 WEBKIT_DISABLE_DMABUF_RENDERER=1 ./Grok_*.AppImage
 ```
+
+---
+
+## Linux sandbox / user namespaces (Ubuntu 24.04+)
+
+On **Ubuntu 24.04+** (and some other distros), the kernel may set:
+
+```text
+kernel.apparmor_restrict_unprivileged_userns = 1
+```
+
+Grok’s default agent sandbox (`--sandbox workspace`) uses **bubblewrap**, which needs unprivileged user namespaces. When the kernel blocks that, the agent exits immediately and the app may show **Agent process ended** / `SANDBOX_BLOCKED` (stderr often includes `bwrap: setting up uid map: Permission denied`). See issue [#541](https://github.com/RongleCat/grok-app/issues/541).
+
+**Fix (keeps sandbox):**
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/99-userns.conf
+```
+
+**Workaround without sudo:** **Settings → Runtime → Sandbox → off** (skips bwrap; loses OS-level isolation).
+
+Doctor also surfaces this when the sysctl is restricted and sandbox is not `off`.
 
 ---
 

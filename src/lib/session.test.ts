@@ -1254,7 +1254,7 @@ describe("session projection", () => {
     expect(nextSend[1]!.streaming).toBe(false);
   });
 
-  it("errorCopy distinguishes seven codes (English default)", () => {
+  it("errorCopy distinguishes host error codes (English default)", () => {
     expect(errorCopy("CLI_NOT_FOUND")).toMatch(/CLI/i);
     expect(errorCopy("AUTH_FAILED")).toMatch(/Auth|sign.?in|credential/i);
     expect(errorCopy("NETWORK_PROVIDER")).toMatch(/Network|model|provider/i);
@@ -1262,6 +1262,19 @@ describe("session projection", () => {
     expect(errorCopy("QUOTA_EXCEEDED")).toMatch(/Quota|limit|usage/i);
     expect(errorCopy("CONNECT_FAILED")).toMatch(/connect/i);
     expect(errorCopy("PROCESS_LIMIT")).toMatch(/limit|process|concurrent/i);
+    expect(errorCopy("SANDBOX_BLOCKED")).toMatch(/sandbox|namespace|linux|bwrap|sysctl/i);
+  });
+
+  it("formatTurnErrorBody maps bwrap uid-map denial to sandbox deck (#541)", () => {
+    const body = formatTurnErrorBody(
+      {
+        code: "AGENT_CRASHED",
+        message:
+          "Agent stream closed (EOF); stderr: bwrap: setting up uid map: Permission denied",
+      },
+      "en",
+    );
+    expect(body.toLowerCase()).toMatch(/sandbox|namespace|sysctl|ubuntu/);
   });
 
   it("formatTurnErrorBody maps connect / quota phrases", () => {

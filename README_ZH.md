@@ -50,11 +50,12 @@
 4. [安装与使用](#安装与使用)
 5. [macOS 无法打开 / 提示已损坏](#macos-无法打开--提示已损坏)
 6. [Linux 黑屏 / 空白窗（WebKit）](#linux-黑屏--空白窗webkit)
-7. [配置目录](#配置目录)
-8. [开发与构建](#开发与构建)
-9. [文档与贡献](#文档与贡献)
-10. [贡献者](#贡献者)
-11. [关注作者](#关注作者)
+7. [Linux 沙箱 / 用户命名空间（Ubuntu 24.04+）](#linux-沙箱--用户命名空间ubuntu-2404)
+8. [配置目录](#配置目录)
+9. [开发与构建](#开发与构建)
+10. [文档与贡献](#文档与贡献)
+11. [贡献者](#贡献者)
+12. [关注作者](#关注作者)
 
 ---
 
@@ -199,6 +200,29 @@ Debian/Ubuntu 多架构路径请改用 `/usr/lib/x86_64-linux-gnu` 与 `/usr/lib
 ```bash
 WEBKIT_DISABLE_DMABUF_RENDERER=1 ./Grok_*.AppImage
 ```
+
+---
+
+## Linux 沙箱 / 用户命名空间（Ubuntu 24.04+）
+
+在 **Ubuntu 24.04+**（以及部分其他发行版）上，内核可能默认：
+
+```text
+kernel.apparmor_restrict_unprivileged_userns = 1
+```
+
+Grok 默认 Agent 沙箱（`--sandbox workspace`）依赖 **bubblewrap**，需要非特权用户命名空间。若内核拦截，Agent 会立刻退出，应用可能显示 **Agent process ended** / `SANDBOX_BLOCKED`（stderr 常见 `bwrap: setting up uid map: Permission denied`）。见 issue [#541](https://github.com/RongleCat/grok-app/issues/541)。
+
+**修复（保留沙箱）：**
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/99-userns.conf
+```
+
+**无需 sudo 的绕过：** **设置 → 运行环境 → 沙箱 → off**（跳过 bwrap，失去系统级隔离）。
+
+当 sysctl 受限且沙箱不是 `off` 时，Doctor 也会提示此项。
 
 ---
 

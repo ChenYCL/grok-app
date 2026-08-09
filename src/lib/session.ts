@@ -29,7 +29,8 @@ export type AgentErrorCode =
   | "QUOTA_EXCEEDED"
   | "CONNECT_FAILED"
   | "PROCESS_LIMIT"
-  | "CLI_TOO_OLD";
+  | "CLI_TOO_OLD"
+  | "SANDBOX_BLOCKED";
 
 export interface AgentError {
   code: AgentErrorCode;
@@ -2662,6 +2663,7 @@ const KNOWN_ERROR_CODES: AgentErrorCode[] = [
   "CONNECT_FAILED",
   "PROCESS_LIMIT",
   "CLI_TOO_OLD",
+  "SANDBOX_BLOCKED",
 ];
 
 export function isAgentErrorCode(code: string | undefined | null): code is AgentErrorCode {
@@ -2705,10 +2707,10 @@ export function streamFlapCopy(locale: Locale = "en"): string {
 }
 
 const AGENT_ERROR_CODE_RE =
-  /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT|CLI_TOO_OLD)(?::\s*|\s+)([\s\S]*)$/;
+  /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT|CLI_TOO_OLD|SANDBOX_BLOCKED)(?::\s*|\s+)([\s\S]*)$/;
 
 const MARKDOWN_CODE_RE =
-  /^\*\*(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT|CLI_TOO_OLD)\*\*(?:\s*[\r\n]+([\s\S]*))?$/;
+  /^\*\*(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT|CLI_TOO_OLD|SANDBOX_BLOCKED)\*\*(?:\s*[\r\n]+([\s\S]*))?$/;
 
 /** Strip ANSI SGR sequences from CLI/MCP stderr dumps. */
 export function stripAnsi(text: string): string {
@@ -2776,8 +2778,9 @@ export function formatTurnErrorBody(
 
   // Prefer resolveErrorDeckCode so AUTH_FAILED subtypes (no-context / api key /
   // custom route) get honest bubble copy instead of the generic 401 line.
-  const deckish = resolveErrorDeckCode(code, `${rest}\n${cleaned}`, opts);
-  if (isAuthDeckCode(deckish) || deckish === "PERMISSION_DENIED" || deckish === "MCP_AUTH_FAILED" || deckish === "OAUTH_EXPIRED" || deckish === "WORKSPACE_UNTRUSTED" || deckish === "PROJECT_MISSING") {
+  // Pass rawCombined so bwrap/userns in "; stderr: …" survives stripErrorNoise.
+  const deckish = resolveErrorDeckCode(code, `${rawCombined}\n${rest}\n${cleaned}`, opts);
+  if (isAuthDeckCode(deckish) || deckish === "PERMISSION_DENIED" || deckish === "MCP_AUTH_FAILED" || deckish === "OAUTH_EXPIRED" || deckish === "WORKSPACE_UNTRUSTED" || deckish === "PROJECT_MISSING" || deckish === "SANDBOX_BLOCKED") {
     return errorCopyFromDeck(deckish, locale);
   }
 
@@ -2791,7 +2794,8 @@ export function formatTurnErrorBody(
       deckish === "NETWORK_PROVIDER" ||
       deckish === "AGENT_CRASHED" ||
       deckish === "PROCESS_LIMIT" ||
-      deckish === "CLI_TOO_OLD"
+      deckish === "CLI_TOO_OLD" ||
+      deckish === "SANDBOX_BLOCKED"
     ) {
       code = deckish;
     } else if (

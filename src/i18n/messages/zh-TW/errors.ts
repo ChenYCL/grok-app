@@ -40,6 +40,8 @@ export const zhTWErrors = {
   "error.deck.limit.cause": "並行 Agent 過多。請先結束其他對話，或在執行環境中提高上限。",
   "error.deck.cliTooOld.problem": "Grok CLI 版本過舊",
   "error.deck.cliTooOld.cause": "目前的 grok CLI 不認得應用相依的參數。請升級 CLI 後重新啟動對話。",
+  "error.deck.sandbox.problem": "Linux 沙箱被攔截（使用者命名空間）",
+  "error.deck.sandbox.cause": "Bubblewrap 需要非特權使用者命名空間。Ubuntu 24.04+ 可執行：sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0（並寫入 /etc/sysctl.d/ 持久化），或在「設定 → 執行環境 → 沙箱」選 off。",
   "error.deck.timeout.problem": "本輪執行逾時",
   "error.deck.timeout.cause": "等待過久已中止。可重試；生圖等長任務可能需要更久。",
   "error.deck.disconnect.problem": "與 Agent 的連線已中斷",

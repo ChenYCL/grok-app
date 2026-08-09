@@ -2917,6 +2917,12 @@ impl AcpClient {
 
     fn map_handshake_err(&self, phase: &str, e: String) -> AgentError {
         let detail = self.format_exit_detail(&format!("{phase}: {e}"));
+        // Bubblewrap / unprivileged userns must win over "stream closed" network mapping.
+        if crate::error::looks_like_linux_sandbox_block(&detail)
+            || crate::error::looks_like_linux_sandbox_block(&e)
+        {
+            return AgentError::new(AgentErrorCode::SandboxBlocked, detail);
+        }
         let lower = detail.to_lowercase();
         if lower.contains("401")
             || lower.contains("auth")
@@ -4705,6 +4711,10 @@ fn format_jsonrpc_error(err: &Value) -> String {
 }
 
 fn classify_rpc_error(e: &str) -> AgentError {
+    // Linux bwrap / userns before "stream closed" → NetworkProvider (#541).
+    if crate::error::looks_like_linux_sandbox_block(e) {
+        return AgentError::new(AgentErrorCode::SandboxBlocked, e);
+    }
     let lower = e.to_lowercase();
     if lower.contains("quota")
         || lower.contains("rate limit")
@@ -4814,6 +4824,17 @@ mod classify_rpc_error_tests {
         assert_eq!(
             classify_rpc_error("Agent stream closed (EOF)").code,
             AgentErrorCode::NetworkProvider
+        );
+    }
+
+    #[test]
+    fn bwrap_uid_map_denial_is_sandbox_blocked_not_network() {
+        // Ubuntu 24.04: EOF + bwrap stderr must not land on NetworkProvider (#541).
+        let msg = "Agent stream closed (EOF); stderr: bwrap: setting up uid map: Permission denied";
+        assert_eq!(
+            classify_rpc_error(msg).code,
+            AgentErrorCode::SandboxBlocked,
+            "msg={msg}"
         );
     }
 

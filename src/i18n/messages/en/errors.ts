@@ -40,6 +40,8 @@ export const enErrors = {
   "error.deck.limit.cause": "Too many warm agent processes. Stop another session or raise the limit under Runtime.",
   "error.deck.cliTooOld.problem": "Grok CLI is too old",
   "error.deck.cliTooOld.cause": "The installed grok CLI rejects flags this app depends on. Upgrade the CLI, then restart sessions.",
+  "error.deck.sandbox.problem": "Linux sandbox blocked (user namespaces)",
+  "error.deck.sandbox.cause": "Bubblewrap needs unprivileged user namespaces. On Ubuntu 24.04+ run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 (persist under /etc/sysctl.d/), or set Settings → Runtime → Sandbox → off.",
   "error.deck.timeout.problem": "This turn timed out",
   "error.deck.timeout.cause": "The agent stopped after a long wait. Retry — image or heavy tools may need more time.",
   "error.deck.disconnect.problem": "Agent connection interrupted",

@@ -102,6 +102,23 @@ describe("buildErrorDeck", () => {
     expect(classifyErrorMessage("agent process exited")).toBe("AGENT_CRASHED");
   });
 
+  it("classifies Linux bwrap / userns denial as SANDBOX_BLOCKED (#541)", () => {
+    const msg =
+      "Agent stream closed (EOF); stderr: bwrap: setting up uid map: Permission denied";
+    expect(classifyErrorMessage(msg)).toBe("SANDBOX_BLOCKED");
+    // Host may still emit crash/network codes — message wins.
+    expect(resolveErrorDeckCode("AGENT_CRASHED", msg)).toBe("SANDBOX_BLOCKED");
+    expect(resolveErrorDeckCode("NETWORK_PROVIDER", msg)).toBe("SANDBOX_BLOCKED");
+    expect(deckCodeFromAgent("SANDBOX_BLOCKED")).toBe("SANDBOX_BLOCKED");
+    const deck = buildErrorDeck("SANDBOX_BLOCKED", "en");
+    expect(deck.problem.toLowerCase()).toMatch(/sandbox|namespace|linux/);
+    expect(deck.primary.id).toBe("open_runtime");
+    // Bare tool permission denied is not sandbox.
+    expect(classifyErrorMessage("permission denied writing /tmp/foo")).toBe(
+      "PERMISSION_DENIED",
+    );
+  });
+
   it("classifies xAI Incorrect API key (HTTP 400) as AUTH_FAILED, not crash", () => {
     // CharlieLam support 2026-08-05: host previously mapped this to AGENT_CRASHED.
     const xai400 =

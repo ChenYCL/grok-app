@@ -310,6 +310,65 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
         }
     }
 
+    // 1c) Linux: AppArmor unprivileged userns can block bubblewrap sandbox (#541).
+    #[cfg(target_os = "linux")]
+    {
+        let userns_path = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
+        let sandbox = settings.sandbox_profile.as_str();
+        match std::fs::read_to_string(userns_path) {
+            Ok(raw) => {
+                let restricted = raw.trim() == "1";
+                if restricted && sandbox != "off" {
+                    checks.push(doctor_check(
+                        "linux_userns",
+                        "warn",
+                        "Linux user namespaces",
+                        format!(
+                            "kernel.apparmor_restrict_unprivileged_userns=1 (common on Ubuntu 24.04). \
+                             Default sandbox profile `{sandbox}` uses bubblewrap and may fail with \
+                             SANDBOX_BLOCKED / \"Agent process ended\". Fix: \
+                             `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` \
+                             (persist under /etc/sysctl.d/), or Settings → Runtime → Sandbox → off."
+                        ),
+                        serde_json::json!({
+                            "restricted": true,
+                            "sandboxProfile": sandbox,
+                            "sysctlPath": userns_path,
+                        }),
+                    ));
+                } else if restricted {
+                    checks.push(doctor_check(
+                        "linux_userns",
+                        "ok",
+                        "Linux user namespaces",
+                        "Unprivileged user namespaces are restricted, but sandbox is off \
+                         (bubblewrap skipped)."
+                            .into(),
+                        serde_json::json!({
+                            "restricted": true,
+                            "sandboxProfile": sandbox,
+                        }),
+                    ));
+                } else {
+                    checks.push(doctor_check(
+                        "linux_userns",
+                        "ok",
+                        "Linux user namespaces",
+                        "Unprivileged user namespaces allowed (sandbox bubblewrap should work)."
+                            .into(),
+                        serde_json::json!({
+                            "restricted": false,
+                            "sandboxProfile": sandbox,
+                        }),
+                    ));
+                }
+            }
+            Err(_) => {
+                // Kernel without this sysctl (or non-AppArmor) — skip noise.
+            }
+        }
+    }
+
     // 2) Auth — warn if no CLI auth, official key, or relay
     let auth_sources: Vec<&str> = [
         auth_ok.then_some("cliAuthJson"),
