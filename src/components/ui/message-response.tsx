@@ -14,6 +14,7 @@ import { FilePathCard } from "@/components/FilePathCard";
 import {
   isImagePath,
   isMediaPath,
+  isPlausibleLocalMediaAbs,
   isVideoPath,
   pathBasename,
   resolveInlineMediaToken,
@@ -130,11 +131,16 @@ function MessageResponseImpl({
       return null;
     }
 
-    // Prefer media map (images/videos session paths) — real local only.
+    // Prefer media map (images/videos session paths) — multi-segment local only.
     const mediaAbs =
       resolveInlineMediaToken(raw, imagePathMap) ||
       resolveInlineMediaToken(rawIn, imagePathMap);
-    if (mediaAbs && isImagePath(mediaAbs) && isRealLocalAbsolutePath(mediaAbs)) {
+    if (
+      mediaAbs &&
+      isImagePath(mediaAbs) &&
+      isRealLocalAbsolutePath(mediaAbs) &&
+      isPlausibleLocalMediaAbs(mediaAbs)
+    ) {
       return (
         <ImageUi
           className="md-body__img md-body__img--card"
@@ -146,7 +152,12 @@ function MessageResponseImpl({
         />
       );
     }
-    if (mediaAbs && isVideoPath(mediaAbs) && isRealLocalAbsolutePath(mediaAbs)) {
+    if (
+      mediaAbs &&
+      isVideoPath(mediaAbs) &&
+      isRealLocalAbsolutePath(mediaAbs) &&
+      isPlausibleLocalMediaAbs(mediaAbs)
+    ) {
       return (
         <VideoUi
           key={mediaAbs}
@@ -173,15 +184,22 @@ function MessageResponseImpl({
     }
 
     const pathToken = resolved || raw || rawIn;
+    const asLocalMedia = (p: string | null | undefined, kind: "image" | "video") => {
+      if (!p || !isRealLocalAbsolutePath(p) || !isPlausibleLocalMediaAbs(p)) {
+        return null;
+      }
+      if (kind === "video" ? isVideoPath(p) : isImagePath(p)) return p;
+      return null;
+    };
     const imageAbs =
-      (resolved && isRealLocalAbsolutePath(resolved) && isImagePath(resolved) && resolved) ||
-      (mediaAbs && isRealLocalAbsolutePath(mediaAbs) && isImagePath(mediaAbs) && mediaAbs) ||
-      (isRealLocalAbsolutePath(raw) && isImagePath(raw) && raw) ||
+      asLocalMedia(resolved, "image") ||
+      asLocalMedia(mediaAbs, "image") ||
+      asLocalMedia(raw, "image") ||
       null;
     const videoAbs =
-      (resolved && isRealLocalAbsolutePath(resolved) && isVideoPath(resolved) && resolved) ||
-      (mediaAbs && isRealLocalAbsolutePath(mediaAbs) && isVideoPath(mediaAbs) && mediaAbs) ||
-      (isRealLocalAbsolutePath(raw) && isVideoPath(raw) && raw) ||
+      asLocalMedia(resolved, "video") ||
+      asLocalMedia(mediaAbs, "video") ||
+      asLocalMedia(raw, "video") ||
       null;
 
     if (imageAbs && isImagePath(imageAbs)) {
