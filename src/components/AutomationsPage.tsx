@@ -1,6 +1,7 @@
 /**
  * Scheduled automations workbench — Codex-style “已安排”.
- * List + filter + AI create entry + manual form panel.
+ * Default surface: task list (+ create). Inbox is a tab; runner / honesty /
+ * LaunchAgent / one-shot live in the gear modal (warn banner only when at risk).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -50,6 +51,7 @@ import {
   IconPlus,
   IconScheduled,
   IconSearch,
+  IconSettings,
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import {
@@ -176,6 +178,12 @@ export function AutomationsPage({
     loadInboxSeenIds(),
   );
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
+  /** Primary surface: task list vs run inbox (default tasks — clean first paint). */
+  const [mainTab, setMainTab] = useState<"tasks" | "inbox">("tasks");
+  /** Background / runner / advanced config — gear modal, not page chrome. */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  /** Honesty matrix + one-shot collapsed under Advanced inside the gear modal. */
+  const [settingsAdvancedOpen, setSettingsAdvancedOpen] = useState(false);
   const createBtnRef = useRef<HTMLButtonElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const deleteConfirmBtnRef = useRef<HTMLButtonElement>(null);
@@ -484,6 +492,65 @@ export function AutomationsPage({
     [openAtLogin, enabledCount],
   );
 
+  /**
+   * Single risk banner for the main page (warn only).
+   * Info-level honesty lives in the gear modal — avoids double banners.
+   */
+  const riskBanner = useMemo(() => {
+    if (banner.severity === "warn" && banner.messageKey) {
+      return {
+        severity: "warn" as const,
+        messageKey: banner.messageKey,
+        n: enabledCount,
+        showKeepTray: !!(banner.showKeepTrayToggle && onKeepTrayForSchedules),
+        showOpenSettings: !!onOpenKeepTraySetting,
+        showLoginLink: false as boolean,
+      };
+    }
+    if (bgStatus.severity === "warn" && bgStatus.messageKey) {
+      return {
+        severity: "warn" as const,
+        messageKey: bgStatus.messageKey,
+        n: bgStatus.enabledCount,
+        showKeepTray: false as boolean,
+        showOpenSettings: false as boolean,
+        showLoginLink: !!(bgStatus.showOpenAtLoginLink && onOpenLaunchAtLogin),
+      };
+    }
+    return null;
+  }, [
+    banner.severity,
+    banner.messageKey,
+    banner.showKeepTrayToggle,
+    enabledCount,
+    onKeepTrayForSchedules,
+    onOpenKeepTraySetting,
+    bgStatus.severity,
+    bgStatus.messageKey,
+    bgStatus.enabledCount,
+    bgStatus.showOpenAtLoginLink,
+    onOpenLaunchAtLogin,
+  ]);
+
+  /** Compact header status pill (details in gear modal). */
+  const statusPill = useMemo(() => {
+    if (enabledCount <= 0) {
+      return { tone: "idle" as const, labelKey: "automations.status.idle" };
+    }
+    if (banner.severity === "warn" || bgStatus.severity === "warn") {
+      return { tone: "warn" as const, labelKey: "automations.status.atRisk" };
+    }
+    if (runnerSurface.phase === "running") {
+      return { tone: "ok" as const, labelKey: "automations.status.active" };
+    }
+    return { tone: "idle" as const, labelKey: "automations.status.unknown" };
+  }, [
+    enabledCount,
+    banner.severity,
+    bgStatus.severity,
+    runnerSurface.phase,
+  ]);
+
   const openCreateManual = () => {
     setCreateMenu(false);
     setEditingId(null);
@@ -678,76 +745,123 @@ export function AutomationsPage({
         <div className="auto-page__titles">
           <h1 className="auto-page__title">{t("automations.title")}</h1>
           <p className="auto-page__subtitle">{t("automations.subtitle")}</p>
-          {bgStatus.severity === "none" ? (
-            <p className="auto-page__subtitle auto-page__subtitle--hint">
-              {t("automations.trayHint")}
-            </p>
-          ) : null}
         </div>
-        <div className="auto-page__create-wrap">
+        <div className="auto-page__head-actions">
           <button
-            ref={createBtnRef}
             type="button"
-            className="auto-page__create"
-            onClick={() => setCreateMenu((v) => !v)}
+            className={
+              "auto-page__status-pill" +
+              (statusPill.tone === "ok"
+                ? " auto-page__status-pill--ok"
+                : statusPill.tone === "warn"
+                  ? " auto-page__status-pill--warn"
+                  : " auto-page__status-pill--idle")
+            }
+            onClick={() => {
+              setSettingsAdvancedOpen(false);
+              setSettingsOpen(true);
+            }}
+            aria-label={t(statusPill.labelKey)}
+            title={t(statusPill.labelKey)}
           >
-            {t("automations.create")}
-            <span className="auto-page__create-caret" aria-hidden>
-              ▾
+            <span className="auto-page__status-dot" aria-hidden />
+            <span className="auto-page__status-label">
+              {t(statusPill.labelKey)}
             </span>
           </button>
-          {createMenu && (
-            <div
-              ref={createMenuRef}
-              className="menu-panel auto-page__create-menu"
-              role="menu"
+          <Tip label={t("automations.settings.aria")}>
+            <button
+              type="button"
+              className="tree-icon-btn auto-page__settings-btn"
+              onClick={() => {
+                setSettingsAdvancedOpen(false);
+                setSettingsOpen(true);
+              }}
+              aria-label={t("automations.settings.aria")}
             >
-              <button
-                type="button"
-                className="auto-page__create-item"
-                role="menuitem"
-                onClick={() => {
-                  setCreateMenu(false);
-                  onAiCreate();
-                }}
+              <IconSettings size={16} />
+            </button>
+          </Tip>
+          <div className="auto-page__create-wrap">
+            <button
+              ref={createBtnRef}
+              type="button"
+              className="auto-page__create"
+              onClick={() => setCreateMenu((v) => !v)}
+            >
+              {t("automations.create")}
+              <span className="auto-page__create-caret" aria-hidden>
+                ▾
+              </span>
+            </button>
+            {createMenu && (
+              <div
+                ref={createMenuRef}
+                className="menu-panel auto-page__create-menu"
+                role="menu"
               >
-                <IconAutomations size={16} />
-                <span>
-                  <strong>{t("automations.createAi")}</strong>
-                  <em>{t("automations.createAiHint")}</em>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="auto-page__create-item"
-                role="menuitem"
-                onClick={openCreateManual}
-              >
-                <IconPlus size={16} />
-                <span>
-                  <strong>{t("automations.createManual")}</strong>
-                  <em>{t("automations.createManualHint")}</em>
-                </span>
-              </button>
-            </div>
-          )}
+                <button
+                  type="button"
+                  className="auto-page__create-item"
+                  role="menuitem"
+                  onClick={() => {
+                    setCreateMenu(false);
+                    onAiCreate();
+                  }}
+                >
+                  <IconAutomations size={16} />
+                  <span>
+                    <strong>{t("automations.createAi")}</strong>
+                    <em>{t("automations.createAiHint")}</em>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="auto-page__create-item"
+                  role="menuitem"
+                  onClick={openCreateManual}
+                >
+                  <IconPlus size={16} />
+                  <span>
+                    <strong>{t("automations.createManual")}</strong>
+                    <em>{t("automations.createManualHint")}</em>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {bgStatus.severity !== "none" && bgStatus.messageKey ? (
+      {riskBanner ? (
         <div
           className={
-            "auto-page__bg-banner" +
-            (bgStatus.severity === "warn"
-              ? " auto-page__bg-banner--warn"
-              : " auto-page__bg-banner--info")
+            "auto-page__bg-banner auto-page__bg-banner--warn"
           }
           role="status"
         >
           <p className="auto-page__bg-banner-text">
-            {t(bgStatus.messageKey, { n: bgStatus.enabledCount })}
+            {t(riskBanner.messageKey, { n: riskBanner.n })}
           </p>
-          {bgStatus.showOpenAtLoginLink && onOpenLaunchAtLogin ? (
+          {riskBanner.showKeepTray ? (
+            <button
+              type="button"
+              className="auto-page__bg-banner-link"
+              onClick={() => onKeepTrayForSchedules?.(!keepTrayForSchedules)}
+            >
+              {t("automations.risk.enableKeepTray")}
+            </button>
+          ) : null}
+          {riskBanner.showOpenSettings && onOpenKeepTraySetting ? (
+            <button
+              type="button"
+              className="auto-page__bg-banner-link"
+              onClick={onOpenKeepTraySetting}
+            >
+              {t("automations.runner.openSettings")}
+            </button>
+          ) : null}
+          {riskBanner.showLoginLink && onOpenLaunchAtLogin ? (
             <button
               type="button"
               className="auto-page__bg-banner-link"
@@ -759,421 +873,43 @@ export function AutomationsPage({
         </div>
       ) : null}
 
-      <div className="auto-page__bg-panel" role="region" aria-label={t("automations.runner.section")}>
-        {banner.messageKey ? (
-          <div
-            className={
-              "auto-page__bg-banner" +
-              (banner.severity === "warn"
-                ? " auto-page__bg-banner--warn"
-                : " auto-page__bg-banner--info")
-            }
-            role="status"
-          >
-            <p className="auto-page__bg-banner-text">
-              {t(banner.messageKey, { n: enabledCount })}
-            </p>
-            {onOpenKeepTraySetting ? (
-              <button
-                type="button"
-                className="auto-page__bg-banner-link"
-                onClick={onOpenKeepTraySetting}
-              >
-                {t("automations.runner.openSettings")}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* AUTO-HEADLESS-LITE: tray vs quit vs LaunchAgent product truth */}
-        <div
-          className="auto-page__honesty"
-          role="group"
-          aria-label={t("automations.honesty.legend")}
-        >
-          <div className="auto-page__honesty-title">
-            {t("automations.honesty.legend")}
-          </div>
-          <ul className="auto-page__honesty-list">
-            {honestyRows.map((row) => (
-              <li key={row.id} className="auto-page__honesty-item">
-                <strong className="auto-page__honesty-item-title">
-                  {t(row.titleKey)}
-                </strong>
-                <span className="auto-page__honesty-item-body">
-                  {t(row.bodyKey)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="auto-page__bg-rows">
-          <div className="auto-page__bg-row">
-            <div className="auto-page__bg-row-text">
-              <div className="auto-page__bg-row-label">
-                {t("automations.runner.statusLabel")}
-              </div>
-              <div className="auto-page__bg-row-desc">
-                {runnerSurface.phase === "running"
-                  ? t("automations.runner.statusRunning", {
-                      secs: runnerSurface.tickIntervalSecs,
-                    })
-                  : runnerSurface.phase === "unknown"
-                    ? t("automations.runner.statusIdle")
-                    : t("automations.runner.statusIdle")}
-                {runnerSurface.lastTickAt
-                  ? ` · ${t("automations.runner.lastTick", {
-                      time: new Date(
-                        runnerSurface.lastTickAt,
-                      ).toLocaleTimeString(),
-                    })}`
-                  : ""}
-              </div>
-              {runnerSurface.severity !== "none" ||
-              runnerSurface.pausedReason === "no_enabled" ? (
-                <div
-                  className={
-                    "auto-page__runner-reason" +
-                    (runnerSurface.severity === "warn"
-                      ? " auto-page__runner-reason--warn"
-                      : runnerSurface.severity === "info"
-                        ? " auto-page__runner-reason--info"
-                        : "")
-                  }
-                  role="status"
-                >
-                  {t(runnerSurface.pausedReasonKey)}
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          {banner.showKeepTrayToggle && onKeepTrayForSchedules ? (
-            <div className="auto-page__bg-row">
-              <div className="auto-page__bg-row-text">
-                <div className="auto-page__bg-row-label">
-                  {t("settings.keepTrayForSchedules")}
-                </div>
-                <div className="auto-page__bg-row-desc">
-                  {t("settings.keepTrayForSchedulesDesc")}
-                </div>
-              </div>
-              <label className="auto-page__switch">
-                <input
-                  type="checkbox"
-                  checked={!!keepTrayForSchedules}
-                  onChange={() =>
-                    onKeepTrayForSchedules(!keepTrayForSchedules)
-                  }
-                  aria-label={t("settings.keepTrayForSchedules")}
-                />
-                <span className="auto-page__switch-ui" aria-hidden />
-              </label>
-            </div>
-          ) : null}
-
-          {banner.showLaunchAgent && launchAgent?.supported ? (
-            <div className="auto-page__bg-row">
-              <div className="auto-page__bg-row-text">
-                <div className="auto-page__bg-row-label">
-                  {t("automations.launchAgent.title")}
-                </div>
-                <div className="auto-page__bg-row-desc">
-                  {t("automations.launchAgent.desc")}
-                </div>
-                <div className="auto-page__bg-row-actions">
-                  <button
-                    type="button"
-                    className="auto-page__bg-banner-link"
-                    onClick={() => void onRevealLaunchAgent()}
-                  >
-                    {t("automations.launchAgent.reveal")}
-                  </button>
-                </div>
-              </div>
-              <label className="auto-page__switch">
-                <input
-                  type="checkbox"
-                  checked={!!launchAgent.enabled}
-                  disabled={launchAgentBusy}
-                  onChange={() =>
-                    void onToggleLaunchAgent(!launchAgent.enabled)
-                  }
-                  aria-label={t("automations.launchAgent.title")}
-                />
-                <span className="auto-page__switch-ui" aria-hidden />
-              </label>
-            </div>
-          ) : null}
-
-          {/* AUTO-HEADLESS A2: one-shot helper vs tray residency (not KeepAlive daemon) */}
-          <div className="auto-page__bg-row">
-            <div className="auto-page__bg-row-text">
-              <div className="auto-page__bg-row-label">
-                {t(oneShotSurface.titleKey)}
-              </div>
-              <div className="auto-page__bg-row-desc">
-                {t(oneShotSurface.bodyKey, {
-                  flag: oneShotSurface.flagHint,
-                  script: oneShotSurface.scriptName,
-                })}
-              </div>
-              <div className="auto-page__bg-row-desc auto-page__bg-row-desc--muted">
-                {t(oneShotSurface.honestyKey)}
-              </div>
-              <div className="auto-page__bg-row-actions">
-                <button
-                  type="button"
-                  className="auto-page__bg-banner-link"
-                  onClick={() => void onRevealLaunchAgent()}
-                >
-                  {t("automations.oneshot.reveal")}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Inbox: observed fires only — empty is soft-fail, never invents offline runs */}
       <div
-        className="auto-page__history auto-page__inbox"
-        role="region"
-        aria-label={t("automations.inbox.section")}
+        className="auto-page__tabs"
+        role="tablist"
+        aria-label={t("automations.tabs.aria")}
       >
-        <div className="auto-page__history-head">
-          <div className="auto-page__history-titles">
-            <div className="auto-page__history-title">
-              {t("automations.inbox.section")}
-              {unreadCount > 0 ? (
-                <span className="auto-page__inbox-unread" aria-label={t("automations.inbox.unreadCount", { n: unreadCount })}>
-                  {unreadCount}
-                </span>
-              ) : null}
-            </div>
-            <p className="auto-page__history-desc">
-              {t("automations.inbox.desc")}
-            </p>
-          </div>
-          <div className="auto-page__inbox-head-actions">
-            {unreadCount > 0 ? (
-              <button
-                type="button"
-                className="auto-page__bg-banner-link"
-                onClick={onMarkAllInboxRead}
-              >
-                {t("automations.inbox.markAllRead")}
-              </button>
-            ) : null}
-            {runHistory.length > 0 ? (
-              <button
-                type="button"
-                className="auto-page__bg-banner-link"
-                onClick={() => setClearHistoryOpen(true)}
-              >
-                {t("automations.inbox.clear")}
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        <div
-          className="auto-page__inbox-banner"
-          role="note"
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mainTab === "tasks"}
+          className={
+            "auto-page__tab" + (mainTab === "tasks" ? " is-active" : "")
+          }
+          onClick={() => setMainTab("tasks")}
         >
-          {t("automations.inbox.processBound")}
-        </div>
-
-        <div className="auto-page__inbox-toolbar">
-          <div className="auto-page__search auto-page__inbox-search">
-            <IconSearch size={14} />
-            <input
-              type="search"
-              value={inboxQuery}
-              onChange={(e) => setInboxQuery(e.target.value)}
-              placeholder={t("automations.inbox.search")}
-              aria-label={t("automations.inbox.search")}
-            />
-          </div>
-          <div
-            className="auto-page__history-filters"
-            role="tablist"
-            aria-label={t("automations.inbox.filterAria")}
-          >
-            {(
-              [
-                ["all", "automations.history.filter.all"],
-                ["ok", "automations.history.filter.ok"],
-                ["error", "automations.history.filter.error"],
-                ["skipped", "automations.history.filter.skipped"],
-              ] as const
-            ).map(([id, key]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={inboxOutcome === id}
-                className={
-                  "auto-page__filter" +
-                  (inboxOutcome === id ? " is-active" : "")
-                }
-                onClick={() => setInboxOutcome(id)}
-              >
-                {t(key)}
-                <span className="auto-page__history-count" aria-hidden>
-                  {inboxCounts[id]}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {inboxEmpty ? (
-          <div className="auto-page__history-empty" role="status">
-            {inboxEmpty === "filter"
-              ? t("automations.inbox.emptyFiltered")
-              : inboxEmpty === "process_bound_hint"
-                ? t("automations.inbox.emptyProcessBound")
-                : t("automations.inbox.empty")}
-          </div>
-        ) : (
-          <ul className="auto-page__history-list auto-page__inbox-list">
-            {filteredInbox.map((row) => {
-              const when = formatRelativeTime(row.at, locale);
-              const outcomeKey =
-                row.outcome === "ok"
-                  ? "automations.history.outcome.ok"
-                  : row.outcome === "error"
-                    ? "automations.history.outcome.error"
-                    : "automations.history.outcome.skipped";
-              const sourceKey =
-                row.source === "host"
-                  ? "automations.history.source.host"
-                  : row.source === "run_now"
-                    ? "automations.history.source.runNow"
-                    : "automations.history.source.unknown";
-              const openPlan = planOpenInboxItem(row);
-              const retryPlan = planRetryAutomation(row);
-              return (
-                <li
-                  key={row.id}
-                  className={
-                    "auto-page__history-row auto-page__inbox-row" +
-                    (row.outcome === "error"
-                      ? " auto-page__history-row--error"
-                      : row.outcome === "skipped"
-                        ? " auto-page__history-row--skipped"
-                        : "") +
-                    (row.unread ? " auto-page__inbox-row--unread" : "")
-                  }
-                >
-                  <span
-                    className={
-                      "auto-page__history-outcome" +
-                      ` auto-page__history-outcome--${row.outcome}`
-                    }
-                  >
-                    {t(outcomeKey)}
-                  </span>
-                  <div className="auto-page__history-main">
-                    <span className="auto-page__history-name">
-                      {row.unread ? (
-                        <span
-                          className="auto-page__inbox-dot"
-                          aria-hidden
-                        />
-                      ) : null}
-                      {row.title}
-                    </span>
-                    <span className="auto-page__history-meta">
-                      <time dateTime={row.at} title={row.at}>
-                        {when}
-                      </time>
-                      {" · "}
-                      {t(sourceKey)}
-                    </span>
-                    {row.outcome === "error" && row.error ? (
-                      <span
-                        className="auto-page__history-error"
-                        title={row.error}
-                      >
-                        {row.error}
-                      </span>
-                    ) : null}
-                    <div className="auto-page__inbox-actions">
-                      {openPlan.kind !== "none" &&
-                      (onOpenSession || onOpenProject) ? (
-                        <button
-                          type="button"
-                          className="auto-page__inbox-action"
-                          onClick={() => onOpenInboxItem(row)}
-                        >
-                          {openPlan.kind === "session"
-                            ? t("automations.inbox.openSession")
-                            : t("automations.inbox.openProject")}
-                        </button>
-                      ) : null}
-                      {retryPlan.canRetry && onRunNow ? (
-                        <button
-                          type="button"
-                          className="auto-page__inbox-action"
-                          onClick={() => onRetryInboxItem(row)}
-                        >
-                          {t("automations.inbox.runNow")}
-                        </button>
-                      ) : null}
-                      {row.unread ? (
-                        <button
-                          type="button"
-                          className="auto-page__inbox-action"
-                          onClick={() => onMarkInboxRead(row)}
-                        >
-                          {t("automations.inbox.markRead")}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      <div className="auto-page__toolbar">
-        <div className="auto-page__search">
-          <IconSearch size={15} />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("automations.search")}
-            aria-label={t("automations.search")}
-          />
-        </div>
-        <div className="auto-page__filters" role="tablist">
-          {(
-            [
-              ["all", "automations.filter.all"],
-              ["enabled", "automations.filter.enabled"],
-              ["paused", "automations.filter.paused"],
-            ] as const
-          ).map(([id, key]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={filter === id}
-              className={
-                "auto-page__filter" + (filter === id ? " is-active" : "")
-              }
-              onClick={() => setFilter(id)}
+          {t("automations.tab.tasks")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mainTab === "inbox"}
+          className={
+            "auto-page__tab" + (mainTab === "inbox" ? " is-active" : "")
+          }
+          onClick={() => setMainTab("inbox")}
+        >
+          {t("automations.tab.inbox")}
+          {unreadCount > 0 ? (
+            <span
+              className="auto-page__inbox-unread"
+              aria-label={t("automations.inbox.unreadCount", {
+                n: unreadCount,
+              })}
             >
-              {t(key)}
-            </button>
-          ))}
-        </div>
+              {unreadCount}
+            </span>
+          ) : null}
+        </button>
       </div>
 
       {error && (
@@ -1185,142 +921,589 @@ export function AutomationsPage({
         </div>
       )}
 
-      <div className="auto-page__body">
-        {loading ? (
-          <div className="auto-page__empty">{t("automations.loading")}</div>
-        ) : filtered.length === 0 ? (
-          <div className="auto-page__empty">
-            <IconScheduled size={28} />
-            <strong>{t("automations.emptyTitle")}</strong>
-            <span>{t("automations.emptyHint")}</span>
-            <div className="auto-page__empty-actions">
-              <button
-                type="button"
-                className="btn btn--solid"
-                onClick={onAiCreate}
-              >
-                {t("automations.createAi")}
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={openCreateManual}
-              >
-                {t("automations.createManual")}
-              </button>
+      {mainTab === "tasks" ? (
+        <>
+          <div className="auto-page__toolbar">
+            <div className="auto-page__search">
+              <IconSearch size={15} />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t("automations.search")}
+                aria-label={t("automations.search")}
+              />
+            </div>
+            <div className="auto-page__filters" role="tablist">
+              {(
+                [
+                  ["all", "automations.filter.all"],
+                  ["enabled", "automations.filter.enabled"],
+                  ["paused", "automations.filter.paused"],
+                ] as const
+              ).map(([id, key]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === id}
+                  className={
+                    "auto-page__filter" + (filter === id ? " is-active" : "")
+                  }
+                  onClick={() => setFilter(id)}
+                >
+                  {t(key)}
+                </button>
+              ))}
             </div>
           </div>
-        ) : (
-          <ul className="auto-list">
-            {filtered.map((auto) => {
-              const next =
-                auto.nextRunAt ||
-                (auto.enabled ? computeNextRunAt(auto) : null);
-              const projectName = auto.projectId
-                ? projects.find((p) => p.id === auto.projectId)?.name
-                : null;
-              return (
-                <li
-                  key={auto.id}
-                  className={
-                    "auto-row" +
-                    (!auto.enabled ? " auto-row--paused" : "") +
-                    (rowMenuId === auto.id ? " auto-row--menu-open" : "")
-                  }
-                >
-                  <span
-                    className={
-                      "auto-row__dot" +
-                      (auto.enabled ? " is-on" : " is-off")
-                    }
-                    aria-hidden
-                  />
+
+          <div className="auto-page__body">
+            {loading ? (
+              <div className="auto-page__empty">{t("automations.loading")}</div>
+            ) : filtered.length === 0 ? (
+              <div className="auto-page__empty">
+                <IconScheduled size={28} />
+                <strong>{t("automations.emptyTitle")}</strong>
+                <span>{t("automations.emptyHint")}</span>
+                <div className="auto-page__empty-actions">
                   <button
                     type="button"
-                    className="auto-row__main"
-                    onClick={() => openEdit(auto)}
+                    className="btn btn--solid"
+                    onClick={onAiCreate}
                   >
-                    <span className="auto-row__title">{auto.title}</span>
-                    <span className="auto-row__meta">
-                      {formatScheduleSummary(auto, scheduleLabels)}
-                      {" · "}
-                      {auto.enabled
-                        ? formatNextRunRelative(next, new Date(), relativeLabels)
-                        : t("automations.filter.paused")}
-                      {projectName ? ` · ${projectName}` : ""}
-                    </span>
+                    {t("automations.createAi")}
                   </button>
-                  <div className="auto-row__actions">
-                    <Tip label={t("automations.menu")}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={openCreateManual}
+                  >
+                    {t("automations.createManual")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <ul className="auto-list">
+                {filtered.map((auto) => {
+                  const next =
+                    auto.nextRunAt ||
+                    (auto.enabled ? computeNextRunAt(auto) : null);
+                  const projectName = auto.projectId
+                    ? projects.find((p) => p.id === auto.projectId)?.name
+                    : null;
+                  return (
+                    <li
+                      key={auto.id}
+                      className={
+                        "auto-row" +
+                        (!auto.enabled ? " auto-row--paused" : "") +
+                        (rowMenuId === auto.id ? " auto-row--menu-open" : "")
+                      }
+                    >
+                      <span
+                        className={
+                          "auto-row__dot" +
+                          (auto.enabled ? " is-on" : " is-off")
+                        }
+                        aria-hidden
+                      />
                       <button
                         type="button"
-                        className="tree-icon-btn"
-                        data-auto-row-trigger={auto.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRowMenuId((id) =>
-                            id === auto.id ? null : auto.id,
-                          );
-                        }}
+                        className="auto-row__main"
+                        onClick={() => openEdit(auto)}
                       >
-                        <IconMore size={15} />
-                      </button>
-                    </Tip>
-                    {rowMenuId === auto.id && (
-                      <div
-                        className="menu-panel auto-row__menu"
-                        role="menu"
-                        data-auto-row-menu={auto.id}
-                        onMouseDown={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => openEdit(auto)}
-                        >
-                          {t("automations.edit")}
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setRowMenuId(null);
-                            void toggleEnabled(auto);
-                          }}
-                        >
+                        <span className="auto-row__title">{auto.title}</span>
+                        <span className="auto-row__meta">
+                          {formatScheduleSummary(auto, scheduleLabels)}
+                          {" · "}
                           {auto.enabled
-                            ? t("automations.pause")
-                            : t("automations.resume")}
-                        </button>
-                        {onRunNow && (
+                            ? formatNextRunRelative(
+                                next,
+                                new Date(),
+                                relativeLabels,
+                              )
+                            : t("automations.filter.paused")}
+                          {projectName ? ` · ${projectName}` : ""}
+                        </span>
+                      </button>
+                      <div className="auto-row__actions">
+                        <Tip label={t("automations.menu")}>
                           <button
                             type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setRowMenuId(null);
-                              onRunNow(auto);
+                            className="tree-icon-btn"
+                            data-auto-row-trigger={auto.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRowMenuId((id) =>
+                                id === auto.id ? null : auto.id,
+                              );
                             }}
                           >
-                            {t("automations.runNow")}
+                            <IconMore size={15} />
                           </button>
+                        </Tip>
+                        {rowMenuId === auto.id && (
+                          <div
+                            className="menu-panel auto-row__menu"
+                            role="menu"
+                            data-auto-row-menu={auto.id}
+                            onMouseDown={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => openEdit(auto)}
+                            >
+                              {t("automations.edit")}
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setRowMenuId(null);
+                                void toggleEnabled(auto);
+                              }}
+                            >
+                              {auto.enabled
+                                ? t("automations.pause")
+                                : t("automations.resume")}
+                            </button>
+                            {onRunNow && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setRowMenuId(null);
+                                  onRunNow(auto);
+                                }}
+                              >
+                                {t("automations.runNow")}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="is-danger"
+                              onClick={() => requestRemove(auto)}
+                            >
+                              {t("automations.delete")}
+                            </button>
+                          </div>
                         )}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="is-danger"
-                          onClick={() => requestRemove(auto)}
-                        >
-                          {t("automations.delete")}
-                        </button>
                       </div>
-                    )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </>
+      ) : (
+        <div
+          className="auto-page__history auto-page__inbox auto-page__inbox--tab"
+          role="tabpanel"
+          aria-label={t("automations.inbox.section")}
+        >
+          <div className="auto-page__history-head">
+            <div className="auto-page__history-titles">
+              <p className="auto-page__history-desc">
+                {t("automations.inbox.shortDesc")}
+              </p>
+            </div>
+            <div className="auto-page__inbox-head-actions">
+              {unreadCount > 0 ? (
+                <button
+                  type="button"
+                  className="auto-page__bg-banner-link"
+                  onClick={onMarkAllInboxRead}
+                >
+                  {t("automations.inbox.markAllRead")}
+                </button>
+              ) : null}
+              {runHistory.length > 0 ? (
+                <button
+                  type="button"
+                  className="auto-page__bg-banner-link"
+                  onClick={() => setClearHistoryOpen(true)}
+                >
+                  {t("automations.inbox.clear")}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {!inboxEmpty || inboxItems.length > 0 ? (
+            <div className="auto-page__inbox-toolbar">
+              <div className="auto-page__search auto-page__inbox-search">
+                <IconSearch size={14} />
+                <input
+                  type="search"
+                  value={inboxQuery}
+                  onChange={(e) => setInboxQuery(e.target.value)}
+                  placeholder={t("automations.inbox.search")}
+                  aria-label={t("automations.inbox.search")}
+                />
+              </div>
+              <div
+                className="auto-page__history-filters"
+                role="tablist"
+                aria-label={t("automations.inbox.filterAria")}
+              >
+                {(
+                  [
+                    ["all", "automations.history.filter.all"],
+                    ["ok", "automations.history.filter.ok"],
+                    ["error", "automations.history.filter.error"],
+                    ["skipped", "automations.history.filter.skipped"],
+                  ] as const
+                ).map(([id, key]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={inboxOutcome === id}
+                    className={
+                      "auto-page__filter" +
+                      (inboxOutcome === id ? " is-active" : "")
+                    }
+                    onClick={() => setInboxOutcome(id)}
+                  >
+                    {t(key)}
+                    <span className="auto-page__history-count" aria-hidden>
+                      {inboxCounts[id]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {inboxEmpty ? (
+            <div className="auto-page__history-empty" role="status">
+              {inboxEmpty === "filter"
+                ? t("automations.inbox.emptyFiltered")
+                : inboxEmpty === "process_bound_hint"
+                  ? t("automations.inbox.emptyProcessBound")
+                  : t("automations.inbox.empty")}
+            </div>
+          ) : (
+            <ul className="auto-page__history-list auto-page__inbox-list">
+              {filteredInbox.map((row) => {
+                const when = formatRelativeTime(row.at, locale);
+                const outcomeKey =
+                  row.outcome === "ok"
+                    ? "automations.history.outcome.ok"
+                    : row.outcome === "error"
+                      ? "automations.history.outcome.error"
+                      : "automations.history.outcome.skipped";
+                const sourceKey =
+                  row.source === "host"
+                    ? "automations.history.source.host"
+                    : row.source === "run_now"
+                      ? "automations.history.source.runNow"
+                      : "automations.history.source.unknown";
+                const openPlan = planOpenInboxItem(row);
+                const retryPlan = planRetryAutomation(row);
+                return (
+                  <li
+                    key={row.id}
+                    className={
+                      "auto-page__history-row auto-page__inbox-row" +
+                      (row.outcome === "error"
+                        ? " auto-page__history-row--error"
+                        : row.outcome === "skipped"
+                          ? " auto-page__history-row--skipped"
+                          : "") +
+                      (row.unread ? " auto-page__inbox-row--unread" : "")
+                    }
+                  >
+                    <span
+                      className={
+                        "auto-page__history-outcome" +
+                        ` auto-page__history-outcome--${row.outcome}`
+                      }
+                    >
+                      {t(outcomeKey)}
+                    </span>
+                    <div className="auto-page__history-main">
+                      <span className="auto-page__history-name">
+                        {row.unread ? (
+                          <span
+                            className="auto-page__inbox-dot"
+                            aria-hidden
+                          />
+                        ) : null}
+                        {row.title}
+                      </span>
+                      <span className="auto-page__history-meta">
+                        <time dateTime={row.at} title={row.at}>
+                          {when}
+                        </time>
+                        {" · "}
+                        {t(sourceKey)}
+                      </span>
+                      {row.outcome === "error" && row.error ? (
+                        <span
+                          className="auto-page__history-error"
+                          title={row.error}
+                        >
+                          {row.error}
+                        </span>
+                      ) : null}
+                      <div className="auto-page__inbox-actions">
+                        {openPlan.kind !== "none" &&
+                        (onOpenSession || onOpenProject) ? (
+                          <button
+                            type="button"
+                            className="auto-page__inbox-action"
+                            onClick={() => onOpenInboxItem(row)}
+                          >
+                            {openPlan.kind === "session"
+                              ? t("automations.inbox.openSession")
+                              : t("automations.inbox.openProject")}
+                          </button>
+                        ) : null}
+                        {retryPlan.canRetry && onRunNow ? (
+                          <button
+                            type="button"
+                            className="auto-page__inbox-action"
+                            onClick={() => onRetryInboxItem(row)}
+                          >
+                            {t("automations.inbox.runNow")}
+                          </button>
+                        ) : null}
+                        {row.unread ? (
+                          <button
+                            type="button"
+                            className="auto-page__inbox-action"
+                            onClick={() => onMarkInboxRead(row)}
+                          >
+                            {t("automations.inbox.markRead")}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
+      <GlassModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title={t("automations.settings.title")}
+        size="lg"
+        wrapBody
+        bodyClassName="auto-page__settings-body"
+        closeLabel={t("common.close")}
+        footer={
+          <button
+            type="button"
+            className="btn btn--solid"
+            onClick={() => setSettingsOpen(false)}
+          >
+            {t("common.close")}
+          </button>
+        }
+      >
+        <div className="auto-page__settings-modal">
+          <div className="auto-page__bg-rows">
+            <div className="auto-page__bg-row">
+              <div className="auto-page__bg-row-text">
+                <div className="auto-page__bg-row-label">
+                  {t("automations.runner.statusLabel")}
+                </div>
+                <div className="auto-page__bg-row-desc">
+                  {runnerSurface.phase === "running"
+                    ? t("automations.runner.statusRunning", {
+                        secs: runnerSurface.tickIntervalSecs,
+                      })
+                    : t("automations.runner.statusIdle")}
+                  {runnerSurface.lastTickAt
+                    ? ` · ${t("automations.runner.lastTick", {
+                        time: new Date(
+                          runnerSurface.lastTickAt,
+                        ).toLocaleTimeString(),
+                      })}`
+                    : ""}
+                </div>
+                {runnerSurface.severity !== "none" ||
+                runnerSurface.pausedReason === "no_enabled" ? (
+                  <div
+                    className={
+                      "auto-page__runner-reason" +
+                      (runnerSurface.severity === "warn"
+                        ? " auto-page__runner-reason--warn"
+                        : runnerSurface.severity === "info"
+                          ? " auto-page__runner-reason--info"
+                          : "")
+                    }
+                    role="status"
+                  >
+                    {t(runnerSurface.pausedReasonKey)}
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+                ) : null}
+              </div>
+            </div>
+
+            {onKeepTrayForSchedules ? (
+              <div className="auto-page__bg-row">
+                <div className="auto-page__bg-row-text">
+                  <div className="auto-page__bg-row-label">
+                    {t("settings.keepTrayForSchedules")}
+                  </div>
+                  <div className="auto-page__bg-row-desc">
+                    {t("settings.keepTrayForSchedulesDesc")}
+                  </div>
+                </div>
+                <label className="auto-page__switch">
+                  <input
+                    type="checkbox"
+                    checked={!!keepTrayForSchedules}
+                    onChange={() =>
+                      onKeepTrayForSchedules(!keepTrayForSchedules)
+                    }
+                    aria-label={t("settings.keepTrayForSchedules")}
+                  />
+                  <span className="auto-page__switch-ui" aria-hidden />
+                </label>
+              </div>
+            ) : null}
+
+            {onOpenLaunchAtLogin ? (
+              <div className="auto-page__bg-row">
+                <div className="auto-page__bg-row-text">
+                  <div className="auto-page__bg-row-label">
+                    {t("settings.launchAtLogin")}
+                  </div>
+                  <div className="auto-page__bg-row-desc">
+                    {t("settings.launchAtLoginDesc")}
+                  </div>
+                  <div className="auto-page__bg-row-actions">
+                    <button
+                      type="button"
+                      className="auto-page__bg-banner-link"
+                      onClick={() => {
+                        setSettingsOpen(false);
+                        onOpenLaunchAtLogin();
+                      }}
+                    >
+                      {t("automations.bg.openAtLoginLink")}
+                    </button>
+                  </div>
+                </div>
+                <span className="auto-page__settings-flag" aria-hidden>
+                  {openAtLogin
+                    ? t("automations.settings.on")
+                    : t("automations.settings.off")}
+                </span>
+              </div>
+            ) : null}
+
+            {launchAgent?.supported ? (
+              <div className="auto-page__bg-row">
+                <div className="auto-page__bg-row-text">
+                  <div className="auto-page__bg-row-label">
+                    {t("automations.launchAgent.title")}
+                  </div>
+                  <div className="auto-page__bg-row-desc">
+                    {t("automations.launchAgent.desc")}
+                  </div>
+                  <div className="auto-page__bg-row-actions">
+                    <button
+                      type="button"
+                      className="auto-page__bg-banner-link"
+                      onClick={() => void onRevealLaunchAgent()}
+                    >
+                      {t("automations.launchAgent.reveal")}
+                    </button>
+                  </div>
+                </div>
+                <label className="auto-page__switch">
+                  <input
+                    type="checkbox"
+                    checked={!!launchAgent.enabled}
+                    disabled={launchAgentBusy}
+                    onChange={() =>
+                      void onToggleLaunchAgent(!launchAgent.enabled)
+                    }
+                    aria-label={t("automations.launchAgent.title")}
+                  />
+                  <span className="auto-page__switch-ui" aria-hidden />
+                </label>
+              </div>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            className="auto-page__settings-advanced-toggle"
+            aria-expanded={settingsAdvancedOpen}
+            onClick={() => setSettingsAdvancedOpen((v) => !v)}
+          >
+            {t("automations.settings.advanced")}
+            <span aria-hidden>{settingsAdvancedOpen ? "▴" : "▾"}</span>
+          </button>
+
+          {settingsAdvancedOpen ? (
+            <div className="auto-page__settings-advanced">
+              <div
+                className="auto-page__honesty"
+                role="group"
+                aria-label={t("automations.honesty.legend")}
+              >
+                <div className="auto-page__honesty-title">
+                  {t("automations.honesty.legend")}
+                </div>
+                <ul className="auto-page__honesty-list">
+                  {honestyRows.map((row) => (
+                    <li key={row.id} className="auto-page__honesty-item">
+                      <strong className="auto-page__honesty-item-title">
+                        {t(row.titleKey)}
+                      </strong>
+                      <span className="auto-page__honesty-item-body">
+                        {t(row.bodyKey)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="auto-page__bg-rows">
+                <div className="auto-page__bg-row">
+                  <div className="auto-page__bg-row-text">
+                    <div className="auto-page__bg-row-label">
+                      {t(oneShotSurface.titleKey)}
+                    </div>
+                    <div className="auto-page__bg-row-desc">
+                      {t(oneShotSurface.bodyKey, {
+                        flag: oneShotSurface.flagHint,
+                        script: oneShotSurface.scriptName,
+                      })}
+                    </div>
+                    <div className="auto-page__bg-row-desc auto-page__bg-row-desc--muted">
+                      {t(oneShotSurface.honestyKey)}
+                    </div>
+                    <div className="auto-page__bg-row-actions">
+                      <button
+                        type="button"
+                        className="auto-page__bg-banner-link"
+                        onClick={() => void onRevealLaunchAgent()}
+                      >
+                        {t("automations.oneshot.reveal")}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </GlassModal>
 
       <GlassModal
         open={!!launchAgentFail}

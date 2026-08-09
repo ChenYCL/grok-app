@@ -69,8 +69,8 @@
 | 表面 | 内容 |
 |------|------|
 | 诚实矩阵 | 托盘/窗口 · 完全退出 · LaunchAgent · **One-shot** 四行产品真相（`automationsHonestyMatrix`） |
-| 调度状态行 | Host 是否 running、`lastTickAt`、暂停/风险原因（`deriveAutomationsRunnerSurface`：`process_bound` / `close_exits` / `awaiting_tick` / …） |
-| One-shot 说明 | 托盘驻留 vs 完全退出后一次性触发；flag / 脚本名；soft-fail 无到期 / CLI 缺失（`automationsOneShotHelperSurface`） |
+| 调度状态行 | Host 是否 running、`lastTickAt`、暂停/风险原因（`deriveAutomationsRunnerSurface`：`process_bound` / `close_exits` / `awaiting_tick` / …）— **UI 在 ⚙ 弹窗，非列表首屏** |
+| One-shot 说明 | 托盘驻留 vs 完全退出后一次性触发；flag / 脚本名；soft-fail 无到期 / CLI 缺失（`automationsOneShotHelperSurface`）— **折叠在 ⚙ → 高级** |
 | LaunchAgent 失败 | 安装/卸载/Reveal **soft-fail**：`GlassModal` + 明细；开关保持上次成功状态；文案重申非守护进程 |
 
 **One-shot 结果 kind**（`FireDueOutcome.kind`，稳定契约）：`fired` · `none_due` · `busy` · `error` · `already_claimed`。
@@ -85,6 +85,21 @@
 - **欢迎 SuperGrok 态**：仅无 `sessionId` 的草稿空会话。
 - **已有 sessionId 但无消息**：提示「此会话暂无消息…」，不显示新建页大牌。
 - **删除 / 危险操作**：禁止 `window.confirm`；用应用内弹窗（见 [dialogs.md](./dialogs.md)）。`AutomationsPage` 删除确认即范例。
+
+### 已安排页信息架构（精简首屏）
+
+主路径：**任务列表**。后台/诚实说明不常驻展开。
+
+| 区域 | 行为 |
+|------|------|
+| 页头 | 标题 + 短副标题 · **状态 pill** · **⚙ 后台与调度** · `创建 ▾` |
+| 风险横幅 | **仅 warn** 时一条（关窗会退出 / 无托盘保护等）；可快捷开 Keep tray 或 deep-link 设置。健康态无横幅 |
+| Tab | **任务**（默认）· **收件箱**（运行审阅；未读角标） |
+| 任务 Tab | 搜索 + 全部/启用/暂停 + 列表 / 空态 CTA |
+| 收件箱 Tab | 观察 ring：筛选 / 打开会话 / Run now；空态短文案，不占任务首屏 |
+| ⚙ GlassModal | Host 状态 · Keep tray · 登录启动链接 · LaunchAgent · **折叠「调度如何运行」**（诚实矩阵 + one-shot） |
+
+原则：能力不删；SoT 仍在 AppSettings + Host runner；页面只做任务管理 + 风险就近修复。
 
 ## Tauri 命令
 
