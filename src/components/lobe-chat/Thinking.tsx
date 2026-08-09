@@ -1,22 +1,20 @@
 /**
- * Bare thinking row (no tools in this burst) — Grok / Claude “Thought for Ns” chrome.
+ * Bare thinking row (no tools in this burst) — unified chrome with work phases.
  *
  * Official rhythm:
- * - Streaming: 💡 Thinking  (or short gist)
- * - Done collapsed (default): 💡 Thought for 12s  >     ← ONLY this line
- * - Done expanded: 💡 Thought for 12s  ∨  + muted body
+ * - Streaming: 💡 思考中 / Thinking for {duration}  (live timer, always)
+ * - Done collapsed (default): 💡 思考了 / Thought for {duration}  >
+ * - Done expanded: same header + muted body
  *
- * Never use “思考完成” / raw first-line (“Quick note:”) as the chrome label.
- * Full markdown is dig-in only, never the collapsed surface.
- *
- * Tool bursts use TimelinePhaseBlock (“Worked for Ns”) instead.
+ * Never use gist / first-line body as the chrome label.
+ * Tool bursts use TimelinePhaseBlock (“工作了 / Worked for …”) instead.
  */
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { IconBulb, IconChevronDown, IconChevronRight } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { MarkdownChat } from "./MarkdownChat";
-import type { Locale } from "@/i18n";
+import { createT, type Locale } from "@/i18n";
 import { COLLAPSE_ALL_ACTIVITY_EVENT } from "@/lib/collapseAllActivity";
 import {
   loadThinkingExpandPref,
@@ -24,15 +22,13 @@ import {
   THINKING_PREF_EVENT,
   type ThinkingExpandPref,
 } from "@/lib/thinkingPref";
-import { extractThinkingSummary } from "@/lib/thinkingSummary";
+import { formatWorkDuration } from "@/lib/formatWorkDuration";
+import { resolveThinkingChromeLabel } from "@/lib/thinkingChromeLabel";
 
 export const Thinking = memo(function Thinking({
   content,
   thinking,
   durationMs,
-  streamingLabel,
-  doneLabel,
-  thoughtForLabel,
   locale = "en",
   expandPref,
   onOpenExternalLink,
@@ -41,15 +37,12 @@ export const Thinking = memo(function Thinking({
   thinking?: boolean;
   /** Duration in ms when known (live timer or history). */
   durationMs?: number;
-  streamingLabel: string;
-  /** Fallback when no duration yet — should be short “Thought”, not “Reasoning complete”. */
-  doneLabel: string;
-  thoughtForLabel: (seconds: string) => string;
   locale?: Locale;
   /** Global default for finished blocks (Settings). Per-block toggles are local. */
   expandPref?: ThinkingExpandPref;
   onOpenExternalLink?: (url: string) => void;
 }) {
+  const tr = useMemo(() => createT(locale), [locale]);
   const [pref, setPref] = useState<ThinkingExpandPref>(
     () => expandPref ?? loadThinkingExpandPref(),
   );
@@ -110,12 +103,22 @@ export const Thinking = memo(function Thinking({
     };
   }, []);
 
+  // Live wall-clock while streaming; freeze when done.
   useEffect(() => {
     if (thinking) {
       setOpen(true);
       userToggled.current = false;
       if (startRef.current == null) startRef.current = Date.now();
-      return;
+      const tick = () => {
+        if (startRef.current != null) {
+          setLocalDuration(Date.now() - startRef.current);
+        }
+      };
+      tick();
+      const id = window.setInterval(tick, 1000);
+      return () => {
+        window.clearInterval(id);
+      };
     }
     if (startRef.current != null) {
       setLocalDuration(Date.now() - startRef.current);
@@ -132,24 +135,23 @@ export const Thinking = memo(function Thinking({
   }, [durationMs]);
 
   /**
-   * Chrome label (always duration-first when done):
-   * - live: gist || “Thinking”
-   * - done: “Thought for Ns” | fallback “Thought” (never “思考完成” / first line)
+   * Chrome label:
+   * - live: “思考中 {duration}” / “Thinking for {duration}”
+   * - done: “思考了 {duration}” / “Thought for {duration}”
+   * Never gist / body first line.
    */
-  const chromeLabel = useMemo(() => {
-    if (thinking) {
-      const gist = extractThinkingSummary(
-        typeof content === "string" ? content : "",
-      );
-      return gist || streamingLabel;
-    }
-    if (localDuration != null && localDuration >= 100) {
-      // Whole seconds like Grok “Thought for 12s” (not 12.3)
-      const sec = Math.max(1, Math.round(localDuration / 1000));
-      return thoughtForLabel(String(sec));
-    }
-    return doneLabel;
-  }, [thinking, content, streamingLabel, localDuration, thoughtForLabel, doneLabel]);
+  const chromeLabel = useMemo(
+    () =>
+      resolveThinkingChromeLabel({
+        live: !!thinking,
+        durationMs: localDuration,
+        thinkingFor: (duration) => tr("chat.thinkingFor", { duration }),
+        thoughtFor: (duration) => tr("chat.thoughtFor", { duration }),
+        doneLabel: tr("chat.thoughtDone"),
+        formatDuration: (sec) => formatWorkDuration(sec, locale),
+      }),
+    [thinking, localDuration, tr, locale],
+  );
 
   const hasBody =
     (typeof content === "string" && content.trim().length > 0) ||

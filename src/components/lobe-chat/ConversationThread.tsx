@@ -62,7 +62,6 @@ import { UserAttachments } from "@/components/lobe-chat/UserAttachments";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import {
   IconArrowsMinimize,
-  IconBulb,
   IconChat,
   IconClock,
   IconCopy,
@@ -1240,13 +1239,7 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
           data-find-assistant={isFindCurrent ? "current" : undefined}
         >
           {showThinkingPlaceholder ? (
-            <Thinking
-              locale={locale}
-              thinking
-              streamingLabel={tr("chat.thinkingLabel")}
-              doneLabel={tr("chat.thoughtDone")}
-              thoughtForLabel={(n) => tr("chat.thoughtFor", { n })}
-            />
+            <Thinking locale={locale} thinking />
           ) : null}
           {m.leadFragments?.length ? (
             <LeadFragmentsStrip
@@ -1323,11 +1316,6 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
                       locale={locale}
                       thinking={streaming}
                       content={joined}
-                      streamingLabel={tr("chat.thinkingLabel")}
-                      doneLabel={tr("chat.thoughtDone")}
-                      thoughtForLabel={(n) =>
-                        tr("chat.thoughtFor", { n })
-                      }
                       onOpenExternalLink={onOpenExternalLink}
                     />
                   </div>
@@ -2409,19 +2397,8 @@ export function ConversationThread({
           ) : null}
 
           {showQuietThinking ? (
-            <div
-              className="grok-act__step is-running is-last"
-              role="status"
-              data-testid="quiet-thinking"
-            >
-              <div className="grok-act__icon-col" aria-hidden>
-                <span className="grok-act__icon">
-                  <IconBulb size={16} stroke={1.5} />
-                </span>
-              </div>
-              <span className="grok-act__label grok-act__label--live">
-                {tr("chat.thinkingLabel")}
-              </span>
+            <div data-testid="quiet-thinking">
+              <Thinking locale={locale} thinking />
             </div>
           ) : null}
 

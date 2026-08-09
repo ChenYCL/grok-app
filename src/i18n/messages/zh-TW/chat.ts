@@ -84,6 +84,8 @@ export const zhTWChat = {
   "message.regeneratePickModel": "選擇模型重新生成…",
   "chat.thinking": "思考中…",
   "chat.thinkingLabel": "思考中",
+  /** 進行中裸思考摺疊頭：思考中 + 計時（與工作中對稱）。 */
+  "chat.thinkingFor": "思考中 {duration}",
   "chat.workedFor": "工作了 {duration}",
   "chat.worked": "已工作",
   "chat.workingFor": "工作中 {duration}",
@@ -118,8 +120,10 @@ export const zhTWChat = {
   "chat.hostVisionTitle": "辨識圖片內容",
   "chat.hostSearchTitle": "搜尋 X 資訊",
   "chat.turnFailed": "本輪執行失敗",
-  "chat.thoughtDone": "思考",
-  "chat.thoughtFor": "思考了 {n}s",
+  /** 無時長時的已完成摺疊頭（統一「思考了」，不用單獨「思考」）。 */
+  "chat.thoughtDone": "思考了",
+  /** 已完成思考 + 時長（{duration} 與工作了共用 formatWorkDuration）。 */
+  "chat.thoughtFor": "思考了 {duration}",
   "chat.showThought": "檢視",
   "chat.hideThought": "收合",
   "chat.toolRunning": "工具執行中…",

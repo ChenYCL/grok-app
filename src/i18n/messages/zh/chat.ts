@@ -84,6 +84,8 @@ export const zhChat = {
   "message.regeneratePickModel": "选择模型重新生成…",
   "chat.thinking": "思考中…",
   "chat.thinkingLabel": "思考中",
+  /** 进行中裸思考折叠头：思考中 + 计时（与工作中对称）。 */
+  "chat.thinkingFor": "思考中 {duration}",
   "chat.workedFor": "工作了 {duration}",
   "chat.worked": "已工作",
   "chat.workingFor": "工作中 {duration}",
@@ -118,8 +120,10 @@ export const zhChat = {
   "chat.hostVisionTitle": "识别图片内容",
   "chat.hostSearchTitle": "搜索 X 信息",
   "chat.turnFailed": "本轮执行失败",
-  "chat.thoughtDone": "思考",
-  "chat.thoughtFor": "思考了 {n}s",
+  /** 无时长时的已完成折叠头（统一「思考了」，不用单独「思考」）。 */
+  "chat.thoughtDone": "思考了",
+  /** 已完成思考 + 时长（{duration} 与工作了共用 formatWorkDuration）。 */
+  "chat.thoughtFor": "思考了 {duration}",
   "chat.showThought": "查看",
   "chat.hideThought": "收起",
   "chat.toolRunning": "工具运行中…",

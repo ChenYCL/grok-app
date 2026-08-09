@@ -84,6 +84,8 @@ export const enChat = {
   "message.regeneratePickModel": "Regenerate with model…",
   "chat.thinking": "Thinking…",
   "chat.thinkingLabel": "Thinking",
+  /** Live bare-thought chrome with wall-clock (matches Working for …). */
+  "chat.thinkingFor": "Thinking for {duration}",
   "chat.workedFor": "Worked for {duration}",
   "chat.worked": "Worked",
   "chat.workingFor": "Working for {duration}",
@@ -118,8 +120,10 @@ export const enChat = {
   "chat.hostVisionTitle": "Recognizing image",
   "chat.hostSearchTitle": "Searching on X",
   "chat.turnFailed": "This turn failed",
+  /** Finished thought without a usable duration. */
   "chat.thoughtDone": "Thought",
-  "chat.thoughtFor": "Thought for {n}s",
+  /** Finished thought with duration (same {duration} tokens as workedFor). */
+  "chat.thoughtFor": "Thought for {duration}",
   "chat.showThought": "Show",
   "chat.hideThought": "Hide",
   "chat.toolRunning": "Running tool…",
