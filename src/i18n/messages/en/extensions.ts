@@ -244,6 +244,8 @@ export const enExtensions = {
   "ext.skills.loading": "Loading skills…",
   "ext.skills.empty": "No skills discovered",
   "ext.skills.emptyCli": "Skills are unavailable until the CLI is installed.",
+  /** Compact name tag for project-local skills only (global untagged). */
+  "ext.skills.badge.project": "Project",
   "ext.skills.invocable": "Slash",
   "ext.skills.edit": "Edit SKILL.md",
   "ext.skills.editTitle": "Edit skill · {name}",

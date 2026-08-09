@@ -153,12 +153,10 @@ fn parse_usage(kind: &str, update: &Value) -> Option<ContextUsageSnapshot> {
 fn parse_compact(kind: &str, update: &Value) -> Option<ContextCompactSnapshot> {
     let tokens_before = token_u64(update, &["tokens_before", "tokensBefore"]);
     let tokens_after = token_u64(update, &["tokens_after", "tokensAfter"]);
-    let title = update.get("title").and_then(Value::as_str).unwrap_or("");
-    let title_lower = title.to_ascii_lowercase();
-    let is_compact = kind.contains("compact")
-        || tokens_before.is_some()
-        || tokens_after.is_some()
-        || title_lower.contains("compact");
+    // Kind / token counters only — never free-text `title` substrings.
+    // Tool titles often embed "compact" in shell scripts and must not count.
+    let is_compact =
+        kind.contains("compact") || tokens_before.is_some() || tokens_after.is_some();
     if !is_compact {
         return None;
     }
@@ -168,10 +166,7 @@ fn parse_compact(kind: &str, update: &Value) -> Option<ContextCompactSnapshot> {
         .or_else(|| update.get("triggerType"))
         .and_then(Value::as_str)
         .unwrap_or("");
-    let trigger = if trigger_raw.eq_ignore_ascii_case("manual")
-        || kind.contains("manual")
-        || (title_lower.contains("compact") && !title_lower.contains("auto"))
-    {
+    let trigger = if trigger_raw.eq_ignore_ascii_case("manual") || kind.contains("manual") {
         "manual"
     } else if trigger_raw.eq_ignore_ascii_case("auto")
         || kind.contains("auto")
@@ -192,8 +187,7 @@ fn parse_compact(kind: &str, update: &Value) -> Option<ContextCompactSnapshot> {
         .or_else(|| update.get("message"))
         .or_else(|| update.get("reason"))
         .and_then(Value::as_str)
-        .map(str::to_string)
-        .or_else(|| (!title.is_empty()).then(|| title.to_string()));
+        .map(str::to_string);
     Some(ContextCompactSnapshot {
         trigger: trigger.to_string(),
         tokens_before,
@@ -389,5 +383,19 @@ mod tests {
         assert_eq!(compact.tokens_before, Some(12000));
         assert_eq!(compact.tokens_after, Some(3200));
         assert_eq!(compact.note.as_deref(), Some("keep decisions"));
+    }
+
+    #[test]
+    fn tool_title_containing_compact_word_is_not_compaction() {
+        let signals = extract_context_signals(&json!({
+            "sessionUpdate": "tool_call_update",
+            "status": "completed",
+            "title": "[bg] python3\nprint('=== ALL POSTS compact ===')\n"
+        }));
+        assert!(
+            signals.compact.is_none(),
+            "free-text title must not be treated as compact: {:?}",
+            signals.compact
+        );
     }
 }

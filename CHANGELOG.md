@@ -11,6 +11,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- **Linux AppImage black window docs + helper (#539)**: Document Wayland/AMD + bundled WebKitGTK `EGL_BAD_PARAMETER` black-screen class (host still runs). README (en/zh) troubleshooting prefers `.deb`/`.rpm` or system-WebKit extract path; `scripts/run-linux-appimage-system-webkit.sh` wraps the confirmed workaround. No Rust env-only change — reporter proved `WEBKIT_DISABLE_*` alone is insufficient against the AppImage-bundled WebKit.
+
+**中文 · 修复**
+- **Linux AppImage 黑屏说明与脚本（#539）**：文档化 Wayland/AMD 下内置 WebKitGTK `EGL_BAD_PARAMETER` 全黑窗（宿主仍运行）；README 推荐 `.deb`/`.rpm` 或系统 WebKit 解压运行；提供 `scripts/run-linux-appimage-system-webkit.sh`。不在 Rust 里硬塞 env——对照实验已证明仅对 AppImage 内置 WebKit 设 `WEBKIT_DISABLE_*` 不够。
+
 ## [0.2.11] - 2026-08-08
 
 > **Highlight:** Desktop UX polish batch — native **Copy image** (Feishu-pasteable), **per-session composer drafts**, closable side pane + titlebar maximize, **Mark as unread**, and **DeepSeek balance** in settings/sidebar.

@@ -146,6 +146,27 @@ describe("skillsToSlashItems", () => {
       "default",
     ]);
   });
+
+  it("prefers project skill when name collides with global", () => {
+    const skills: SkillInfo[] = [
+      {
+        name: "shared",
+        description: "user copy",
+        source: "user",
+        userInvocable: true,
+      },
+      {
+        name: "Shared",
+        description: "project copy",
+        source: "project",
+        userInvocable: true,
+      },
+    ];
+    const items = skillsToSlashItems(skills);
+    expect(items).toHaveLength(1);
+    expect(items[0]!.source).toBe("project");
+    expect(items[0]!.displayDescription).toBe("project copy");
+  });
 });
 
 describe("filterPickerSkills", () => {

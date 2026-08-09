@@ -255,6 +255,13 @@ async fn media_get(
     }
     let path = PathBuf::from(path_raw);
 
+    // Missing files are 404 (not found), not 403 (path_scope denial) — so the
+    // frontend can tell “file gone” from “not allowed” and never blames a
+    // corrupt blob for an allowlist failure.
+    if !path.exists() {
+        return text_status_cors(StatusCode::NOT_FOUND, "file not found", acao);
+    }
+
     let path = match crate::path_scope::require_allowed(&path) {
         Ok(p) => p,
         Err(_) => {
@@ -632,6 +639,25 @@ mod tests {
         assert_eq!(res.status(), 206);
         let bytes = res.bytes().await.unwrap();
         assert_eq!(bytes.len(), MAX_CHUNK as usize);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn missing_file_is_404_not_403() {
+        // Error honesty: a path that does not exist is NOT FOUND (404), not a
+        // path_scope denial (403) — the frontend must not blame a corrupt blob
+        // for an allowlist failure.
+        let dir = std::env::temp_dir().join(format!("grok-media-missing-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let missing = dir.join("gone.png");
+        crate::path_scope::grant_path(&missing);
+
+        let handle = start().await.expect("start");
+        let url = url_for_path(&handle.endpoint(), &missing.to_string_lossy());
+        let client = reqwest::Client::new();
+        let res = client.get(&url).send().await.expect("get");
+        assert_eq!(res.status(), 404);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

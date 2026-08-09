@@ -538,15 +538,26 @@
 /*
  * Name first: title does not shrink for description.
  * Only ellipsize title when it exceeds ~70% of the row.
+ * Project skills may append a compact `[Project]` scope tag.
  */
 .composer-plus__title {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   max-width: 70%;
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
   color: var(--text-primary);
+}
+
+.composer-plus__title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .composer-plus__desc {

@@ -59,13 +59,16 @@ Video covers remain separate (`video-posters` + ffmpeg).
 
 Host injects a short **path citation** block into session `--rules` (`path_citation_session_rules` in `official_aux.rs`). Soft guidance only.
 
-Frontend normalize (`src/lib/pathNormalize.ts`):
+Frontend normalize (`src/lib/pathNormalize.ts` + `src/lib/attachments.ts`):
 
 - Shell-unescape POSIX paths (`file\ \(1\).png` → `file (1).png`)
 - Reject site-root absolutes (`/images/…`) for media HTTP
 - Fail soft: unresolved relative media → plain code (not broken ImageUi)
 - **FilePathCard**: only interactive chrome after Host confirms a real on-disk path (or URL). Unresolved / missing tokens stay plain inline code — never a dead clickable card
 - Bare media basenames (`manycore.png`) stay as inline code unless pathMap maps them to a real local abs
+- **Plausible local media abs** (`isPlausibleLocalMediaAbs`, host-aligned): POSIX needs ≥2 path segments — never mount VideoUi/ImageUi on `/replica_v2.mp4` mid-path false extracts after space + CJK folder names (`…/grok 美女视频/file.mp4`)
+- Bare extract: no mid-path re-match after CJK (unless known root glue `换成/Users/…`); root walk soft-continues through unescaped spaces (`Application Support`, Downloads CJK folders)
+- Windows drive + `~/…` media paths stay valid
 
 ## Chat attachments (tool → journal → thumb)
 

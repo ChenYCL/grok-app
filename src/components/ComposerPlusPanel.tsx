@@ -15,6 +15,7 @@ import {
 } from "react";
 import type { Locale, MessageKey } from "@/i18n";
 import { createT } from "@/i18n";
+import { isProjectSkillSource } from "@/lib/extensionsUi";
 import {
   countSlashByKind,
   resolveSlashMenuEmptyState,
@@ -517,7 +518,17 @@ export function ComposerPlusPanel({
             <span className="composer-plus__ico" aria-hidden>
               {slashItemIcon(item)}
             </span>
-            <span className="composer-plus__title">{title}</span>
+            <span className="composer-plus__title">
+              <span className="composer-plus__title-text">{title}</span>
+              {item.kind === "skill" && isProjectSkillSource(item.source) ? (
+                <span
+                  className="skill-scope-tag skill-scope-tag--project"
+                  title={tr("ext.skills.badge.project")}
+                >
+                  [{tr("ext.skills.badge.project")}]
+                </span>
+              ) : null}
+            </span>
             {right ? (
               <span className="composer-plus__desc">{right}</span>
             ) : null}

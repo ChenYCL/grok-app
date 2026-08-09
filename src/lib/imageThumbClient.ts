@@ -7,10 +7,13 @@
 import * as api from "@/lib/api";
 import {
   ensureMediaEndpoint,
+  getMediaEndpoint,
   isViewableSrc,
   localPathToMediaHttpUrl,
+  onMediaEndpointChange,
   resolveImageSrc,
 } from "@/lib/imageSrc";
+import { isFusedQueryKeyPath } from "@/lib/pathNormalize";
 import { setImageAspect } from "@/lib/imageAspectCache";
 
 export type ThumbResolve = {
@@ -26,6 +29,12 @@ export type ThumbResolve = {
 /** Session memory: original path/url → displaySrc (loopback to thumb file). */
 const displayCache = new Map<string, ThumbResolve>();
 
+// A media server restart (new port/token) invalidates every cached loopback
+// URL — drop them so the next remount re-resolves with the live endpoint.
+onMediaEndpointChange(() => {
+  displayCache.clear();
+});
+
 function isHttpUrl(s: string): boolean {
   return /^https?:\/\//i.test(s.trim());
 }
@@ -34,6 +43,7 @@ function isLocalAbs(s: string): boolean {
   const t = s.trim();
   if (!t || isHttpUrl(t)) return false;
   if (t.startsWith("data:") || t.startsWith("blob:")) return false;
+  if (isFusedQueryKeyPath(t)) return false;
   return t.startsWith("/") || /^[A-Za-z]:[\\/]/.test(t);
 }
 
@@ -108,7 +118,20 @@ export async function resolveChatImageThumb(
 
   try {
     await ensureMediaEndpoint();
-    const thumb = await api.mediaImageThumb(target);
+    let thumb: api.ImageThumbResult | null = null;
+    try {
+      thumb = await api.mediaImageThumb(target);
+    } catch {
+      // Reopen race: history paints before openSession's paths_classify grants
+      // land, so Downloads / Desktop media 403 on the first paint. Re-classify
+      // (force-grant) once, then retry the thumb materialization.
+      try {
+        await api.pathsClassify([target]);
+      } catch {
+        /* classify failure is not fatal — fall through to full resolve */
+      }
+      thumb = await api.mediaImageThumb(target).catch(() => null);
+    }
     if (thumb?.thumbPath) {
       let display =
         localPathToMediaHttpUrl(thumb.thumbPath) ||
@@ -158,4 +181,10 @@ export async function resolveChatImageThumb(
 /** Test helper. */
 export function clearChatImageThumbClientCache(): void {
   displayCache.clear();
+}
+
+/** Test helper — access current endpoint for cache-staleness assertions. */
+export function getThumbCacheEndpoint(): string | null {
+  const ep = getMediaEndpoint();
+  return ep ? `${ep.baseUrl}?t=${ep.token}` : null;
 }

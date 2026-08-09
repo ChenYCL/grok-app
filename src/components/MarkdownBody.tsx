@@ -12,6 +12,7 @@ import { ImageUi, imageUiLabels } from "@/components/ImageUi";
 import { VideoUi, videoUiLabels } from "@/components/VideoUi";
 import {
   isImagePath,
+  isPlausibleLocalMediaAbs,
   isVideoPath,
   pathBasename,
   resolveInlineMediaToken,
@@ -53,8 +54,10 @@ export function MarkdownBody({
   }, [imagePathMap]);
 
   const renderMedia = (abs: string, alt?: string) => {
-    // Only real local abs — never site-root CMS paths.
-    if (!isRealLocalAbsolutePath(abs)) return null;
+    // Real multi-segment local abs only — never site-root or `/file.mp4` tails.
+    if (!isRealLocalAbsolutePath(abs) || !isPlausibleLocalMediaAbs(abs)) {
+      return null;
+    }
     if (isVideoPath(abs)) {
       return (
         <VideoUi
@@ -122,14 +125,22 @@ export function MarkdownBody({
               normalizeLocalPathToken(src) ??
               src;
             if (isSiteRootAbsolutePath(mapped)) return null;
-            if (isVideoPath(mapped) && isRealLocalAbsolutePath(mapped)) {
+            if (
+              isVideoPath(mapped) &&
+              isRealLocalAbsolutePath(mapped) &&
+              isPlausibleLocalMediaAbs(mapped)
+            ) {
               return renderMedia(
                 mapped,
                 typeof alt === "string" ? alt : pathBasename(mapped),
               );
             }
-            // Remote http(s) images still render; local only when real abs.
-            const local = isRealLocalAbsolutePath(mapped) ? mapped : undefined;
+            // Remote http(s) images still render; local only when real multi-seg abs.
+            const local =
+              isRealLocalAbsolutePath(mapped) &&
+              (!isImagePath(mapped) || isPlausibleLocalMediaAbs(mapped))
+                ? mapped
+                : undefined;
             if (!local && !/^https?:\/\//i.test(mapped) && !mapped.startsWith("data:")) {
               return null;
             }

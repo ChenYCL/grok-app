@@ -43,6 +43,7 @@ import {
   canUseImageThumb,
   resolveChatImageThumb,
 } from "@/lib/imageThumbClient";
+import { isFusedQueryKeyPath } from "@/lib/pathNormalize";
 import { useImageViewerOptional } from "@/components/ImageViewer";
 import { IconCopy, IconExternalLink, IconFolder } from "@/components/icons";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
@@ -111,7 +112,8 @@ function isLocalFsPath(path: string | undefined): path is string {
   if (path.startsWith("data:") || path.startsWith("blob:")) return false;
   if (path.startsWith("asset:") || path.includes("asset.localhost")) return false;
   if (path.startsWith("media:") || path.includes("media.localhost")) return false;
-  // Unix absolute or Windows drive
+  // Unix absolute or Windows drive (never a fused `t:/Users/…` query key).
+  if (isFusedQueryKeyPath(path)) return false;
   return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
 }
 

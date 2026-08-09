@@ -7,8 +7,10 @@
  */
 
 import {
+  isFusedQueryKeyPath,
   isRealLocalAbsolutePath,
   isSiteRootAbsolutePath,
+  isWindowsStylePath,
   normalizeLocalPathToken,
   unescapeShellPath,
 } from "@/lib/pathNormalize";
@@ -143,6 +145,72 @@ export function isMediaPath(path: string): boolean {
 }
 
 /**
+ * Local media abs worth attaching / previewing.
+ *
+ * Mirrors Host `is_plausible_local_media_abs`: reject single-segment false
+ * extracts like `/replica_v2.mp4` or `/img_001.png` (often mid-path tails after
+ * space + CJK folder names). Windows drive paths and `~/…` stay allowed.
+ */
+export function isPlausibleLocalMediaAbs(path: string): boolean {
+  if (!path) return false;
+  if (/^https?:\/\//i.test(path)) return false;
+  const n = normalizeLocalPathToken(path) || path.trim();
+  if (!n || !isMediaPath(n)) return false;
+  if (isSiteRootAbsolutePath(n)) return false;
+  // Windows drive (`C:\…` / `C:/…`) — host treats as always multi-part enough.
+  if (isWindowsStylePath(n) || /^[A-Za-z]:\//.test(n)) {
+    return n.length > 3;
+  }
+  if (n === "~" || n === "~/") return false;
+  if (n.startsWith("~/")) {
+    const rest = n.slice(2);
+    if (!rest || rest.includes("..")) return false;
+    return rest.split("/").filter(Boolean).length >= 1;
+  }
+  if (!n.startsWith("/")) return false;
+  // POSIX: need `/dir/file.ext` — not `/file.ext` alone.
+  return n.split("/").filter(Boolean).length >= 2;
+}
+
+/**
+ * Known absolute roots that may follow CJK/prose glue (`换成/Users/…`).
+ * Used only as a *start* allowlist after non-ASCII prev chars — not required
+ * for normal delimited paths (` /tmp/a.png`, `：/workspace/…`).
+ */
+const KNOWN_LOCAL_ABS_PREFIX =
+  /^(?:\/(?:Users|home|tmp|var|private|opt|Volumes|Applications|System|Library|mnt|run|root|usr|etc|sess|data|workspace|work|projects?)\/|~\/|[A-Za-z]:[\\/])/i;
+
+/**
+ * Whether `index` is a valid start for a bare absolute media path.
+ * Avoids lookbehind (WKWebView). Rejects mid-path re-matches after ASCII path
+ * body **and** after CJK segments from space-broken folders
+ * (`…/grok 美女视频/file.mp4` must not yield `/file.mp4`).
+ * Still allows CJK glue before known roots: `换成/Users/me/a.png`.
+ */
+function isBareAbsMediaStart(
+  content: string,
+  index: number,
+  path: string,
+): boolean {
+  if (index <= 0) return true;
+  const prev = content[index - 1]!;
+  // Sentence / markdown / table delimiters — a real path may start after these.
+  if (/[\s`"'<>|*?()[\]{}=，。；：、！？）】》〈《「『【（,;:!?+]/.test(prev)) {
+    return true;
+  }
+  // ASCII path body / separators → mid-path (`Support/com.grokapp/…`).
+  if (/[A-Za-z0-9_./~%+\-@\\]/.test(prev)) {
+    return false;
+  }
+  // Non-ASCII (CJK, hangul, …): only allow known-root glue, not tail segments.
+  if (prev.charCodeAt(0) > 127) {
+    return KNOWN_LOCAL_ABS_PREFIX.test(path);
+  }
+  // Other ASCII punctuation — allow.
+  return true;
+}
+
+/**
  * Known relative media roots (agent session + project cwd skill outputs).
  * Prefer longest match when building path-map tails.
  */
@@ -179,6 +247,9 @@ export function mediaTailFromPath(abs: string): string | null {
  * Extract absolute local image/video paths mentioned in assistant text
  * (backticks, plain paths). Backtick form allows spaces; prose may use
  * shell escapes (`\ ` `\( `) which are unescaped before attach.
+ *
+ * Never returns single-segment false extracts (`/file.mp4`) — those break
+ * VideoUi/media HTTP with `path not allowed`.
  */
 export function extractMediaPathsFromContent(content: string): Attachment[] {
   if (!content) return [];
@@ -191,10 +262,13 @@ export function extractMediaPathsFromContent(content: string): Attachment[] {
     const path = normalizeLocalPathToken(raw) || raw.trim();
     if (!path || seen.has(path) || !isMediaPath(path)) return;
     if (!isRealLocalAbsolutePath(path)) return;
+    // Host-aligned multi-segment gate (drops `/replica_v2.mp4` mid-path tails).
+    if (!isPlausibleLocalMediaAbs(path)) return;
     seen.add(path);
     out.push({ path, name: pathBasename(path), isDir: false });
   };
 
+  // Backticks: allow spaces inside (`…/Application Support/…`, CJK folders).
   const tickRe = new RegExp(
     `\`((?:\\/|[A-Za-z]:[\\\\/]|~\\/)[^\`]+?\\.(?:${MEDIA_EXT_RE}))\``,
     "gi",
@@ -202,16 +276,64 @@ export function extractMediaPathsFromContent(content: string): Attachment[] {
   let m: RegExpExecArray | null;
   while ((m = tickRe.exec(content)) !== null) push(m[1] || "");
 
-  // Bare paths: scan for real-local roots; allow shell-escaped spaces/parens.
-  // Rejects site roots inside push() via isSiteRootAbsolutePath.
+  // Bare paths: known roots + soft space continuation; simple scan gated below.
   extractBareAbsoluteMedia(content, push);
 
   return out;
 }
 
+/** Hard path terminators (never part of a local FS path token). */
+const PATH_HARD_STOP = /[`"'<>|*?\n\r]/;
+/** CJK / fullwidth sentence punctuation abutting paths without a space. */
+const PATH_CJK_STOP = /[，。；：、！？）】》]/;
+
+/**
+ * After an unescaped space in a known-root walk, try to finish a media path
+ * that includes spaces in folder names (`Application Support`, `grok 美女视频`).
+ * Returns null when the space is a real token boundary (sentence).
+ */
+function tryFinishSpacedMediaPath(
+  content: string,
+  spaceIndex: number,
+  prefix: string,
+  mediaExt: RegExp,
+): { path: string; end: number } | null {
+  // Prefix already ends with a media ext (`/tmp/a.png …`) — space is a
+  // real token boundary, not a folder-name space. Do not swallow the rest
+  // of the sentence into one false path (`…png and /tmp/b.mp4`).
+  if (mediaExt.test(prefix)) return null;
+
+  let i = spaceIndex;
+  let built = prefix;
+  while (i < content.length && built.length < 800) {
+    const c = content[i]!;
+    if (PATH_HARD_STOP.test(c) || PATH_CJK_STOP.test(c)) break;
+    if (c === "\\" && i + 1 < content.length) {
+      built += c + content[i + 1]!;
+      i += 2;
+      continue;
+    }
+    built += c;
+    i += 1;
+    if (!mediaExt.test(built)) continue;
+    const next = i < content.length ? content[i]! : "";
+    // Complete at end-of-string or a clear path boundary.
+    if (
+      !next ||
+      /[\s`"'<>|*?，。；：、！？）】》,;!?]/.test(next) ||
+      PATH_HARD_STOP.test(next)
+    ) {
+      return { path: built, end: i };
+    }
+  }
+  if (mediaExt.test(built)) return { path: built, end: i };
+  return null;
+}
+
 /**
  * Scan prose for absolute media paths, including shell-escaped spaces
- * (`file\ \(1\).png`). Site-root paths are filtered by `push`.
+ * (`file\ \(1\).png`) and unescaped spaces in folder names.
+ * Site-root / single-segment tails are filtered by `push`.
  *
  * Roots may follow CJK without a space (`logo换成/Users/…`).
  */
@@ -221,7 +343,7 @@ function extractBareAbsoluteMedia(
 ): void {
   // Find known local roots anywhere (not only after whitespace).
   const rootRe =
-    /(\/(?:Users|home|tmp|var|private|opt|Volumes|Applications|System|Library|mnt|run|root|sess)\/|~\/|[A-Za-z]:[\\/])/gi;
+    /(\/(?:Users|home|tmp|var|private|opt|Volumes|Applications|System|Library|mnt|run|root|usr|etc|sess|data|workspace)\/|~\/|[A-Za-z]:[\\/])/gi;
   let sm: RegExpExecArray | null;
   const mediaExt = new RegExp(`\\.(?:${MEDIA_EXT_RE})$`, "i");
   while ((sm = rootRe.exec(content)) !== null) {
@@ -241,10 +363,20 @@ function extractBareAbsoluteMedia(
         i += 2;
         continue;
       }
-      // Unescaped whitespace / markdown delimiters end the path.
-      if (/[\s`"'<>|*?]/.test(c)) break;
+      // Unescaped whitespace: either end of token, or space inside a folder name.
+      if (/\s/.test(c)) {
+        if (c === "\n" || c === "\r") break;
+        const spaced = tryFinishSpacedMediaPath(content, i, out, mediaExt);
+        if (spaced) {
+          out = spaced.path;
+          i = spaced.end;
+        }
+        break;
+      }
+      // Markdown / glob delimiters end the path.
+      if (/[`"'<>|*?]/.test(c)) break;
       // CJK / sentence punctuation often follows paths without space.
-      if (/[，。；：、！？）】》]/.test(c)) break;
+      if (PATH_CJK_STOP.test(c)) break;
       out += c;
       i += 1;
       if (out.length > 800) break;
@@ -254,9 +386,11 @@ function extractBareAbsoluteMedia(
     rootRe.lastIndex = Math.max(rootRe.lastIndex, start + Math.max(out.length, 1));
   }
 
-  // Simple bare paths without spaces. Require a non-path boundary so we never
-  // re-match mid-path (`…/Support/com.grokapp/…/images/1.jpg` → false `/com…`).
-  // Allows CJK glue: `路径：/tmp/a.png` and `换成/Users/…/a.png`.
+  // Simple bare paths without requiring a known root (`/workspace/…`, custom).
+  // Require a valid start boundary so we never re-match mid-path tails:
+  //   `…/Support/com.grokapp/…/images/1.jpg` → false `/com…`
+  //   `…/grok 美女视频/replica_v2.mp4` → false `/replica_v2.mp4`
+  // Allows CJK glue before known roots: `换成/Users/…/a.png`.
   //
   // No lookbehind (`(?<!…)`) — Safari/WKWebView throws
   // "Invalid regular expression: invalid group specifier name" and white-screens
@@ -269,9 +403,7 @@ function extractBareAbsoluteMedia(
   while ((m = bareSimpleRe.exec(content)) !== null) {
     const path = m[1] || "";
     if (!path) continue;
-    if (m.index > 0 && /[A-Za-z0-9_./-]/.test(content[m.index - 1]!)) {
-      continue;
-    }
+    if (!isBareAbsMediaStart(content, m.index, path)) continue;
     push(path);
   }
 }
@@ -529,7 +661,14 @@ export function resolveInlineMediaToken(
   const mappedOk = (abs: string | undefined): string | null => {
     if (!abs) return null;
     if (isSiteRootAbsolutePath(abs)) return null;
-    if (isRealLocalAbsolutePath(abs) && isMediaPath(abs)) return abs;
+    // Mapped targets must still be openable local media (no `/file.mp4` junk).
+    if (
+      isRealLocalAbsolutePath(abs) &&
+      isMediaPath(abs) &&
+      isPlausibleLocalMediaAbs(abs)
+    ) {
+      return abs;
+    }
     return null;
   };
 
@@ -546,8 +685,12 @@ export function resolveInlineMediaToken(
     mappedOk(pathMap?.[norm]) ||
     mappedOk(pathMap?.[norm.toLowerCase()]);
   if (fromNorm) return fromNorm;
-  // Real local absolute without a map.
-  if (isRealLocalAbsolutePath(norm) && isMediaPath(norm)) {
+  // Real local absolute without a map — multi-segment only.
+  if (
+    isRealLocalAbsolutePath(norm) &&
+    isMediaPath(norm) &&
+    isPlausibleLocalMediaAbs(norm)
+  ) {
     return norm;
   }
   return null;
@@ -564,7 +707,7 @@ export function resolveInlineImageToken(
 /**
  * Whether an attachment path is safe to show as an openable card.
  * Drops:
- * - false extracts like `/img_001.png` (single-segment abs media)
+ * - false extracts like `/img_001.png` / `/replica_v2.mp4` (single-segment abs)
  * - site-root CMS paths (`/images/...`)
  * which otherwise render as dead paperclip thumbs that cannot preview.
  */
@@ -573,7 +716,13 @@ export function isDisplayableAttachmentPath(path: string): boolean {
   if (!t) return false;
   if (/^https?:\/\//i.test(t)) return true;
   if (isSiteRootAbsolutePath(t)) return false;
-  // Single-segment absolute (`/dbs`, `/img_001.png`) — not a real workspace path.
+  // Fused media query keys (`t:/Users/…`) are not real attachment paths.
+  if (isFusedQueryKeyPath(t)) return false;
+  // Media abs: host-aligned multi-segment gate (covers `/replica_v2.mp4`).
+  if (isMediaPath(t) && (isRealLocalAbsolutePath(t) || t.startsWith("~/"))) {
+    return isPlausibleLocalMediaAbs(t);
+  }
+  // Single-segment absolute (`/dbs`) — not a real workspace path.
   if (t.startsWith("/") && !t.startsWith("//")) {
     const segs = t.split("/").filter(Boolean);
     if (segs.length < 2) return false;

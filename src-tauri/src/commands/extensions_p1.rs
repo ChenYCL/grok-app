@@ -1,17 +1,27 @@
 
-/// List invocable skills from `grok inspect --json`.
-/// Always returns Ok; on CLI missing / timeout, `skills` is empty and `error` is set.
+/// List invocable skills from `grok inspect --json` plus project-disk scan.
+///
+/// - Global / user / plugin / bundled: from inspect when available.
+/// - Project: also scans `{project}/.grok/skills/*/SKILL.md` on disk.
+/// - Name collision: **project wins** (case-insensitive).
+///
+/// Always returns Ok; on CLI missing / timeout, `skills` may still include
+/// project-scanned rows and `error` is set for the inspect failure.
 /// Each skill includes `enabled` from App Extensions prefs (default true).
 #[tauri::command]
 pub async fn skills_list(project_path: Option<String>) -> Result<serde_json::Value, String> {
     let path = project_path.clone();
-    let (parsed, error) = tauri::async_runtime::spawn_blocking(move || {
-        run_grok_inspect(path.as_deref())
+    let path_for_scan = project_path.clone();
+    let (parsed, error, project_skills) = tauri::async_runtime::spawn_blocking(move || {
+        let (parsed, error) = run_grok_inspect(path.as_deref());
+        let project_skills = scan_project_skills(path_for_scan.as_deref());
+        (parsed, error, project_skills)
     })
     .await
     .map_err(|e| e.to_string())?;
 
-    let skills = parsed.as_ref().map(parse_skills).unwrap_or_default();
+    let inspect_skills = parsed.as_ref().map(parse_skills).unwrap_or_default();
+    let skills = merge_skills_prefer_project(inspect_skills, project_skills);
     let skills = attach_skill_enabled(skills);
     let skill_roots = crate::skill_edit::skill_roots_list(project_path.as_deref());
     let mut out = serde_json::json!({

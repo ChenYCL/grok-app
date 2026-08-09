@@ -53,6 +53,13 @@ describe("normalizePathToken", () => {
     expect(normalizePathToken(".../foo/bar.mp4")).toBe("foo/bar.mp4");
     expect(normalizePathToken("…/videos/1.mp4")).toBe("videos/1.mp4");
   });
+
+  it("never treats fused media query keys (t:/Users/…) as file cards", () => {
+    const fused = "t:/Users/me/pic.png";
+    expect(normalizePathToken(fused)).toBe(fused); // normalization is lossless
+    expect(looksLikeFilePath(fused)).toBe(false);
+    expect(resolveFileToken(fused)).toBeNull();
+  });
 });
 
 describe("resolveFileToken bare media", () => {

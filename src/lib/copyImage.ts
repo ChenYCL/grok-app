@@ -12,6 +12,7 @@ import {
   isTauri,
 } from "@/lib/api";
 import { resolveImageSrc } from "@/lib/imageSrc";
+import { isFusedQueryKeyPath } from "@/lib/pathNormalize";
 
 export type CopyImageResult =
   | { ok: true }
@@ -28,6 +29,7 @@ function canWriteImage(): boolean {
 function looksAbsoluteFsPath(s: string): boolean {
   const t = s.trim();
   if (!t) return false;
+  if (isFusedQueryKeyPath(t)) return false;
   if (t.startsWith("\\\\")) return true;
   if (/^[a-zA-Z]:[\\/]/.test(t)) return true;
   return t.startsWith("/");

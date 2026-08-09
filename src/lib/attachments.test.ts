@@ -6,8 +6,10 @@ import {
   extractMediaPathsFromContent,
   extractSessionRelativeMediaRefs,
   filterAttachmentsNotInlined,
+  isDisplayableAttachmentPath,
   isImagePath,
   isMediaPath,
+  isPlausibleLocalMediaAbs,
   isVideoPath,
   joinSessionMediaPath,
   mergeAttachments,
@@ -131,13 +133,78 @@ also /tmp/other.png and /tmp/clip.mp4 and not a file.`;
     ].sort());
   });
 
+  it("does not extract mid-path /basename after space + CJK folder (session bug)", () => {
+    // Live failure: media server got path=/replica_v2.mp4 from
+    // `…/grok 美女视频/replica_v2.mp4` (prev char 频 not in [A-Za-z0-9_./-]).
+    const content = [
+      "| 成片 | `/Users/ronglecat/Downloads/grok 美女视频/replica_v2.mp4` |",
+      "",
+      "可直接打开 `replica_v2.mp4` 看全片。",
+      "bare /Users/ronglecat/Downloads/grok 美女视频/replica_black_outfit.mp4 end",
+    ].join("\n");
+    const atts = extractMediaPathsFromContent(content);
+    const paths = atts.map((a) => a.path);
+    expect(paths).toContain(
+      "/Users/ronglecat/Downloads/grok 美女视频/replica_v2.mp4",
+    );
+    expect(paths).toContain(
+      "/Users/ronglecat/Downloads/grok 美女视频/replica_black_outfit.mp4",
+    );
+    expect(paths.some((p) => p === "/replica_v2.mp4")).toBe(false);
+    expect(paths.some((p) => p === "/replica_black_outfit.mp4")).toBe(false);
+    expect(paths.every((p) => isPlausibleLocalMediaAbs(p))).toBe(true);
+  });
+
+  it("extracts Application Support paths with unescaped spaces (bare + ticks)", () => {
+    const abs =
+      "/Users/me/Library/Application Support/com.grokapp.grok-app/agent-home/sessions/abc/videos/1.mp4";
+    const atts = extractMediaPathsFromContent(
+      `成片：\`${abs}\`\nalso bare ${abs} done`,
+    );
+    expect(atts.map((a) => a.path)).toEqual([abs]);
+  });
+
+  it("still allows CJK glue before known roots", () => {
+    const atts = extractMediaPathsFromContent(
+      "logo换成/Users/me/Downloads/shot.png 完成",
+    );
+    expect(atts.map((a) => a.path)).toEqual([
+      "/Users/me/Downloads/shot.png",
+    ]);
+  });
+
+  it("isPlausibleLocalMediaAbs rejects single-segment false extracts", () => {
+    expect(isPlausibleLocalMediaAbs("/replica_v2.mp4")).toBe(false);
+    expect(isPlausibleLocalMediaAbs("/img_001.png")).toBe(false);
+    expect(isPlausibleLocalMediaAbs("/tmp/clip.mp4")).toBe(true);
+    expect(isPlausibleLocalMediaAbs("~/shots/v1.mp4")).toBe(true);
+    expect(isPlausibleLocalMediaAbs("C:/Users/me/a.mp4")).toBe(true);
+    expect(isPlausibleLocalMediaAbs("C:\\Users\\me\\a.mp4")).toBe(true);
+    expect(isDisplayableAttachmentPath("/replica_v2.mp4")).toBe(false);
+    expect(resolveInlineMediaToken("/replica_v2.mp4", null)).toBeNull();
+  });
+
+  it("drops fused media query keys from displayable attachments", () => {
+    expect(isDisplayableAttachmentPath("t:/Users/me/pic.png")).toBe(false);
+    expect(isDisplayableAttachmentPath("p:/Users/me/a.jpg")).toBe(false);
+    expect(isDisplayableAttachmentPath("C:/Users/me/pic.png")).toBe(true);
+  });
+
   it("mergeMessageAttachments combines stored + text paths", () => {
     const out = mergeMessageAttachments(
-      [{ path: "/a.png", name: "a.png", isDir: false }],
-      "see `/b.jpg`",
+      [{ path: "/tmp/a.png", name: "a.png", isDir: false }],
+      "see `/tmp/b.jpg`",
     );
     expect(out).toHaveLength(2);
-    expect(out?.map((a) => a.path).sort()).toEqual(["/a.png", "/b.jpg"]);
+    expect(out?.map((a) => a.path).sort()).toEqual(["/tmp/a.png", "/tmp/b.jpg"]);
+  });
+
+  it("mergeMessageAttachments ignores single-segment abs media in text", () => {
+    const out = mergeMessageAttachments(
+      [{ path: "/tmp/a.png", name: "a.png", isDir: false }],
+      "broken tail `/replica_v2.mp4` and bare /file.mp4",
+    );
+    expect(out?.map((a) => a.path)).toEqual(["/tmp/a.png"]);
   });
 
   it("extracts Grok short session-relative media refs", () => {

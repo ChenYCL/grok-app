@@ -364,6 +364,312 @@ fn parse_skills(v: &serde_json::Value) -> Vec<SkillDto> {
     out
 }
 
+/// Soft cap for project-local skill dirs scanned by the App host.
+const PROJECT_SKILLS_SCAN_MAX: usize = 500;
+/// Soft cap for reading a single SKILL.md when scanning project skills.
+const PROJECT_SKILL_MD_READ_MAX: usize = 64 * 1024;
+
+/// Pure: project skills root `{project}/.grok/skills` when path is non-empty.
+fn project_skills_dir(project_path: Option<&str>) -> Option<std::path::PathBuf> {
+    let raw = project_path.map(str::trim).filter(|s| !s.is_empty())?;
+    if raw.contains('\0') {
+        return None;
+    }
+    let p = std::path::Path::new(raw);
+    // Reject obvious traversal in the project path string itself.
+    if p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return None;
+    }
+    Some(p.join(".grok").join("skills"))
+}
+
+/// Pure: simple SKILL.md frontmatter (`---` … `---`) key:value lines.
+/// Returns (name, description, user_invocable). Missing invocable ⇒ true.
+fn parse_skill_md_frontmatter_meta(content: &str) -> (Option<String>, String, bool) {
+    let text = content.trim_start_matches('\u{feff}');
+    let mut lines = text.lines();
+    let first = match lines.next() {
+        Some(l) if l.trim() == "---" => l,
+        _ => return (None, String::new(), true),
+    };
+    let _ = first;
+    let mut name: Option<String> = None;
+    let mut description = String::new();
+    let mut user_invocable = true;
+    let mut closed = false;
+    for line in lines {
+        let t = line.trim();
+        if t == "---" {
+            closed = true;
+            break;
+        }
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let Some((key_raw, val_raw)) = t.split_once(':') else {
+            continue;
+        };
+        let key = key_raw.trim().to_ascii_lowercase();
+        let mut val = val_raw.trim().to_string();
+        // Strip simple quotes used in YAML scalars.
+        if (val.starts_with('"') && val.ends_with('"') && val.len() >= 2)
+            || (val.starts_with('\'') && val.ends_with('\'') && val.len() >= 2)
+        {
+            val = val[1..val.len() - 1].to_string();
+        }
+        match key.as_str() {
+            "name" => {
+                let n = val.trim();
+                if !n.is_empty() {
+                    name = Some(n.to_string());
+                }
+            }
+            "description" => {
+                description = val;
+            }
+            "user-invocable" | "user_invocable" | "userinvocable" => {
+                let lower = val.trim().to_ascii_lowercase();
+                user_invocable = !matches!(lower.as_str(), "false" | "no" | "0" | "off");
+            }
+            _ => {}
+        }
+    }
+    if !closed {
+        // Unclosed frontmatter: still use keys we parsed (best-effort).
+    }
+    (name, description, user_invocable)
+}
+
+/// Scan `{project}/.grok/skills/*/SKILL.md` on disk (one level).
+/// Independent of `grok inspect` so project skills still appear when CLI
+/// inspect is slow, partial, or missing project entries.
+fn scan_project_skills(project_path: Option<&str>) -> Vec<SkillDto> {
+    let Some(root) = project_skills_dir(project_path) else {
+        return Vec::new();
+    };
+    if !root.is_dir() {
+        return Vec::new();
+    }
+    let entries = match std::fs::read_dir(&root) {
+        Ok(rd) => rd,
+        Err(_) => return Vec::new(),
+    };
+    let mut out: Vec<SkillDto> = Vec::new();
+    for entry in entries.flatten() {
+        if out.len() >= PROJECT_SKILLS_SCAN_MAX {
+            break;
+        }
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let folder = match path.file_name().and_then(|s| s.to_str()) {
+            Some(s) => s.trim(),
+            None => continue,
+        };
+        if folder.is_empty() || folder.starts_with('.') {
+            continue;
+        }
+        // Prefer SKILL.md; accept skill.md for case-insensitive filesystems.
+        let skill_md = {
+            let upper = path.join("SKILL.md");
+            if upper.is_file() {
+                upper
+            } else {
+                let lower = path.join("skill.md");
+                if lower.is_file() {
+                    lower
+                } else {
+                    continue;
+                }
+            }
+        };
+        let content = match std::fs::read(&skill_md) {
+            Ok(bytes) => {
+                let take = bytes.len().min(PROJECT_SKILL_MD_READ_MAX);
+                String::from_utf8_lossy(&bytes[..take]).into_owned()
+            }
+            Err(_) => String::new(),
+        };
+        let (fm_name, description, user_invocable) = parse_skill_md_frontmatter_meta(&content);
+        let name = fm_name
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| folder.to_string());
+        if name.is_empty() {
+            continue;
+        }
+        out.push(SkillDto {
+            name,
+            description,
+            source: "project".into(),
+            path: Some(skill_md.to_string_lossy().to_string()),
+            user_invocable,
+        });
+    }
+    out.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+    });
+    out
+}
+
+/// Merge inspect skills with project-disk skills.
+/// Same name (case-insensitive): **project wins** over global/user/plugin/bundled.
+/// Project scan also fills gaps when inspect omitted project skills.
+fn merge_skills_prefer_project(
+    inspect: Vec<SkillDto>,
+    project: Vec<SkillDto>,
+) -> Vec<SkillDto> {
+    let mut map: std::collections::HashMap<String, SkillDto> =
+        std::collections::HashMap::with_capacity(inspect.len() + project.len());
+    for s in inspect {
+        let key = s.name.to_ascii_lowercase();
+        if key.is_empty() {
+            continue;
+        }
+        map.insert(key, s);
+    }
+    for s in project {
+        let key = s.name.to_ascii_lowercase();
+        if key.is_empty() {
+            continue;
+        }
+        // Project always overwrites (including prior project from inspect).
+        map.insert(key, s);
+    }
+    let mut out: Vec<SkillDto> = map.into_values().collect();
+    out.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+    });
+    out
+}
+
+#[cfg(test)]
+mod skill_project_scan_tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn project_skills_dir_joins_dot_grok_skills() {
+        let d = project_skills_dir(Some("/tmp/demo")).unwrap();
+        assert!(d.ends_with(std::path::Path::new(".grok/skills")) || d.ends_with(".grok\\skills"));
+        assert!(project_skills_dir(Some("")).is_none());
+        assert!(project_skills_dir(None).is_none());
+        assert!(project_skills_dir(Some("/tmp/../evil")).is_none());
+    }
+
+    #[test]
+    fn parse_frontmatter_name_desc_invocable() {
+        let (n, d, inv) = parse_skill_md_frontmatter_meta(
+            "---\nname: hello-proj\ndescription: Project skill\nuser-invocable: false\n---\n# Body\n",
+        );
+        assert_eq!(n.as_deref(), Some("hello-proj"));
+        assert_eq!(d, "Project skill");
+        assert!(!inv);
+    }
+
+    #[test]
+    fn merge_prefers_project_over_user() {
+        let inspect = vec![SkillDto {
+            name: "shared".into(),
+            description: "from user".into(),
+            source: "user".into(),
+            path: Some("/u/shared/SKILL.md".into()),
+            user_invocable: true,
+        }];
+        let project = vec![SkillDto {
+            name: "shared".into(),
+            description: "from project".into(),
+            source: "project".into(),
+            path: Some("/p/shared/SKILL.md".into()),
+            user_invocable: true,
+        }];
+        let merged = merge_skills_prefer_project(inspect, project);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].source, "project");
+        assert_eq!(merged[0].description, "from project");
+    }
+
+    #[test]
+    fn merge_keeps_unique_global_and_project_only() {
+        let inspect = vec![
+            SkillDto {
+                name: "global-only".into(),
+                description: "g".into(),
+                source: "user".into(),
+                path: None,
+                user_invocable: true,
+            },
+            SkillDto {
+                name: "Both".into(),
+                description: "user copy".into(),
+                source: "user".into(),
+                path: None,
+                user_invocable: true,
+            },
+        ];
+        let project = vec![
+            SkillDto {
+                name: "both".into(), // case-insensitive collide
+                description: "proj copy".into(),
+                source: "project".into(),
+                path: Some("/p/both/SKILL.md".into()),
+                user_invocable: true,
+            },
+            SkillDto {
+                name: "proj-only".into(),
+                description: "p".into(),
+                source: "project".into(),
+                path: Some("/p/proj-only/SKILL.md".into()),
+                user_invocable: true,
+            },
+        ];
+        let merged = merge_skills_prefer_project(inspect, project);
+        let names: Vec<_> = merged.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"global-only"));
+        assert!(names.contains(&"proj-only"));
+        assert!(names.iter().any(|n| n.eq_ignore_ascii_case("both")));
+        let both = merged
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case("both"))
+            .unwrap();
+        assert_eq!(both.source, "project");
+        assert_eq!(both.description, "proj copy");
+    }
+
+    #[test]
+    fn scan_project_skills_reads_disk() {
+        let dir = std::env::temp_dir().join(format!(
+            "grok-project-skills-scan-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let skill_dir = dir.join(".grok").join("skills").join("disk-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        let md = skill_dir.join("SKILL.md");
+        let mut f = std::fs::File::create(&md).unwrap();
+        write!(
+            f,
+            "---\nname: disk-skill\ndescription: From disk\n---\n# Hi\n"
+        )
+        .unwrap();
+        let found = scan_project_skills(Some(dir.to_str().unwrap()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "disk-skill");
+        assert_eq!(found[0].source, "project");
+        assert_eq!(found[0].description, "From disk");
+        assert!(found[0]
+            .path
+            .as_ref()
+            .is_some_and(|p| p.ends_with("SKILL.md")));
+    }
+}
+
 fn parse_mcp_servers(v: &serde_json::Value) -> Vec<McpDto> {
     let Some(arr) = v
         .get("mcpServers")

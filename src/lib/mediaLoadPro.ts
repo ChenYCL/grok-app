@@ -9,6 +9,8 @@
  * (`127.0.0.1` / `localhost` / `::1`). Never treat non-local hosts as media delivery.
  */
 
+import { isFusedQueryKeyPath } from "@/lib/pathNormalize";
+
 /** Stable failure modes for chat images, resource preview, and media players. */
 export type MediaLoadErrorKind =
   | "missing_path"
@@ -280,6 +282,29 @@ export function classifyMediaLoadError(err: unknown): MediaLoadErrorKind {
 }
 
 /**
+ * Extract the `p=` path from a token-gated loopback media URL, or null when
+ * the src is not a loopback media URL (or has no path).
+ * Returns the *decoded* path exactly as the media server would resolve it.
+ */
+export function mediaUrlPathParam(
+  src: string | null | undefined,
+): string | null {
+  const raw = (src || "").trim();
+  if (!raw) return null;
+  if (!/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]|::1)(:|\/)/i.test(raw)) {
+    return null;
+  }
+  try {
+    const u = new URL(raw);
+    if (!u.pathname.includes("/v1/media")) return null;
+    const p = u.searchParams.get("p");
+    return p && p.trim() ? p.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Classify resolve / paint failures when we have path context but no thrown value.
  * Used by chat image cards when `resolveImageSrc` returns null or `<img onError>`.
  */
@@ -313,6 +338,10 @@ export function classifyMediaSrcFailure(input: {
   const path = (input.pathOrUrl || "").trim();
   if (!path) return "missing_path";
 
+  // Fused media query keys (`t:/Users/…`) are allowlist/parsing artifacts —
+  // never “corrupted file” copy.
+  if (isFusedQueryKeyPath(path)) return "untrusted";
+
   // Explicit host-only when browser and absolute FS path.
   if (input.isTauri === false) {
     const looksAbs =
@@ -328,6 +357,14 @@ export function classifyMediaSrcFailure(input: {
         input.resolvedSrc.startsWith("data:")
       ) {
         return "broken_blob";
+      }
+      // Loopback media URL: classify by what the server would have answered.
+      // A fused `t:/Users/…` p= param is a path_scope/parsing denial, and a
+      // missing p= means the URL was malformed — neither is a corrupt file.
+      if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]|::1)(:|\/)/i.test(input.resolvedSrc)) {
+        const mediaPath = mediaUrlPathParam(input.resolvedSrc);
+        if (mediaPath == null) return "media_server_unavailable";
+        if (isFusedQueryKeyPath(mediaPath)) return "untrusted";
       }
       // Remote CDN / markdown images: honest decode failure, not allowlist.
       // (Untrusted is reserved for Host path_scope / media-server 403.)

@@ -15,6 +15,7 @@ import { HighlightedText } from "@/components/HighlightedText";
 import {
   isImagePath,
   isMediaPath,
+  isPlausibleLocalMediaAbs,
   isVideoPath,
   pathBasename,
   resolveInlineMediaToken,
@@ -278,8 +279,13 @@ export const MarkdownChat = memo(function MarkdownChat({
     const mediaAbs =
       resolveInlineMediaToken(raw, imagePathMap) ||
       resolveInlineMediaToken(rawIn, imagePathMap);
-    // Only real local abs for media cards (pathMap already verified in resolve).
-    if (mediaAbs && isImagePath(mediaAbs) && isRealLocalAbsolutePath(mediaAbs)) {
+    // Real multi-segment local abs only (pathMap verified in resolveInlineMediaToken).
+    if (
+      mediaAbs &&
+      isImagePath(mediaAbs) &&
+      isRealLocalAbsolutePath(mediaAbs) &&
+      isPlausibleLocalMediaAbs(mediaAbs)
+    ) {
       return (
         <ImageUi
           className="md-body__img md-body__img--card"
@@ -291,7 +297,12 @@ export const MarkdownChat = memo(function MarkdownChat({
         />
       );
     }
-    if (mediaAbs && isVideoPath(mediaAbs) && isRealLocalAbsolutePath(mediaAbs)) {
+    if (
+      mediaAbs &&
+      isVideoPath(mediaAbs) &&
+      isRealLocalAbsolutePath(mediaAbs) &&
+      isPlausibleLocalMediaAbs(mediaAbs)
+    ) {
       return (
         <VideoUi
           key={mediaAbs}
@@ -323,19 +334,32 @@ export const MarkdownChat = memo(function MarkdownChat({
     // Prefer multi-segment relative after ellipsis strip for smart open.
     // Display token: keep short relative when we only have that; abs is for open.
     const pathToken = resolved || raw || rawIn;
-    // Video/image only when we have a real local absolute (pathMap or text).
-    // Never promote site-root or unresolved relative media to ImageUi (broken cards).
+    // Video/image only when we have a real multi-segment local absolute.
+    // Never promote site-root, single-segment tails, or unresolved relative media.
+    const asLocalMedia = (p: string | null | undefined, kind: "image" | "video") => {
+      if (!p || !isRealLocalAbsolutePath(p) || !isPlausibleLocalMediaAbs(p)) {
+        return null;
+      }
+      if (kind === "video" ? isVideoPath(p) : isImagePath(p)) return p;
+      return null;
+    };
     const videoAbs =
-      (resolved && isRealLocalAbsolutePath(resolved) && isVideoPath(resolved) && resolved) ||
-      (mediaAbs && isRealLocalAbsolutePath(mediaAbs) && isVideoPath(mediaAbs) && mediaAbs) ||
-      (isRealLocalAbsolutePath(raw) && isVideoPath(raw) && raw) ||
-      (isRealLocalAbsolutePath(rawIn) && isVideoPath(rawIn) && normalizePathToken(rawIn)) ||
+      asLocalMedia(resolved, "video") ||
+      asLocalMedia(mediaAbs, "video") ||
+      asLocalMedia(raw, "video") ||
+      asLocalMedia(
+        isRealLocalAbsolutePath(rawIn) ? normalizePathToken(rawIn) : null,
+        "video",
+      ) ||
       null;
     const imageAbs =
-      (resolved && isRealLocalAbsolutePath(resolved) && isImagePath(resolved) && resolved) ||
-      (mediaAbs && isRealLocalAbsolutePath(mediaAbs) && isImagePath(mediaAbs) && mediaAbs) ||
-      (isRealLocalAbsolutePath(raw) && isImagePath(raw) && raw) ||
-      (isRealLocalAbsolutePath(rawIn) && isImagePath(rawIn) && normalizePathToken(rawIn)) ||
+      asLocalMedia(resolved, "image") ||
+      asLocalMedia(mediaAbs, "image") ||
+      asLocalMedia(raw, "image") ||
+      asLocalMedia(
+        isRealLocalAbsolutePath(rawIn) ? normalizePathToken(rawIn) : null,
+        "image",
+      ) ||
       null;
 
     if (imageAbs && isImagePath(imageAbs)) {
