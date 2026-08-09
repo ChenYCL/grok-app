@@ -44,6 +44,22 @@ describe("imageAspectCacheKey", () => {
       "C:/Users/x/a.png",
     );
   });
+
+  it("keeps %-encoded path segments (agent-home sessions/%2F… dirs) intact", () => {
+    // The p= value is already decoded once by URLSearchParams; a second decode
+    // would turn `%2F` into `/` and never match the real on-disk path.
+    const path =
+      "/Users/me/Library/Application Support/app/agent-home/sessions/%2FUsers%2Fme%2Fproj/019f/images/1.jpg";
+    const url =
+      "http://127.0.0.1:9/v1/media?t=tok&p=" + encodeURIComponent(path);
+    expect(imageAspectCacheKey(url)).toBe(path);
+  });
+
+  it("fused t:/… query keys are not treated as local cache keys", () => {
+    expect(imageAspectCacheKey("t:/Users/me/pic.png")).toBe(
+      "t:/Users/me/pic.png",
+    );
+  });
 });
 
 describe("get/setImageAspect", () => {

@@ -22,7 +22,40 @@ const SITE_ROOT_FIRST_SEG =
 /** Windows drive or UNC — backslash is a separator, not shell escape. */
 export function isWindowsStylePath(s: string): boolean {
   const t = s.trim();
-  return /^[A-Za-z]:[\\/]/.test(t) || t.startsWith("\\\\");
+  return (
+    (/^[A-Za-z]:[\\/]/.test(t) || t.startsWith("\\\\")) &&
+    !isFusedQueryKeyPath(t)
+  );
+}
+
+/**
+ * Known POSIX roots that must never be the *remainder* of a single-letter
+ * forward-slash “drive” token. A fused media query key (`t:/Users/…`) hits
+ * these; a real Windows media path does not (profiles live under `C:\Users\`
+ * with a backslash, and the canonical `C:/Users/…` is allowed below).
+ */
+const POSIX_ROOT_AFTER_DRIVE =
+  /^(?:Users|home|tmp|var|private|opt|Volumes|Library|Applications|usr|etc|sess|data|workspace|work|root)(?:\/|$)/i;
+
+/**
+ * True when a forward-slash “drive” token is actually a media query key
+ * fused onto a Unix absolute path, e.g. `t:/Users/me/a.png` produced from
+ * `?t=TOKEN&p=/Users/me/a.png` (query key `t` + `:` + path). Such tokens must
+ * never be treated as local filesystem paths — they fail path_scope and only
+ * surface as “preview failed” cards after a remount.
+ *
+ * Real Windows media keeps working:
+ * - backslash paths (`C:\Users\…`) never match (forward-slash only);
+ * - the canonical profile root `C:/Users/…` and common data drives
+ *   (`d`, `e`) are allowed.
+ */
+export function isFusedQueryKeyPath(s: string): boolean {
+  const t = (s ?? "").trim();
+  if (!/^[A-Za-z]:\//.test(t)) return false;
+  const drive = t[0]!.toLowerCase();
+  if (drive === "c" || drive === "d" || drive === "e") return false;
+  const rest = t.slice(2).replace(/^\/+/, "");
+  return POSIX_ROOT_AFTER_DRIVE.test(rest);
 }
 
 /**
@@ -53,6 +86,8 @@ export function isRealLocalAbsolutePath(s: string): boolean {
   const t = unescapeShellPath(s).replace(/\\/g, "/");
   if (!t) return false;
   if (t.includes("://")) return false;
+  // `t:/Users/…` / `p:/Users/…` are fused media query keys, not local drives.
+  if (isFusedQueryKeyPath(t)) return false;
   if (t.startsWith("//") && !t.startsWith("///")) {
     // Protocol-relative URL, not FS.
     return false;

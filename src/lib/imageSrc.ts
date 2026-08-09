@@ -16,6 +16,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { isTauri } from "@/lib/api";
 import {
+  isFusedQueryKeyPath,
   isRealLocalAbsolutePath,
   isSiteRootAbsolutePath,
   normalizeLocalPathToken,
@@ -31,6 +32,26 @@ export type MediaServerEndpoint = {
 
 let mediaEndpoint: MediaServerEndpoint | null = null;
 let mediaEndpointPromise: Promise<MediaServerEndpoint | null> | null = null;
+
+/**
+ * External caches (chat thumb displayCache, aspect cache) register here so a
+ * media endpoint change (new port/token) drops stale loopback URLs.
+ */
+type EndpointChangeListener = () => void;
+const endpointChangeListeners = new Set<EndpointChangeListener>();
+
+/** Subscribe to media endpoint changes (returns unsubscribe). */
+export function onMediaEndpointChange(fn: EndpointChangeListener): () => void {
+  endpointChangeListeners.add(fn);
+  return () => {
+    endpointChangeListeners.delete(fn);
+  };
+}
+
+/** Current loopback media endpoint (null before ready / outside Tauri). */
+export function getMediaEndpoint(): MediaServerEndpoint | null {
+  return mediaEndpoint;
+}
 
 /** Already-viewable URL schemes (incl. loopback media HTTP). */
 export function isViewableSrc(src: string): boolean {
@@ -77,10 +98,14 @@ export function normalizeMediaRef(pathOrUrl: string): string | null {
   if (isViewableSrc(raw)) return raw;
   // CMS/site roots must not hit loopback media as local paths.
   if (isSiteRootAbsolutePath(raw)) return null;
+  // Fused query keys (`t:/Users/…`) are never local paths.
+  if (isFusedQueryKeyPath(raw)) return null;
   // Shell-unescape + collapse accidental double slashes on real local abs only.
   const local = normalizeLocalPathToken(raw);
   if (local && isRealLocalAbsolutePath(local)) return local;
-  if (/^[A-Za-z]:[\\/]/.test(raw)) return normalizeLocalPathToken(raw) || raw;
+  if (/^[A-Za-z]:[\\/]/.test(raw) && !isFusedQueryKeyPath(raw)) {
+    return normalizeLocalPathToken(raw) || raw;
+  }
   // Relative tokens (images/1.jpg) pass through for pathMap resolve upstream.
   if (local && !local.startsWith("/")) return local;
   return local || raw;
@@ -100,6 +125,9 @@ function looksAbsoluteFsPath(raw: string): boolean {
 export function localPathToMediaHttpUrl(absPath: string): string | null {
   const ep = mediaEndpoint;
   if (!ep?.baseUrl || !ep.token) return null;
+  // Last line of defense: a fused `t:/Users/…` query-key path must never hit
+  // the media server (path_scope 403 → broken-looking cards on remount).
+  if (isFusedQueryKeyPath(absPath)) return null;
   const base = ep.baseUrl.replace(/\/$/, "");
   return `${base}/v1/media?t=${encodeURIComponent(ep.token)}&p=${encodeURIComponent(absPath)}`;
 }
@@ -111,11 +139,25 @@ export function isMediaEndpointReady(): boolean {
 
 /**
  * Inject endpoint from Host (or tests). Clears the path→url cache so prior
- * nulls (server not ready) can re-resolve.
+ * nulls (server not ready) can re-resolve, and notifies dependent caches
+ * (chat thumb displayCache) when the endpoint actually changed.
  */
 export function setMediaEndpoint(ep: MediaServerEndpoint | null): void {
+  const changed =
+    !!mediaEndpoint !== !!ep ||
+    (mediaEndpoint && ep &&
+      (mediaEndpoint.baseUrl !== ep.baseUrl || mediaEndpoint.token !== ep.token));
   mediaEndpoint = ep;
   resolveCache.clear();
+  if (changed) {
+    for (const fn of endpointChangeListeners) {
+      try {
+        fn();
+      } catch {
+        /* listener errors must not break endpoint setup */
+      }
+    }
+  }
 }
 
 /**
@@ -163,7 +205,8 @@ export function resolveImageSrcSync(pathOrUrl: string): string | null {
 
   const normalized = normalizeMediaRef(input);
   if (normalized == null) {
-    // Placeholder / rejected ref — cache under original key so we do not retry.
+    // Placeholder / rejected ref (incl. fused `t:/Users/…` query keys) —
+    // cache under original key so we do not retry.
     resolveCache.set(input, null);
     return null;
   }
@@ -276,4 +319,9 @@ export function resetMediaEndpointForTests(): void {
   mediaEndpoint = null;
   mediaEndpointPromise = null;
   resolveCache.clear();
+}
+
+/** Test helper — clear endpoint listeners. */
+export function clearMediaEndpointListenersForTests(): void {
+  endpointChangeListeners.clear();
 }

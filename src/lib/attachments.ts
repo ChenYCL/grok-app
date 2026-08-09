@@ -7,6 +7,7 @@
  */
 
 import {
+  isFusedQueryKeyPath,
   isRealLocalAbsolutePath,
   isSiteRootAbsolutePath,
   isWindowsStylePath,
@@ -715,6 +716,8 @@ export function isDisplayableAttachmentPath(path: string): boolean {
   if (!t) return false;
   if (/^https?:\/\//i.test(t)) return true;
   if (isSiteRootAbsolutePath(t)) return false;
+  // Fused media query keys (`t:/Users/…`) are not real attachment paths.
+  if (isFusedQueryKeyPath(t)) return false;
   // Media abs: host-aligned multi-segment gate (covers `/replica_v2.mp4`).
   if (isMediaPath(t) && (isRealLocalAbsolutePath(t) || t.startsWith("~/"))) {
     return isPlausibleLocalMediaAbs(t);

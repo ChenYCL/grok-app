@@ -184,6 +184,12 @@ also /tmp/other.png and /tmp/clip.mp4 and not a file.`;
     expect(resolveInlineMediaToken("/replica_v2.mp4", null)).toBeNull();
   });
 
+  it("drops fused media query keys from displayable attachments", () => {
+    expect(isDisplayableAttachmentPath("t:/Users/me/pic.png")).toBe(false);
+    expect(isDisplayableAttachmentPath("p:/Users/me/a.jpg")).toBe(false);
+    expect(isDisplayableAttachmentPath("C:/Users/me/pic.png")).toBe(true);
+  });
+
   it("mergeMessageAttachments combines stored + text paths", () => {
     const out = mergeMessageAttachments(
       [{ path: "/tmp/a.png", name: "a.png", isDir: false }],

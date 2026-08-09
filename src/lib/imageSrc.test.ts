@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearImageSrcCache,
   isMediaEndpointReady,
   isViewableSrc,
   localPathToMediaHttpUrl,
   normalizeMediaRef,
+  onMediaEndpointChange,
   resetMediaEndpointForTests,
   resolveImageSrcSync,
   setMediaEndpoint,
@@ -47,6 +48,59 @@ describe("normalizeMediaRef / ChatCut refs", () => {
     expect(normalizeMediaRef(raw)).toBe(
       "/var/folders/75/xx/T/chatcut-frames.qVukfi/f2150.jpg",
     );
+  });
+});
+
+describe("fused media query keys never reach the media server", () => {
+  afterEach(() => {
+    clearImageSrcCache();
+    resetMediaEndpointForTests();
+  });
+
+  it("normalizeMediaRef rejects t:/… fused paths", () => {
+    expect(normalizeMediaRef("t:/Users/me/pic.png")).toBe(null);
+    expect(normalizeMediaRef("p:/Users/me/pic.png")).toBe(null);
+    expect(normalizeMediaRef("t:/Users/me/Library/Application Support/a.png")).toBe(
+      null,
+    );
+    // Real Windows profile path still normalizes.
+    expect(normalizeMediaRef("C:/Users/me/pic.png")).toBe("C:/Users/me/pic.png");
+  });
+
+  it("resolveImageSrcSync returns null (never a media URL) for fused paths", () => {
+    setMediaEndpoint({ baseUrl: "http://127.0.0.1:52193", token: "tok" });
+    expect(resolveImageSrcSync("t:/Users/me/pic.png")).toBe(null);
+    // A real local path still resolves to a token-gated media URL.
+    expect(resolveImageSrcSync("/Users/me/pic.png")).toBe(
+      "http://127.0.0.1:52193/v1/media?t=tok&p=%2FUsers%2Fme%2Fpic.png",
+    );
+  });
+
+  it("localPathToMediaHttpUrl is a last line of defense", () => {
+    setMediaEndpoint({ baseUrl: "http://127.0.0.1:52193", token: "tok" });
+    expect(localPathToMediaHttpUrl("t:/Users/me/pic.png")).toBe(null);
+    expect(localPathToMediaHttpUrl("/Users/me/pic.png")).toContain("&p=%2FUsers%2Fme%2Fpic.png");
+  });
+});
+
+describe("onMediaEndpointChange", () => {
+  afterEach(() => {
+    clearImageSrcCache();
+    resetMediaEndpointForTests();
+  });
+
+  it("notifies listeners only when the endpoint actually changes", () => {
+    const fn = vi.fn();
+    const off = onMediaEndpointChange(fn);
+    setMediaEndpoint({ baseUrl: "http://127.0.0.1:1", token: "a" });
+    expect(fn).toHaveBeenCalledTimes(1);
+    setMediaEndpoint({ baseUrl: "http://127.0.0.1:1", token: "a" });
+    expect(fn).toHaveBeenCalledTimes(1);
+    setMediaEndpoint({ baseUrl: "http://127.0.0.1:2", token: "b" });
+    expect(fn).toHaveBeenCalledTimes(2);
+    off();
+    setMediaEndpoint({ baseUrl: "http://127.0.0.1:3", token: "c" });
+    expect(fn).toHaveBeenCalledTimes(2);
   });
 });
 

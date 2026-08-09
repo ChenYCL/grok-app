@@ -1,12 +1,60 @@
 import { describe, expect, it } from "vitest";
 import {
   displayPathLabel,
+  isFusedQueryKeyPath,
   isLocalMediaOpenable,
   isRealLocalAbsolutePath,
   isSiteRootAbsolutePath,
+  isWindowsStylePath,
   normalizeLocalPathToken,
   unescapeShellPath,
 } from "./pathNormalize";
+
+describe("isFusedQueryKeyPath", () => {
+  it("rejects media query keys fused onto Unix roots", () => {
+    // `?t=TOKEN&p=/Users/…` → `t:/Users/…`
+    expect(isFusedQueryKeyPath("t:/Users/me/pic.png")).toBe(true);
+    expect(isFusedQueryKeyPath("p:/Users/me/pic.png")).toBe(true);
+    expect(isFusedQueryKeyPath("a:/tmp/x.png")).toBe(true);
+    expect(isFusedQueryKeyPath("x:/var/folders/75/xx/a.jpg")).toBe(true);
+    expect(isFusedQueryKeyPath("q:/Users/me")).toBe(true);
+    expect(isFusedQueryKeyPath("t:/Users/me/Library/Application Support/a.png")).toBe(true);
+  });
+
+  it("keeps real Windows drive paths", () => {
+    expect(isFusedQueryKeyPath("C:\\Users\\me\\pic.png")).toBe(false);
+    expect(isFusedQueryKeyPath("C:/Users/me/pic.png")).toBe(false);
+    expect(isFusedQueryKeyPath("D:/data/project/x.png")).toBe(false);
+    expect(isFusedQueryKeyPath("E:/media/1.jpg")).toBe(false);
+    expect(isFusedQueryKeyPath("C:/Program Files/App/a.png")).toBe(false);
+  });
+
+  it("keeps plain Unix paths and relatives", () => {
+    expect(isFusedQueryKeyPath("/Users/me/pic.png")).toBe(false);
+    expect(isFusedQueryKeyPath("images/1.jpg")).toBe(false);
+    expect(isFusedQueryKeyPath("t")).toBe(false);
+    expect(isFusedQueryKeyPath("")).toBe(false);
+  });
+});
+
+describe("fused query keys never pass as local abs", () => {
+  it("isRealLocalAbsolutePath rejects t:/Users…", () => {
+    expect(isRealLocalAbsolutePath("t:/Users/me/pic.png")).toBe(false);
+    expect(isRealLocalAbsolutePath("p:/Users/me/pic.png")).toBe(false);
+    expect(isRealLocalAbsolutePath("C:/Users/me/pic.png")).toBe(true);
+    expect(isRealLocalAbsolutePath("/Users/me/pic.png")).toBe(true);
+  });
+
+  it("isWindowsStylePath rejects fused forward-slash forms", () => {
+    expect(isWindowsStylePath("t:/Users/me/pic.png")).toBe(false);
+    expect(isWindowsStylePath("C:\\Users\\me\\pic.png")).toBe(true);
+    expect(isWindowsStylePath("C:/Users/me/pic.png")).toBe(true);
+  });
+
+  it("isLocalMediaOpenable rejects fused tokens", () => {
+    expect(isLocalMediaOpenable("t:/Users/me/pic.png")).toBe(false);
+  });
+});
 
 describe("unescapeShellPath", () => {
   it("restores spaces and parens from shell escapes", () => {

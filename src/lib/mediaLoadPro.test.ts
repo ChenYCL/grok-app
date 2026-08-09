@@ -8,6 +8,7 @@ import {
   mediaLoadErrorLabelMap,
   mediaLoadErrorMessageKey,
   mediaLoadPhaseMessageKey,
+  mediaUrlPathParam,
   resolveMediaLoadError,
   resolveMediaSrcFailure,
 } from "./mediaLoadPro";
@@ -235,6 +236,70 @@ describe("deriveMediaLoadPhase / phase keys", () => {
     expect(mediaLoadPhaseMessageKey("missing")).toBe("media.err.missingPath");
     expect(mediaLoadPhaseMessageKey("pending")).toBe("media.loading");
     expect(mediaLoadPhaseMessageKey("ready")).toBeNull();
+  });
+});
+
+describe("classifyMediaSrcFailure — fused query keys & loopback URLs", () => {
+  it("fused t:/… path is untrusted, never broken_blob", () => {
+    expect(
+      classifyMediaSrcFailure({ pathOrUrl: "t:/Users/me/pic.png" }),
+    ).toBe("untrusted");
+    expect(
+      classifyMediaSrcFailure({
+        pathOrUrl: "t:/Users/me/pic.png",
+        resolvedSrc: null,
+        loadFailed: true,
+      }),
+    ).toBe("untrusted");
+  });
+
+  it("loopback media URL with fused p= param is untrusted on loadFailed", () => {
+    expect(
+      classifyMediaSrcFailure({
+        pathOrUrl: "/Users/me/pic.png",
+        resolvedSrc:
+          "http://127.0.0.1:52193/v1/media?t=tok&p=t%3A%2FUsers%2Fme%2Fpic.png",
+        loadFailed: true,
+      }),
+    ).toBe("untrusted");
+  });
+
+  it("loopback media URL without p= is media_server_unavailable", () => {
+    expect(
+      classifyMediaSrcFailure({
+        pathOrUrl: "/Users/me/pic.png",
+        resolvedSrc: "http://127.0.0.1:52193/v1/media?t=tok",
+        loadFailed: true,
+      }),
+    ).toBe("media_server_unavailable");
+  });
+
+  it("normal loopback media URL with real path stays broken_blob on decode failure", () => {
+    expect(
+      classifyMediaSrcFailure({
+        pathOrUrl: "/Users/me/pic.png",
+        resolvedSrc:
+          "http://127.0.0.1:52193/v1/media?t=tok&p=%2FUsers%2Fme%2Fpic.png",
+        loadFailed: true,
+      }),
+    ).toBe("broken_blob");
+  });
+});
+
+describe("mediaUrlPathParam", () => {
+  it("extracts decoded p= from loopback media URLs", () => {
+    expect(
+      mediaUrlPathParam(
+        "http://127.0.0.1:52193/v1/media?t=tok&p=%2FUsers%2Fme%2Fa%20b.png",
+      ),
+    ).toBe("/Users/me/a b.png");
+  });
+
+  it("returns null for non-loopback or pathless URLs", () => {
+    expect(mediaUrlPathParam("https://cdn.example/a.png")).toBe(null);
+    expect(mediaUrlPathParam("http://127.0.0.1:9/v1/media?t=tok")).toBe(null);
+    expect(mediaUrlPathParam("")).toBe(null);
+    expect(mediaUrlPathParam(null)).toBe(null);
   });
 });
 

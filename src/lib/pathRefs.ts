@@ -11,6 +11,7 @@ import {
   pathExt,
 } from "@/lib/attachments";
 import {
+  isFusedQueryKeyPath,
   isRealLocalAbsolutePath,
   isSiteRootAbsolutePath,
   isWindowsStylePath,
@@ -83,6 +84,8 @@ export function looksLikeFilePath(s: string): boolean {
   if (!t || t.length > 800) return false;
   if (isHttpUrl(t)) return false;
   if (t.includes("://")) return false;
+  // Fused media query keys (`t:/Users/…`) are never real files — plain code.
+  if (isFusedQueryKeyPath(t)) return false;
   // Still-broken truncation (nothing usable left)
   if (t.startsWith("...") || t.startsWith("…")) return false;
   // CMS/site root (`/images/...`) — leave as plain code, not a path card.
@@ -140,6 +143,7 @@ export function isHomeRelativePath(s: string): boolean {
  */
 export function isAbsoluteFsPath(s: string): boolean {
   const t = normalizeLocalPathToken(s) || s.trim();
+  if (isFusedQueryKeyPath(t)) return false;
   return (
     t.startsWith("/") ||
     /^[A-Za-z]:[\\/]/.test(t) ||
@@ -199,6 +203,8 @@ export function resolveFileToken(
   if (!raw) return null;
   // Site CMS roots are not local files — never invent open targets.
   if (isSiteRootAbsolutePath(raw)) return null;
+  // Fused media query keys (`t:/Users/…`) are not paths at all.
+  if (isFusedQueryKeyPath(raw)) return null;
   if (opts?.pathMap?.[raw]) return opts.pathMap[raw]!;
   // Prefer normalized form (shell-unescape + strip agent ellipsis).
   // Do not strip leading `/` or `~/` — those are openable absolute/home paths.

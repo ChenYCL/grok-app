@@ -4,6 +4,8 @@
  * width). In-memory Map for the session; localStorage for cross-restart.
  */
 
+import { isFusedQueryKeyPath } from "@/lib/pathNormalize";
+
 export const IMAGE_ASPECT_CACHE_STORAGE_KEY = "grok.imageAspectCache.v1";
 /** Cap disk entries (LRU by last-write). */
 export const IMAGE_ASPECT_CACHE_MAX = 500;
@@ -33,6 +35,7 @@ export function isLocalFsCacheKey(s: string): boolean {
   if (t.startsWith("data:") || t.startsWith("blob:")) return false;
   if (t.startsWith("asset:") || t.includes("asset.localhost")) return false;
   if (t.startsWith("media:") || t.includes("media.localhost")) return false;
+  if (isFusedQueryKeyPath(t)) return false;
   return t.startsWith("/") || /^[A-Za-z]:[\\/]/.test(t);
 }
 
@@ -50,17 +53,15 @@ export function imageAspectCacheKey(src: string, path?: string): string {
   if (isLocalFsCacheKey(s)) return normalizeFsKey(s);
 
   // Loopback media HTTP: …/v1/media?t=TOKEN&p=encodeURIComponent(abs)
+  // `URLSearchParams.get` already decodes once — do NOT decode again: paths
+  // that legitimately contain `%` (agent-home `sessions/%2FUsers%2F…`) would
+  // otherwise be corrupted into double-slash keys that never match.
   try {
     if (/^https?:\/\/127\.0\.0\.1(?::\d+)?\//i.test(s) || /\/v1\/media\?/i.test(s)) {
       const u = new URL(s);
       const file = u.searchParams.get("p");
-      if (file) {
-        try {
-          const decoded = decodeURIComponent(file);
-          if (isLocalFsCacheKey(decoded)) return normalizeFsKey(decoded);
-        } catch {
-          /* keep going */
-        }
+      if (file && isLocalFsCacheKey(file)) {
+        return normalizeFsKey(file);
       }
     }
   } catch {
