@@ -1,7 +1,13 @@
 /**
- * Lightweight desktop notification helper.
- * Uses the Web Notification API when available (Tauri WebView on macOS/Windows).
- * Always safe to call — fails closed to `false` without throwing.
+ * Desktop notification helper.
+ *
+ * Tauri: `tauri-plugin-notification` injects a WebView init script that polyfills
+ * `Notification` / `requestPermission` onto native OS APIs (notify-rust on desktop).
+ * Without that plugin, WKWebView reports `permission=denied`, never registers the
+ * app in System Settings → Notifications, and desktop alerts stay dead.
+ *
+ * Browser / non-Tauri: plain Web Notification API.
+ * Always safe to call — fails closed without throwing.
  */
 
 import { loadNotifySoundPref, playNotifySound } from "./notifySound";
@@ -18,6 +24,9 @@ export type DesktopNotifyOptions = {
    * Session that fired this notification (turn_done / permission / ask_user).
    * On click, after focusing the app, the registered session focus handler is
    * invoked when this is a non-empty string. Missing id still focuses the app.
+   *
+   * Click deep-link only works when the WebView returns a real Notification
+   * instance (browser / non-polyfill). Native polyfill is fire-and-forget.
    */
   sessionId?: string | null;
   /**
@@ -65,6 +74,13 @@ export function shouldShowDesktopNotify(
   return prefs?.notifyOnPermission !== false;
 }
 
+function isTauriHost(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
+  );
+}
+
 function notificationCtor(): typeof Notification | null {
   if (typeof globalThis === "undefined") return null;
   const N = (globalThis as { Notification?: typeof Notification }).Notification;
@@ -82,10 +98,19 @@ export function notificationSupport(): NotifyPermission {
   return "unsupported";
 }
 
-/** Request permission once; no-op when already decided or unavailable. */
+/**
+ * Request permission once; no-op when already decided or unavailable.
+ * On Tauri, the notification plugin polyfill maps this to the native path
+ * (desktop always reports granted after request). We still re-request when
+ * status is `denied` under Tauri so a prior bare-WebView denial cannot stick
+ * after the plugin polyfill is installed.
+ */
 export async function ensureNotifyPermission(): Promise<NotifyPermission> {
   const status = notificationSupport();
-  if (status !== "default") return status;
+  if (status === "granted") return status;
+  if (status === "unsupported") return status;
+  // Browser: denied is terminal (user must flip OS / site settings).
+  if (status === "denied" && !isTauriHost()) return status;
   const N = notificationCtor();
   if (!N?.requestPermission) return "unsupported";
   try {
@@ -97,6 +122,35 @@ export async function ensureNotifyPermission(): Promise<NotifyPermission> {
   } catch {
     return "unsupported";
   }
+}
+
+/**
+ * Re-read OS permission, requesting when still `default`.
+ * Prefer this from Settings on open so the honesty chip tracks the plugin
+ * polyfill after it settles from the async init probe.
+ */
+export async function refreshNotifyPermission(): Promise<NotifyPermission> {
+  const current = notificationSupport();
+  if (current === "default") {
+    return ensureNotifyPermission();
+  }
+  // Tauri polyfill may still be resolving; try native probe once.
+  if (isTauriHost() && current !== "granted") {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const granted = await invoke<boolean | null>(
+        "plugin:notification|is_permission_granted",
+      );
+      if (granted === true) return "granted";
+      if (granted === false) return "denied";
+      // null / prompt → request
+      const next = await ensureNotifyPermission();
+      return next;
+    } catch {
+      /* plugin missing — fall through */
+    }
+  }
+  return current;
 }
 
 /** Bring the app window to the front (Web + Tauri). Fail-closed. */
@@ -133,9 +187,84 @@ export function focusAppFromNotification(): void {
   })();
 }
 
+function playOptionalSound(opts: DesktopNotifyOptions): void {
+  try {
+    const wantSound = opts.sound ?? loadNotifySoundPref();
+    if (wantSound) playNotifySound();
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Last host-side error string (for Settings test toast). */
+let lastNativeNotifyError: string | null = null;
+
+/** Read last native notify failure (cleared on success). */
+export function takeLastNativeNotifyError(): string | null {
+  const e = lastNativeNotifyError;
+  lastNativeNotifyError = null;
+  return e;
+}
+
+/**
+ * Host native path (bypasses WebView permission race).
+ * Prefer our `desktop_notify_show` command (returns errors) then the plugin.
+ * Returns true when the invoke was accepted; delivery is still OS-dependent.
+ */
+async function notifyViaTauriPlugin(
+  opts: DesktopNotifyOptions,
+): Promise<boolean> {
+  lastNativeNotifyError = null;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const sessionId =
+      typeof opts.sessionId === "string" && opts.sessionId.trim()
+        ? opts.sessionId.trim()
+        : null;
+    try {
+      // Host returns delivery path string on success (e.g. osascript / unusernotification).
+      await invoke<string>("desktop_notify_show", {
+        title: opts.title,
+        body: opts.body ?? null,
+        sessionId,
+      });
+      return true;
+    } catch (hostErr) {
+      const msg =
+        hostErr instanceof Error
+          ? hostErr.message
+          : typeof hostErr === "string"
+            ? hostErr
+            : String(hostErr);
+      lastNativeNotifyError = msg;
+      console.warn("[desktopNotify] host notify failed", hostErr);
+      // Old binary without desktop_notify_show — try plugin IPC.
+      if (!/not found|unknown command|Command/i.test(msg)) {
+        return false;
+      }
+    }
+    // Plugin notify-rust path: only as legacy fallback when host command missing.
+    // On macOS Sequoia bare binaries it often silently drops — prefer host path.
+    await invoke("plugin:notification|notify", {
+      options: {
+        title: opts.title,
+        body: opts.body,
+        silent: false,
+        ...(sessionId ? { extra: { sessionId } } : {}),
+      },
+    });
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    lastNativeNotifyError = msg;
+    console.warn("[desktopNotify] native notify failed", e);
+    return false;
+  }
+}
+
 /**
  * Show a system notification when permission is granted.
- * Returns true only when a Notification object was constructed.
+ * Returns true when a notification was handed off to the OS / WebView.
  * Click focuses the app window when possible, then deep-links to
  * `sessionId` via the registered session focus handler (if any).
  * Suppressed entirely during quiet hours (localStorage pref).
@@ -145,13 +274,37 @@ export function focusAppFromNotification(): void {
 export function showDesktopNotification(opts: DesktopNotifyOptions): boolean {
   if (isQuietHoursActive()) return false;
   if (opts.sessionId && isSessionMuted(opts.sessionId)) return false;
-  if (notificationSupport() !== "granted") return false;
   if (!opts.force && typeof document !== "undefined" && document.hasFocus()) {
     // App is in front — prefer in-app toast; caller can pass force=true.
     return false;
   }
+
+  // Tauri: prefer native plugin so alerts work even when the WebView still
+  // reports default/denied before the polyfill finishes, or when WKWebView's
+  // bare Notification API is broken.
+  if (isTauriHost()) {
+    void (async () => {
+      const ok = await notifyViaTauriPlugin(opts);
+      if (!ok) {
+        // Fallback: polyfilled / Web constructor (may still work).
+        tryShowWebNotification(opts, { playSound: false });
+      }
+    })();
+    playOptionalSound(opts);
+    return true;
+  }
+
+  if (notificationSupport() !== "granted") return false;
+  return tryShowWebNotification(opts, { playSound: true });
+}
+
+function tryShowWebNotification(
+  opts: DesktopNotifyOptions,
+  flags: { playSound: boolean },
+): boolean {
   const N = notificationCtor();
   if (!N) return false;
+  if (notificationSupport() !== "granted" && !isTauriHost()) return false;
   try {
     const focusSessionId =
       typeof opts.sessionId === "string" && opts.sessionId.trim()
@@ -163,6 +316,7 @@ export function showDesktopNotification(opts: DesktopNotifyOptions): boolean {
       silent: false,
     });
     try {
+      // Tauri polyfill constructor is fire-and-forget (returns undefined).
       if (n && typeof n === "object") {
         n.onclick = () => {
           try {
@@ -184,13 +338,7 @@ export function showDesktopNotification(opts: DesktopNotifyOptions): boolean {
     } catch {
       /* ignore onclick assignment failures */
     }
-    // Optional soft beep (pref default off). Fail-closed inside playNotifySound.
-    try {
-      const wantSound = opts.sound ?? loadNotifySoundPref();
-      if (wantSound) playNotifySound();
-    } catch {
-      /* ignore */
-    }
+    if (flags.playSound) playOptionalSound(opts);
     return true;
   } catch {
     return false;

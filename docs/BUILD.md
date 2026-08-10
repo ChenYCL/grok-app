@@ -89,20 +89,48 @@ Issue [#539](https://github.com/RongleCat/grok-app/issues/539) 对照实验：�
 ## 2. 本地构建命令
 
 ```bash
-pnpm build              # 当前主机默认 target
-pnpm build:mac-arm      # macOS ARM
-pnpm build:mac-intel    # macOS Intel
-pnpm build:mac-all      # ARM + Intel（仅 macOS）
-pnpm build:win          # Windows（macOS/Linux → cargo-xwin；Windows → 原生）
-pnpm build:linux        # Linux x64（需 Linux 主机）
-pnpm build:all          # mac-arm + mac-intel + win（仅 macOS）
+pnpm build:help         # 打印全部平台命令说明
 
-# 或直接：
+# —— 按你的电脑（最常用）——
+pnpm build              # 当前主机自动选 target（Apple Silicon → aarch64）
+pnpm build:mac          # 同上，仅 macOS：为「这台 Mac」打 .app + .dmg
+
+# —— 指定平台 ——
+pnpm build:mac-arm      # macOS Apple Silicon（aarch64-apple-darwin）
+pnpm build:mac-intel    # macOS Intel（x86_64-apple-darwin）
+pnpm build:mac-all      # ARM + Intel 两套 Mac 包（仅 macOS 主机）
+pnpm build:win          # Windows x64 NSIS（本机 Windows，或 Mac/Linux 上 cargo-xwin）
+pnpm build:linux        # Linux x64 AppImage/deb/rpm（需 Linux 主机）
+pnpm build:all          # mac-arm + mac-intel + win（仅 macOS 主机）
+
+# 或直接脚本：
+./scripts/build-local.sh mac          # 当前 Apple 芯片 / Intel Mac
 ./scripts/build-local.sh mac-arm
 ./scripts/build-local.sh win
 ./scripts/build-local.sh linux
 ./scripts/build-local.sh all
 ```
+
+### Apple Silicon 本机安装包（示例）
+
+在 M 系列 Mac 上：
+
+```bash
+pnpm install
+pnpm build:mac
+# 或
+pnpm build:mac-arm
+```
+
+成功后脚本会列出产物，典型路径：
+
+```
+src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Grok_*.dmg
+src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Grok.app
+```
+
+双击 `.dmg` 安装，或直接运行 `.app`。  
+通知 / Dock 等依赖正式 `.app` 的能力在 **安装包或 `.app` 产物** 上验证，不要用 `tauri dev` 裸二进制当生产行为。
 
 `build:win` 在 macOS 上等价于：
 

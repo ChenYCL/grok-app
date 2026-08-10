@@ -81,6 +81,7 @@ tracing-appender = "0.2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tauri-plugin-autostart = "2"
 portable-pty = "0.9.0"
+tauri-plugin-notification = "2"
 
 # Windows system proxy (WinINET registry) for child-process env injection — NEW-02.
 # `windows` — shell integration (AUMID, Show Desktop / taskbar styles) in win_shell.rs.
@@ -95,6 +96,10 @@ windows = { version = "0.61", features = [
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-window-state = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+mac-notification-sys = "0.6"
+mac-usernotifications = "0.3"
 
 [profile.release]
 codegen-units = 1

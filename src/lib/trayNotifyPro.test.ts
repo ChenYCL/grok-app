@@ -107,7 +107,8 @@ describe("deriveNotifyHonestySurface", () => {
     expect(denied.blockReason).toBe("os_denied");
     expect(denied.severity).toBe("warn");
     expect(denied.canFireDesktop).toBe(false);
-    expect(denied.canRequestPermission).toBe(false);
+    // Still offer retry — Tauri plugin polyfill can clear a stale WebView denial.
+    expect(denied.canRequestPermission).toBe(true);
 
     const unsupported = deriveNotifyHonestySurface({
       permission: "unsupported",

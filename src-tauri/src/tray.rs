@@ -420,19 +420,30 @@ pub fn busy_tooltip(base: &str, count: u32) -> String {
     }
 }
 
-/// Show a count on the dock badge (macOS) or tray tooltip (elsewhere).
+/// Show a count on the dock badge (macOS) and/or tray chrome.
 /// Frontend product passes unread session count (after background turn end).
 ///
-/// - **macOS**: `set_badge_count` + `set_badge_label` on the main window.
-/// - **Other platforms**: tray tooltip `Grok · N` (or platform tooltip base).
-/// - Count `0` clears the badge / restores default tooltip.
-/// - Fail-closed: missing tray/window or platform errors are ignored (Ok).
+/// - **macOS Dock**: `set_badge_label` (+ count) on the main window. No-op while
+///   the app is Accessory / dock-hidden (close-to-tray) — tray chrome still updates.
+/// - **macOS menu-bar tray**: tooltip `Grok · N` and a numeric title next to the icon.
+/// - **Other platforms**: dock-like badge when supported + tray tooltip.
+/// - Count `0` clears the badge / restores default tooltip / clears tray title.
+/// - Fail-closed: missing tray/window errors are logged, never panic.
 pub fn set_busy_count(app: &AppHandle, count: u32) {
+    let base = tray_i18n::t().tooltip;
+    let tip = busy_tooltip(base, count);
+
     #[cfg(target_os = "macos")]
     {
         if let Some(w) = app.get_webview_window("main") {
-            let _ = w.set_badge_count(badge_count_value(count));
-            let _ = w.set_badge_label(badge_label_value(count));
+            if let Err(e) = w.set_badge_count(badge_count_value(count)) {
+                tracing::debug!(error = %e, count, "set_badge_count failed");
+            }
+            if let Err(e) = w.set_badge_label(badge_label_value(count)) {
+                tracing::debug!(error = %e, count, "set_badge_label failed");
+            }
+        } else {
+            tracing::debug!(count, "set_busy_count: main window missing");
         }
     }
 
@@ -440,15 +451,33 @@ pub fn set_busy_count(app: &AppHandle, count: u32) {
     {
         // Linux may also support dock-like badge count via libunity; best-effort.
         if let Some(w) = app.get_webview_window("main") {
-            let _ = w.set_badge_count(badge_count_value(count));
-        }
-        let base = tray_i18n::t().tooltip;
-        let tip = busy_tooltip(base, count);
-        if let Some(tray) = app.try_state::<Mutex<tauri::tray::TrayIcon>>() {
-            if let Ok(t) = tray.lock() {
-                let _ = t.set_tooltip(Some(tip.as_str()));
+            if let Err(e) = w.set_badge_count(badge_count_value(count)) {
+                tracing::debug!(error = %e, count, "set_badge_count failed");
             }
         }
+    }
+
+    // Tray tooltip (all platforms) + macOS menu-bar numeric title so the count
+    // is visible even when the Dock icon is hidden (close-to-tray / Accessory).
+    if let Some(tray) = app.try_state::<Mutex<tauri::tray::TrayIcon>>() {
+        if let Ok(t) = tray.lock() {
+            if let Err(e) = t.set_tooltip(Some(tip.as_str())) {
+                tracing::debug!(error = %e, "tray set_tooltip failed");
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let title = if count == 0 {
+                    None
+                } else {
+                    Some(count.to_string())
+                };
+                if let Err(e) = t.set_title(title.as_deref()) {
+                    tracing::debug!(error = %e, "tray set_title failed");
+                }
+            }
+        }
+    } else {
+        tracing::debug!("set_busy_count: tray state missing");
     }
 }
 

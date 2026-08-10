@@ -204,7 +204,7 @@ export const enSettings = {
   "settings.keepTrayForSchedules": "Keep tray for schedules",
   "settings.keepTrayForSchedulesDesc": "When any scheduled task is enabled, closing the window still hides to the tray so schedules keep firing — even if “Close window to tray” is off. Fully quitting the app still pauses schedules. There is no separate background daemon.",
   "settings.trayBusyBadge": "Show unread count on dock/tray",
-  "settings.trayBusyBadgeDesc": "When a chat finishes a reply in the background, show how many unread chats are waiting on the macOS Dock badge (or tray tooltip on other platforms). The count updates after the turn ends — not when you send. Off clears the badge.",
+  "settings.trayBusyBadgeDesc": "When a chat finishes a reply in the background, show how many unread chats are waiting on the macOS Dock badge, menu-bar tray number (or tray tooltip on other platforms). The count updates after the turn ends — not when you send. Off clears the badge. The chat you are currently viewing does not add unread.",
   "settings.trayBusyBadge.status.off": "Badge off — dock/tray count is cleared.",
   "settings.trayBusyBadge.status.idle": "No unread chats right now — badge stays clear.",
   "settings.trayBusyBadge.status.busy": "{n} unread chat(s) shown on dock/tray.",

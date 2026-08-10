@@ -176,6 +176,8 @@ mod tray;
 
 mod tray_i18n;
 
+mod desktop_notify;
+
 mod turn_complete;
 
 mod updater;
@@ -281,6 +283,10 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         // Always register process so release builds can relaunch after install.
         .plugin(tauri_plugin_process::init())
+        // Native OS notifications (polyfills Web Notification API in the WebView).
+        // Without this, WKWebView reports Notification.permission=denied and the app
+        // never appears in System Settings → Notifications — desktop alerts stay dead.
+        .plugin(tauri_plugin_notification::init())
         // Login-item plugin only; never auto-enable. Enable/disable is driven by
         // AppSettings.launch_at_login in setup + settings_set. Safe for `cargo test`
         // (tests never call run(); init does not touch the OS login list).
@@ -583,6 +589,10 @@ pub fn run() {
             if let Err(e) = tray::setup_tray(app.handle()) {
                 tracing::warn!("tray setup: {e}");
             }
+
+            // macOS: pin notification delivery to com.grokapp.desktop and request
+            // UNUserNotificationCenter auth so Grok appears in System Settings.
+            desktop_notify::request_permission_on_startup();
 
             // I03: recycle idle agent processes; session metadata stays on disk.
             // I06: surface cancel UI when a stream is pure-silent for too long.
@@ -1160,6 +1170,10 @@ pub fn run() {
             tray::tray_refresh,
 
             tray::tray_set_busy_count,
+
+            desktop_notify::desktop_notify_show,
+
+            desktop_notify::desktop_notify_available,
 
             commands::app_force_quit,
             commands::app_cancel_pending_quit,

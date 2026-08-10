@@ -399,13 +399,32 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             if (
               s.sessionId &&
               s.state === "ready" &&
-              isTurnDoneReadyTransition(prevLiveState, s.state) &&
-              shouldMarkUnreadOnTurnDone({
+              isTurnDoneReadyTransition(prevLiveState, s.state)
+            ) {
+              const background = shouldMarkUnreadOnTurnDone({
                 sessionId: s.sessionId,
                 viewingSessionId: c.viewingSessionIdRef.current,
-              })
-            ) {
-              markSessionUnread(s.sessionId);
+              });
+              if (background) {
+                markSessionUnread(s.sessionId);
+              }
+              // Desktop notify for turn_done:
+              // - background chat: force (app may be focused on another chat)
+              // - current chat: only when window unfocused (hasFocus gate inside)
+              if (
+                shouldShowDesktopNotify(
+                  "turn_done",
+                  c.notifyPrefsRef.current,
+                )
+              ) {
+                showDesktopNotification({
+                  title: c.trRef.current("notify.turnDoneTitle"),
+                  body: c.trRef.current("notify.turnDoneBody"),
+                  tag: `turn-done-${s.sessionId}`,
+                  sessionId: s.sessionId,
+                  force: background,
+                });
+              }
             }
             if (
               s.state !== "streaming" &&
@@ -418,6 +437,8 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             }
             // Only update the workbench session when the user is viewing it.
             // Otherwise switching sessions would yank selection back to the live agent.
+            // Turn-done desktop notify is handled above for all sessions (not only
+            // the viewed one — background chats were previously silent).
             if (
               s.sessionId &&
               s.sessionId === c.viewingSessionIdRef.current
@@ -445,21 +466,6 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                   }
                   return next;
                 });
-                if (
-                  s.state === "ready" &&
-                  shouldShowDesktopNotify(
-                    "turn_done",
-                    c.notifyPrefsRef.current,
-                  )
-                ) {
-                  const turnSid = s.sessionId || null;
-                  showDesktopNotification({
-                    title: c.trRef.current("notify.turnDoneTitle"),
-                    body: c.trRef.current("notify.turnDoneBody"),
-                    tag: `turn-done-${turnSid || "x"}`,
-                    sessionId: turnSid,
-                  });
-                }
               } else if (
                 (s.state === "streaming" || s.state === "awaiting_permission") &&
                 s.sessionId === c.viewingSessionIdRef.current
@@ -532,16 +538,32 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                 streamingMessageId: s.streamingMessageId,
               }),
             );
-            // Background turn finished (demoted agent) → unread; mute is separate.
+            // Background / demoted turn finished → unread + desktop notify.
             if (
               s.state === "ready" &&
-              isTurnDoneReadyTransition(prevLiveState, s.state) &&
-              shouldMarkUnreadOnTurnDone({
+              isTurnDoneReadyTransition(prevLiveState, s.state)
+            ) {
+              const background = shouldMarkUnreadOnTurnDone({
                 sessionId: s.sessionId,
                 viewingSessionId: c.viewingSessionIdRef.current,
-              })
-            ) {
-              markSessionUnread(s.sessionId);
+              });
+              if (background) {
+                markSessionUnread(s.sessionId);
+              }
+              if (
+                shouldShowDesktopNotify(
+                  "turn_done",
+                  c.notifyPrefsRef.current,
+                )
+              ) {
+                showDesktopNotification({
+                  title: c.trRef.current("notify.turnDoneTitle"),
+                  body: c.trRef.current("notify.turnDoneBody"),
+                  tag: `turn-done-${s.sessionId}`,
+                  sessionId: s.sessionId,
+                  force: background,
+                });
+              }
             }
             // If user is viewing this demoted session, keep workbench state in sync.
             if (s.sessionId === c.viewingSessionIdRef.current) {

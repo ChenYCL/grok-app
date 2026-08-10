@@ -181,6 +181,8 @@ export function GeneralSection() {
     prefsScope = "global",
     reopenLastSession = true,
     requestNotifyPermission,
+    testDesktopNotification,
+    notifyTestBusy,
     rowHighlight,
     sandboxProfile,
     sectionNav,
@@ -2157,6 +2159,18 @@ export function GeneralSection() {
                         {notifyPermBusy
                           ? t("settings.notify.honesty.requesting")
                           : t("settings.notify.honesty.request")}
+                      </button>
+                    ) : null}
+                    {testDesktopNotification ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={!!notifyTestBusy}
+                        onClick={() => void testDesktopNotification()}
+                      >
+                        {notifyTestBusy
+                          ? t("settings.notify.honesty.testing")
+                          : t("settings.notify.honesty.test")}
                       </button>
                     ) : null}
                   </div>

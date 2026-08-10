@@ -291,6 +291,10 @@ export function deriveNotifyHonestySurface(input: {
     blockReasonKey: blockReasonKeyFor(blockReason),
     permissionLabelKey: permissionLabelKeyFor(permission),
     severity,
-    canRequestPermission: permission === "default",
+    // Offer "Request" for default, and also for denied so the user can retry
+    // after installing the native notification plugin (Tauri polyfill can
+    // clear a stale bare-WebView denial). Unsupported stays non-actionable.
+    canRequestPermission:
+      permission === "default" || permission === "denied",
   };
 }

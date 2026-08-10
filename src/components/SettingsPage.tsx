@@ -139,7 +139,9 @@ import {
 } from "@/lib/notifyQuietHours";
 import {
   ensureNotifyPermission,
+  refreshNotifyPermission,
   notificationSupport,
+  takeLastNativeNotifyError,
 } from "@/lib/desktopNotify";
 import {
   deriveNotifyHonestySurface,
@@ -612,6 +614,18 @@ export function SettingsPage({
     const id = window.setInterval(() => setNotifyClockMs(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
+  // Re-probe OS permission when Settings mounts: Tauri's notification plugin
+  // polyfill resolves async after load (starts default → granted on desktop).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const next = await refreshNotifyPermission();
+      if (!cancelled) setNotifyOsPermission(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const trayBusySurface = useMemo(
     () =>
       deriveTrayBusyBadgeSurface({
@@ -645,12 +659,16 @@ export function SettingsPage({
     if (notifyPermBusy) return;
     setNotifyPermBusy(true);
     try {
-      const next = await ensureNotifyPermission();
+      // ensureNotifyPermission re-requests under Tauri even if a bare WebView
+      // previously cached "denied"; refresh re-probes the native plugin.
+      await ensureNotifyPermission();
+      const next = await refreshNotifyPermission();
       setNotifyOsPermission(next);
     } finally {
       setNotifyPermBusy(false);
     }
   }, [notifyPermBusy]);
+  const [notifyTestBusy, setNotifyTestBusy] = useState(false);
   const onNotifyQuietHours = useCallback((next: NotifyQuietHoursPref) => {
     setNotifyQuietHours(next);
     saveNotifyQuietHoursPref(next);
@@ -721,6 +739,46 @@ export function SettingsPage({
     setSettingsToast(msg);
     window.setTimeout(() => setSettingsToast(null), ms);
   }, []);
+  const testDesktopNotification = useCallback(async () => {
+    if (notifyTestBusy) return;
+    setNotifyTestBusy(true);
+    try {
+      await ensureNotifyPermission();
+      const next = await refreshNotifyPermission();
+      setNotifyOsPermission(next);
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const path = await invoke<string>("desktop_notify_show", {
+          title: t("settings.notify.honesty.test"),
+          body: t("settings.notify.honesty.testOk"),
+          sessionId: null,
+        });
+        // Honest path-specific copy: bare tauri dev → Script Editor; .app → Grok.
+        if (path === "osascript") {
+          showSettingsToast(t("settings.notify.honesty.testOk.osascript"), 8000);
+        } else if (
+          path === "unusernotification" ||
+          path === "nsusernotification"
+        ) {
+          showSettingsToast(t("settings.notify.honesty.testOk.native"), 6000);
+        } else {
+          showSettingsToast(t("settings.notify.honesty.testOk"), 5000);
+        }
+      } catch (e) {
+        const detail =
+          takeLastNativeNotifyError() ||
+          (e instanceof Error ? e.message : String(e));
+        showSettingsToast(
+          detail
+            ? `${t("settings.notify.honesty.testFail")} (${detail})`
+            : t("settings.notify.honesty.testFail"),
+          7000,
+        );
+      }
+    } finally {
+      setNotifyTestBusy(false);
+    }
+  }, [notifyTestBusy, t, showSettingsToast]);
   const runClearWorkspaceMemory = useCallback(async () => {
     if (!workspaceCwd || clearMemoryBusy) return;
     setClearMemoryBusy(true);
@@ -1567,6 +1625,8 @@ export function SettingsPage({
     notifyHonesty,
     trayBusySurface,
     requestNotifyPermission,
+    testDesktopNotification,
+    notifyTestBusy,
     messageActionsVisibility,
     onMessageActionsVisibility,
     themeScheduleHonesty,

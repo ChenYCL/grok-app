@@ -205,7 +205,7 @@ export const zhTWSettings = {
   "settings.keepTrayForSchedules": "為已排程任務保留系統匣",
   "settings.keepTrayForSchedulesDesc": "只要有已啟用的已排程任務，關閉視窗仍會收到系統匣以便繼續排程——即使關閉了「關閉視窗時縮到系統匣」。完全結束應用仍會暫停任務。沒有獨立的背景守護行程。",
   "settings.trayBusyBadge": "在 Dock/系統匣顯示未讀數",
-  "settings.trayBusyBadgeDesc": "背景工作階段回覆結束後，在 macOS Dock 角標（或其他平台系統匣提示）顯示未讀工作階段數。數量在任務執行結束後更新，傳送時不會立刻出現。關閉則清除角標。",
+  "settings.trayBusyBadgeDesc": "背景工作階段回覆結束後，在 macOS Dock 角標、選單列圖示旁數字（或其他平台系統匣提示）顯示未讀工作階段數。數量在回合結束後更新，傳送時不會變。關閉則清除。目前正在檢視的工作階段完成後不會增加未讀。",
   "settings.trayBusyBadge.status.off": "角標已關閉 — Dock/系統匣計數已清除。",
   "settings.trayBusyBadge.status.idle": "目前無未讀工作階段 — 角標保持空白。",
   "settings.trayBusyBadge.status.busy": "Dock/系統匣顯示 {n} 個未讀工作階段。",
