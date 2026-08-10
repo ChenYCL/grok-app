@@ -18,7 +18,9 @@ See `docs/llm-wiki/release.md`.
 - **Resource code preview languages + line numbers**: highlight.js registration covers common languages (PowerShell, Swift/ObjC, Scala, Dart, Elixir, Haskell, protobuf, GraphQL, less, nginx, nix, shaders, …); per-line gutter stays aligned with highlighted tokens.
 - **中文 · 资源预览代码高亮与行号**：扩展常见语言高亮，行号 gutter 与高亮行对齐。
 
-### Fixed
+### Security
+- **Prod dependency CVEs + anti-regression**: Bump `dompurify` ≥3.4.13 (GHSA-55q2-fjhq-7xh7); `pnpm.overrides` pin transitive `mermaid` ≥11.16.1 (streamdown). CI + `pnpm audit:prod` fail on moderate+. Root is pnpm-only: delete stale `package-lock.json`, ignore reintroductions, `preinstall`/`deps:check` reject npm/yarn at root, `packageManager` field set.
+- **中文 · 生产依赖 CVE 与防回归**：升级 DOMPurify、锁定 Mermaid；CI/本地审计；禁止根目录 npm lock 回潮。
 - **Sidebar file open skipped code highlight/line numbers**: Editable kinds always forced a plain `<textarea>` (`editMode || !markdown`). Code/json/text now open in **preview** with CodePreview (highlight + gutter); toolbar Edit switches to the source editor.
 - **中文 · 侧栏打开代码无高亮/行号**：可编辑文件默认预览高亮；工具栏「编辑」再进纯文本编辑。
 - **Reveal in file manager opens default page (image/file cards)**: Shared Host `reveal_in_file_manager` — Windows no longer uses `CREATE_NO_WINDOW` explorer (which opened This PC), strips `\\?\` canonicalize prefixes, uses `/select,` + native backslashes; Linux prefers D-Bus `ShowItems` then `xdg-open` parent; macOS keeps `open -R`. Used by chat image/file cards, project reveal, export/download reveal.

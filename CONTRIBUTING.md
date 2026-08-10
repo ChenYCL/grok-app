@@ -6,6 +6,8 @@ Thanks for your interest in contributing.
 
 ## 开发环境 / Development
 
+**Package manager:** root app is **pnpm only** (`pnpm-lock.yaml`). Do **not** run `npm install` / `yarn` at the repo root — that regenerates a stale `package-lock.json` and can reintroduce old CVEs (e.g. xlsx). `remote-bridge/` may use npm on its own.
+
 ```bash
 pnpm install
 pnpm dev          # Tauri + Vite
@@ -20,6 +22,8 @@ pnpm dev:ui
 Checks:
 
 ```bash
+pnpm deps:check   # root lockfile hygiene (no package-lock.json)
+pnpm audit:prod   # production CVEs (moderate+)
 pnpm typecheck
 pnpm test
 pnpm build:ui

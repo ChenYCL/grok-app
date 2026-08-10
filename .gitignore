@@ -13,6 +13,9 @@ dist
 dist-ssr
 dist-installers
 *.local
+# Root uses pnpm (pnpm-lock.yaml). Do not reintroduce npm's lock at repo root;
+# remote-bridge/ may keep its own package-lock.json for independent npm installs.
+/package-lock.json
 
 # Editor / OS
 .vscode/*

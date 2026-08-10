@@ -22,7 +22,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Dependency hygiene (pnpm-only root)
+        # Reject root package-lock.json / missing pnpm-lock.yaml before install.
+        run: node scripts/check-deps-hygiene.mjs
       - run: pnpm install --frozen-lockfile
+      - name: Production dependency audit
+        # Fail on moderate+ so known CVE bumps (e.g. DOMPurify / Mermaid) cannot silently regress.
+        run: pnpm run audit:prod
       - run: pnpm typecheck
       - run: pnpm test
       - name: ESLint (minimal quality rules)
