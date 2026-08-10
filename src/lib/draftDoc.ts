@@ -365,14 +365,10 @@ export function serializeEditorDomWalk(root: HTMLElement): string {
       // Other wrappers (e.g. pad spans): fold as a line fragment.
       lines.push(serializeEditorLineContent(he));
     }
-    // Drop a single trailing empty line from the caret block only
-    // (…content, "" ) → …content. Keep (…content, "", "") as one trailing blank.
+    // Drop a single trailing empty line from the caret block only.
+    // (…content, "") → …content; (…content, "", "") → (…content, "") one blank.
     if (lines.length >= 2 && lines[lines.length - 1] === "") {
-      if (lines[lines.length - 2] !== "") {
-        lines.pop();
-      } else {
-        lines.pop(); // caret empty after a user blank → keep one blank
-      }
+      lines.pop();
     }
     t = lines.join("\n");
   } else {

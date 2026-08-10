@@ -204,6 +204,22 @@ fn decode_wsl_list_output(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
+/// Settings-aware CLI probe: WSL backend probes inside the distro, otherwise native.
+///
+/// Central dispatcher so every spawn/probe gate (connect cold spawn, prewarm,
+/// Settings probe) agrees on where `grok` lives. Without this, a WSL-only install
+/// fails connect with `CliNotFound` because the native probe never looks inside WSL.
+pub fn probe_cli_for_settings(
+    settings: &AppSettings,
+    manual_path: Option<&str>,
+) -> CliProbeResult {
+    if wsl_backend_active(settings) {
+        probe_wsl_cli(settings)
+    } else {
+        crate::cli_probe::probe_cli(manual_path)
+    }
+}
+
 /// Probe Grok Build CLI **inside** WSL for settings / doctor.
 pub fn probe_wsl_cli(settings: &AppSettings) -> CliProbeResult {
     let launch = match resolve_wsl_launch(settings) {
@@ -377,11 +393,31 @@ echo "$CLI"
     }
 }
 
+/// Characters allowed in a WSL CLI path segment (after optional `~/`).
+///
+/// Deliberately excludes shell metacharacters (`;|&$`'"\\` etc.) so settings
+/// never enter a `bash -lc` script body as untrusted interpolation.
+fn is_safe_wsl_cli_path(path: &str) -> bool {
+    let p = path.trim();
+    if p.is_empty() || p.len() > 512 {
+        return false;
+    }
+    // Disallow absolute path traversal via ".." components (still allow `.grok`).
+    if p.split('/').any(|seg| seg == "..") {
+        return false;
+    }
+    p.chars().all(|c| {
+        c.is_ascii_alphanumeric()
+            || matches!(c, '/' | '.' | '_' | '-' | '~' | '+')
+    })
+}
+
 /// Start a tokio `Command` that runs the Linux CLI inside WSL.
 ///
 /// Shape:
 /// `wsl.exe [-d Distro] --cd <linux_cwd> -- <linux_cli> …`
-/// or, when `linux_cli` uses `~`, wrap with `bash -lc 'exec … "$@"'.
+/// or, when `linux_cli` uses `~`, expand via argv-safe `bash -lc` (path is `$1`,
+/// never interpolated into the script string).
 ///
 /// Caller appends Grok flags (`--no-auto-update`, `agent`, `stdio`, …) and sets
 /// env vars on the **Windows** process. Call [`apply_wslenv`] after envs so
@@ -393,6 +429,21 @@ pub fn start_wsl_tokio_command(
     let wsl = find_wsl_exe().ok_or_else(|| {
         "wsl.exe not found — install WSL or switch CLI backend to native".to_string()
     })?;
+    if !is_safe_wsl_cli_path(&launch.linux_cli) {
+        return Err(format!(
+            "invalid WSL CLI path (unsafe characters): {}",
+            launch.linux_cli
+        ));
+    }
+    if let Some(ref d) = launch.distro {
+        // Distro names from `wsl -l` are short tokens; reject metacharacters.
+        if !d
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        {
+            return Err(format!("invalid WSL distro name: {d}"));
+        }
+    }
     let mut cmd = tokio::process::Command::new(wsl);
     if let Some(ref d) = launch.distro {
         cmd.arg("-d").arg(d);
@@ -403,16 +454,21 @@ pub fn start_wsl_tokio_command(
     cmd.arg("--");
     let cli = launch.linux_cli.as_str();
     if cli.starts_with("~/") || cli == "~" {
-        let expanded = if cli == "~" {
-            "$HOME/grok".to_string()
+        // Expand tilde via argv — path is never concatenated into the script body.
+        // $1 = relative path under $HOME (or "grok" for bare `~`); remaining "$@" = grok args.
+        let rest = if cli == "~" {
+            "grok"
         } else {
-            format!("$HOME/{}", cli.trim_start_matches("~/"))
+            cli.trim_start_matches("~/")
         };
-        // bash -lc 'exec $HOME/… "$@"' grok-wsl <args…>
+        if rest.is_empty() || !is_safe_wsl_cli_path(rest) {
+            return Err(format!("invalid WSL CLI path under ~: {cli}"));
+        }
         cmd.arg("bash");
         cmd.arg("-lc");
-        cmd.arg(format!("exec {expanded} \"$@\""));
+        cmd.arg(r#"cli="$HOME/$1"; shift; exec "$cli" "$@""#);
         cmd.arg("grok-wsl");
+        cmd.arg(rest);
     } else {
         cmd.arg(cli);
     }
@@ -573,5 +629,17 @@ mod tests {
         }
         let s = decode_wsl_list_output(&bytes);
         assert!(s.contains("Ubuntu"));
+    }
+
+    #[test]
+    fn safe_wsl_cli_path_rejects_injection() {
+        assert!(is_safe_wsl_cli_path("grok"));
+        assert!(is_safe_wsl_cli_path("~/.grok/bin/grok"));
+        assert!(is_safe_wsl_cli_path("/usr/local/bin/grok"));
+        assert!(!is_safe_wsl_cli_path("~/bin/grok; echo pwned"));
+        assert!(!is_safe_wsl_cli_path("grok$(id)"));
+        assert!(!is_safe_wsl_cli_path("a|b"));
+        assert!(!is_safe_wsl_cli_path("../etc/passwd"));
+        assert!(!is_safe_wsl_cli_path(""));
     }
 }

@@ -112,6 +112,7 @@ export function useGhostStreamingHeal(deps: GhostStreamingHealDeps): void {
           turnStartedAt: d.turnStartedAt,
           nowMs: Date.now(),
           hostStateForSession: hostState,
+          sendInFlight: d.sendInFlightRef.current,
         })
       ) {
         return;

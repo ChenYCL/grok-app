@@ -288,11 +288,8 @@ pub async fn probe_cli(manual_path: Option<String>) -> Result<CliProbeResult, St
     // When Settings → CLI backend is WSL, probe inside the distro instead of PATH.
     tokio::task::spawn_blocking(move || {
         let settings = store::load_settings();
-        if crate::wsl_backend::wsl_backend_active(&settings) {
-            crate::wsl_backend::probe_wsl_cli(&settings)
-        } else {
-            cli_probe::probe_cli(manual_path.as_deref())
-        }
+        // When Settings → CLI backend is WSL, probe inside the distro instead of PATH.
+        crate::wsl_backend::probe_cli_for_settings(&settings, manual_path.as_deref())
     })
     .await
     .map_err(|e| format!("probe_cli join: {e}"))

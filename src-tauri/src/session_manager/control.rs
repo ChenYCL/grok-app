@@ -576,20 +576,16 @@ impl SessionManager {
         client_tool_name: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let target = self.resolve_target_session(session_id)?;
-        let (acp, empty_run, project_path, pending_options, tool_name) = self
+        // Collect ACP + option material only — do **not** mutate FSM / allow_cache
+        // until respond_permission succeeds (failed RPC must leave gate intact).
+        let scope_to_cache = if decision == "allow_session" || decision == "allow_for_session" {
+            scope.filter(|s| !s.trim().is_empty())
+        } else {
+            None
+        };
+        let (acp, project_path, pending_options, tool_name) = self
             .with_session_mut(&target, |s| {
                 Self::touch_activity_locked(s);
-                // "allow_session" decision caches scope_key for H05 (works under Ask chip too)
-                if decision == "allow_session" || decision == "allow_for_session" {
-                    if let Some(sk) = scope {
-                        s.allow_cache.allow(sk);
-                    }
-                }
-                if s.fsm.state() == SessionState::AwaitingPermission {
-                    let _ = s.fsm.permission_resolved_continue();
-                }
-                // Permission cleared — may finish a deferred prompt_complete (#52).
-                let empty = Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten();
                 let opts = s.pending_permission_options.clone().unwrap_or_else(|| {
                     serde_json::json!([])
                 });
@@ -604,7 +600,7 @@ impl SessionManager {
                             .filter(|s| !s.is_empty())
                     })
                     .unwrap_or_default();
-                (s.acp.clone(), empty, s.project_path.clone(), opts, tool)
+                (s.acp.clone(), s.project_path.clone(), opts, tool)
             })
             .ok_or("no session")?;
 
@@ -626,54 +622,65 @@ impl SessionManager {
             }
         };
 
-        if let Some(acp) = acp {
-            // Dead agent after recycle/provider switch: refuse stale UI answers (#524).
-            if !acp.is_alive() {
-                return Err(
-                    "agent process is no longer running; permission request expired — reopen the chat"
-                        .into(),
+        let Some(acp) = acp else {
+            return Err(
+                "no agent process for this chat; permission request expired".into(),
+            );
+        };
+        // Dead agent after recycle/provider switch: refuse stale UI answers (#524).
+        if !acp.is_alive() {
+            return Err(
+                "agent process is no longer running; permission request expired — reopen the chat"
+                    .into(),
+            );
+        }
+        let outcome = match decision.as_str() {
+            "cancel" => PermissionOutcome::Cancelled,
+            other => {
+                // Re-pick from the ACP options list when the UI sends a
+                // generic fallback not published for this tool (e.g.
+                // `always-allow` vs shell `allow-always-command`).
+                // Otherwise CLI returns "unknown permission option" and
+                // cancels the turn (#523 / #542).
+                let wire = crate::permission::coerce_wire_option_id_for_tool(
+                    other,
+                    option_id.as_deref(),
+                    &options,
+                    &tool_name,
                 );
-            }
-            let outcome = match decision.as_str() {
-                "cancel" => PermissionOutcome::Cancelled,
-                other => {
-                    // Re-pick from the ACP options list when the UI sends a
-                    // generic fallback not published for this tool (e.g.
-                    // `always-allow` vs shell `allow-always-command`).
-                    // Otherwise CLI returns "unknown permission option" and
-                    // cancels the turn (#523 / #542).
-                    let wire = crate::permission::coerce_wire_option_id_for_tool(
-                        other,
-                        option_id.as_deref(),
-                        &options,
-                        &tool_name,
+                if option_id.as_deref() != Some(wire.as_str()) {
+                    tracing::info!(
+                        decision = %other,
+                        client = ?option_id,
+                        wire = %wire,
+                        tool = %tool_name,
+                        "permission optionId coerced to CLI wire id"
                     );
-                    if option_id.as_deref() != Some(wire.as_str()) {
-                        tracing::info!(
-                            decision = %other,
-                            client = ?option_id,
-                            wire = %wire,
-                            tool = %tool_name,
-                            "permission optionId coerced to CLI wire id"
-                        );
-                    }
-                    PermissionOutcome::Selected { option_id: wire }
                 }
-            };
-            acp.respond_permission(rpc_id, outcome).await?;
-            // Clear pending tracker after a successful resolve.
-            let _ = self.with_session_mut(&target, |s| {
+                PermissionOutcome::Selected { option_id: wire }
+            }
+        };
+        acp.respond_permission(rpc_id, outcome).await?;
+
+        // Success path only: clear pending, cache session-allow, leave AwaitingPermission.
+        let empty_run = self
+            .with_session_mut(&target, |s| {
                 if s.pending_permission_rpc_id == Some(rpc_id) {
                     s.pending_permission_rpc_id = None;
                     s.pending_permission_options = None;
                     s.pending_permission_tool_name = None;
                 }
-            });
-        } else {
-            return Err(
-                "no agent process for this chat; permission request expired".into(),
-            );
-        }
+                if let Some(sk) = scope_to_cache {
+                    s.allow_cache.allow(sk);
+                }
+                if s.fsm.state() == SessionState::AwaitingPermission {
+                    let _ = s.fsm.permission_resolved_continue();
+                }
+                // Permission cleared — may finish a deferred prompt_complete (#52).
+                Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten()
+            })
+            .flatten();
+
         // Cross-session permission audit (user decision). Soft-fail.
         crate::audit_ledger::record_permission_resolve(
             Some(&target),
@@ -715,10 +722,11 @@ impl SessionManager {
         session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let target = self.resolve_target_session(session_id)?;
+        // Peek pending id without taking — only clear after a successful RPC.
         let (acp, id) = self
             .with_session_mut(&target, |s| {
                 Self::touch_activity_locked(s);
-                let id = rpc_id.or(s.pending_plan_rpc_id.take());
+                let id = rpc_id.or_else(|| s.pending_plan_rpc_id.clone());
                 (s.acp.clone(), id)
             })
             .ok_or("no session")?;
@@ -727,6 +735,9 @@ impl SessionManager {
         acp.respond_exit_plan_mode(id, &decision, feedback).await?;
         let empty_run = self
             .with_session_mut(&target, |s| {
+                if s.pending_plan_rpc_id == Some(id) || rpc_id == Some(id) {
+                    s.pending_plan_rpc_id = None;
+                }
                 Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten()
             })
             .flatten();
@@ -748,13 +759,10 @@ impl SessionManager {
         session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let target = self.resolve_target_session(session_id)?;
+        // Peek pending id without taking — only clear after a successful RPC.
         let (acp, id) = self
             .with_session_mut(&target, |s| {
-                let id = rpc_id.or(s.pending_ask_user_rpc_id.take());
-                // Clear pending id even if rpc_id was explicit.
-                if rpc_id.is_some() {
-                    s.pending_ask_user_rpc_id = None;
-                }
+                let id = rpc_id.or_else(|| s.pending_ask_user_rpc_id.clone());
                 (s.acp.clone(), id)
             })
             .ok_or("no session")?;
@@ -770,6 +778,9 @@ impl SessionManager {
         acp.respond_ask_user_question(id, outcome).await?;
         let empty_run = self
             .with_session_mut(&target, |s| {
+                if s.pending_ask_user_rpc_id == Some(id) || rpc_id == Some(id) {
+                    s.pending_ask_user_rpc_id = None;
+                }
                 Self::try_finish_deferred_prompt_complete(s, Some(&app)).flatten()
             })
             .flatten();

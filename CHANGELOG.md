@@ -11,36 +11,56 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
-### Fixed
-- **End-of-turn stop chip copy + icon**: History reloads of Host `turn_cancelled|user_stop` now keep「已由用户停止 / Stopped by user」(was collapsing to「已取消 / Cancelled」). Stop mark is an 8px CSS square in the same 14px slot as quiet tool chrome so it centers with the label.
-- **中文 · 停止态文案与图标**：历史会话重载与进行中一致显示「已由用户停止」；停止方块与字号垂直居中对齐。
-- **Queue Steer / 引导 hangs on「正在引导…」with no output** (session `6d7d8e0f…`): ACP `_x.ai/interject` succeeded and journaled the interjection, then Host re-locked `inner` via `snapshot()` while still holding it (`parking_lot` non-reentrant) → permanent deadlock. FE waited out the 55s UI timeout; queue item stayed; stream froze mid-thought. Fix: return `snapshot_from_live` under the lock; prefer agent `_x.ai/interject` (fallback `x.ai/interject`); keep post-ACP journal success + error toast detail.
-- **中文 · 引导卡「正在引导…」且无输出**：ACP 已成功却持锁再 `snapshot()` 死锁；改为锁内 `snapshot_from_live`，优先 `_x.ai/interject`。
-- **Queue Steer UX after success**: Freeze gap between steer ACK and next token — seed a live post-steer assistant (`postStreamMessageId`), restart thinking timer, optimistic dequeue (re-queue on failure), shorter UI timeout.
-- **中文 · 引导成功后的卡顿感**：引导后立即续上思考计时/流式行，队列先出队失败再回填。
-- **Steer thinking duration wrong (“Thought for 1s”)**: Live Thinking remounted when empty placeholder became real tokens, resetting the wall clock. Keep a stable live key + `startedAt` from `turnStartedAt` (post-steer clock).
-- **中文 · 引导后思考时长变成 1 秒**：占位→正文 remount 重置计时；稳定 live key 并用 turn 起始时间锚定。
-- **Blank gap after steer before thought/body**: Empty `done` stream chunks cleared *all* streaming assistants, killing the post-steer thinking shell. Empty shells now stay live until real tokens; scoped done only settles matching non-empty rows.
-- **中文 · 引导后思考与正文之间的空白**：空 done 误关引导后空壳；空壳保持思考中直到有 token。
+## [0.2.13] - 2026-08-11
+
+> **Highlight:** Mid-turn Queue Steer is live again (no deadlock), Windows can spawn Grok Build via WSL, Find Skills ranks by the draft prompt, native desktop alerts land on macOS, and a pre-release hardening pass closes stop-during-vision, permission RPC ordering, and WSL path injection.
+>
+> **中文 · 亮点：** 中途队列「引导」不再死锁、Windows 可经 WSL 启动 CLI、侧边技能按提示排序、原生桌面通知，以及发版前加固（Stop 中途视觉、权限 RPC 顺序、WSL 路径注入）。
 
 ### Added
-- **WSL CLI backend (#546)**: On Windows, Settings → Runtime → CLI can spawn Grok Build via `wsl.exe` (distro + Linux path) when the binary lives only inside WSL. Project cwd and `GROK_HOME` map to `/mnt/…`; ACP TCP mode still wins when configured. Probe / Doctor use the same path.
-- **中文 · WSL CLI 后端 (#546)**：Windows 可在设置中选择通过 WSL 启动 Grok Build（发行版 + Linux 路径），无需先搭 ACP TCP。
+- **WSL CLI backend (#546)**: On Windows, Settings → Runtime → CLI can spawn Grok Build via `wsl.exe` (distro + Linux path) when the binary lives only inside WSL. Project cwd and `GROK_HOME` map to `/mnt/…`; ACP TCP mode still wins when configured. Probe / connect / prewarm / Doctor share `probe_cli_for_settings`.
 - **Find Skills in Side Workbench (#545)**: Docked Skills tab ranks host `skills_list` against the live composer draft (local keyword/purpose match, inventory-only) and inserts `[[skill:name]]` on click. Composer toolbar opens the panel; with an active prompt, show matches only (no full A–Z dump).
-- **中文 · 侧边技能面板 (#545)**：右侧工作台 Skills 标签按输入框提示排序技能，点击插入 `[[skill:name]]`；有提示时只显示匹配项。
+- **Native desktop notifications**: Host-side alerts for turn done / permission waits — macOS uses UNUserNotificationCenter inside a real `.app`, osascript under bare `tauri dev` (Script Editor); other platforms use `tauri-plugin-notification`. Background chats can force notify while the focused window stays quiet when focused.
+- **Resource code preview languages + line numbers**: highlight.js covers common languages (PowerShell, Swift/ObjC, Scala, Dart, Elixir, Haskell, protobuf, GraphQL, less, nginx, nix, shaders, …); per-line gutter stays aligned with highlighted tokens.
+- **Scheduled tasks UI slim-down**: Tasks-first Automations page; settings moved into a gear modal so the list remains the primary surface (#543 follow-up).
 
-- **Resource code preview languages + line numbers**: highlight.js registration covers common languages (PowerShell, Swift/ObjC, Scala, Dart, Elixir, Haskell, protobuf, GraphQL, less, nginx, nix, shaders, …); per-line gutter stays aligned with highlighted tokens.
-- **中文 · 资源预览代码高亮与行号**：扩展常见语言高亮，行号 gutter 与高亮行对齐。
+**中文 · 新增**
+- **WSL CLI 后端 (#546)**：Windows 可经 WSL 启动 Grok Build；探测/连接/预热统一路径。
+- **侧边技能面板 (#545)**：按输入框提示排序并插入 `[[skill:name]]`。
+- **原生桌面通知**：回合完成/权限等待；mac 真 `.app` 与 dev 路径分流。
+- **资源预览代码高亮与行号**：扩展语言；gutter 对齐。
+- **计划任务页精简**：任务优先，设置进齿轮弹层。
+
+### Fixed
+- **Queue Steer / 引导 hangs on「正在引导…」**: Host re-locked `inner` via `snapshot()` after `_x.ai/interject` (`parking_lot` non-reentrant) → permanent deadlock. Return `snapshot_from_live` under the lock; prefer agent `_x.ai/interject` (fallback `x.ai/interject`); seed post-steer streaming shell + thinking timer; empty `done` chunks no longer kill empty live shells; stop chip history keeps「已由用户停止 / Stopped by user」.
+- **Stop during Host vision still spawned `session/prompt`**: After `prepare_agent_prompt_for_main_detailed`, Host now verifies `active_turn_id` / `prompt_in_flight` / stream message id before `prompt_for`. Stop mid-vision no longer leaves a ghost agent turn with streams dropped as load-replay.
+- **Permission / plan / ask_user gates**: FSM, allow_cache, and pending ids update only **after** a successful ACP respond (failed RPC keeps the gate).
+- **Ghost optimistic streaming heal**: Do not heal while `sendInFlight`; grace raised to 45s so WSL cold connect is less likely to restore the composer mid-send.
+- **WSL-only install connect**: Cold spawn / prewarm probe through WSL when backend is `wsl` (native PATH-only probe previously reported CliNotFound).
+- **Composer blank lines + mid-text slash skills**: Draft is source of truth for Enter; contenteditable serialize keeps intentional blank lines; slash detect works on the caret prefix mid-message.
+- **Shell / MCP permission approve cancels the turn (#542 / #544)**: Empty/tool-scoped option lists no longer answer with generic `always-allow`; session-allow rewrites to tool-scoped wire ids; unknown option failures surface as error deck.
+- **Sidebar file open skipped highlight**: Editable kinds open in **preview** with CodePreview first; toolbar Edit enters the source editor.
+- **Reveal in file manager default page**: Shared Host `reveal_in_file_manager` — Windows explorer without `CREATE_NO_WINDOW`, strip `\\?\`, Linux D-Bus ShowItems then `xdg-open` parent, macOS `open -R`.
+- **Automations Scheduled scroll (#543)**: Page scrolls when chrome overflows instead of trapping content.
+- **Session open switch storms**: Generation-gated fast open so rapid session switches do not thrash Host open.
+
+**中文 · 修复**
+- **引导死锁与空白**：锁内 `snapshot_from_live`；引导后空壳与思考计时；停止文案。
+- **视觉识别中 Stop 仍下发 prompt**：prepare 后校验 turn 仍有效。
+- **权限/计划/问卷**：ACP 成功后再改 FSM 与缓存。
+- **幽灵 Thinking 误愈**：`sendInFlight` 不 heal；grace 45s。
+- **仅 WSL 安装可连接**：探测走 distro。
+- **换行与中途 slash 技能**：草稿为 SoT；空白行保留。
+- **Shell 批准秒停 (#542/#544)**：工具作用域 optionId。
+- **侧栏代码预览 / 资源管理器定位 / 计划页滚动 / 会话切换风暴**。
 
 ### Security
 - **Prod dependency CVEs + anti-regression**: Bump `dompurify` ≥3.4.13 (GHSA-55q2-fjhq-7xh7); `pnpm.overrides` pin transitive `mermaid` ≥11.16.1 (streamdown). CI + `pnpm audit:prod` fail on moderate+. Root is pnpm-only: delete stale `package-lock.json`, ignore reintroductions, `preinstall`/`deps:check` reject npm/yarn at root, `packageManager` field set.
-- **中文 · 生产依赖 CVE 与防回归**：升级 DOMPurify、锁定 Mermaid；CI/本地审计；禁止根目录 npm lock 回潮。
-- **Sidebar file open skipped code highlight/line numbers**: Editable kinds always forced a plain `<textarea>` (`editMode || !markdown`). Code/json/text now open in **preview** with CodePreview (highlight + gutter); toolbar Edit switches to the source editor.
-- **中文 · 侧栏打开代码无高亮/行号**：可编辑文件默认预览高亮；工具栏「编辑」再进纯文本编辑。
-- **Reveal in file manager opens default page (image/file cards)**: Shared Host `reveal_in_file_manager` — Windows no longer uses `CREATE_NO_WINDOW` explorer (which opened This PC), strips `\\?\` canonicalize prefixes, uses `/select,` + native backslashes; Linux prefers D-Bus `ShowItems` then `xdg-open` parent; macOS keeps `open -R`. Used by chat image/file cards, project reveal, export/download reveal.
-- **中文 · 在资源管理器中显示落到默认页**：图片/文件卡片右键定位真实路径（Win/Linux/mac 共用修复）。
-- **Shell / MCP permission approve cancels the turn (#542 / #544)**: When Grok Build omits or scopes ACP permission options, Host + UI no longer answer with generic `always-allow`. Session-allow is rewritten to tool-scoped wire ids (`allow-always-command` / `allow-always-domain` / `allow-always-mcp`). Failed tools that report `unknown permission option` now raise the permission error deck instead of a silent Ready stop.
-- **中文 · Shell 批准后秒停 (#542 / #544)**：空/工具作用域 option 列表时不再回传通用 `always-allow`；CLI 报 unknown permission option 时错误条可见。
+- **WSL CLI path shell injection**: `~/…` expansion uses argv-safe `bash -lc` (`$1` / `"$@"`); path/distro reject shell metacharacters before spawn.
+
+**中文 · 安全**
+- **生产依赖 CVE 与防回归**：DOMPurify / Mermaid；pnpm-only 根目录。
+- **WSL CLI 路径注入**：argv 展开 + 字符白名单。
 
 ## [0.2.12] - 2026-08-09
 

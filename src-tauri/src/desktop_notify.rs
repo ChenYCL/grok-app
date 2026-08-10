@@ -249,12 +249,22 @@ fn show_via_nsusernotification(title: &str, body: &str) -> Result<(), String> {
 fn show_via_osascript(title: &str, body: &str) -> Result<(), String> {
     use std::process::Command;
 
-    let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+    // Collapse control/newlines and cap length so AppleScript stays valid
+    // (availability; title/body are app-controlled i18n strings).
+    let sanitize = |s: &str| -> String {
+        let flat: String = s
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect();
+        let flat = flat.split_whitespace().collect::<Vec<_>>().join(" ");
+        let truncated: String = flat.chars().take(200).collect();
+        truncated.replace('\\', "\\\\").replace('"', "\\\"")
+    };
     // sound name makes the alert more noticeable when banners are subtle.
     let script = format!(
         "display notification \"{}\" with title \"{}\" sound name \"default\"",
-        esc(body),
-        esc(title)
+        sanitize(body),
+        sanitize(title)
     );
     let out = Command::new("osascript")
         .arg("-e")

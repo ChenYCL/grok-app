@@ -757,8 +757,6 @@ export const ComposerEditor = memo(function ComposerEditor({
   const pasteInFlight = useRef(false);
   /** Coalesced rAF for post-newline caret pin (key-repeat must not stack). */
   const newlinePaintRaf = useRef(0);
-  /** Debounced draft commit while Enter is auto-repeating. */
-  const newlineCommitTimer = useRef(0);
   /**
    * DOM may show typed / IME glyphs before React `value` commits.
    * Track live emptiness so the overlay placeholder never paints over ink.
@@ -851,41 +849,10 @@ export const ComposerEditor = memo(function ComposerEditor({
     [onChange, emitSlash, resize, syncDomEmpty],
   );
 
-  /** Debounce draft commit under Enter key-repeat (DOM already has the breaks). */
-  const scheduleNewlineCommit = useCallback(
-    (el: HTMLElement) => {
-      if (newlineCommitTimer.current) {
-        window.clearTimeout(newlineCommitTimer.current);
-      }
-      newlineCommitTimer.current = window.setTimeout(() => {
-        newlineCommitTimer.current = 0;
-        if (elRef.current === el) commitFromDom(el);
-      }, 32);
-    },
-    [commitFromDom],
-  );
-
-  /** Flush debounced newline commit + clear ghost caret after key-repeat. */
-  const flushNewlineAfterKeyUp = useCallback(() => {
-    const el = elRef.current;
-    if (newlineCommitTimer.current) {
-      window.clearTimeout(newlineCommitTimer.current);
-      newlineCommitTimer.current = 0;
-      if (el) commitFromDom(el);
-    }
-    if (el) {
-      scrollComposerCaretIntoView(el);
-      repaintComposerCaret(el);
-    }
-  }, [commitFromDom]);
-
-  // Drop pending newline paint/commit on unmount.
+  // Drop pending newline paint rAF on unmount.
   useEffect(() => {
     return () => {
       if (newlinePaintRaf.current) cancelAnimationFrame(newlinePaintRaf.current);
-      if (newlineCommitTimer.current) {
-        window.clearTimeout(newlineCommitTimer.current);
-      }
     };
   }, []);
 

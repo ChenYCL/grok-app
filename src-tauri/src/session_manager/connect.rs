@@ -8,7 +8,6 @@ use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::acp_client::{AcpClient, AcpEvent};
-use crate::cli_probe;
 use crate::error::{AgentError, AgentErrorCode};
 use crate::journal_throttle::JournalWriteThrottle;
 use crate::mock_acp::MockConnectMode;
@@ -778,7 +777,11 @@ impl SessionManager {
         }
 
         // Real ACP cold spawn (one process per App session — no cross-session rebind).
-        let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+        // WSL backend probes inside the distro (a WSL-only install has no native grok.exe).
+        let probe = crate::wsl_backend::probe_cli_for_settings(
+            &settings,
+            settings.manual_cli_path.as_deref(),
+        );
         if !probe.found {
             {
                 let mut guard = self.inner.lock();
@@ -1173,7 +1176,11 @@ impl SessionManager {
         }
 
         let settings = store::load_settings();
-        let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+        // WSL backend probes inside the distro (a WSL-only install has no native grok.exe).
+        let probe = crate::wsl_backend::probe_cli_for_settings(
+            &settings,
+            settings.manual_cli_path.as_deref(),
+        );
         let Some(cli_path) = probe.path else {
             *self.prewarm.lock() = PrewarmState::None;
             return;

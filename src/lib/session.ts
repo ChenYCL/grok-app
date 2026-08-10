@@ -1442,7 +1442,10 @@ export function applyTurnError(
 
 export interface StreamPayload {
   sessionId: string;
-  messageId: string;
+  /** Host segment id. Absent for legacy/global empty-done markers — runtime
+   *  treats a missing id as “not scoped to any specific segment” (see
+   *  applyStreamChunk), so callers may omit it. */
+  messageId?: string;
   text: string;
   done: boolean;
   kind?: "assistant" | "thought";

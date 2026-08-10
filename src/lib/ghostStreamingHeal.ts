@@ -20,8 +20,12 @@
 import type { SessionState } from "./session";
 import { isSessionLiveStreaming } from "./session";
 
-/** Wait this long after optimistic send before considering Host-absent a ghost. */
-export const GHOST_STREAMING_GRACE_MS = 30_000;
+/**
+ * Wait this long after optimistic send before considering Host-absent a ghost.
+ * Slightly above 30s so cold WSL/`ensureConnected` paths can finish without a
+ * false heal; sendInFlight still short-circuits independently.
+ */
+export const GHOST_STREAMING_GRACE_MS = 45_000;
 
 /** Poll interval while a pre-token empty stream is showing. */
 export const GHOST_STREAMING_POLL_MS = 5_000;
@@ -49,6 +53,11 @@ export type GhostStreamingEvidence = {
    * `null` = no row yet (never projected as busy).
    */
   hostStateForSession: SessionState | null | undefined;
+  /**
+   * When true, `executeSend` is still awaiting ensureConnected/sessionSend —
+   * never heal (WSL cold start can exceed grace while Host row is still null).
+   */
+  sendInFlight?: boolean;
   graceMs?: number;
 };
 
@@ -129,6 +138,8 @@ export function hostLooksIdleForSession(
  * Whether the UI should auto-heal a ghost optimistic stream.
  */
 export function shouldHealGhostStreaming(e: GhostStreamingEvidence): boolean {
+  // In-flight IPC: Host may not have projected streaming yet — not a ghost.
+  if (e.sendInFlight) return false;
   const grace = e.graceMs ?? GHOST_STREAMING_GRACE_MS;
   if (e.turnStartedAt == null) return false;
   if (e.nowMs - e.turnStartedAt < grace) return false;

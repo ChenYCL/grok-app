@@ -173,7 +173,7 @@ export function WslBackendField({ t, onSaved }: Props) {
             <input
               className="settings-input"
               value={cliPath}
-              placeholder="grok  or  ~/.grok/bin/grok"
+              placeholder={t("settings.wsl.cliPathPlaceholder")}
               disabled={saving}
               onChange={(e) => setCliPath(e.target.value)}
               onBlur={(e) => {

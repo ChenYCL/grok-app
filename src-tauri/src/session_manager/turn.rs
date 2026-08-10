@@ -103,7 +103,8 @@ impl SessionManager {
             s.prompt_in_flight = true;
             s.sent_prompt_this_visit = true;
             Self::touch_stream_progress_locked(s);
-            s.active_turn_id = Some(Uuid::new_v4().to_string());
+            let turn_id = Uuid::new_v4().to_string();
+            s.active_turn_id = Some(turn_id.clone());
             s.stream_message_id_locked = false;
             let mid = Uuid::new_v4().to_string();
             s.streaming_message_id = Some(mid.clone());
@@ -163,9 +164,10 @@ impl SessionManager {
                 s.meta.agent_session_id.clone(),
                 agent_prompt,
                 mid,
+                turn_id,
             ))
         });
-        let (backend, app_sid, acp, agent_sid, agent_prompt, message_id) = match open {
+        let (backend, app_sid, acp, agent_sid, agent_prompt, message_id, turn_id) = match open {
             Some(Ok(v)) => v,
             Some(Err(e)) => return Err(e),
             None => {
@@ -294,6 +296,39 @@ impl SessionManager {
         }
         // Emit runtime for background targets; state for live focus.
         self.emit_for_session(&app, &app_sid);
+
+        // Host vision / prepare can take a long time. If the user hit Stop (or
+        // stall/force-end cleared this turn) while we were away, do **not**
+        // spawn session/prompt — otherwise the agent runs with streams dropped
+        // as load-replay and the next send may see task_already_running.
+        let still_this_turn = self
+            .with_session_mut(&app_sid, |s| {
+                s.prompt_in_flight
+                    && s.active_turn_id.as_deref() == Some(turn_id.as_str())
+                    && s.streaming_message_id.as_deref() == Some(message_id.as_str())
+            })
+            .unwrap_or(false);
+        if !still_this_turn {
+            tracing::info!(
+                session = %app_sid,
+                turn = %turn_id,
+                message = %message_id,
+                "send_message: turn no longer active after prepare; skip prompt_for"
+            );
+            self.emit_for_session(&app, &app_sid);
+            if self.is_live_session(&app_sid) {
+                return Ok(self.snapshot());
+            }
+            if let Some(snap) = self
+                .background
+                .lock()
+                .get(&app_sid)
+                .map(Self::snapshot_from_live)
+            {
+                return Ok(snap);
+            }
+            return Ok(self.snapshot());
+        }
 
         if backend == "mock_acp" || AcpClient::use_mock() {
             let mgr = Arc::clone(self);
@@ -766,6 +801,18 @@ impl SessionManager {
         // Stopped background turn is Ready again → park it warm.
         self.promote_background_ready_to_parked(&target);
         self.emit_for_session(&app, &target);
+        // Prefer the stopped chat's snapshot (not the live focus slot).
+        if self.is_live_session(&target) {
+            return Ok(self.snapshot());
+        }
+        if let Some(snap) = self
+            .background
+            .lock()
+            .get(&target)
+            .map(Self::snapshot_from_live)
+        {
+            return Ok(snap);
+        }
         Ok(self.snapshot())
     }
 }

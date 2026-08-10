@@ -111,6 +111,7 @@ export const enSettings = {
   "settings.wsl.distroDefault": "Default distro",
   "settings.wsl.cliPath": "CLI path inside WSL",
   "settings.wsl.cliPathDesc": "Linux path or command name (default: `grok` on WSL PATH, then `~/.grok/bin/grok`).",
+  "settings.wsl.cliPathPlaceholder": "grok  or  ~/.grok/bin/grok",
   "settings.wsl.probe": "Test WSL CLI",
   "settings.wsl.probing": "Testing…",
   "settings.wsl.probeOk": "Found in WSL",

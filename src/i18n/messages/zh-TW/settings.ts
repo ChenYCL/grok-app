@@ -110,6 +110,7 @@ export const zhTWSettings = {
   "settings.wsl.distroDefault": "預設發行版",
   "settings.wsl.cliPath": "WSL 內 CLI 路徑",
   "settings.wsl.cliPathDesc": "Linux 路徑或命令名（預設：WSL PATH 上的 `grok`，其次 `~/.grok/bin/grok`）。",
+  "settings.wsl.cliPathPlaceholder": "grok  或  ~/.grok/bin/grok",
   "settings.wsl.probe": "測試 WSL CLI",
   "settings.wsl.probing": "測試中…",
   "settings.wsl.probeOk": "已在 WSL 中找到",

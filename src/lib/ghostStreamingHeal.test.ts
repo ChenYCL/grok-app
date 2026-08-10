@@ -53,6 +53,25 @@ describe("ghostStreamingHeal", () => {
     expect(hostLooksIdleForSession("connecting")).toBe(false);
   });
 
+  it("does not heal while send is still in flight (WSL cold connect)", () => {
+    const messages = baseMsgs([
+      { id: "u2", role: "user", content: "cli check" },
+      { id: "a2", role: "assistant", content: "", streaming: true },
+    ]);
+    const started = 1_000_000;
+    expect(
+      shouldHealGhostStreaming({
+        uiSessionState: "streaming",
+        viewedSessionId: "s1",
+        messages,
+        turnStartedAt: started,
+        nowMs: started + GHOST_STREAMING_GRACE_MS + 60_000,
+        hostStateForSession: null,
+        sendInFlight: true,
+      }),
+    ).toBe(false);
+  });
+
   it("heals after grace when Host is idle and UI is empty-streaming", () => {
     const messages = baseMsgs([
       { id: "u2", role: "user", content: "cli check" },
