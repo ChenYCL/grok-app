@@ -31,18 +31,32 @@ describe("sidePickerOptions", () => {
   it("excludes plan and side-chat always", () => {
     const withGit = sidePickerOptions({ isGitProject: true });
     const kinds = withGit.map((o) => o.kind);
-    expect(kinds).toEqual(["file", "browser", "terminal", "review"]);
+    expect(kinds).toEqual([
+      "file",
+      "browser",
+      "terminal",
+      "skills",
+      "review",
+    ]);
     expect(kinds).not.toContain("plan");
     expect(SIDE_PICKER_EXCLUDED).toContain("plan");
   });
 
   it("hides review when not a git project", () => {
     const opts = sidePickerOptions({ isGitProject: false });
-    expect(opts.map((o) => o.kind)).toEqual(["file", "browser", "terminal"]);
+    expect(opts.map((o) => o.kind)).toEqual([
+      "file",
+      "browser",
+      "terminal",
+      "skills",
+    ]);
     expect(isPickerCreatableKind("review", { isGitProject: false })).toBe(
       false,
     );
     expect(isPickerCreatableKind("review", { isGitProject: true })).toBe(true);
+    expect(isPickerCreatableKind("skills", { isGitProject: false })).toBe(
+      true,
+    );
     expect(isPickerCreatableKind("plan", { isGitProject: true })).toBe(false);
   });
 });
@@ -69,6 +83,14 @@ describe("openSideTab / close / activate", () => {
     const r = openSideTab(s, "review");
     expect(r.created).toBe(true);
     expect(r.tabs.some((x) => x.kind === "review")).toBe(true);
+
+    s = r;
+    const sk = openSideTab(s, "skills");
+    expect(sk.created).toBe(true);
+    expect(sk.tabs.some((x) => x.kind === "skills")).toBe(true);
+    const sk2 = openSideTab(sk, "skills");
+    expect(sk2.created).toBe(false);
+    expect(sk2.tabs.filter((x) => x.kind === "skills")).toHaveLength(1);
   });
 
   it("dedupes file by path and review to single instance", () => {

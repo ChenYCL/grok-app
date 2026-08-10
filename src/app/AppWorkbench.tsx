@@ -774,6 +774,7 @@ import {
   jsonSchemaMatchesQuery,
   uploadMatchesQuery
 } from "@/components/ComposerPlusPanel";
+import { planInsertSkill } from "@/lib/skillsTaskPicker";
 import { StatusModal } from "@/components/StatusModal";
 import {
   IconChevronDown,
@@ -781,6 +782,7 @@ import {
   IconChevronRight,
   IconMore,
   IconPlus,
+  IconSkills,
   IconSearch,
   IconAttach,
   IconMic,
@@ -8665,6 +8667,26 @@ export function AppWorkbench() {
     gap: 8,
     deps: [slashFilterQuery, composerMenuEntries.length],
   });
+
+
+  /**
+   * Open Find skills in the right Side Workbench (next to Files/Browser/Terminal).
+   * Ranks host skills against the live composer draft.
+   */
+  const openSideSkillsPanel = useCallback(() => {
+    setShowComposerPlus(false);
+    setSlashQuery(null);
+    setLiveSlash({ present: false, query: "", start: 0, end: 0 });
+    liveSlashRef.current = { present: false, query: "", start: 0, end: 0 };
+    setSideWorkbench((s) => openSideTab(s, "skills"));
+    openAsidePane();
+  }, [
+    setShowComposerPlus,
+    setSlashQuery,
+    setLiveSlash,
+    liveSlashRef,
+    openAsidePane,
+  ]);
 
   const atMenuOpen = liveAt.present && !composerMenuOpen;
   const closeAtMenu = useCallback(() => {
@@ -19473,6 +19495,28 @@ export function AppWorkbench() {
                   </button>
                 </Tip>
                 {!phoneLayout ? (
+                  <Tip label={tr("composer.skillsPicker")}>
+                    <button
+                      type="button"
+                      className={
+                        "icon-btn" +
+                        (sideWorkbench.tabs.some((t) => t.kind === "skills") &&
+                        !layout.asideCollapsed
+                          ? " is-open"
+                          : "")
+                      }
+                      aria-label={tr("composer.skillsPicker")}
+                      aria-pressed={
+                        sideWorkbench.tabs.some((t) => t.kind === "skills") &&
+                        !layout.asideCollapsed
+                      }
+                      onClick={() => openSideSkillsPanel()}
+                    >
+                      <IconSkills size={18} />
+                    </button>
+                  </Tip>
+                ) : null}
+                {!phoneLayout ? (
                   <>
                     {goalMode ? (
                       <Tip label={tr("composer.goalHint")}>
@@ -19800,7 +19844,15 @@ export function AppWorkbench() {
                   if (phoneLayout) return;
                   if (!expanded) setSideDockComposer(false);
                 }}
-              />
+              
+                skillInfos={skillInfos}
+                skillsLoading={skillsLoading}
+                skillsLoadError={skillsLoadError}
+                onSelectSkill={(skill) => {
+                  setDraft((d) => planInsertSkill(d, skill.name));
+                  window.setTimeout(() => requestComposerFocus(), 40);
+                }}
+/>
             </Suspense>
           </div>
         </aside>

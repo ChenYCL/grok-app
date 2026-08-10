@@ -12,6 +12,9 @@ See `docs/llm-wiki/release.md`.
 ## [Unreleased]
 
 ### Added
+- **Find Skills in Side Workbench (#545)**: Docked Skills tab ranks host `skills_list` against the live composer draft (local keyword/purpose match, inventory-only) and inserts `[[skill:name]]` on click. Composer toolbar opens the panel; with an active prompt, show matches only (no full A–Z dump).
+- **中文 · 侧边技能面板 (#545)**：右侧工作台 Skills 标签按输入框提示排序技能，点击插入 `[[skill:name]]`；有提示时只显示匹配项。
+
 - **Resource code preview languages + line numbers**: highlight.js registration covers common languages (PowerShell, Swift/ObjC, Scala, Dart, Elixir, Haskell, protobuf, GraphQL, less, nginx, nix, shaders, …); per-line gutter stays aligned with highlighted tokens.
 - **中文 · 资源预览代码高亮与行号**：扩展常见语言高亮，行号 gutter 与高亮行对齐。
 

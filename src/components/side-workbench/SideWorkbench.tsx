@@ -29,9 +29,12 @@ import {
 import { isShortcutRecordingActive } from "@/lib/shortcutRemap";
 import * as api from "@/lib/api";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
+import type { SkillInfo } from "@/lib/slashCatalog";
+import type { SkillsPickerSkill } from "@/lib/skillsTaskPicker";
 import { FilesWorkspace } from "./FilesWorkspace";
 import { PlanTab } from "./PlanTab";
 import { ReviewTab } from "./ReviewTab";
+import { SkillsTab } from "./SkillsTab";
 import { SidePicker } from "./SidePicker";
 import { SideTabBar } from "./SideTabBar";
 import { SideTabBody } from "./SideTabBody";
@@ -58,6 +61,11 @@ export type SideWorkbenchProps = {
   openRequest?: ResourceOpenTarget | null;
   onOpenRequestConsumed?: () => void;
   autoOpenPlanTab?: boolean;
+  /** Host skills catalog for Find skills side tab. */
+  skillInfos?: readonly SkillInfo[];
+  skillsLoading?: boolean;
+  skillsLoadError?: string | null;
+  onSelectSkill?: (skill: SkillsPickerSkill) => void;
 };
 
 export function SideWorkbench({
@@ -81,6 +89,10 @@ export function SideWorkbench({
   openRequest = null,
   onOpenRequestConsumed,
   autoOpenPlanTab = true,
+  skillInfos = [],
+  skillsLoading = false,
+  skillsLoadError = null,
+  onSelectSkill,
 }: SideWorkbenchProps) {
   const [internal, setInternal] = useState(emptySideWorkbenchState);
   const state = controlled ?? internal;
@@ -272,6 +284,16 @@ export function SideWorkbench({
               />
             ) : null}
 
+            {active.kind === "skills" ? (
+              <SkillsTab
+                locale={locale}
+                skills={skillInfos}
+                loading={skillsLoading}
+                hostError={skillsLoadError}
+                onSelectSkill={(skill) => onSelectSkill?.(skill)}
+              />
+            ) : null}
+
             {/* Keep browser/terminal instances mounted so PTY/xterm sessions
                 survive tab switches (VS Code-style). */}
             {state.tabs
@@ -323,4 +345,10 @@ export function openSideWorkbenchReview(
   state: SideWorkbenchState,
 ): SideWorkbenchState {
   return openSideTab(state, "review");
+}
+
+export function openSideWorkbenchSkills(
+  state: SideWorkbenchState,
+): SideWorkbenchState {
+  return openSideTab(state, "skills");
 }

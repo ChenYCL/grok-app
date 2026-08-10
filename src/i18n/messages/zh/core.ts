@@ -263,6 +263,7 @@ export const zhCore = {
   "skillsPicker.placeholder": "搜索技能…",
   "skillsPicker.recent": "最近",
   "skillsPicker.all": "全部技能",
+  "skillsPicker.matched": "与提示匹配的技能",
   "skillsPicker.loading": "正在加载技能…",
   "skillsPicker.empty": "未安装可调用的技能",
   "skillsPicker.emptyHint": "可在「扩展 → 插件市场」安装，或在「扩展 → 技能」中启用。",

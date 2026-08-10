@@ -263,6 +263,7 @@ export const enCore = {
   "skillsPicker.placeholder": "Search skills…",
   "skillsPicker.recent": "Recent",
   "skillsPicker.all": "All skills",
+  "skillsPicker.matched": "Matched for your prompt",
   "skillsPicker.loading": "Loading skills…",
   "skillsPicker.empty": "No invocable skills installed",
   "skillsPicker.emptyHint": "Install from Extensions → Marketplace, or enable skills under Extensions → Skills.",

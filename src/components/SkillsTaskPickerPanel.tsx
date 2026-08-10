@@ -25,6 +25,8 @@ export type SkillsTaskPickerLabels = {
   placeholder: string;
   recent: string;
   all: string;
+  /** When ranking from live prompt (matched hits). */
+  matched?: string;
   loading: string;
   empty: string;
   emptyHint: string;
@@ -52,6 +54,11 @@ export type SkillsTaskPickerPanelProps = {
   /** Eligible catalog size before query (for empty honesty). */
   catalogCount: number;
   focusFilter?: boolean;
+  /**
+   * When true, list is ranked from live composer prompt (show match scores).
+   * Section title uses labels.matched.
+   */
+  promptMatchMode?: boolean;
   labels: SkillsTaskPickerLabels;
   onQueryChange: (q: string) => void;
   onActiveIndexChange: (i: number) => void;
@@ -72,6 +79,7 @@ export function SkillsTaskPickerPanel({
   hostError = null,
   catalogCount,
   focusFilter = true,
+  promptMatchMode = false,
   labels,
   onQueryChange,
   onActiveIndexChange,
@@ -133,7 +141,11 @@ export function SkillsTaskPickerPanel({
   if (!open) return null;
 
   const q = query.trim();
-  const showRecent = chips.length > 0 && !q;
+  const showRecent = chips.length > 0 && !q && !promptMatchMode;
+  const sectionTitle =
+    promptMatchMode && ranked.some((s) => (s.matchScore ?? 0) > 0)
+      ? labels.matched || labels.all
+      : labels.all;
   const emptyTitle = emptyState
     ? emptyState.kind === "filter"
       ? labels.filterEmpty
@@ -237,7 +249,7 @@ export function SkillsTaskPickerPanel({
         </div>
       ) : null}
 
-      <div className="skills-task-picker__section">{labels.all}</div>
+      <div className="skills-task-picker__section">{sectionTitle}</div>
 
       <div className="skills-task-picker__list" role="presentation">
         {loading && ranked.length === 0 && !emptyState ? (
@@ -275,6 +287,8 @@ export function SkillsTaskPickerPanel({
         ) : (
           ranked.map((s, i) => {
             const active = i === activeIndex;
+            const score = s.matchScore ?? 0;
+            const top = promptMatchMode && i < 3 && score > 0;
             return (
               <button
                 key={s.name}
@@ -283,8 +297,12 @@ export function SkillsTaskPickerPanel({
                 role="option"
                 aria-selected={active}
                 data-skills-idx={i}
+                data-match-score={score > 0 ? score : undefined}
                 className={
-                  "skills-task-picker__item" + (active ? " is-active" : "")
+                  "skills-task-picker__item" +
+                  (active ? " is-active" : "") +
+                  (top ? " skills-task-picker__item--top" : "") +
+                  (score > 0 ? " skills-task-picker__item--matched" : "")
                 }
                 onMouseEnter={() => onActiveIndexChange(i)}
                 onClick={() => onSelect(s)}
@@ -293,22 +311,36 @@ export function SkillsTaskPickerPanel({
                   <IconSkills size={16} />
                 </span>
                 <span className="skills-task-picker__item-main">
-                  <span className="skills-task-picker__item-name">
-                    <span className="skills-task-picker__item-name-text">
-                      {s.name}
-                    </span>
-                    {isProjectSkillSource(s.source) && labels.projectBadge ? (
-                      <span
-                        className="skill-scope-tag skill-scope-tag--project"
-                        title={labels.projectBadge}
-                      >
-                        [{labels.projectBadge}]
+                  <span className="skills-task-picker__item-name-row">
+                    <span className="skills-task-picker__item-name">
+                      <span className="skills-task-picker__item-name-text">
+                        {s.name}
                       </span>
+                      {isProjectSkillSource(s.source) && labels.projectBadge ? (
+                        <span
+                          className="skill-scope-tag skill-scope-tag--project"
+                          title={labels.projectBadge}
+                        >
+                          [{labels.projectBadge}]
+                        </span>
+                      ) : null}
+                    </span>
+                    {score > 0 ? (
+                      <span className="skills-task-picker__score">{score}</span>
                     ) : null}
                   </span>
                   {s.description ? (
                     <span className="skills-task-picker__item-desc">
                       {s.description}
+                    </span>
+                  ) : null}
+                  {s.matchedTokens && s.matchedTokens.length > 0 ? (
+                    <span className="skills-task-picker__tokens">
+                      {s.matchedTokens.slice(0, 6).map((t) => (
+                        <span key={t} className="skills-task-picker__token">
+                          {t}
+                        </span>
+                      ))}
                     </span>
                   ) : null}
                 </span>

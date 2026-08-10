@@ -25,6 +25,7 @@ import {
   IconPlan,
   IconPlus,
   IconSideExpand,
+  IconSkills,
   IconTerminal,
   IconWorld,
 } from "@/components/icons";
@@ -77,6 +78,8 @@ function tabIcon(tab: SideTab): ReactNode {
       return <IconWorld size={14} />;
     case "terminal":
       return <IconTerminal size={14} />;
+    case "skills":
+      return <IconSkills size={14} />;
     case "review":
       return <IconFileDiff size={14} />;
     case "plan":
