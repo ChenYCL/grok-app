@@ -180,6 +180,20 @@
   line-height: 16px;
   padding: 0 7px 0 5px;
 }
+
+/* Composer chips: keep caret pads clickable around the pill; never steal focus
+   into glyph/label children (that is what "stuck after delete" felt like). */
+.composer__input .skill-chip--editor {
+  cursor: default;
+  /* inline-flex still, but sit on the text baseline so blank lines + pads work */
+  vertical-align: baseline;
+  pointer-events: auto;
+}
+.composer__input .skill-chip--editor .skill-chip__glyph,
+.composer__input .skill-chip--editor .skill-chip__name {
+  pointer-events: none;
+  user-select: none;
+}
 .skill-chip__icon,
 .skill-chip__glyph {
   display: inline-flex;

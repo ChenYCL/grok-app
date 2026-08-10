@@ -3,6 +3,7 @@ import {
   applySkillAtSlash,
   detectSlashQuery,
   detectSlashQueryFromEditor,
+  detectSlashRangeOnStored,
   draftFromPlainText,
   emptyDraft,
   hydrateDisplayContent,
@@ -17,6 +18,7 @@ import {
   serializeStored,
   type DraftSegment,
 } from "./draftDoc";
+// detectSlashRangeOnStored re-exported usage in mid-message tests
 
 describe("draftDoc empty / plain", () => {
   it("emptyDraft is empty", () => {
@@ -128,11 +130,87 @@ describe("detectSlashQuery", () => {
       query: "plan",
     });
   });
+
+  it("mid-message after blank lines (caret prefix, not full draft end)", () => {
+    // User typed body, moved caret mid-doc after a blank line, typed /aih
+    const beforeCaret = "这是\n\n一条\n\n/aih";
+    const range = detectSlashRangeOnStored(beforeCaret);
+    expect(range).toEqual({
+      start: "这是\n\n一条\n\n".length,
+      query: "aih",
+      end: "这是\n\n一条\n\n".length + 4,
+    });
+    // Full draft still has more text after the caret — indices stay on prefix.
+    const full = `${beforeCaret} 后面还有正文`;
+    expect(applySkillAtSlash(full, range!.start, range!.end, "aihot")).toBe(
+      "这是\n\n一条\n\n[[skill:aihot]]  后面还有正文",
+    );
+  });
+
+  it("after a space mid-line", () => {
+    expect(detectSlashQuery("hello /sk")).toEqual({ start: 6, query: "sk" });
+  });
 });
 
 describe("detectSlashQueryFromEditor", () => {
   it("returns null for null element", () => {
     expect(detectSlashQueryFromEditor(null)).toBeNull();
+  });
+});
+
+describe("detectSlashRangeOnStored + applySkillAtSlash blanks", () => {
+  it("keeps multi-blank body when converting trailing /query", () => {
+    const stored = "a\n\nb\n\nc\n/foo";
+    const range = detectSlashRangeOnStored(stored);
+    expect(range).toEqual({ start: 8, query: "foo", end: 12 });
+    const next = applySkillAtSlash(stored, range!.start, range!.end, "foo");
+    expect(next).toBe("a\n\nb\n\nc\n[[skill:foo]] ");
+    expect(next.includes("\n\n")).toBe(true);
+    expect(next.split("\n\n").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps blanks with existing chip then second /query", () => {
+    const stored = "[[skill:aihot]] hello\n\nworld\n/foo";
+    const range = detectSlashRangeOnStored(stored);
+    expect(range).not.toBeNull();
+    expect(stored.slice(range!.start, range!.end)).toBe("/foo");
+    const next = applySkillAtSlash(stored, range!.start, range!.end, "foo");
+    expect(next).toBe("[[skill:aihot]] hello\n\nworld\n[[skill:foo]] ");
+    // Regression: collapsed/DOM-plain indices used to tear into "hell…orld"
+    expect(next).not.toMatch(/hell\[\[skill/);
+    expect(next.includes("hello\n\nworld")).toBe(true);
+  });
+
+  it("ignores trailing newlines for match but does not collapse body blanks", () => {
+    const stored = "line1\n\nline2\n/bar\n\n";
+    const range = detectSlashRangeOnStored(stored);
+    expect(range).toEqual({
+      start: "line1\n\nline2\n".length,
+      query: "bar",
+      end: "line1\n\nline2\n".length + 4,
+    });
+    const next = applySkillAtSlash(stored, range!.start, range!.end, "bar");
+    expect(next.startsWith("line1\n\nline2\n[[skill:bar]] ")).toBe(true);
+  });
+
+  it("never uses last-line-only coordinates on multi-line stored", () => {
+    // Historical bug: last non-empty line "/foo" → start=0 applied to full draft.
+    const stored = "keep\n\nme\n/foo";
+    const range = detectSlashRangeOnStored(stored)!;
+    expect(range.start).toBeGreaterThan(0);
+    const next = applySkillAtSlash(stored, range.start, range.end, "foo");
+    expect(next.startsWith("keep\n\nme\n")).toBe(true);
+    expect(next).toContain("[[skill:foo]]");
+  });
+
+  it("ZWSP in slash query: range+apply on already-normalized stored keeps body", () => {
+    // Production drafts are serializeDom-normalized; indices are on that space.
+    const raw = "keep\n\n/\u200Bfoo";
+    const cleaned = raw.replace(/[\u200B-\u200D\uFEFF\u2060\uFFFC]/g, "");
+    const range = detectSlashRangeOnStored(cleaned)!;
+    expect(cleaned.slice(range.start, range.end)).toBe("/foo");
+    const next = applySkillAtSlash(cleaned, range.start, range.end, "foo");
+    expect(next).toBe("keep\n\n[[skill:foo]] ");
   });
 });
 

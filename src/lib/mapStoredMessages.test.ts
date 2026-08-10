@@ -95,4 +95,18 @@ describe("mapStoredMessages", () => {
       "/Users/me/b.pdf",
     ]);
   });
+
+  it("preserves internal blank lines and skill tokens on user reload", () => {
+    const body = "[[skill:aihot]] hello\n\nworld\n\nend";
+    const msg = mapStoredMessageToChat({
+      id: "u-5",
+      role: "user",
+      content: `${body}\n\n@/tmp/x.png`,
+      createdAt: "2026-08-01T00:00:00.000Z",
+      attachments: null,
+    });
+    expect(msg.content).toBe(body);
+    expect(msg.content.includes("hello\n\nworld\n\nend")).toBe(true);
+    expect(msg.attachments?.map((a) => a.path)).toEqual(["/tmp/x.png"]);
+  });
 });

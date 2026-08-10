@@ -58,13 +58,17 @@ export function pathBasename(path: string): string {
 /**
  * Split stored/agent message into display text + attachment list.
  * Lines that are sole `@/abs/path` (or `@path`) become attachments.
+ *
+ * Internal blank lines in the body are preserved. Only blank lines that sit
+ * between the body and a trailing `@path` block are stripped from `text`
+ * (they are the dual-write separator, not user content).
  */
 export function parseAttachmentsFromContent(content: string): {
   text: string;
   attachments: Attachment[];
 } {
   if (!content) return { text: "", attachments: [] };
-  const lines = content.split("\n");
+  const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   const attachments: Attachment[] = [];
   const textLines: string[] = [];
   for (const line of lines) {
@@ -89,11 +93,59 @@ export function parseAttachmentsFromContent(content: string): {
     }
     textLines.push(line);
   }
-  // Drop trailing blank lines left before attachment block
+  // Drop trailing blank lines left before attachment block (separator only).
   while (textLines.length && textLines[textLines.length - 1]!.trim() === "") {
     textLines.pop();
   }
   return { text: textLines.join("\n"), attachments };
+}
+
+/**
+ * Dual-write sole-line `@/abs/path` refs onto display/journal content (idempotent).
+ * Mirrors host `append_journal_attachment_refs`: keeps internal body blank lines;
+ * normalizes only a trailing blank run before the attachment block.
+ */
+export function appendAttachmentRefsToContent(
+  content: string,
+  attachments: Attachment[],
+): string {
+  if (!attachments.length) {
+    return (content ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  }
+  const normalized = (content ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = normalized.split("\n");
+
+  const priorRefs: string[] = [];
+  while (lines.length) {
+    const t = lines[lines.length - 1]!.trim();
+    const m = t.match(/^@((?:\/|[A-Za-z]:[\\/]).+)$/);
+    if (m?.[1]) {
+      priorRefs.unshift(lines.pop()!);
+      continue;
+    }
+    break;
+  }
+  while (lines.length && lines[lines.length - 1]!.trim() === "") {
+    lines.pop();
+  }
+
+  const existing = new Set(
+    priorRefs
+      .map((l) => l.trim().replace(/^@/, "").trim())
+      .filter(Boolean),
+  );
+  const newRefs: string[] = [];
+  for (const a of attachments) {
+    const path = (a.path ?? "").trim();
+    if (!path || existing.has(path)) continue;
+    existing.add(path);
+    newRefs.push(`@${path}`);
+  }
+  const refs = [...priorRefs, ...newRefs];
+  if (!refs.length) return lines.join("\n");
+  if (lines.length) lines.push("");
+  lines.push(...refs);
+  return lines.join("\n");
 }
 
 /** File extension lowercase without dot. */

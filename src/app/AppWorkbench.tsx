@@ -551,6 +551,7 @@ import {
   applySkillAtSlash,
   isDraftEmpty,
   detectSlashQueryFromEditor,
+  detectSlashRangeOnStored,
   parseStoredContent,
   serializeForAgent
 } from "@/lib/draftDoc";
@@ -682,7 +683,9 @@ import {
 import { mapProbeToCliInfo } from "@/lib/cliVersionStatus";
 import {
   getComposerCaretOffset,
+  requestComposerStoredCaret,
   resizeComposerInput,
+  serializeDom,
 } from "@/components/ComposerEditor";
 import { ComposerDraftEditor } from "@/components/ComposerDraftEditor";
 import {
@@ -7645,7 +7648,21 @@ export function AppWorkbench() {
       showToast(tr("session.secondaryLiveBanner"), 4000);
       return;
     }
-    const draft = getDraft();
+    // Flush live contenteditable → draft before send so the last Enter / blank
+    // lines (and any debounced newline commit) are not dropped from the bubble.
+    const editorEl = composerInputRef.current;
+    let draft = getDraft();
+    if (editorEl) {
+      try {
+        const live = serializeDom(editorEl);
+        if (live !== draft) {
+          setDraft(live);
+          draft = live;
+        }
+      } catch {
+        /* keep getDraft() */
+      }
+    }
     const segments = parseStoredContent(draft);
     const storedDisplay = draft;
     const att = attachments;
@@ -7903,8 +7920,13 @@ export function AppWorkbench() {
     setSlashKindFilter("all");
     const live = liveSlashRef.current;
     if (live.present && live.query) {
-      // Keep `/` at live.start; drop the query so filter shows full catalog.
-      setDraft((d) => d.slice(0, live.start + 1) + d.slice(live.end));
+      // Re-detect on current stored draft so ranges never come from a stale
+      // DOM plain / collapsed coordinate space.
+      setDraft((d) => {
+        const range = detectSlashRangeOnStored(d);
+        if (!range || !range.query) return d;
+        return d.slice(0, range.start + 1) + d.slice(range.end);
+      });
     }
     setSlashActiveIndex(0);
   }, []);
@@ -8544,8 +8566,9 @@ export function AppWorkbench() {
   const composerMenuOpen = showComposerPlus || liveSlash.present;
 
   /**
-   * rAF poll of composer innerText → live slash token.
-   * Single source of truth for open state + filter (not React draft).
+   * rAF poll → live slash token (open palette + filter).
+   * Prefer DOM serialize, fall back to draft store (Enter SoT can leave DOM
+   * one frame behind; slash is end-anchored so we need a reliable string).
    */
   useEffect(() => {
     let raf = 0;
@@ -8553,7 +8576,9 @@ export function AppWorkbench() {
     const tick = () => {
       if (!alive) return;
       const el = composerInputRef.current;
-      const detected = detectSlashQueryFromEditor(el);
+      const detected =
+        detectSlashQueryFromEditor(el) ??
+        detectSlashRangeOnStored(getComposerDraft());
       let next = detected
         ? {
             present: true as const,
@@ -10795,20 +10820,53 @@ export function AppWorkbench() {
       setShowComposerPlus(false);
 
       if (item.kind === "skill") {
-        if (q) {
-          setDraft((d) => applySkillAtSlash(d, q.start, q.end, item.name));
-        } else {
-          setDraft((d) => {
-            const needsSpace = d.length > 0 && !/\s$/.test(d);
-            return `${d}${needsSpace ? " " : ""}[[skill:${item.name}]] `;
-          });
-        }
+        setDraft((d) => {
+          // Prefer live range (DOM/draft poll), then re-detect on this draft.
+          const range =
+            (q && d.slice(q.start, q.end).startsWith("/")
+              ? q
+              : null) ?? detectSlashRangeOnStored(d);
+          if (range && d.slice(range.start, range.end).startsWith("/")) {
+            const next = applySkillAtSlash(
+              d,
+              range.start,
+              range.end,
+              item.name,
+            );
+            // Caret after `[[skill:name]] ` — not document start (panel click blurs).
+            requestComposerStoredCaret(
+              range.start + `[[skill:${item.name}]] `.length,
+            );
+            return next;
+          }
+          const needsSpace = d.length > 0 && !/\s$/.test(d);
+          const next = `${d}${needsSpace ? " " : ""}[[skill:${item.name}]] `;
+          requestComposerStoredCaret("end");
+          return next;
+        });
+        // Refocus so the user can keep typing after picking from the panel.
+        requestAnimationFrame(() => {
+          composerInputRef.current?.focus?.();
+        });
         return;
       }
 
       // Remove the /query from draft for mode/action
       if (q) {
-        setDraft((d) => d.slice(0, q.start) + d.slice(q.end));
+        setDraft((d) => {
+          const range =
+            (q && d.slice(q.start, q.end).startsWith("/")
+              ? q
+              : null) ?? detectSlashRangeOnStored(d);
+          if (range && d.slice(range.start, range.end).startsWith("/")) {
+            requestComposerStoredCaret(range.start);
+            return d.slice(0, range.start) + d.slice(range.end);
+          }
+          return d;
+        });
+        requestAnimationFrame(() => {
+          composerInputRef.current?.focus?.();
+        });
       }
 
       if (item.kind === "mode") {
@@ -16719,6 +16777,9 @@ export function AppWorkbench() {
           setAskUserTimeoutSec(v);
           }}
           cliInfo={cliInfo}
+          onCliInfoRefresh={(cli) => {
+            setCliInfo(mapProbeToCliInfo(cli));
+          }}
           cliAgentSkewRepairing={cliAgentSkewRepairing}
           onCliRepairAgentSidecar={async () => {
             if (cliAgentSkewRepairing) {
@@ -19849,7 +19910,11 @@ export function AppWorkbench() {
                 skillsLoading={skillsLoading}
                 skillsLoadError={skillsLoadError}
                 onSelectSkill={(skill) => {
-                  setDraft((d) => planInsertSkill(d, skill.name));
+                  setDraft((d) => {
+                    const next = planInsertSkill(d, skill.name);
+                    requestComposerStoredCaret("end");
+                    return next;
+                  });
                   window.setTimeout(() => requestComposerFocus(), 40);
                 }}
 />

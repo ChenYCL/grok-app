@@ -1505,34 +1505,68 @@ fn urlencoding_soft_decode(s: &str) -> String {
 }
 
 /// Append sole-line `@/abs/path` refs for journal dual-write (idempotent).
+///
+/// Preserves **internal** blank lines in the user body. Only a trailing run of
+/// blank lines at the end of the body (before the `@path` block) is normalized
+/// to a single separator empty line — mirrors FE `parseAttachmentsFromContent`.
 pub(super) fn append_journal_attachment_refs(
     content: String,
     atts: &[MessageAttachmentStored],
 ) -> String {
+    if atts.is_empty() {
+        return content.replace("\r\n", "\n").replace('\r', "\n");
+    }
+    let content = content.replace("\r\n", "\n").replace('\r', "\n");
     let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
-    // Drop trailing blanks so we can rejoin cleanly.
+
+    // Peel existing trailing sole-line @path refs so we can re-merge idempotently.
+    let mut prior_refs: Vec<String> = Vec::new();
+    while let Some(last) = lines.last() {
+        let t = last.trim();
+        if let Some(rest) = t.strip_prefix('@') {
+            let path = rest.trim();
+            if !path.is_empty() {
+                prior_refs.push(lines.pop().unwrap());
+                continue;
+            }
+        }
+        break;
+    }
+    prior_refs.reverse();
+
+    // Drop only trailing blank lines of the body — keep internal `\n\n`.
     while lines.last().map(|l| l.trim().is_empty()).unwrap_or(false) {
         lines.pop();
     }
-    let mut existing: std::collections::HashSet<String> = lines
+
+    let mut existing: std::collections::HashSet<String> = prior_refs
         .iter()
         .filter_map(|l| {
-            let t = l.trim();
-            t.strip_prefix('@').map(|p| p.trim().to_string())
+            l.trim()
+                .strip_prefix('@')
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
         })
         .collect();
-    let mut added = false;
+
+    let mut new_refs: Vec<String> = Vec::new();
     for a in atts {
         let path = a.path.trim();
         if path.is_empty() || !existing.insert(path.to_string()) {
             continue;
         }
-        if !added && !lines.is_empty() {
-            lines.push(String::new());
-        }
-        lines.push(format!("@{path}"));
-        added = true;
+        new_refs.push(format!("@{path}"));
     }
+
+    let mut refs = prior_refs;
+    refs.extend(new_refs);
+    if refs.is_empty() {
+        return lines.join("\n");
+    }
+    if !lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines.extend(refs);
     lines.join("\n")
 }
 
@@ -1582,4 +1616,36 @@ pub(super) fn should_apply_provider_retry_abort_flags(
         state,
         SessionState::Streaming | SessionState::AwaitingPermission
     )
+}
+
+#[cfg(test)]
+mod journal_attach_tests {
+    use super::append_journal_attachment_refs;
+    use crate::store::MessageAttachmentStored;
+
+    fn att(path: &str) -> MessageAttachmentStored {
+        MessageAttachmentStored {
+            path: path.to_string(),
+            name: path.rsplit('/').next().unwrap_or(path).to_string(),
+            is_dir: false,
+        }
+    }
+
+    #[test]
+    fn append_preserves_internal_blank_lines() {
+        let body = "a\n\nb\n\nc".to_string();
+        let out = append_journal_attachment_refs(body, &[att("/tmp/shot.png")]);
+        assert_eq!(out, "a\n\nb\n\nc\n\n@/tmp/shot.png");
+        assert!(out.contains("a\n\nb\n\nc"));
+    }
+
+    #[test]
+    fn append_idempotent() {
+        let once = append_journal_attachment_refs(
+            "hello\n\nworld".into(),
+            &[att("/tmp/a.txt")],
+        );
+        let twice = append_journal_attachment_refs(once.clone(), &[att("/tmp/a.txt")]);
+        assert_eq!(once, twice);
+    }
 }

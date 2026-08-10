@@ -28,10 +28,15 @@ import {
   readClipboardMediaFiles,
 } from "@/lib/clipboardPaste";
 import {
-  detectSlashQuery,
+  detectSlashRangeOnStored,
+  insertNewlineAt,
   parseStoredContent,
+  readStoredEditorText,
   type DraftSegment,
 } from "@/lib/draftDoc";
+
+/** Caret landing pad around non-editable skill chips (stripped on serialize). */
+const CARET_PAD = "\u200B";
 
 function clearNode(el: HTMLElement) {
   while (el.firstChild) el.removeChild(el.firstChild);
@@ -40,9 +45,16 @@ function clearNode(el: HTMLElement) {
 function appendTextWithBreaks(el: HTMLElement, text: string) {
   const parts = text.split("\n");
   parts.forEach((part, i) => {
+    // Keep empty parts only as break boundaries (blank lines).
     if (part) el.appendChild(document.createTextNode(part));
     if (i < parts.length - 1) el.appendChild(document.createElement("br"));
   });
+}
+
+function isSkillChipEl(node: Node | null | undefined): node is HTMLElement {
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+  const he = node as HTMLElement;
+  return !!(he.dataset?.skill || he.getAttribute("data-skill"));
 }
 
 function makeSkillChipEl(name: string): HTMLElement {
@@ -51,6 +63,8 @@ function makeSkillChipEl(name: string): HTMLElement {
   wrap.contentEditable = "false";
   wrap.dataset.skill = name;
   wrap.setAttribute("data-skill", name);
+  // Atomic unit for caret — prevents caret from landing inside glyph/label.
+  wrap.setAttribute("contenteditable", "false");
 
   const icon = document.createElement("span");
   icon.className = "skill-chip__glyph";
@@ -66,20 +80,192 @@ function makeSkillChipEl(name: string): HTMLElement {
   return wrap;
 }
 
+/** ZWSP pad so caret can sit immediately before/after a non-editable chip. */
+function appendCaretPad(el: HTMLElement) {
+  el.appendChild(document.createTextNode(CARET_PAD));
+}
+
 function renderSegmentsInto(el: HTMLElement, segments: DraftSegment[]) {
   clearNode(el);
   for (const seg of segments) {
     if (seg.type === "text") {
       appendTextWithBreaks(el, seg.text);
     } else {
+      // Pads on both sides: click/type after chip, Backspace removes chip cleanly.
+      appendCaretPad(el);
       el.appendChild(makeSkillChipEl(seg.name));
+      appendCaretPad(el);
+    }
+  }
+  // Always leave a trailing pad so end-of-editor caret is not stuck on the chip.
+  if (segments.some((s) => s.type === "skill")) {
+    const last = el.lastChild;
+    if (
+      !last ||
+      isSkillChipEl(last) ||
+      (last.nodeType === Node.TEXT_NODE &&
+        (last.textContent === "" || last.textContent === CARET_PAD))
+    ) {
+      // Already have a pad after last chip from the loop; ensure at least one
+      // editable text node at the end for click targeting.
+      if (!last || isSkillChipEl(last)) appendCaretPad(el);
     }
   }
 }
 
+/** True when the collapsed caret is immediately after a skill chip (ignoring ZWSP). */
+function skillChipBeforeCaret(el: HTMLElement): HTMLElement | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  if (!el.contains(range.startContainer)) return null;
+
+  let node: Node | null = range.startContainer;
+  let offset = range.startOffset;
+
+  if (node === el) {
+    // Caret between children of the editor root.
+    const prev = el.childNodes[offset - 1] ?? null;
+    if (isSkillChipEl(prev)) return prev;
+    if (
+      prev?.nodeType === Node.TEXT_NODE &&
+      isPadOnlyText(prev.textContent) &&
+      isSkillChipEl(prev.previousSibling)
+    ) {
+      return prev.previousSibling as HTMLElement;
+    }
+    return null;
+  }
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent ?? "";
+    // Only consider "just after" when caret is at start of a pad after chip,
+    // or at offset 0 with previous sibling chip, or offset into empty/pad after chip.
+    if (offset === 0) {
+      let prev = node.previousSibling;
+      if (isSkillChipEl(prev)) return prev;
+      if (prev?.nodeType === Node.TEXT_NODE && isPadOnlyText(prev.textContent)) {
+        prev = prev.previousSibling;
+        if (isSkillChipEl(prev)) return prev;
+      }
+      return null;
+    }
+    // Caret mid text: only if the text before caret is only pads and chip is prev.
+    const before = text.slice(0, offset);
+    if (isPadOnlyText(before)) {
+      let prev = node.previousSibling;
+      if (isSkillChipEl(prev)) return prev;
+    }
+    return null;
+  }
+
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const prev = node.childNodes[offset - 1] ?? null;
+    if (isSkillChipEl(prev)) return prev;
+  }
+  return null;
+}
+
+/** True when the collapsed caret is immediately before a skill chip. */
+function skillChipAfterCaret(el: HTMLElement): HTMLElement | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  if (!el.contains(range.startContainer)) return null;
+
+  let node: Node | null = range.startContainer;
+  let offset = range.startOffset;
+
+  if (node === el) {
+    const next = el.childNodes[offset] ?? null;
+    if (isSkillChipEl(next)) return next;
+    if (
+      next?.nodeType === Node.TEXT_NODE &&
+      isPadOnlyText(next.textContent) &&
+      isSkillChipEl(next.nextSibling)
+    ) {
+      return next.nextSibling as HTMLElement;
+    }
+    return null;
+  }
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent ?? "";
+    if (offset >= text.length || isPadOnlyText(text.slice(offset))) {
+      let next = node.nextSibling;
+      if (isSkillChipEl(next)) return next;
+      if (next?.nodeType === Node.TEXT_NODE && isPadOnlyText(next.textContent)) {
+        next = next.nextSibling;
+        if (isSkillChipEl(next)) return next;
+      }
+    }
+    return null;
+  }
+
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const next = node.childNodes[offset] ?? null;
+    if (isSkillChipEl(next)) return next;
+  }
+  return null;
+}
+
+function isPadOnlyText(s: string | null | undefined): boolean {
+  if (s == null || s === "") return true;
+  return /^[\u200B-\u200D\uFEFF\u2060\u00a0\s]*$/.test(s);
+}
+
+/**
+ * Remove a skill chip element from the editor DOM and return the new stored
+ * string (caller commits). Places caret where the chip was.
+ */
+function removeSkillChipEl(el: HTMLElement, chip: HTMLElement): string {
+  // Drop adjacent caret pads that only exist for this chip.
+  const prev = chip.previousSibling;
+  const next = chip.nextSibling;
+  if (prev?.nodeType === Node.TEXT_NODE && isPadOnlyText(prev.textContent)) {
+    prev.parentNode?.removeChild(prev);
+  }
+  if (next?.nodeType === Node.TEXT_NODE && isPadOnlyText(next.textContent)) {
+    // Keep a single pad if we need a caret target; leave one empty text for now.
+    const afterNext = next.nextSibling;
+    next.parentNode?.removeChild(next);
+    void afterNext;
+  }
+  const parent = chip.parentNode;
+  const ref = chip.nextSibling;
+  parent?.removeChild(chip);
+  // Ensure there is somewhere to put the caret.
+  if (!el.firstChild) {
+    el.appendChild(document.createTextNode(""));
+  }
+  // Place caret at the removal point.
+  try {
+    const sel = window.getSelection();
+    if (sel && parent) {
+      const r = document.createRange();
+      if (ref && parent.contains(ref)) {
+        r.setStartBefore(ref);
+      } else if (parent === el || el.contains(parent)) {
+        r.selectNodeContents(el);
+        r.collapse(false);
+      } else {
+        r.selectNodeContents(el);
+        r.collapse(false);
+      }
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+  } catch {
+    placeCaretAtEnd(el);
+  }
+  return serializeDom(el);
+}
+
 /**
  * Strip caret/layout ghosts WebKit injects into contenteditable
- * (ZWSP, object-replacement “□”, BOM, word-joiner).
+ * (ZWSP, object-replacement “□”, BOM, word-joiner). Used for caret-edge
+ * checks only — not for slash mutation ranges.
  */
 function stripEditorGhostChars(s: string): string {
   return s.replace(/[\u200B-\u200D\uFEFF\u2060\uFFFC]/g, "");
@@ -87,31 +273,12 @@ function stripEditorGhostChars(s: string): string {
 
 /**
  * Serialize contenteditable → stored draft.
- *
- * Prefer clone + skill tokens + `innerText` so block-level Enter
- * (`<div>line</div>`, empty `<div><br></div>`) keeps real newlines.
- * A pure BR walk used to drop WebKit/DIV line breaks → bubble lost formatting.
+ * Delegates to {@link readStoredEditorText} (skill chips → `[[skill:…]]`,
+ * block-level Enter keeps real newlines). Shared with slash range detection
+ * so mutation indices always land on the same coordinate space as React draft.
  */
 export function serializeDom(el: HTMLElement): string {
-  const clone = el.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll("[data-skill]").forEach((chip) => {
-    const name =
-      (chip as HTMLElement).dataset?.skill ||
-      chip.getAttribute("data-skill") ||
-      "";
-    chip.replaceWith(document.createTextNode(`[[skill:${name}]]`));
-  });
-  // innerText honors block layout (DIV/P) as newlines; textContent would not.
-  let t = clone.innerText ?? clone.textContent ?? "";
-  t = stripEditorGhostChars(t)
-    .replace(/\u00a0/g, " ")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
-  // Empty editor often yields a lone trailing newline from the caret <br>.
-  if (!t.replace(/\n/g, "").trim() && !/\[\[skill:/.test(t)) {
-    return "";
-  }
-  return t;
+  return readStoredEditorText(el);
 }
 
 function getTextBeforeCaret(el: HTMLElement): string | null {
@@ -155,11 +322,127 @@ function placeCaretAtEnd(el: HTMLElement) {
   el.focus();
   const sel = window.getSelection();
   if (!sel) return;
+  // Prefer the last text node (incl. ZWSP pad after a chip) so the caret is not
+  // stuck "on" a contentEditable=false skill chip.
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let lastText: Text | null = null;
+  let n: Node | null;
+  while ((n = walker.nextNode())) {
+    lastText = n as Text;
+  }
   const range = document.createRange();
-  range.selectNodeContents(el);
-  range.collapse(false);
+  if (lastText) {
+    const len = lastText.textContent?.length ?? 0;
+    range.setStart(lastText, len);
+    range.collapse(true);
+  } else {
+    range.selectNodeContents(el);
+    range.collapse(false);
+  }
   sel.removeAllRanges();
   sel.addRange(range);
+}
+
+/**
+ * Place caret at a stored-draft offset (same coordinate space as serializeDom:
+ * ZWSP pads ignored, BR = 1, skill chip = `[[skill:name]]` length).
+ */
+function placeCaretAtStoredOffset(el: HTMLElement, target: number) {
+  el.focus();
+  const sel = window.getSelection();
+  if (!sel) return;
+  const want = Math.max(0, target);
+  let count = 0;
+
+  const setCaret = (node: Node, offset: number) => {
+    const range = document.createRange();
+    range.setStart(node, offset);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+
+  const walk = (node: Node): boolean => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const raw = node.textContent ?? "";
+      let cleanedLen = 0;
+      for (let i = 0; i < raw.length; i++) {
+        const ch = raw.charCodeAt(i);
+        // Skip ZWSP / BOM / ORC (same as serialize)
+        if (
+          ch === 0x200b ||
+          ch === 0x200c ||
+          ch === 0x200d ||
+          ch === 0xfeff ||
+          ch === 0x2060 ||
+          ch === 0xfffc
+        ) {
+          continue;
+        }
+        if (count + cleanedLen === want) {
+          setCaret(node, i);
+          return true;
+        }
+        cleanedLen++;
+      }
+      if (count + cleanedLen === want) {
+        setCaret(node, raw.length);
+        return true;
+      }
+      count += cleanedLen;
+      return false;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    const he = node as HTMLElement;
+    if (he.dataset?.skill != null || he.hasAttribute("data-skill")) {
+      const name =
+        he.dataset?.skill || he.getAttribute("data-skill") || "";
+      const tokenLen = `[[skill:${name}]]`.length;
+      if (count + tokenLen >= want) {
+        // Land after the chip (and its following pad if any).
+        const after = he.nextSibling;
+        if (after?.nodeType === Node.TEXT_NODE) {
+          setCaret(after, 0);
+        } else {
+          const range = document.createRange();
+          range.setStartAfter(he);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        return true;
+      }
+      count += tokenLen;
+      return false;
+    }
+    if (he.tagName === "BR") {
+      if (count === want) {
+        const range = document.createRange();
+        range.setStartBefore(he);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return true;
+      }
+      if (count + 1 === want) {
+        const range = document.createRange();
+        range.setStartAfter(he);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return true;
+      }
+      count += 1;
+      return false;
+    }
+    const kids = he.childNodes;
+    for (let i = 0; i < kids.length; i++) {
+      if (walk(kids[i]!)) return true;
+    }
+    return false;
+  };
+
+  if (!walk(el)) placeCaretAtEnd(el);
 }
 
 /** True when the caret is collapsed at (or past) the visual end of the editor. */
@@ -433,6 +716,24 @@ export type ComposerEditorProps = {
   }) => void | Promise<void>;
 };
 
+/**
+ * After an external draft mutation (skill chip insert, history, …) place the
+ * caret at this stored offset on the next value projection. `'end'` = after
+ * all content. Cleared once consumed.
+ */
+let pendingStoredCaret: number | "end" | null = null;
+
+/** Request caret placement after the next `value`-driven re-render. */
+export function requestComposerStoredCaret(at: number | "end") {
+  pendingStoredCaret = at;
+}
+
+function takePendingStoredCaret(): number | "end" | null {
+  const p = pendingStoredCaret;
+  pendingStoredCaret = null;
+  return p;
+}
+
 export const ComposerEditor = memo(function ComposerEditor({
   value,
   onChange,
@@ -500,20 +801,21 @@ export const ComposerEditor = memo(function ComposerEditor({
     const el = elRef.current;
     if (!el || !onSlashQueryChange) return;
     const beforeCaret = getTextBeforeCaret(el);
-    const full = serializeDom(el);
-    // Prefer full text — more reliable after IME confirms 汉字.
-    const fromFull = detectSlashQuery(full);
-    const fromCaret =
-      beforeCaret != null ? detectSlashQuery(beforeCaret) : null;
-    const q = fromFull ?? fromCaret;
+    // Mid-document `/query` (after space/newline): detect on caret prefix only.
+    // Do not fall back to full-document end when caret is known — that would
+    // open the panel for a trailing `/` while the user edits elsewhere.
+    let q =
+      beforeCaret != null
+        ? detectSlashRangeOnStored(beforeCaret)
+        : detectSlashRangeOnStored(serializeDom(el)) ??
+          detectSlashRangeOnStored(lastValue.current);
     if (!q) {
       // During composition the DOM may briefly not contain `/…`; keep prior.
       if (composing.current) return;
       onSlashQueryChange(null);
       return;
     }
-    const end = fromFull ? full.length : (beforeCaret?.length ?? full.length);
-    onSlashQueryChange({ start: q.start, query: q.query, end });
+    onSlashQueryChange({ start: q.start, query: q.query, end: q.end });
   }, [onSlashQueryChange]);
 
   const syncDomEmpty = useCallback((el: HTMLElement) => {
@@ -594,6 +896,14 @@ export const ComposerEditor = memo(function ComposerEditor({
     const current = serializeDom(el);
     if (current === value && el.childNodes.length > 0) {
       lastValue.current = value;
+      // Still honor a pending caret (e.g. skill insert when serialize matched).
+      const pendingSame = takePendingStoredCaret();
+      if (pendingSame != null) {
+        if (pendingSame === "end") placeCaretAtEnd(el);
+        else placeCaretAtStoredOffset(el, pendingSame);
+        scrollComposerCaretIntoView(el);
+        emitSlash();
+      }
       resize();
       return;
     }
@@ -601,17 +911,18 @@ export const ComposerEditor = memo(function ComposerEditor({
       resize();
       return;
     }
-    if (focused.current && value !== lastValue.current) {
-      renderSegmentsInto(el, parseStoredContent(value));
-      lastValue.current = value;
-      placeCaretAtEnd(el);
-      resize();
-      emitSlash();
-      return;
-    }
+    // External or Enter/skill value change: re-project DOM from stored draft.
+    // Always pin caret — clicking the slash panel blurs the editor, and the old
+    // unfocused path left selection at offset 0 ("cursor jumps to top"), which
+    // also broke slash detection (token must be at end of stored text).
     renderSegmentsInto(el, parseStoredContent(value));
     lastValue.current = value;
+    const pending = takePendingStoredCaret();
+    if (pending === "end" || pending == null) placeCaretAtEnd(el);
+    else placeCaretAtStoredOffset(el, pending);
+    scrollComposerCaretIntoView(el);
     resize();
+    emitSlash();
   }, [value, resize, emitSlash]);
 
   const onInput = (e: FormEvent<HTMLDivElement>) => {
@@ -791,9 +1102,15 @@ export const ComposerEditor = memo(function ComposerEditor({
         onPaste={onPaste}
         onKeyUp={(e) => {
           if (!composing.current) emitSlash();
-          // After Shift+Enter key-repeat: flush draft + erase caret ghosts.
+          // After Enter: only repaint caret / scroll. Do NOT re-serialize from
+          // DOM — Enter already wrote "\n" into the draft SoT. A lossy serialize
+          // here was re-deleting blank lines on keyup.
           if (e.key === "Enter" && !e.altKey && !e.metaKey && !e.ctrlKey) {
-            flushNewlineAfterKeyUp();
+            const node = elRef.current;
+            if (node) {
+              scrollComposerCaretIntoView(node);
+              repaintComposerCaret(node);
+            }
           }
         }}
         onClick={() => emitSlash()}
@@ -842,33 +1159,51 @@ export const ComposerEditor = memo(function ComposerEditor({
           // Parent handles send / menus (may preventDefault).
           onKeyDown?.(e);
           if (e.defaultPrevented) return;
+
+          // Skill chips are contentEditable=false — native Backspace/Delete often
+          // no-ops or traps the caret. Remove the adjacent chip explicitly.
+          if (
+            el &&
+            (e.key === "Backspace" || e.key === "Delete") &&
+            !e.altKey &&
+            !e.metaKey &&
+            !e.ctrlKey
+          ) {
+            const chip =
+              e.key === "Backspace"
+                ? skillChipBeforeCaret(el)
+                : skillChipAfterCaret(el);
+            if (chip) {
+              e.preventDefault();
+              const stored = removeSkillChipEl(el, chip);
+              lastValue.current = stored;
+              onChange(stored);
+              syncDomEmpty(el);
+              emitSlash();
+              resize();
+              return;
+            }
+          }
+
           // Newline path (Shift+Enter, or plain Enter when send-key is mod-enter).
-          // Prefer insertText("\n") with pre-wrap — keeps real newlines without
-          // WebKit empty-DIV blocks, and avoids insertLineBreak <br> caret ghosts
-          // under Shift+Enter key-repeat.
+          // Draft string is SoT: insert "\n" into lastValue and re-project DOM.
+          // Do NOT commitFromDom/serialize here — that path has repeatedly eaten
+          // blank lines on WebKit. User bubble must match what we store.
           if (e.key === "Enter" && !e.altKey && !e.metaKey && !e.ctrlKey) {
             try {
               e.preventDefault();
-              let inserted = false;
-              try {
-                inserted = document.execCommand("insertText", false, "\n");
-              } catch {
-                inserted = false;
-              }
-              if (!inserted) {
-                document.execCommand("insertLineBreak");
-              }
-              if (el) {
-                // Visual first. Key-repeat must not thrash serialize or stack
-                // rAFs — that leaves sticky ghost carets in WebKit.
-                resizeComposerInput(el);
-                if (e.repeat) {
-                  scheduleNewlineCommit(el);
-                } else {
-                  commitFromDom(el);
-                }
-                scheduleNewlinePaint(el);
-              }
+              if (!el) return;
+              const draft = lastValue.current;
+              const caret = getComposerCaretIndex(el, draft);
+              const next = insertNewlineAt(draft, caret);
+              lastValue.current = next;
+              onChange(next);
+              renderSegmentsInto(el, parseStoredContent(next));
+              placeCaretAtStoredOffset(el, caret + 1);
+              syncDomEmpty(el);
+              emitSlash();
+              resizeComposerInput(el);
+              scheduleNewlinePaint(el);
             } catch {
               /* browser default */
             }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendAttachmentRefsToContent,
   applyResolvedSessionMedia,
   buildAgentPrompt,
   buildInlineMediaPathMap,
@@ -53,6 +54,24 @@ describe("attachments", () => {
     expect(attachments).toHaveLength(2);
     expect(attachments[0]!.path).toBe("/Users/me/pic.png");
     expect(attachments[0]!.name).toBe("pic.png");
+  });
+
+  it("append+parse keeps internal blank lines in body", () => {
+    const body = "a\n\nb\n\nc";
+    const withRefs = appendAttachmentRefsToContent(body, [
+      { path: "/tmp/shot.png", name: "shot.png", isDir: false },
+    ]);
+    expect(withRefs).toBe("a\n\nb\n\nc\n\n@/tmp/shot.png");
+    const { text, attachments } = parseAttachmentsFromContent(withRefs);
+    expect(text).toBe("a\n\nb\n\nc");
+    expect(text.includes("\n\n")).toBe(true);
+    expect(attachments.map((a) => a.path)).toEqual(["/tmp/shot.png"]);
+  });
+
+  it("append is idempotent for existing @path lines", () => {
+    const once = appendAttachmentRefsToContent("hello\n\nworld", [file]);
+    const twice = appendAttachmentRefsToContent(once, [file]);
+    expect(twice).toBe(once);
   });
 
   it("detects image and video extensions", () => {

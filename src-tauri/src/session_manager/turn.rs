@@ -29,9 +29,17 @@ impl SessionManager {
             return Err("empty message".into());
         }
         // Journal stores UI form when provided (skill chips); agent still receives `text`.
+        // Do not wholesale-trim display: that drops leading/trailing blank lines the user
+        // typed. Empty-check uses trim; payload keeps internal + intentional edge blanks.
         let mut journal_content = display_text
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+            .and_then(|s| {
+                let s = s.replace("\r\n", "\n").replace('\r', "\n");
+                if s.trim().is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
+            })
             .unwrap_or_else(|| text.clone());
         // User file/image cards — structured field is primary for history cards.
         // Also dual-write `@/abs/path` sole-lines into content so reload can recover
@@ -478,9 +486,16 @@ impl SessionManager {
         if text.is_empty() {
             return Err("empty interjection".into());
         }
+        // Same display blank-line policy as send_message (no wholesale trim).
         let mut journal_content = display_text
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+            .and_then(|s| {
+                let s = s.replace("\r\n", "\n").replace('\r', "\n");
+                if s.trim().is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
+            })
             .unwrap_or_else(|| text.clone());
         let attachments = attachments.filter(|items| !items.is_empty());
         if let Some(ref atts) = attachments {
