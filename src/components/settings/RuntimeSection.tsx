@@ -31,6 +31,8 @@ import { SettingsTabStrip, UiCheck } from "./shared";
 import { IconArchive, IconDoctor } from "@/components/icons";
 import { NetworkProbeField } from "./NetworkProbeField";
 import { AcpServerField } from "./AcpServerField";
+import { WslBackendField } from "./WslBackendField";
+import { detectAppPlatform } from "@/lib/appPlatform";
 import { resolveLocale, type MessageKey } from "@/i18n";
 import {
   classifyCliVersionStatus,
@@ -50,6 +52,7 @@ export function RuntimeSection() {
     cliInfo,
     cliAgentSkewRepairing,
     onCliRepairAgentSidecar,
+    onCliInfoRefresh,
     costRollupProjects,
     costRollupSessions,
     includePartialMessages,
@@ -218,6 +221,32 @@ export function RuntimeSection() {
                     </div>
                   ) : null}
                 </div>
+                {detectAppPlatform() === "win" ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-wslBackend")
+                    }
+                  >
+                    <WslBackendField
+                      t={t}
+                      onSaved={() => {
+                        // Refresh the top CLI path card so source/version match backend.
+                        void (async () => {
+                          try {
+                            const mod = await import("@/lib/api");
+                            const probed = await mod.probeCli(
+                              manualCliPath || undefined,
+                            );
+                            onCliInfoRefresh?.(probed);
+                          } catch {
+                            /* soft-fail — WslBackendField still shows its own probe */
+                          }
+                        })();
+                      }}
+                    />
+                  </div>
+                ) : null}
                 {onAllowUnverifiedCliInstall ? (
                   <div
                     className={

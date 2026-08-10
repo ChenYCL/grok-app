@@ -12,6 +12,8 @@ See `docs/llm-wiki/release.md`.
 ## [Unreleased]
 
 ### Added
+- **WSL CLI backend (#546)**: On Windows, Settings → Runtime → CLI can spawn Grok Build via `wsl.exe` (distro + Linux path) when the binary lives only inside WSL. Project cwd and `GROK_HOME` map to `/mnt/…`; ACP TCP mode still wins when configured. Probe / Doctor use the same path.
+- **中文 · WSL CLI 后端 (#546)**：Windows 可在设置中选择通过 WSL 启动 Grok Build（发行版 + Linux 路径），无需先搭 ACP TCP。
 - **Find Skills in Side Workbench (#545)**: Docked Skills tab ranks host `skills_list` against the live composer draft (local keyword/purpose match, inventory-only) and inserts `[[skill:name]]` on click. Composer toolbar opens the panel; with an active prompt, show matches only (no full A–Z dump).
 - **中文 · 侧边技能面板 (#545)**：右侧工作台 Skills 标签按输入框提示排序技能，点击插入 `[[skill:name]]`；有提示时只显示匹配项。
 

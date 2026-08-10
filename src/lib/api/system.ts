@@ -266,6 +266,20 @@ export async function acpServerProbe(addr: string) {
   return invoke<AcpServerProbeResult>("acp_server_probe", { addr });
 }
 
+/** WSL availability + distros + optional CLI probe (Settings → Runtime). */
+export interface WslStatus {
+  available: boolean;
+  wslExe?: string | null;
+  distros: string[];
+  backendActive: boolean;
+  probe?: CliProbeInfo | null;
+  error?: string | null;
+}
+
+export async function wslStatus() {
+  return invoke<WslStatus>("wsl_status");
+}
+
 export interface CliInstallProgress {
   phase: string;
   message: string;

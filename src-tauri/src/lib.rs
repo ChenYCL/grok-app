@@ -61,6 +61,8 @@ mod cli_update;
 
 mod cli_worktrees;
 
+mod wsl_backend;
+
 mod side_browser_blob;
 mod side_browser_host;
 
@@ -755,6 +757,8 @@ pub fn run() {
             commands::session_resolve_ask_user,
 
             commands::probe_cli,
+
+            commands::wsl_status,
 
             commands::cli_repair_agent_sidecar,
 

@@ -12,6 +12,14 @@ export interface AppSettings {
   locale: string;
   sessionDataMode: string;
   manualCliPath: string | null;
+  /**
+   * CLI launch backend: `native` (default) or `wsl` (Windows only — spawn via wsl.exe).
+   */
+  cliBackend?: string;
+  /** Optional WSL distro when cliBackend is wsl. Empty = default distro. */
+  wslDistro?: string | null;
+  /** Path to grok inside WSL (e.g. grok, ~/.grok/bin/grok). */
+  wslCliPath?: string | null;
   permissionPolicy: string;
   modelId: string | null;
   effort: string | null;

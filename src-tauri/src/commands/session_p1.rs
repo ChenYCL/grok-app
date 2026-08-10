@@ -285,9 +285,28 @@ pub async fn session_resolve_permission(
 pub async fn probe_cli(manual_path: Option<String>) -> Result<CliProbeResult, String> {
     // probe_cli runs `grok --version` (sync I/O). Never block a Tokio worker —
     // a hung binary used to freeze the setup gate ("Checking Grok Build…") forever.
-    tokio::task::spawn_blocking(move || cli_probe::probe_cli(manual_path.as_deref()))
-        .await
-        .map_err(|e| format!("probe_cli join: {e}"))
+    // When Settings → CLI backend is WSL, probe inside the distro instead of PATH.
+    tokio::task::spawn_blocking(move || {
+        let settings = store::load_settings();
+        if crate::wsl_backend::wsl_backend_active(&settings) {
+            crate::wsl_backend::probe_wsl_cli(&settings)
+        } else {
+            cli_probe::probe_cli(manual_path.as_deref())
+        }
+    })
+    .await
+    .map_err(|e| format!("probe_cli join: {e}"))
+}
+
+/// WSL availability, distro list, and optional CLI probe (Settings → Runtime).
+#[tauri::command]
+pub async fn wsl_status() -> Result<crate::wsl_backend::WslStatus, String> {
+    tokio::task::spawn_blocking(|| {
+        let settings = store::load_settings();
+        crate::wsl_backend::wsl_status(&settings)
+    })
+    .await
+    .map_err(|e| format!("wsl_status join: {e}"))
 }
 
 /// Relink/copy `~/.grok/bin/agent` to match the probed `grok` binary (skew repair).

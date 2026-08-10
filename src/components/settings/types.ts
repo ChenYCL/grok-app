@@ -94,6 +94,8 @@ export interface SettingsPageProps {
   manualCliPath: string;
   onManualCliPath: (v: string) => void;
   onCliBlur: (v: string) => void;
+  /** Refresh CLI probe card after WSL backend / path changes. */
+  onCliInfoRefresh?: (cli: import("@/lib/api").CliProbeInfo) => void;
   allowUnverifiedCliInstall?: boolean;
   onAllowUnverifiedCliInstall?: (v: boolean) => void;
   lastCliChecksumVerified?: boolean | null;

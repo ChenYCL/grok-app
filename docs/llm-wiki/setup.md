@@ -26,6 +26,7 @@ boot → probe CLI (≤3s per --version; Host spawn_blocking)
 | Detect | `probe_cli` — mac + Windows (see below) |
 | Auto install | `cli_install_latest` + event `setup://cli-install-progress` |
 | Manual path | `pick_cli_binary` → `manualCliPath` |
+| **WSL backend (Windows)** | Settings → Runtime → CLI → **Use WSL for Grok Build** (`cliBackend=wsl`). Spawns `wsl.exe [-d distro] --cd /mnt/… -- grok agent stdio` when the binary exists only inside WSL. Optional `wslDistro` / `wslCliPath`. **ACP server (API mode)** still wins when `acpServerAddr` is set. |
 | Fallback | Copy official install command / open docs |
 
 Mirrors (order):

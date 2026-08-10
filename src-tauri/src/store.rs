@@ -192,6 +192,15 @@ pub struct AppSettings {
     pub locale: String,
     pub session_data_mode: String,
     pub manual_cli_path: Option<String>,
+    /// CLI launch backend: `native` (default) or `wsl` (Windows only — spawn via `wsl.exe`).
+    #[serde(default = "default_cli_backend")]
+    pub cli_backend: String,
+    /// Optional WSL distro name when `cli_backend == "wsl"`. Empty = default distro.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wsl_distro: Option<String>,
+    /// Path to `grok` **inside** WSL (e.g. `grok`, `~/.grok/bin/grok`). Empty = `grok` on WSL PATH.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wsl_cli_path: Option<String>,
     pub permission_policy: String,
     pub model_id: Option<String>,
     pub effort: Option<String>,
@@ -476,6 +485,10 @@ fn default_open_target() -> String {
     "finder".into()
 }
 
+fn default_cli_backend() -> String {
+    crate::wsl_backend::CLI_BACKEND_NATIVE.into()
+}
+
 fn default_max_concurrent_agents() -> u32 {
     crate::process_limits::DEFAULT_MAX_CONCURRENT_AGENTS
 }
@@ -542,6 +555,9 @@ impl Default for AppSettings {
             locale: "en".into(),
             session_data_mode: "independent".into(),
             manual_cli_path: None,
+            cli_backend: default_cli_backend(),
+            wsl_distro: None,
+            wsl_cli_path: None,
             permission_policy: "ask".into(),
             model_id: None,
             effort: Some("high".into()),

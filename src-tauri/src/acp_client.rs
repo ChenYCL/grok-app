@@ -1068,7 +1068,9 @@ impl AcpClient {
         // API mode: if an ACP server address is configured, connect over TCP
         // instead of spawning a local CLI. The server drives an agent running
         // elsewhere (WSL/SSH/container) but speaks the identical ACP protocol.
-        if let Some(addr) = crate::store::load_settings()
+        // Priority: TCP > WSL spawn > native spawn.
+        let settings_early = crate::store::load_settings();
+        if let Some(addr) = settings_early
             .acp_server_addr
             .as_deref()
             .map(str::trim)
@@ -1077,10 +1079,23 @@ impl AcpClient {
             return Self::connect_tcp(addr, cwd);
         }
 
-        if !cli_path.exists() {
+        let wsl_launch = crate::wsl_backend::resolve_wsl_launch(&settings_early);
+        let cli_path = if let Some(ref w) = wsl_launch {
+            crate::wsl_backend::wsl_display_path(w)
+        } else {
+            cli_path
+        };
+
+        if wsl_launch.is_none() && !cli_path.exists() {
             return Err(AgentError::new(
                 AgentErrorCode::CliNotFound,
                 format!("CLI not found: {}", cli_path.display()),
+            ));
+        }
+        if wsl_launch.is_some() && crate::wsl_backend::find_wsl_exe().is_none() {
+            return Err(AgentError::new(
+                AgentErrorCode::CliNotFound,
+                "wsl.exe not found — install WSL or set CLI backend to native".to_string(),
             ));
         }
 
@@ -1088,13 +1103,18 @@ impl AcpClient {
         // 0.2.x-specific; an older CLI rejects it and dies, which the user only
         // ever sees as AGENT_CRASHED with no hint that the CLI is the problem.
         // Unknown/unparseable versions pass through — fail open, not closed.
-        if let Some(raw) = crate::cli_probe::read_version_of(&cli_path) {
-            if crate::cli_probe::cli_version_supported(&raw) == Some(false) {
+        let version_raw = if let Some(ref w) = wsl_launch {
+            crate::wsl_backend::read_wsl_version(w)
+        } else {
+            crate::cli_probe::read_version_of(&cli_path)
+        };
+        if let Some(raw) = version_raw.as_deref() {
+            if crate::cli_probe::cli_version_supported(raw) == Some(false) {
                 return Err(AgentError::new(
                     AgentErrorCode::CliTooOld,
                     format!(
                         "grok CLI {} is older than the required {}",
-                        crate::cli_probe::extract_version_token(&raw)
+                        crate::cli_probe::extract_version_token(raw)
                             .unwrap_or_else(|| raw.trim().to_string()),
                         crate::cli_probe::min_cli_version_str()
                     ),
@@ -1207,7 +1227,7 @@ impl AcpClient {
         let spawn_product_mode = opts.product_mode.as_deref();
         // Headless-only in effect; still pass top-level when CLI ≥ 0.2.117 so
         // automations / future ACP paths share one policy. Soft-fail older CLIs.
-        let cli_ver = crate::cli_probe::read_version_of(&cli_path);
+        let cli_ver = version_raw.clone();
         let bg_wait_args = background_wait_spawn_flags_from_settings(&settings, cli_ver.as_deref());
         // Soft-fail known-old CLIs: omit --sandbox / GROK_SANDBOX.
         let sandbox = if should_apply_sandbox(cli_ver.as_deref()) {
@@ -1216,7 +1236,7 @@ impl AcpClient {
             None
         };
         // Soft-fail older CLIs for GROK_SUBAGENT_WORKTREE_SNAPSHOT env.
-        let cli_ver = crate::cli_probe::read_version_of(&cli_path);
+        let cli_ver = version_raw.clone();
 
         if session_data_mode != "shared" {
             let _ = crate::agent_subagents::sync_subagents_to_agent_profile(
@@ -1251,14 +1271,25 @@ impl AcpClient {
                 crate::official_aux::sync_native_media_block_hook_for_current(session_data_mode);
         }
 
-        let mut cmd = Command::new(&cli_path);
+        // Native: `grok …`; WSL: `wsl.exe [-d] --cd <linux_cwd> -- <linux_cli> …`
+        // (env vars set on the Windows process and forwarded via WSLENV).
+        let mut cmd = if let Some(ref w) = wsl_launch {
+            let linux_cwd = crate::wsl_backend::windows_path_to_wsl(&cwd).map_err(|e| {
+                AgentError::new(
+                    AgentErrorCode::CliNotFound,
+                    format!("WSL cwd path map failed: {e}"),
+                )
+            })?;
+            crate::wsl_backend::start_wsl_tokio_command(w, &linux_cwd).map_err(|e| {
+                AgentError::new(AgentErrorCode::CliNotFound, e)
+            })?
+        } else {
+            Command::new(&cli_path)
+        };
         cmd.arg("--no-auto-update");
         // Compaction mode/detail (CLI 0.2.117+): always set env; flags only when
         // the probed binary is known to accept them (soft-fail on older CLIs).
-        let pass_compaction_flags = {
-            let ver = crate::cli_probe::read_version_of(&cli_path);
-            cli_supports_compaction_flags(ver.as_deref())
-        };
+        let pass_compaction_flags = cli_supports_compaction_flags(cli_ver.as_deref());
         apply_compaction_to_command(
             &mut cmd,
             &compaction_mode,
@@ -1378,15 +1409,19 @@ impl AcpClient {
             cmd.arg(a);
         }
         cmd.arg("stdio");
-        cmd.current_dir(&cwd)
-            .stdin(Stdio::piped())
+        if wsl_launch.is_none() {
+            cmd.current_dir(&cwd);
+        }
+        cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         crate::process_util::apply_no_window_tokio(&mut cmd);
-        crate::process_util::ensure_home_env_tokio(&mut cmd);
-        if let Some(path) = crate::process_util::enriched_path_env() {
-            cmd.env("PATH", path);
+        if wsl_launch.is_none() {
+            crate::process_util::ensure_home_env_tokio(&mut cmd);
+            if let Some(path) = crate::process_util::enriched_path_env() {
+                cmd.env("PATH", path);
+            }
         }
         cmd.env("GROK_HOME", &grok_home);
         // Do NOT set GROK_IMAGE_DESCRIPTION_MODEL / GROK_WEB_SEARCH_MODEL on the
@@ -1408,6 +1443,10 @@ impl AcpClient {
         if let Some(ref sb) = sandbox {
             let (k, v) = sb.env_pair();
             cmd.env(k, v);
+        }
+        // Forward selected env into the Linux process (path-translate GROK_HOME).
+        if wsl_launch.is_some() {
+            crate::wsl_backend::apply_wslenv(&mut cmd);
         }
         tracing::info!(
             "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} no_ask_user={} leader={} subagents={} memory={} compaction_mode={} compaction_detail={} compaction_flags={} agent_profile={:?} agents_json={}",
