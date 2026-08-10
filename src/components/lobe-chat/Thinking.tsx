@@ -29,6 +29,7 @@ export const Thinking = memo(function Thinking({
   content,
   thinking,
   durationMs,
+  startedAt,
   locale = "en",
   expandPref,
   onOpenExternalLink,
@@ -37,6 +38,11 @@ export const Thinking = memo(function Thinking({
   thinking?: boolean;
   /** Duration in ms when known (live timer or history). */
   durationMs?: number;
+  /**
+   * Epoch ms when this thinking episode began (e.g. turn / post-steer clock).
+   * Survives remounts so placeholder → real thought does not reset to “1s”.
+   */
+  startedAt?: number | null;
   locale?: Locale;
   /** Global default for finished blocks (Settings). Per-block toggles are local. */
   expandPref?: ThinkingExpandPref;
@@ -104,14 +110,27 @@ export const Thinking = memo(function Thinking({
   }, []);
 
   // Live wall-clock while streaming; freeze when done.
+  // Prefer `startedAt` (turn / post-steer clock) so remounts after steer do not
+  // collapse a long wait into “Thought for 1s”.
+  const frozenRef = useRef(false);
   useEffect(() => {
     if (thinking) {
+      frozenRef.current = false;
       setOpen(true);
       userToggled.current = false;
-      if (startRef.current == null) startRef.current = Date.now();
+      const anchor =
+        typeof startedAt === "number" && Number.isFinite(startedAt)
+          ? startedAt
+          : null;
+      if (startRef.current == null) {
+        startRef.current = anchor ?? Date.now();
+      } else if (anchor != null && anchor < startRef.current) {
+        // Host pulled the episode start earlier (e.g. steer) — honor it.
+        startRef.current = anchor;
+      }
       const tick = () => {
         if (startRef.current != null) {
-          setLocalDuration(Date.now() - startRef.current);
+          setLocalDuration(Math.max(0, Date.now() - startRef.current));
         }
       };
       tick();
@@ -120,15 +139,26 @@ export const Thinking = memo(function Thinking({
         window.clearInterval(id);
       };
     }
-    if (startRef.current != null) {
-      setLocalDuration(Date.now() - startRef.current);
-      startRef.current = null;
+    // Episode ended — freeze once (do not keep advancing via startedAt).
+    if (!frozenRef.current) {
+      if (startRef.current != null) {
+        setLocalDuration(Math.max(0, Date.now() - startRef.current));
+        startRef.current = null;
+      } else if (
+        typeof startedAt === "number" &&
+        Number.isFinite(startedAt) &&
+        durationMs == null
+      ) {
+        // Remounted already-finished thought with only an anchor.
+        setLocalDuration(Math.max(0, Date.now() - startedAt));
+      }
+      frozenRef.current = true;
     }
     // Finished → collapse unless user prefers keep-open and hasn’t toggled.
     if (!userToggled.current) {
       setOpen(thinkingDefaultOpenWhenDone(pref));
     }
-  }, [thinking, pref]);
+  }, [thinking, pref, startedAt, durationMs]);
 
   useEffect(() => {
     if (durationMs != null) setLocalDuration(durationMs);

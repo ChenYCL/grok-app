@@ -82,7 +82,8 @@ export async function sessionSend(
 
 /**
  * Inject guidance into the active turn without cancelling the running prompt.
- * Grok Build `_x.ai/interject`. Pass `sessionId` so multi-session routing stays correct.
+ * Grok Build soft-steer (`x.ai/interject`, with Host fallback to `_x.ai/interject`).
+ * Pass `sessionId` so multi-session routing stays correct.
  */
 export async function sessionInterject(
   text: string,

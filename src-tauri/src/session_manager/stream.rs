@@ -866,7 +866,17 @@ impl SessionManager {
     pub(super) fn pick_interjection_target(
         s: &LiveSession,
     ) -> Result<(String, String, String, Option<String>, Option<Arc<AcpClient>>), String> {
-        if !(s.prompt_in_flight || s.fsm.state() == SessionState::Streaming) {
+        // Align with mid-turn busy, not only FSM Streaming: early prompt_complete
+        // can leave prompt_in_flight / tools / stream id while FE still guides.
+        // Connecting-only is excluded (no turn to merge into yet).
+        let mid_turn = s.prompt_in_flight
+            || matches!(
+                s.fsm.state(),
+                SessionState::Streaming | SessionState::AwaitingPermission
+            )
+            || s.streaming_message_id.is_some()
+            || !s.open_tool_ids.is_empty();
+        if !mid_turn {
             return Err("interjection requires a streaming turn".into());
         }
         let turn_id = s
@@ -893,11 +903,17 @@ impl SessionManager {
                 || matches!(
                     s.fsm.state(),
                     SessionState::Streaming | SessionState::AwaitingPermission
-                ))
+                )
+                || s.streaming_message_id.is_some()
+                || !s.open_tool_ids.is_empty())
     }
 
     /// Persist an interjection at the current stream boundary while holding the
     /// session lock. Emitting before unlock guarantees UI order vs stream chunks.
+    ///
+    /// **ACP inject already landed** when this is called after `interject_for`.
+    /// Never hard-fail the user solely because the turn boundary moved mid-RPC:
+    /// journal + emit still run; stream split only when the turn is still active.
     pub(super) fn commit_interjection_boundary<R: tauri::Runtime>(
         s: &mut LiveSession,
         app: &AppHandle<R>,
@@ -905,11 +921,22 @@ impl SessionManager {
         expected_app_session_id: &str,
         expected_turn_id: &str,
     ) -> Result<(), String> {
-        if !Self::is_interjection_turn_active(s, expected_app_session_id, expected_turn_id) {
-            return Err("interjection turn is no longer active".into());
+        if s.app_session_id != expected_app_session_id {
+            return Err(format!(
+                "interjection: session mismatch (have {}, want {expected_app_session_id})",
+                s.app_session_id
+            ));
         }
-        Self::maybe_flush_stream_journal(s, true, false);
-        // ACP interject already landed — journal is best-effort; always split stream id.
+        let turn_active =
+            Self::is_interjection_turn_active(s, expected_app_session_id, expected_turn_id);
+        if !turn_active {
+            tracing::warn!(
+                "interjection: turn no longer active (app={expected_app_session_id} turn={expected_turn_id}); journal best-effort after ACP ok"
+            );
+        } else {
+            Self::maybe_flush_stream_journal(s, true, false);
+        }
+        // ACP interject already landed — journal is best-effort.
         if let Err(e) = store::append_message(&s.app_session_id, message.clone()) {
             tracing::error!("interjection journal append failed: {e}");
         }
@@ -917,12 +944,18 @@ impl SessionManager {
         if let Err(e) = store::update_session_meta(&s.meta) {
             tracing::warn!("interjection meta update failed: {e}");
         }
-        Self::begin_post_interjection_stream(s);
+        if turn_active {
+            Self::begin_post_interjection_stream(s);
+        }
+        // Include the post-steer stream id so the FE can seed a live thinking
+        // row immediately (same id Host will use for subsequent chunks).
+        let post_stream_message_id = s.streaming_message_id.clone();
         let _ = app.emit(
             "session://interjection",
             serde_json::json!({
                 "sessionId": s.app_session_id,
                 "message": message,
+                "postStreamMessageId": post_stream_message_id,
             }),
         );
         Ok(())

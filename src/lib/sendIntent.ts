@@ -128,16 +128,9 @@ export function resolveSendIntent(opts: ResolveSendIntentOpts): SendIntent {
     };
   }
 
-  if (opts.viewedState === "awaiting_permission") {
-    return {
-      kind: "blocked_permission",
-      enqueue: false,
-      bannerKey: "composer.intent.blockedPermission",
-      suggestOpenNewChat: false,
-    };
-  }
-
   // Queue-row Guide / mid-turn interject — never enqueues.
+  // Runs before permission block: Host auto-cancels ask_user on interject, so
+  // steer remains available while a questionnaire is open.
   if (action === "steer") {
     if (canClassifySteer(opts)) {
       return {
@@ -149,6 +142,15 @@ export function resolveSendIntent(opts: ResolveSendIntentOpts): SendIntent {
     }
     // Guide unavailable: fall through to Send classification so the surface
     // still explains enqueue vs send_now honestly.
+  }
+
+  if (opts.viewedState === "awaiting_permission") {
+    return {
+      kind: "blocked_permission",
+      enqueue: false,
+      bannerKey: "composer.intent.blockedPermission",
+      suggestOpenNewChat: false,
+    };
   }
 
   // Same-session busy → enqueue follow-up (App `send` path).
@@ -188,14 +190,21 @@ export function resolveSendIntent(opts: ResolveSendIntentOpts): SendIntent {
 
 /**
  * Whether the Guide / steer path is available (same product gate as App
- * `canGuideQueuedMessage`: viewed chat streaming with a real session id).
- * Live host may lag after demote — viewed FSM streaming is enough.
+ * `canGuideQueuedMessage`: viewed chat mid-turn with a real session id).
+ * Live host may lag after demote — viewed FSM live-streaming is enough.
+ * Includes `awaiting_permission` (Host auto-cancels questionnaire on interject).
  */
 function canClassifySteer(opts: ResolveSendIntentOpts): boolean {
   if (!opts.viewedSessionId) return false;
-  if (opts.viewedState !== "streaming") return false;
+  // Match isSessionLiveStreaming: streaming | awaiting_permission.
+  if (
+    opts.viewedState !== "streaming" &&
+    opts.viewedState !== "awaiting_permission"
+  ) {
+    return false;
+  }
   // Process-global connect does not block guide in App (only !connecting is
-  // checked there for UI busy); keep steer honest while this chat streams.
+  // checked there for UI busy); keep steer honest while this chat is live.
   return true;
 }
 

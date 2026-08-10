@@ -108,14 +108,39 @@ export function endOfTurnMarkerContent(reason: EndOfTurnReason): string {
   return `turn_end|${reason}`;
 }
 
+/**
+ * First pipe segment after a known marker prefix.
+ * Host journals `turn_cancelled|user_stop` and sometimes
+ * `turn_cancelled|user_stop|partial:…` — only the reason token matters.
+ */
+function reasonTokenAfterPrefix(
+  content: string,
+  prefix: string,
+): string | null {
+  if (!content.startsWith(prefix)) return null;
+  const rest = content.slice(prefix.length);
+  if (!rest) return "";
+  const token = rest.split("|")[0]?.trim() ?? "";
+  return token;
+}
+
 export function parseEndOfTurnContent(
   content: string | null | undefined,
 ): EndOfTurnReason | null {
   if (!content) return null;
-  if (content.startsWith("turn_end|")) {
-    return mapEndOfTurnReason(content.slice("turn_end|".length)).reason;
+  // Live FE + journal: turn_end|<reason>
+  const fromEnd = reasonTokenAfterPrefix(content, "turn_end|");
+  if (fromEnd !== null) {
+    return mapEndOfTurnReason(fromEnd || "unknown").reason;
   }
-  if (content.startsWith("turn_cancelled")) {
+  // Host stop path: turn_cancelled|<reason>[|partial:…]
+  // Must not collapse user_stop → generic "cancelled" (history vs live mismatch).
+  const fromCancelled = reasonTokenAfterPrefix(content, "turn_cancelled|");
+  if (fromCancelled !== null) {
+    return mapEndOfTurnReason(fromCancelled || "cancelled").reason;
+  }
+  // Legacy bare marker with no reason payload.
+  if (content === "turn_cancelled" || content.startsWith("turn_cancelled")) {
     return "cancelled";
   }
   return null;

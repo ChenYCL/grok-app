@@ -11,6 +11,18 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- **End-of-turn stop chip copy + icon**: History reloads of Host `turn_cancelled|user_stop` now keep「已由用户停止 / Stopped by user」(was collapsing to「已取消 / Cancelled」). Stop mark is an 8px CSS square in the same 14px slot as quiet tool chrome so it centers with the label.
+- **中文 · 停止态文案与图标**：历史会话重载与进行中一致显示「已由用户停止」；停止方块与字号垂直居中对齐。
+- **Queue Steer / 引导 hangs on「正在引导…」with no output** (session `6d7d8e0f…`): ACP `_x.ai/interject` succeeded and journaled the interjection, then Host re-locked `inner` via `snapshot()` while still holding it (`parking_lot` non-reentrant) → permanent deadlock. FE waited out the 55s UI timeout; queue item stayed; stream froze mid-thought. Fix: return `snapshot_from_live` under the lock; prefer agent `_x.ai/interject` (fallback `x.ai/interject`); keep post-ACP journal success + error toast detail.
+- **中文 · 引导卡「正在引导…」且无输出**：ACP 已成功却持锁再 `snapshot()` 死锁；改为锁内 `snapshot_from_live`，优先 `_x.ai/interject`。
+- **Queue Steer UX after success**: Freeze gap between steer ACK and next token — seed a live post-steer assistant (`postStreamMessageId`), restart thinking timer, optimistic dequeue (re-queue on failure), shorter UI timeout.
+- **中文 · 引导成功后的卡顿感**：引导后立即续上思考计时/流式行，队列先出队失败再回填。
+- **Steer thinking duration wrong (“Thought for 1s”)**: Live Thinking remounted when empty placeholder became real tokens, resetting the wall clock. Keep a stable live key + `startedAt` from `turnStartedAt` (post-steer clock).
+- **中文 · 引导后思考时长变成 1 秒**：占位→正文 remount 重置计时；稳定 live key 并用 turn 起始时间锚定。
+- **Blank gap after steer before thought/body**: Empty `done` stream chunks cleared *all* streaming assistants, killing the post-steer thinking shell. Empty shells now stay live until real tokens; scoped done only settles matching non-empty rows.
+- **中文 · 引导后思考与正文之间的空白**：空 done 误关引导后空壳；空壳保持思考中直到有 token。
+
 ### Added
 - **WSL CLI backend (#546)**: On Windows, Settings → Runtime → CLI can spawn Grok Build via `wsl.exe` (distro + Linux path) when the binary lives only inside WSL. Project cwd and `GROK_HOME` map to `/mnt/…`; ACP TCP mode still wins when configured. Probe / Doctor use the same path.
 - **中文 · WSL CLI 后端 (#546)**：Windows 可在设置中选择通过 WSL 启动 Grok Build（发行版 + Linux 路径），无需先搭 ACP TCP。

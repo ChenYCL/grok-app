@@ -76,7 +76,7 @@ export const enComposer = {
   "composer.queueCount": "{n} queued in this chat",
   "composer.queueGuide": "Steer",
   "composer.queueGuiding": "Steering…",
-  "composer.queueGuideUnavailable": "Steer is available only while the agent is generating",
+  "composer.queueGuideUnavailable": "Steer is available only while the agent is mid-turn",
   "composer.queueGuideFailed": "Could not steer the current task. The follow-up remains queued.",
   "composer.queueHold": "Auto-send paused — retry or send again to resume",
   "composer.queueHoldRetry": "Retry",

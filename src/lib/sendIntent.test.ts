@@ -191,6 +191,20 @@ describe("resolveSendIntent", () => {
     expect(r.bannerKey).toBe("composer.intent.steer");
   });
 
+  it("action steer → kind steer when awaiting_permission (Host cancels questionnaire)", () => {
+    const r = resolveSendIntent({
+      ...base,
+      viewedState: "awaiting_permission",
+      liveSessionId: "s1",
+      liveState: "awaiting_permission",
+      hasBody: true,
+      action: "steer",
+    });
+    // Steer is a separate path from Send; permission does not block Guide.
+    expect(r.kind).toBe("steer");
+    expect(r.enqueue).toBe(false);
+  });
+
   it("action steer without streaming falls through (enqueue if connecting)", () => {
     const r = resolveSendIntent({
       ...base,

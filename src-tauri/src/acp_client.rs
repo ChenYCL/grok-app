@@ -3029,7 +3029,11 @@ impl AcpClient {
     }
 
     /// Inject guidance into the active prompt without cancelling the turn.
-    /// Grok Build extension: `_x.ai/interject`.
+    ///
+    /// Grok Build soft-steer (not cancel-and-send). Wire method names:
+    /// - CLI agent / TUI: `x.ai/interject` (canonical on grok 1.0.x)
+    /// - Older / reverse-RPC style: `_x.ai/interject`
+    ///
     /// Interject into the most recently bound agent session.
     pub async fn interject(&self, text: &str) -> Result<(), String> {
         let sid = self
@@ -3041,18 +3045,32 @@ impl AcpClient {
     }
 
     /// Interject into an explicit agent session (shared-process safe).
+    ///
+    /// Agent stdio registers **`_x.ai/interject`** (confirmed live: bare
+    /// `x.ai/interject` returns -32601). Still fall back to `x.ai/interject`
+    /// for hosts that only expose the unprefixed name.
     pub async fn interject_for(&self, session_id: &str, text: &str) -> Result<(), String> {
         let text = text.trim();
         if text.is_empty() {
             return Err("empty interjection".into());
         }
-        self.request(
-            "_x.ai/interject",
-            wire_session_interject_params(session_id, text),
-        )
-        .await
-        .map(|_| ())
-        .map_err(|e| format!("_x.ai/interject: {e}"))
+        let params = wire_session_interject_params(session_id, text);
+        match self.request("_x.ai/interject", params.clone()).await {
+            Ok(_) => {
+                info!("acp _x.ai/interject ok session={session_id}");
+                Ok(())
+            }
+            Err(e) if rpc_looks_like_method_not_found(&e) => {
+                warn!("acp _x.ai/interject not found ({e}); trying x.ai/interject");
+                self.request("x.ai/interject", params)
+                    .await
+                    .map(|_| {
+                        info!("acp x.ai/interject ok session={session_id}");
+                    })
+                    .map_err(|e2| format!("interject: {e2}"))
+            }
+            Err(e) => Err(format!("interject: {e}")),
+        }
     }
 
     /// Cancel in-flight prompt on the most recently bound session (no id).
@@ -3301,12 +3319,26 @@ pub fn wire_session_prompt_params(session_id: &str, text: &str) -> Value {
     })
 }
 
-/// Host → agent `_x.ai/interject` params.
+/// Host → agent `x.ai/interject` / `_x.ai/interject` params.
+///
+/// CLI TUI and agent use `{ sessionId, text }` (not `session/prompt` content blocks).
 pub fn wire_session_interject_params(session_id: &str, text: &str) -> Value {
     json!({
         "sessionId": session_id,
         "text": text,
     })
+}
+
+/// Whether an ACP RPC error indicates the method name is unknown on this agent.
+///
+/// Used to fall back from `x.ai/interject` → `_x.ai/interject` (and similar dual tries).
+pub fn rpc_looks_like_method_not_found(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    lower.contains("method not found")
+        || lower.contains("-32601")
+        || lower.contains("unknown method")
+        || lower.contains("unknown ext_method")
+        || lower.contains("method not supported")
 }
 
 /// Host → agent `session/cancel` notification params.

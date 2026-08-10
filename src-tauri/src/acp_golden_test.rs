@@ -82,6 +82,24 @@ fn session_prompt_and_cancel_wire_shapes() {
     );
 }
 
+#[test]
+fn rpc_method_not_found_detection_for_interject_fallback() {
+    use crate::acp_client::rpc_looks_like_method_not_found;
+    assert!(rpc_looks_like_method_not_found(
+        "Method not found: x.ai/interject"
+    ));
+    assert!(rpc_looks_like_method_not_found(
+        "JSON-RPC error -32601: Method not found"
+    ));
+    assert!(rpc_looks_like_method_not_found(
+        "Unknown ext_method: Method not found: _x.ai/interject"
+    ));
+    assert!(!rpc_looks_like_method_not_found(
+        "interjection requires a streaming turn"
+    ));
+    assert!(!rpc_looks_like_method_not_found("rpc timeout after 45s"));
+}
+
 // ── Stream chunks (real ACP session/update decoder) ─────────────────────────
 
 #[test]

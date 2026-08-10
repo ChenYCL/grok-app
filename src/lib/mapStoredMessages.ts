@@ -68,7 +68,9 @@ export function mapStoredMessageToChat(
         ? "tool_step"
         : m.role === "tool" && content.startsWith("turn_cancelled")
           ? "turn_cancelled"
-          : undefined);
+          : m.role === "tool" && content.startsWith("turn_end|")
+            ? "turn_end"
+            : undefined);
   const compactMeta =
     marker === "context_compact"
       ? parseCompactContent(content) || undefined

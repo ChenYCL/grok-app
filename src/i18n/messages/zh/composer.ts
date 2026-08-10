@@ -76,7 +76,7 @@ export const zhComposer = {
   "composer.queueCount": "本会话队列 {n} 条",
   "composer.queueGuide": "引导",
   "composer.queueGuiding": "正在引导…",
-  "composer.queueGuideUnavailable": "仅在 Agent 正在生成时可引导",
+  "composer.queueGuideUnavailable": "仅在 Agent 进行中的回合可引导",
   "composer.queueGuideFailed": "引导当前任务失败，消息仍保留在队列中。",
   "composer.queueHold": "自动发送已暂停 — 点重试或再发送以继续",
   "composer.queueHoldRetry": "重试",

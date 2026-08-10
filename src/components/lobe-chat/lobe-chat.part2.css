@@ -732,6 +732,82 @@
   color: var(--chat-text-3);
 }
 
+/* End-of-turn chip — match .lobe-chat-live-tool quiet chrome metrics */
+.lobe-end-turn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 2px 0 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--chat-text-3, #6e6e73);
+  font-size: var(--chat-fs-sm);
+  line-height: 1.35;
+  min-height: 20px;
+}
+.lobe-end-turn__mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  line-height: 0;
+  color: currentColor;
+}
+/* Collapse wrap() size so SVG fills the 14×14 slot (same as live-tool mark). */
+.lobe-end-turn__mark .g-icon {
+  width: 14px !important;
+  height: 14px !important;
+  line-height: 0 !important;
+}
+.lobe-end-turn__mark .g-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+/*
+ * Solid stop square (user stop / cancelled).
+ * CSS glyph avoids Tabler viewBox padding that mis-centers at sm size.
+ * Cap-height-ish vs 12.5px text: 8px in a 14px slot → true vertical center.
+ */
+.lobe-end-turn__stop {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 1.5px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.lobe-end-turn__title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: currentColor;
+  font-weight: 400;
+  font-size: inherit;
+  line-height: inherit;
+}
+.lobe-end-turn--warning {
+  color: color-mix(
+    in srgb,
+    var(--chat-warning, #c90) 75%,
+    var(--chat-text-3, #6e6e73)
+  );
+}
+.lobe-end-turn--error {
+  color: var(--chat-danger, #e55);
+}
+.lobe-end-turn--neutral {
+  color: var(--chat-text-3, #6e6e73);
+}
+
 /* Legacy class kept for any residual markers */
 .lobe-chat-tool {
   display: flex;

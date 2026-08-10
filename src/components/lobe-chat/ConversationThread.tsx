@@ -528,8 +528,9 @@ export interface ConversationThreadProps {
     remove: string;
   };
   /**
-   * Epoch ms when current agent turn started.
-   * Retained for callers; not rendered in the transcript.
+   * Epoch ms when current agent turn / post-steer segment started.
+   * Drives live Thinking chrome so remounts after mid-turn steer do not
+   * collapse a long wait into “Thought for 1s”.
    */
   turnStartedAt?: number | null;
   /** In-chat find (Cmd/Ctrl+F) — highlight + scroll. */
@@ -676,6 +677,11 @@ type TranscriptMessageRowProps = {
   onOpenError?: ConversationThreadProps["onOpenError"];
   onOpenExternalLink?: ConversationThreadProps["onOpenExternalLink"];
   onAddAttachmentToComposer?: ConversationThreadProps["onAddAttachmentToComposer"];
+  /**
+   * Epoch ms for live thinking on the active streaming assistant
+   * (turn / post-steer clock). Null for finished rows.
+   */
+  thinkingStartedAt?: number | null;
 };
 
 function transcriptRowPropsEqual(
@@ -719,6 +725,7 @@ function transcriptRowPropsEqual(
   if (a.structuredOutputUsage !== b.structuredOutputUsage) return false;
   if (a.structuredOutputLabels !== b.structuredOutputLabels) return false;
   if (a.attachLabels !== b.attachLabels) return false;
+  if (a.thinkingStartedAt !== b.thinkingStartedAt) return false;
   return true;
 }
 
@@ -756,6 +763,7 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
   findHitMessageIds,
   findActive,
   focusMessageId,
+  thinkingStartedAt = null,
   structuredUsageMessageId,
   structuredOutputActive,
   structuredOutputSchema,
@@ -1239,7 +1247,16 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
           data-find-assistant={isFindCurrent ? "current" : undefined}
         >
           {showThinkingPlaceholder ? (
-            <Thinking locale={locale} thinking />
+            <div
+              key={`${m.id}-thinking-live`}
+              className="lobe-timeline-rail"
+            >
+              <Thinking
+                locale={locale}
+                thinking
+                startedAt={thinkingStartedAt}
+              />
+            </div>
           ) : null}
           {m.leadFragments?.length ? (
             <LeadFragmentsStrip
@@ -1252,6 +1269,16 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
             // Running occurrence base across content segments so
             // find marks stay aligned with message-level match index.
             let contentOccBase = 0;
+            // First bare thought uses a stable live key for the whole episode
+            // (placeholder → tokens → done) so the wall clock does not reset.
+            const primaryThoughtSi = (() => {
+              for (const u of timelineUnits) {
+                if (u.kind === "thought" || u.kind === "thought-group") {
+                  return u.si;
+                }
+              }
+              return null;
+            })();
             return timelineUnits.map((unit) => {
               if (unit.kind === "phase") {
                 // Always paint Grok Worked-for rail (tools + thought steps).
@@ -1307,15 +1334,25 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
                 ) {
                   return null;
                 }
+                // Stable live key for the primary thought: empty placeholder →
+                // tokens → done must not remount (that reset the clock to “1s”).
+                const isPrimary =
+                  primaryThoughtSi != null && unit.si === primaryThoughtSi;
+                const thinkKey = isPrimary
+                  ? `${m.id}-thinking-live`
+                  : `${m.id}-th-${unit.si}`;
                 return (
                   <div
-                    key={`${m.id}-th-${unit.si}`}
+                    key={thinkKey}
                     className="lobe-timeline-rail"
                   >
                     <Thinking
                       locale={locale}
                       thinking={streaming}
                       content={joined}
+                      startedAt={
+                        isPrimary || streaming ? thinkingStartedAt : null
+                      }
                       onOpenExternalLink={onOpenExternalLink}
                     />
                   </div>
@@ -1542,6 +1579,7 @@ export function ConversationThread({
   structuredOutputSchema = null,
   structuredOutputUsage = null,
   structuredOutputLabels,
+  turnStartedAt = null,
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   void _onOpenSessionChanges;
@@ -2347,6 +2385,11 @@ export function ConversationThread({
               activeAssistantId={activeAssistantId}
               liveTool={liveTool}
               wovenMessages={wovenMessages}
+              thinkingStartedAt={
+                m.streaming && m.id === activeAssistantId
+                  ? turnStartedAt
+                  : null
+              }
               findQuery={findQuery}
               findHitMessageIds={findHitMessageIds}
               findActive={findActive}
@@ -2398,7 +2441,11 @@ export function ConversationThread({
 
           {showQuietThinking ? (
             <div data-testid="quiet-thinking">
-              <Thinking locale={locale} thinking />
+              <Thinking
+                locale={locale}
+                thinking
+                startedAt={turnStartedAt}
+              />
             </div>
           ) : null}
 

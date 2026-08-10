@@ -108,7 +108,7 @@ export const zhTWComposer = {
   "composer.queueDroppedOldest": "佇列已滿（{max}）— 已丟棄最舊 {n} 則",
   "composer.queueGuide": "引導",
   "composer.queueGuiding": "正在引導…",
-  "composer.queueGuideUnavailable": "僅在 Agent 正在產生內容時可引導",
+  "composer.queueGuideUnavailable": "僅在 Agent 進行中的回合可引導",
   "composer.queueGuideFailed": "引導目前任務失敗，訊息仍保留在佇列中。",
   "composer.queueCount": "此對話佇列 {n} 則",
   "composer.queueHold": "自動傳送已暫停 — 點重試或再傳送以繼續",

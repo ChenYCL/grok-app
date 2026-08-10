@@ -9851,14 +9851,16 @@ export function AppWorkbench() {
     },
   });
 
+  // Soft-steer while a live turn is producing (streaming / permission). Align
+  // with Host pick_interjection_target mid-turn, not streaming-only FSM.
   const canGuideQueuedMessage =
-    session.state === "streaming" &&
-    !connecting &&
     !!session.sessionId &&
-    // Host may report streaming on this chat even when demoted; prefer viewed id.
+    !connecting &&
+    isSessionLiveStreaming(session.state) &&
     (liveHost.sessionId === session.sessionId
-      ? liveHost.state === "streaming"
-      : session.state === "streaming");
+      ? isSessionLiveStreaming(liveHost.state) ||
+        isSessionLiveStreaming(session.state)
+      : true);
 
   const closeQueueEdit = useCallback(() => {
     setQueueEditItemId(null);
@@ -9946,13 +9948,21 @@ export function AppWorkbench() {
       if (schemaForGuide && isActiveJsonSchema(schemaForGuide)) {
         agentText = wrapAgentTextWithJsonSchema(agentText, schemaForGuide);
       }
-      if (!agentText.trim()) return;
+      if (!agentText.trim()) {
+        showToast(tr("composer.queueEditEmpty"), 2800);
+        return;
+      }
 
       setGuidingQueueItemId(item.id);
+      // Optimistic dequeue: don't leave the strip on「正在引导…」for the whole RPC.
+      // Host also emits session://interjection → live thinking shell + timer reset.
+      sendQueue.removeItem(item.id);
+      // Fresh wall-clock for post-steer thinking chrome (event may also set this).
+      setTurnStartedAt(Date.now());
       try {
         // Host interject has its own RPC timeout; also bound the UI so a wedged
         // agent cannot leave the button stuck on "正在引导…" forever.
-        const GUIDE_UI_TIMEOUT_MS = 55_000;
+        const GUIDE_UI_TIMEOUT_MS = 20_000;
         await Promise.race([
           api.sessionInterject(
             agentText,
@@ -9971,9 +9981,31 @@ export function AppWorkbench() {
             );
           }),
         ]);
-        sendQueue.removeItem(item.id);
-      } catch {
-        showToast(tr("composer.queueGuideFailed"), 3600);
+      } catch (err) {
+        // Re-queue so the follow-up is not lost when steer fails.
+        sendQueue.enqueue({
+          storedDisplay: item.storedDisplay,
+          attachments: item.attachments,
+          goalMode: item.goalMode,
+        });
+        const raw =
+          err instanceof Error
+            ? err.message
+            : typeof err === "string"
+              ? err
+              : err != null
+                ? String(err)
+                : "";
+        const detail = raw.replace(/\s+/g, " ").trim().slice(0, 160);
+        if (detail) {
+          console.warn("[queue-guide]", detail);
+        }
+        showToast(
+          detail
+            ? `${tr("composer.queueGuideFailed")} (${detail})`
+            : tr("composer.queueGuideFailed"),
+          5200,
+        );
       } finally {
         setGuidingQueueItemId((current) =>
           current === item.id ? null : current,
@@ -9985,6 +10017,7 @@ export function AppWorkbench() {
       guidingQueueItemId,
       session.sessionId,
       sendQueue.removeItem,
+      sendQueue.enqueue,
       showToast,
       tr,
     ],

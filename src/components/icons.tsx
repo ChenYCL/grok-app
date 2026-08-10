@@ -297,6 +297,7 @@ export const IconSettings = wrap(TbSettings);
 export const IconDoctor = wrap(TbFirstAidKit);
 export const IconThemeSun = wrap(TbSun);
 export const IconThemeMoon = wrap(TbMoon);
+/** Composer stop action — outline player stop. */
 export const IconStop = wrap(TbPlayerStop);
 export const IconHistory = wrap(TbRefresh);
 /** Session rewind / undo conversation tail. */

@@ -225,6 +225,23 @@ describe("session projection", () => {
       marker: "interjection",
     });
 
+    // Immediately seeds a live post-steer shell so thinking chrome keeps ticking.
+    expect(messages.map((message) => message.id)).toEqual([
+      "u1",
+      "a1",
+      "i1",
+      "a-pending-steer-i1",
+    ]);
+    expect(messages[1]).toMatchObject({
+      id: "a1",
+      content: "Working",
+      streaming: false,
+    });
+    expect(messages[3]).toMatchObject({
+      id: "a-pending-steer-i1",
+      streaming: true,
+    });
+
     messages = applyStreamChunk(messages, {
       sessionId: "s",
       messageId: "a2",
@@ -239,15 +256,81 @@ describe("session projection", () => {
       "i1",
       "a2",
     ]);
-    expect(messages[1]).toMatchObject({
-      id: "a1",
-      content: "Working",
-      streaming: false,
-    });
     expect(messages[3]).toMatchObject({
       id: "a2",
       content: " on it",
       streaming: true,
+    });
+  });
+
+  it("uses host postStreamMessageId for the live post-steer shell", () => {
+    const messages = applyInterjection(
+      [
+        { id: "u1", role: "user", content: "build it" },
+        { id: "a1", role: "assistant", content: "Working", streaming: true },
+      ],
+      {
+        id: "i1",
+        role: "user",
+        content: "steer",
+        marker: "interjection",
+      },
+      "host-post-stream-id",
+    );
+    expect(messages.at(-1)).toMatchObject({
+      id: "host-post-stream-id",
+      role: "assistant",
+      streaming: true,
+      content: "",
+    });
+  });
+
+  it("empty done does not kill post-steer thinking shell (no blank gap)", () => {
+    let messages = applyInterjection(
+      [
+        { id: "u1", role: "user", content: "build it" },
+        { id: "a1", role: "assistant", content: "Working", streaming: true },
+      ],
+      {
+        id: "i1",
+        role: "user",
+        content: "steer me",
+        marker: "interjection",
+      },
+      "post-1",
+    );
+    // Pre-steer segment done (or global empty done) must not blank the shell.
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "",
+      done: true,
+      kind: "assistant",
+    });
+    expect(messages.find((m) => m.id === "post-1")).toMatchObject({
+      streaming: true,
+      content: "",
+    });
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      text: "",
+      done: true,
+      kind: "assistant",
+    });
+    expect(messages.find((m) => m.id === "post-1")).toMatchObject({
+      streaming: true,
+    });
+    // Real tokens still bind and can finish.
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "post-1",
+      text: "ok",
+      done: true,
+      kind: "assistant",
+    });
+    expect(messages.find((m) => m.id === "post-1")).toMatchObject({
+      content: "ok",
+      streaming: false,
     });
   });
 
@@ -270,7 +353,13 @@ describe("session projection", () => {
       },
     );
 
-    expect(messages.map((message) => message.id)).toEqual(["u1", "i1"]);
+    // Empty pre-steer shell dropped; new live post-steer shell appended.
+    expect(messages.map((message) => message.id)).toEqual([
+      "u1",
+      "i1",
+      "a-pending-steer-i1",
+    ]);
+    expect(messages[2]).toMatchObject({ streaming: true });
   });
 
     it("localRewindPoints lists one entry per user prompt", () => {

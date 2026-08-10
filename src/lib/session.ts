@@ -2521,10 +2521,18 @@ export function dedupeCurrentTurnAssistants(
 /**
  * Insert a mid-turn user interjection and freeze the assistant segment above it.
  * Post-interjection stream chunks carry a fresh host message id and append a new row.
+ *
+ * Always leaves a **live streaming** assistant after the interjection so the
+ * thinking timer / “in progress” chrome keep updating while the agent pivots
+ * (otherwise the UI freezes between steer ACK and the next token).
+ *
+ * @param postStreamMessageId Host’s new stream segment id when known (from
+ *   `session://interjection`); otherwise a client `a-pending-steer-…` shell.
  */
 export function applyInterjection(
   messages: ChatMessage[],
   interjection: ChatMessage,
+  postStreamMessageId?: string | null,
 ): ChatMessage[] {
   const existingIndex = messages.findIndex(
     (message) => message.id === interjection.id,
@@ -2555,23 +2563,90 @@ export function applyInterjection(
         : message,
     );
 
-  if (existingIndex < 0) return [...frozenBefore, interjection];
+  const base: ChatMessage[] =
+    existingIndex < 0
+      ? [...frozenBefore, interjection]
+      : [
+          ...frozenBefore,
+          interjection,
+          ...messages.slice(existingIndex + 1),
+        ];
+
+  // Drop any leftover streaming assistants *after* the interjection that are
+  // still the pre-split segment (should already be frozen above). Then seed a
+  // fresh live row for post-steer output.
+  const afterIdx = base.findIndex((m) => m.id === interjection.id);
+  const head = afterIdx >= 0 ? base.slice(0, afterIdx + 1) : base;
+  const tail = afterIdx >= 0 ? base.slice(afterIdx + 1) : [];
+  // Keep non-streaming / tool rows after interjection; freeze any still-streaming.
+  const frozenTail = tail.map((message) =>
+    message.role === "assistant" && message.streaming
+      ? { ...message, streaming: false }
+      : message,
+  );
+
+  const postId =
+    (typeof postStreamMessageId === "string" &&
+      postStreamMessageId.trim()) ||
+    `a-pending-steer-${interjection.id}`;
+  // If host id already present as a streaming row, keep it; else append shell.
+  const hasPostLive = frozenTail.some(
+    (m) =>
+      m.role === "assistant" &&
+      m.streaming &&
+      (m.id === postId || m.id.startsWith("a-pending-steer-")),
+  );
+  if (hasPostLive) {
+    return [...head, ...frozenTail];
+  }
+  // Prefer replacing an empty frozen trailing assistant with a live shell at postId.
   return [
-    ...frozenBefore,
-    interjection,
-    ...messages.slice(existingIndex + 1),
+    ...head,
+    ...frozenTail,
+    {
+      id: postId,
+      role: "assistant",
+      content: "",
+      streaming: true,
+    },
   ];
+}
+
+/** Visible body on an assistant row (text / thought / segments / media). */
+function assistantHasVisibleBody(m: ChatMessage): boolean {
+  if (m.content?.trim()) return true;
+  if (m.thought?.trim()) return true;
+  if (m.attachments?.length) return true;
+  if (
+    m.segments?.some((s) => {
+      if (s.kind === "content" || s.kind === "thought") {
+        return !!(s as { text?: string }).text?.trim();
+      }
+      return s.kind === "tool";
+    })
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function applyStreamChunk(
   messages: ChatMessage[],
   chunk: StreamPayload,
 ): ChatMessage[] {
-  // done-only with empty text: clear all streaming flags so the next send is clean
+  // done-only with empty text: settle finished segments — but never kill an
+  // *empty* post-steer shell. Mid-turn interject freezes the prior stream and
+  // seeds a live row; a blanket done would clear that row → blank gap until
+  // the next thought/body tokens paint (user saw empty then “Thought for Ns”).
   if (chunk.done && !chunk.text) {
-    return messages.map((m) =>
-      m.role === "assistant" && m.streaming ? { ...m, streaming: false } : m,
-    );
+    return messages.map((m) => {
+      if (m.role !== "assistant" || !m.streaming) return m;
+      // Scoped done: only the named segment (keep other live shells).
+      if (chunk.messageId && m.id !== chunk.messageId) return m;
+      // Empty live shell stays streaming so thinking chrome keeps ticking.
+      if (!assistantHasVisibleBody(m)) return m;
+      return { ...m, streaming: false };
+    });
   }
 
   if (chunk.kind === "thought") {

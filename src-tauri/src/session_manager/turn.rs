@@ -562,7 +562,15 @@ impl SessionManager {
                 }
             }
             match agent_sid {
-                Some(sid) => client.interject_for(&sid, &text).await?,
+                Some(sid) => {
+                    tracing::info!(
+                        "interject: app_session={app_sid} agent_session={sid} turn={turn_id}"
+                    );
+                    client.interject_for(&sid, &text).await.map_err(|e| {
+                        tracing::warn!("interject: ACP failed app={app_sid} agent={sid}: {e}");
+                        e
+                    })?;
+                }
                 None => {
                     return Err("interjection: chat has no agent session id (reconnect)".into());
                 }
@@ -582,12 +590,18 @@ impl SessionManager {
         };
 
         // Session may move between live/background while the ACP RPC is in flight.
+        // ACP already accepted the inject — always try to surface UI + journal.
+        //
+        // IMPORTANT: while holding `inner` / `background`, return
+        // `snapshot_from_live` — never `self.snapshot()`, which re-locks `inner`
+        // (parking_lot is non-reentrant → permanent deadlock → FE stuck on
+        // 「正在引导…」 until the 55s UI timeout).
         {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 if s.app_session_id == app_sid {
                     Self::commit_interjection_boundary(s, &app, &message, &app_sid, &turn_id)?;
-                    return Ok(self.snapshot());
+                    return Ok(Self::snapshot_from_live(s));
                 }
             }
         }
@@ -595,11 +609,26 @@ impl SessionManager {
             let mut background = self.background.lock();
             if let Some(s) = background.get_mut(&app_sid) {
                 Self::commit_interjection_boundary(s, &app, &message, &app_sid, &turn_id)?;
-                return Ok(self.snapshot());
+                return Ok(Self::snapshot_from_live(s));
             }
         }
 
-        Err("interjection turn is no longer active".into())
+        // Live/background slot gone after ACP ok: still journal so history is honest
+        // and FE can drop the queue item (agent already received the steer).
+        tracing::warn!(
+            "interject: chat {app_sid} left live/background after ACP ok; journal-only"
+        );
+        if let Err(e) = store::append_message(&app_sid, message.clone()) {
+            tracing::error!("interjection journal-only append failed: {e}");
+        }
+        let _ = app.emit(
+            "session://interjection",
+            serde_json::json!({
+                "sessionId": app_sid,
+                "message": message,
+            }),
+        );
+        Ok(self.snapshot())
     }
 
     pub async fn stop(

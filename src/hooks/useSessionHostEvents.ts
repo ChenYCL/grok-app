@@ -803,18 +803,29 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
           }),
         );
         await track(
-          api.listen<{ sessionId: string; message: ChatMessage }>(
-            "session://interjection",
-            (payload) => {
-              if (cancelled || !payload?.sessionId || !payload.message?.id) {
-                return;
-              }
-              // Only apply to the journal for that session; multi-session safe.
-              c.patchSessionMessages(payload.sessionId, (prev) =>
-                applyInterjection(prev, payload.message),
-              );
-            },
-          ),
+          api.listen<{
+            sessionId: string;
+            message: ChatMessage;
+            postStreamMessageId?: string | null;
+          }>("session://interjection", (payload) => {
+            if (cancelled || !payload?.sessionId || !payload.message?.id) {
+              return;
+            }
+            // Only apply to the journal for that session; multi-session safe.
+            // Seed post-steer streaming assistant + restart live thinking timer
+            // so the UI does not freeze between ACK and the next token.
+            c.patchSessionMessages(payload.sessionId, (prev) =>
+              applyInterjection(
+                prev,
+                payload.message,
+                payload.postStreamMessageId,
+              ),
+            );
+            const viewed = c.viewingSessionIdRef?.current ?? null;
+            if (!viewed || viewed === payload.sessionId) {
+              c.setTurnStartedAt(Date.now());
+            }
+          }),
         );
         await track(
           api.listen<GeneratedImagePayload>(
