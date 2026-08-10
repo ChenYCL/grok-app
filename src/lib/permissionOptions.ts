@@ -66,10 +66,49 @@ export interface PermLabelOverrides {
   deny?: string;
 }
 
+/**
+ * When ACP options are missing, shell / web_fetch / MCP never accept the
+ * generic `always-allow` wire id — only tool-scoped ids. Mirrors Host
+ * `fallback_always_allow_for_tool` (#523 / #542 / #544).
+ */
+export function fallbackSessionOptionId(toolName?: string | null): string {
+  const t = (toolName || "").trim().toLowerCase();
+  if (
+    t.includes("terminal") ||
+    t.includes("bash") ||
+    t.includes("shell") ||
+    t === "execute" ||
+    t === "run_terminal_command" ||
+    t === "run-terminal-command"
+  ) {
+    return "allow-always-command";
+  }
+  if (
+    t.includes("web_fetch") ||
+    t.includes("webfetch") ||
+    t.includes("web-fetch") ||
+    t === "fetch"
+  ) {
+    return "allow-always-domain";
+  }
+  if (
+    t.includes("mcp") ||
+    t === "use_tool" ||
+    t === "use-tool" ||
+    t.startsWith("mcp_") ||
+    t.startsWith("mcp-")
+  ) {
+    return "allow-always-mcp";
+  }
+  return "always-allow";
+}
+
 /** Prefer real Agent optionIds; fall back to kind heuristics. */
 export function mapPermissionButtons(
   options: unknown,
   labels?: PermLabelOverrides,
+  /** Real tool name when options list is empty (#542 / #544). */
+  toolName?: string | null,
 ): MappedPermButton[] {
   const arr: AcpPermissionOption[] = Array.isArray(options)
     ? (options as AcpPermissionOption[])
@@ -149,6 +188,7 @@ export function mapPermissionButtons(
   }
   // Map "Allow for session" to allow_always kind when present (session scope in our Host).
   // CLI generic session id is `always-allow` (word order reversed from allow-always-*).
+  // Empty options + shell → `allow-always-command` so CLI does not cancel the turn (#544).
   if (always && oid(always)) {
     out.push({
       decision: "allow_session",
@@ -158,7 +198,7 @@ export function mapPermissionButtons(
   } else {
     out.push({
       decision: "allow_session",
-      optionId: "always-allow",
+      optionId: fallbackSessionOptionId(toolName),
       label: L.allowSession,
     });
   }

@@ -509,6 +509,8 @@ export function classifyErrorMessage(raw: string | null | undefined): ErrorDeckC
   }
 
   // ── Tool / FS permission (not account 401) ──
+  // CLI rejects Host optionId → mid-turn cancel (#523 / #542 / #544). Surface
+  // as permission recovery (open Permissions), not a silent end_turn.
   if (
     s.includes("permission_denied") ||
     s.includes("permission denied") ||
@@ -519,6 +521,9 @@ export function classifyErrorMessage(raw: string | null | undefined): ErrorDeckC
     s.includes("tool denied") ||
     s.includes("tool call denied") ||
     s.includes("rejected by user") ||
+    s.includes("unknown permission option") ||
+    s.includes("permission_rejected") ||
+    s.includes("failed to request permission") ||
     s.includes("权限被拒绝") ||
     s.includes("權限被拒絕") ||
     s.includes("无权访问") ||

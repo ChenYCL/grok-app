@@ -53,7 +53,7 @@ export const zhErrors = {
   "error.deck.projectMissing.problem": "项目文件夹不可用",
   "error.deck.projectMissing.cause": "路径丢失、已移动，或尚未选择项目。请重新定位文件夹，或添加项目。",
   "error.deck.permission.problem": "权限被拒绝",
-  "error.deck.permission.cause": "工具或文件访问被拒绝。可调整权限策略，或在下次提示时允许。",
+  "error.deck.permission.cause": "工具或文件访问被拒绝（含 CLI「unknown permission option」）。可点「允许一次」、打开权限设置，或将策略改为始终允许后再试。",
   "error.deck.mcpAuth.problem": "需要 MCP 鉴权",
   "error.deck.mcpAuth.cause": "某 MCP 服务需要 OAuth 或重新授权。请打开 MCP Doctor 完成登录。",
   "error.deck.oauthExpired.problem": "OAuth 凭证已过期",

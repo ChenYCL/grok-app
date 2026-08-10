@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fallbackSessionOptionId,
   formatPermissionSummary,
   mapPermissionButtons,
   permissionDecisionHint,
@@ -34,6 +35,21 @@ describe("mapPermissionButtons (shipped)", () => {
     expect(buttons[2]!.optionId).toBe("reject-once");
   });
 
+  it("uses tool-scoped session fallback when options empty (#542 / #544)", () => {
+    expect(
+      mapPermissionButtons([], undefined, "run_terminal_command")[1]!.optionId,
+    ).toBe("allow-always-command");
+    expect(mapPermissionButtons([], undefined, "execute")[1]!.optionId).toBe(
+      "allow-always-command",
+    );
+    expect(mapPermissionButtons([], undefined, "web_fetch")[1]!.optionId).toBe(
+      "allow-always-domain",
+    );
+    expect(mapPermissionButtons([], undefined, "use_tool")[1]!.optionId).toBe(
+      "allow-always-mcp",
+    );
+  });
+
   it("maps bash allow-always-command as session button", () => {
     const buttons = mapPermissionButtons([
       { optionId: "allow-once", kind: "allow_once" },
@@ -64,6 +80,17 @@ describe("mapPermissionButtons (shipped)", () => {
       { allowOnce: "Allow once", allowSession: "Allow for session", deny: "Deny" },
     );
     expect(buttons[0]!.label).toBe("Allow once");
+  });
+});
+
+describe("fallbackSessionOptionId", () => {
+  it("maps shell / fetch / mcp families", () => {
+    expect(fallbackSessionOptionId("run_terminal_command")).toBe(
+      "allow-always-command",
+    );
+    expect(fallbackSessionOptionId("web_fetch")).toBe("allow-always-domain");
+    expect(fallbackSessionOptionId("mcp_foo")).toBe("allow-always-mcp");
+    expect(fallbackSessionOptionId("read_file")).toBe("always-allow");
   });
 });
 

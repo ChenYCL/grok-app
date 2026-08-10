@@ -53,7 +53,7 @@ export const enErrors = {
   "error.deck.projectMissing.problem": "Project folder unavailable",
   "error.deck.projectMissing.cause": "The path is missing, moved, or no project is selected. Relocate the folder or add a project.",
   "error.deck.permission.problem": "Permission denied",
-  "error.deck.permission.cause": "A tool or file access was rejected. Adjust permission policy or allow the next prompt.",
+  "error.deck.permission.cause": "A tool or file access was rejected (including CLI “unknown permission option”). Use Allow once, open Permissions, or set Always approve for shell tools.",
   "error.deck.mcpAuth.problem": "MCP authentication required",
   "error.deck.mcpAuth.cause": "An MCP server needs OAuth or re-authorization. Open MCP doctor and complete the provider sign-in.",
   "error.deck.oauthExpired.problem": "OAuth credentials expired",

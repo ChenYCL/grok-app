@@ -53,7 +53,7 @@ export const zhTWErrors = {
   "error.deck.projectMissing.problem": "專案資料夾不可用",
   "error.deck.projectMissing.cause": "路徑遺失、已移動，或尚未選擇專案。請重新定位資料夾，或新增專案。",
   "error.deck.permission.problem": "權限被拒絕",
-  "error.deck.permission.cause": "工具或檔案存取被拒絕。可調整權限策略，或在下次提示時允許。",
+  "error.deck.permission.cause": "工具或檔案存取被拒絕（含 CLI「unknown permission option」）。可點「允許一次」、開啟權限設定，或將策略改為始終允許後再試。",
   "error.deck.mcpAuth.problem": "需要 MCP 驗證",
   "error.deck.mcpAuth.cause": "某 MCP 服務需要 OAuth 或重新授權。請開啟 MCP Doctor 完成登入。",
   "error.deck.oauthExpired.problem": "OAuth 憑證已過期",

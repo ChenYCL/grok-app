@@ -13559,11 +13559,15 @@ export function AppWorkbench() {
 
   const denyActivePermission = useCallback(
     (p: PermissionPayload) => {
-      const deny = mapPermissionButtons(p.options, {
-        allowOnce: tr("perm.allowOnce"),
-        allowSession: tr("perm.allowSession"),
-        deny: tr("perm.deny"),
-      }).find((b) => b.decision === "deny");
+      const deny = mapPermissionButtons(
+        p.options,
+        {
+          allowOnce: tr("perm.allowOnce"),
+          allowSession: tr("perm.allowSession"),
+          deny: tr("perm.deny"),
+        },
+        p.toolName,
+      ).find((b) => b.decision === "deny");
       if (!deny) return;
       resolvePermission(p, deny.decision, deny.optionId);
     },
@@ -18807,11 +18811,15 @@ export function AppWorkbench() {
                   <pre className="perm-bar__preview">{perm.preview.trim()}</pre>
                 ) : null}
                 <div className="perm-bar__actions" role="group">
-                  {mapPermissionButtons(perm.options, {
-                    allowOnce: tr("perm.allowOnce"),
-                    allowSession: tr("perm.allowSession"),
-                    deny: tr("perm.deny"),
-                  }).map((btn) => (
+                  {mapPermissionButtons(
+                    perm.options,
+                    {
+                      allowOnce: tr("perm.allowOnce"),
+                      allowSession: tr("perm.allowSession"),
+                      deny: tr("perm.deny"),
+                    },
+                    perm.toolName,
+                  ).map((btn) => (
                     <button
                       key={btn.decision + btn.optionId}
                       type="button"

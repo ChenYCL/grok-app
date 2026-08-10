@@ -214,6 +214,12 @@ describe("buildErrorDeck", () => {
     expect(classifyErrorMessage("EACCES: operation not permitted")).toBe(
       "PERMISSION_DENIED",
     );
+    // #544 diagnostic: CLI rejects wire optionId mid-turn
+    expect(
+      classifyErrorMessage(
+        "Failed to request permission from user: unknown permission option for tool `run_terminal_command`",
+      ),
+    ).toBe("PERMISSION_DENIED");
     expect(
       classifyErrorMessage("MCP oauth authorization required for server"),
     ).toBe("MCP_AUTH_FAILED");

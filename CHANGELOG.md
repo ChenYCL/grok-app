@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- **Shell / MCP permission approve cancels the turn (#542 / #544)**: When Grok Build omits or scopes ACP permission options, Host + UI no longer answer with generic `always-allow`. Session-allow is rewritten to tool-scoped wire ids (`allow-always-command` / `allow-always-domain` / `allow-always-mcp`). Failed tools that report `unknown permission option` now raise the permission error deck instead of a silent Ready stop.
+- **中文 · Shell 批准后秒停 (#542 / #544)**：空/工具作用域 option 列表时不再回传通用 `always-allow`；CLI 报 unknown permission option 时错误条可见。
+
 ## [0.2.12] - 2026-08-09
 
 > **Highlight:** Tool/activity rail polish, reliable media paths, ChatCut/MCP longevity, proxy honesty, and Linux sandbox/AppImage fixes — plus a pre-release hardening pass on quit, media allowlist, and shell tool labels.

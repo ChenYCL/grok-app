@@ -583,11 +583,15 @@ export function VoiceOverlay({
     ? tt(liveVoiceErrorMessageKey(softMicWarning) as MessageKey)
     : null;
   const permButtons = pendingPermission
-    ? mapPermissionButtons(pendingPermission.options, {
-        allowOnce: tt("perm.allowOnce"),
-        allowSession: tt("perm.allowSession"),
-        deny: tt("perm.deny"),
-      })
+    ? mapPermissionButtons(
+        pendingPermission.options,
+        {
+          allowOnce: tt("perm.allowOnce"),
+          allowSession: tt("perm.allowSession"),
+          deny: tt("perm.deny"),
+        },
+        pendingPermission.toolName,
+      )
     : [];
 
   const sessionChips = useMemo(() => {

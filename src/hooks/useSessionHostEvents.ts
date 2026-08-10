@@ -647,6 +647,22 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
               c.setTurnStartedAt((t) => t ?? Date.now());
               // Tool activity counts as progress — clear stall banner (I06).
               c.setStreamStall(null);
+              // #544: CLI rejects Host optionId → turn cancels mid-tool with no
+              // turn_error. Surface as local error deck so users see why work
+              // stopped after ~1s (not a silent Ready).
+              for (const p of list) {
+                const st = (p.status || "").toLowerCase();
+                if (st !== "failed" && st !== "error") continue;
+                const blob = `${p.detail || ""}\n${p.title || ""}`.toLowerCase();
+                if (
+                  blob.includes("unknown permission option") ||
+                  blob.includes("failed to request permission")
+                ) {
+                  const msg = (p.detail || p.title || "").trim();
+                  if (msg) c.setLocalError(msg);
+                  break;
+                }
+              }
             }
           }
         };
