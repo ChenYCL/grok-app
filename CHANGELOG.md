@@ -19,6 +19,8 @@ See `docs/llm-wiki/release.md`.
 - **中文 · 资源预览代码高亮与行号**：扩展常见语言高亮，行号 gutter 与高亮行对齐。
 
 ### Fixed
+- **Sidebar file open skipped code highlight/line numbers**: Editable kinds always forced a plain `<textarea>` (`editMode || !markdown`). Code/json/text now open in **preview** with CodePreview (highlight + gutter); toolbar Edit switches to the source editor.
+- **中文 · 侧栏打开代码无高亮/行号**：可编辑文件默认预览高亮；工具栏「编辑」再进纯文本编辑。
 - **Reveal in file manager opens default page (image/file cards)**: Shared Host `reveal_in_file_manager` — Windows no longer uses `CREATE_NO_WINDOW` explorer (which opened This PC), strips `\\?\` canonicalize prefixes, uses `/select,` + native backslashes; Linux prefers D-Bus `ShowItems` then `xdg-open` parent; macOS keeps `open -R`. Used by chat image/file cards, project reveal, export/download reveal.
 - **中文 · 在资源管理器中显示落到默认页**：图片/文件卡片右键定位真实路径（Win/Linux/mac 共用修复）。
 - **Shell / MCP permission approve cancels the turn (#542 / #544)**: When Grok Build omits or scopes ACP permission options, Host + UI no longer answer with generic `always-allow`. Session-allow is rewritten to tool-scoped wire ids (`allow-always-command` / `allow-always-domain` / `allow-always-mcp`). Failed tools that report `unknown permission option` now raise the permission error deck instead of a silent Ready stop.

@@ -43,8 +43,10 @@ describe("isFsWriteConflict / defaultResourceEditMode", () => {
     expect(isFsWriteConflict("write temp: disk full")).toBe(false);
   });
 
-  it("markdown starts in preview", () => {
+  it("all editable kinds start in preview (highlight + line numbers)", () => {
     expect(defaultResourceEditMode("markdown")).toBe(false);
-    expect(defaultResourceEditMode("code")).toBe(true);
+    expect(defaultResourceEditMode("code")).toBe(false);
+    expect(defaultResourceEditMode("json")).toBe(false);
+    expect(defaultResourceEditMode("text")).toBe(false);
   });
 });

@@ -51,9 +51,13 @@ export function isFsWriteConflict(err: unknown): boolean {
   return s.includes("CONFLICT:") || s.toLowerCase().includes("conflict:");
 }
 
-/** Markdown defaults to preview; other editable kinds open in the editor. */
-export function defaultResourceEditMode(kind: string | null | undefined): boolean {
-  const k = (kind || "").toLowerCase();
-  if (k === "markdown") return false;
-  return true;
+/**
+ * Editable kinds open in **preview** first (syntax highlight + line numbers for
+ * code; rendered markdown for .md). User toggles Edit for the plain/source editor.
+ */
+export function defaultResourceEditMode(
+  _kind: string | null | undefined,
+): boolean {
+  void _kind;
+  return false;
 }

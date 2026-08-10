@@ -529,7 +529,9 @@ export function ResourcePreviewBody({
   const src = mediaSrc || dataUrl;
 
   // Text editor shell: full-height pane + in-content toolbar (not chrome).
-  // Markdown defaults to preview; other editable kinds open the source editor.
+  // All editable kinds open in **preview** first (CodePreview highlight + line
+  // numbers for code/json/text; rendered markdown for .md). Edit toggles the
+  // plain source editor — never force textarea for non-markdown (that hid hljs).
   const canEdit = isResourceTextEditable({
     kind: preview.kind,
     text: activeTab?.baselineText ?? preview.text,
@@ -539,8 +541,21 @@ export function ResourcePreviewBody({
   if (canEdit && activeTab && activeTab.draftText != null) {
     const draftText = activeTab.draftText;
     const isMarkdown = preview.kind === "markdown";
-    const showEditor = activeTab.editMode || !isMarkdown;
+    const isHtml = preview.kind === "html";
+    const showEditor = !!activeTab.editMode;
     const dirty = isResourceDraftDirty(draftText, activeTab.baselineText);
+
+    const codePreviewBody = (() => {
+      if (preview.kind === "json") {
+        try {
+          return JSON.stringify(JSON.parse(draftText || "{}"), null, 2);
+        } catch {
+          return draftText;
+        }
+      }
+      return draftText;
+    })();
+
     return (
       <div className="rp-editor">
         <div
@@ -548,38 +563,36 @@ export function ResourcePreviewBody({
           role="toolbar"
           aria-label={tr("resources.editorToolbar")}
         >
-          {isMarkdown ? (
-            <Tip
-              label={
+          <Tip
+            label={
+              activeTab.editMode
+                ? tr("resources.previewMode")
+                : tr("resources.editMode")
+            }
+          >
+            <button
+              type="button"
+              className={
+                "rp-editor__tool-btn" +
+                (activeTab.editMode ? " is-on" : "")
+              }
+              disabled={!!activeTab.saving}
+              onClick={toggleActiveEditMode}
+              aria-pressed={!!activeTab.editMode}
+              aria-label={
                 activeTab.editMode
                   ? tr("resources.previewMode")
                   : tr("resources.editMode")
               }
             >
-              <button
-                type="button"
-                className={
-                  "rp-editor__tool-btn" +
-                  (activeTab.editMode ? " is-on" : "")
-                }
-                disabled={!!activeTab.saving}
-                onClick={toggleActiveEditMode}
-                aria-pressed={!!activeTab.editMode}
-                aria-label={
-                  activeTab.editMode
-                    ? tr("resources.previewMode")
-                    : tr("resources.editMode")
-                }
-              >
-                <IconEdit size={14} />
-                <span className="rp-editor__tool-btn-label">
-                  {activeTab.editMode
-                    ? tr("resources.previewMode")
-                    : tr("resources.editMode")}
-                </span>
-              </button>
-            </Tip>
-          ) : null}
+              <IconEdit size={14} />
+              <span className="rp-editor__tool-btn-label">
+                {activeTab.editMode
+                  ? tr("resources.previewMode")
+                  : tr("resources.editMode")}
+              </span>
+            </button>
+          </Tip>
           <div className="rp-editor__toolbar-spacer" />
           {dirty ? (
             <Tip label={tr("resources.revert")}>
@@ -621,34 +634,35 @@ export function ResourcePreviewBody({
         ) : null}
         {showEditor ? (
           isMarkdown ? (
-                        <Suspense fallback={null}>
+            <Suspense fallback={null}>
               <MarkdownTiptapEditor
-              key={activeTab.id}
-              value={draftText}
-              onChange={updateActiveDraft}
-              onSave={() => void saveActiveFile()}
-              disabled={!!activeTab.saving}
-              labels={{
-              bold: tr("resources.mdFmt.bold"),
-              italic: tr("resources.mdFmt.italic"),
-              strike: tr("resources.mdFmt.strike"),
-              code: tr("resources.mdFmt.code"),
-              h1: tr("resources.mdFmt.h1"),
-              h2: tr("resources.mdFmt.h2"),
-              h3: tr("resources.mdFmt.h3"),
-              bulletList: tr("resources.mdFmt.bulletList"),
-              orderedList: tr("resources.mdFmt.orderedList"),
-              blockquote: tr("resources.mdFmt.blockquote"),
-              link: tr("resources.mdFmt.link"),
-              hr: tr("resources.mdFmt.hr"),
-              linkPlaceholder: tr("resources.mdFmt.linkPlaceholder"),
-              linkApply: tr("resources.mdFmt.linkApply"),
-              placeholder: tr("resources.mdFmt.placeholder"),
-              editorAria: tr("resources.editorAria", {
-              name: preview.name,
-              }),
-              }}
-              />            </Suspense>
+                key={activeTab.id}
+                value={draftText}
+                onChange={updateActiveDraft}
+                onSave={() => void saveActiveFile()}
+                disabled={!!activeTab.saving}
+                labels={{
+                  bold: tr("resources.mdFmt.bold"),
+                  italic: tr("resources.mdFmt.italic"),
+                  strike: tr("resources.mdFmt.strike"),
+                  code: tr("resources.mdFmt.code"),
+                  h1: tr("resources.mdFmt.h1"),
+                  h2: tr("resources.mdFmt.h2"),
+                  h3: tr("resources.mdFmt.h3"),
+                  bulletList: tr("resources.mdFmt.bulletList"),
+                  orderedList: tr("resources.mdFmt.orderedList"),
+                  blockquote: tr("resources.mdFmt.blockquote"),
+                  link: tr("resources.mdFmt.link"),
+                  hr: tr("resources.mdFmt.hr"),
+                  linkPlaceholder: tr("resources.mdFmt.linkPlaceholder"),
+                  linkApply: tr("resources.mdFmt.linkApply"),
+                  placeholder: tr("resources.mdFmt.placeholder"),
+                  editorAria: tr("resources.editorAria", {
+                    name: preview.name,
+                  }),
+                }}
+              />
+            </Suspense>
           ) : (
             <textarea
               className="rp-editor__textarea"
@@ -685,7 +699,7 @@ export function ResourcePreviewBody({
               }}
             />
           )
-        ) : (
+        ) : isMarkdown ? (
           <OverlayScroll className="rp-editor__preview-scroll">
             <div className="rp-editor__preview-body rp-preview__md">
               <MarkdownBody>
@@ -693,6 +707,25 @@ export function ResourcePreviewBody({
               </MarkdownBody>
             </div>
           </OverlayScroll>
+        ) : isHtml ? (
+          <HtmlBrowser
+            title={preview.name}
+            absolutePath={preview.absolutePath || null}
+            html={draftText || preview.text}
+          />
+        ) : (
+          <div className="rp-editor__code-preview">
+            <Suspense fallback={null}>
+              <CodePreview
+                code={codePreviewBody}
+                fileName={preview.name}
+                language={preview.kind === "json" ? "json" : undefined}
+                footer={
+                  preview.truncated ? tr("resources.truncated") : null
+                }
+              />
+            </Suspense>
+          </div>
         )}
       </div>
     );
