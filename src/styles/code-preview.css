@@ -42,6 +42,8 @@
 .rp-code__ln {
   display: block;
   padding: 0 10px 0 8px;
+  min-height: 1.55em;
+  line-height: 1.55;
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
   -webkit-user-select: none;
@@ -74,6 +76,13 @@
   -webkit-user-select: text;
   user-select: text;
   cursor: text;
+}
+
+/* One block per source line — keeps gutter and body locked together. */
+.rp-code__line {
+  display: block;
+  min-height: 1.55em;
+  line-height: 1.55;
 }
 
 .rp-code__footer {

@@ -78,26 +78,7 @@ pub async fn export_bytes_save(
         std::fs::write(&path, &bytes).map_err(|e| format!("write file: {e}"))?;
 
         let path_s = path.display().to_string();
-        #[cfg(target_os = "macos")]
-        {
-            let _ = crate::process_util::command("open")
-                .args(["-R", &path_s])
-                .status();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            let _ = crate::process_util::command("explorer")
-                .args(["/select,", &path_s])
-                .status();
-        }
-        #[cfg(all(unix, not(target_os = "macos")))]
-        {
-            if let Some(parent) = path.parent() {
-                let _ = crate::process_util::command("xdg-open")
-                    .arg(parent)
-                    .spawn();
-            }
-        }
+        let _ = crate::process_util::reveal_in_file_manager(&path);
 
         Ok(serde_json::json!({
             "ok": true,
@@ -168,28 +149,14 @@ fn save_and_reveal_file_blocking(
     let path_s = final_path.display().to_string();
     // Cheap metadata only — never read archive contents into the App.
     let size_bytes = std::fs::metadata(&final_path).ok().map(|m| m.len());
-    // Reveal is best-effort and must never block export/close. `open -R` /
-    // `explorer /select,` can hang when the shell is wedged — fire and forget.
-    #[cfg(target_os = "macos")]
+    // Reveal is best-effort and must never block export/close. Fire-and-forget
+    // via shared helper (correct Windows explorer flags / Linux ShowItems).
     {
-        let p = path_s.clone();
+        let reveal_path = final_path.clone();
         let _ = std::thread::Builder::new()
             .name("reveal-export".into())
             .spawn(move || {
-                let _ = crate::process_util::command("open")
-                    .args(["-R", &p])
-                    .status();
-            });
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let p = path_s.clone();
-        let _ = std::thread::Builder::new()
-            .name("reveal-export".into())
-            .spawn(move || {
-                let _ = crate::process_util::command("explorer")
-                    .args(["/select,", &p])
-                    .status();
+                let _ = crate::process_util::reveal_in_file_manager(&reveal_path);
             });
     }
 

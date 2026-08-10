@@ -431,9 +431,12 @@ export function ImageUi({
   const revealPath = async () => {
     if (!localPath || !api.isTauri()) return;
     try {
+      // Host normalizes file://, ~/, and Windows \\?\ paths; always pass the
+      // on-disk absolute path (not the loopback media URL).
       await api.pathReveal(localPath);
     } catch (e) {
-      console.error(e);
+      // Soft-fail: keep card usable; surface for support logs.
+      console.error("[ImageUi] pathReveal failed:", localPath, e);
     }
   };
 

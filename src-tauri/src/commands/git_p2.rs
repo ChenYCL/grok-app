@@ -355,7 +355,11 @@ detached
     }
 }
 
-/// Reveal a path in the system file manager (Finder / Explorer).
+/// Reveal a path in the system file manager (Finder / Explorer / Files).
+///
+/// Selects the file when the OS supports it. Cross-platform details live in
+/// [`crate::process_util::reveal_in_file_manager`] (Windows: no CREATE_NO_WINDOW,
+/// strip `\\?\`, native backslashes; Linux: D-Bus ShowItems; macOS: `open -R`).
 #[tauri::command]
 pub async fn path_reveal(path: String) -> Result<(), String> {
     let p = normalize_fs_path(&path);
@@ -363,37 +367,10 @@ pub async fn path_reveal(path: String) -> Result<(), String> {
         return Err("empty path".into());
     }
     let pb = std::path::PathBuf::from(&p);
-    if !pb.exists() {
-        return Err(format!("path not found: {p}"));
-    }
-    #[cfg(target_os = "macos")]
-    {
-        crate::process_util::command("open")
-            .args(["-R", &p])
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(target_os = "windows")]
-    {
-        // explorer /select,<path> — works with spaces on modern Windows.
-        crate::process_util::command("explorer")
-            .arg(format!("/select,{p}"))
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        // Open parent directory
-        let parent = pb
-            .parent()
-            .map(|x| x.to_path_buf())
-            .unwrap_or(pb.clone());
-        crate::process_util::command("xdg-open")
-            .arg(parent)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    // Off the async runtime so a wedged shell cannot stall the IPC loop.
+    tokio::task::spawn_blocking(move || crate::process_util::reveal_in_file_manager(&pb))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Add project via native folder dialog; optional auto-trust.

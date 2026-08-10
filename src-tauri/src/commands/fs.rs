@@ -370,7 +370,7 @@ pub struct PathEntry {
     pub exists: bool,
 }
 
-/// Normalize OS / browser path strings (file:// URLs, percent-encoding, trailing slashes).
+/// Normalize OS / browser path strings (file:// URLs, percent-encoding, trailing slashes, `~`).
 fn normalize_fs_path(raw: &str) -> String {
     let mut s = raw.trim().to_string();
     if s.is_empty() {
@@ -387,8 +387,30 @@ fn normalize_fs_path(raw: &str) -> String {
             }
         }
     }
-    // drop trailing slash except root
+    // Expand `~/…` so reveal/open reach the real home (GUI env often has HOME).
+    if s == "~" || s.starts_with("~/") || s.starts_with("~\\") {
+        let home = crate::process_util::user_home();
+        if s == "~" {
+            s = home.to_string_lossy().to_string();
+        } else {
+            let rest = s.trim_start_matches('~').trim_start_matches(['/', '\\']);
+            s = home.join(rest).to_string_lossy().to_string();
+        }
+    }
+    // Strip Windows extended-length prefix early so exists()/reveal agree.
+    if let Some(rest) = s.strip_prefix(r"\\?\") {
+        s = if let Some(unc) = rest.strip_prefix(r"UNC\") {
+            format!(r"\\{unc}")
+        } else {
+            rest.to_string()
+        };
+    }
+    // drop trailing slash except root / drive root
     while s.len() > 1 && (s.ends_with('/') || s.ends_with('\\')) {
+        // Keep `C:\` / `C:/`
+        if s.len() == 3 && s.as_bytes()[1] == b':' {
+            break;
+        }
         s.pop();
     }
     s

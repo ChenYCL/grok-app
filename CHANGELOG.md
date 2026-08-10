@@ -11,7 +11,13 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+- **Resource code preview languages + line numbers**: highlight.js registration covers common languages (PowerShell, Swift/ObjC, Scala, Dart, Elixir, Haskell, protobuf, GraphQL, less, nginx, nix, shaders, …); per-line gutter stays aligned with highlighted tokens.
+- **中文 · 资源预览代码高亮与行号**：扩展常见语言高亮，行号 gutter 与高亮行对齐。
+
 ### Fixed
+- **Reveal in file manager opens default page (image/file cards)**: Shared Host `reveal_in_file_manager` — Windows no longer uses `CREATE_NO_WINDOW` explorer (which opened This PC), strips `\\?\` canonicalize prefixes, uses `/select,` + native backslashes; Linux prefers D-Bus `ShowItems` then `xdg-open` parent; macOS keeps `open -R`. Used by chat image/file cards, project reveal, export/download reveal.
+- **中文 · 在资源管理器中显示落到默认页**：图片/文件卡片右键定位真实路径（Win/Linux/mac 共用修复）。
 - **Shell / MCP permission approve cancels the turn (#542 / #544)**: When Grok Build omits or scopes ACP permission options, Host + UI no longer answer with generic `always-allow`. Session-allow is rewritten to tool-scoped wire ids (`allow-always-command` / `allow-always-domain` / `allow-always-mcp`). Failed tools that report `unknown permission option` now raise the permission error deck instead of a silent Ready stop.
 - **中文 · Shell 批准后秒停 (#542 / #544)**：空/工具作用域 option 列表时不再回传通用 `always-allow`；CLI 报 unknown permission option 时错误条可见。
 

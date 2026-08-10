@@ -429,6 +429,153 @@ where
     }
 }
 
+/// Strip Windows extended-length prefix (`\\?\C:\…` / `\\?\UNC\…` / `//?/`) so
+/// shell tools (`explorer /select,`) can open the real path. Canonicalize often
+/// returns `\\?\C:\…`; explorer then falls back to the default This PC view.
+pub fn strip_extended_path_prefix(s: &str) -> String {
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = s.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    if let Some(rest) = s.strip_prefix("//?/") {
+        return rest.replace('/', "\\");
+    }
+    s.to_string()
+}
+
+/// Native display path for OS file-manager reveal/select.
+///
+/// - Canonical when possible (resolves `.` / `..` / symlinks)
+/// - Windows: backslashes, no `\\?\` prefix
+pub fn path_for_file_manager(path: &Path) -> String {
+    let pb = if path.exists() {
+        path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    } else {
+        path.to_path_buf()
+    };
+    let raw = pb.to_string_lossy();
+    #[cfg(target_os = "windows")]
+    {
+        return strip_extended_path_prefix(&raw).replace('/', "\\");
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        raw.into_owned()
+    }
+}
+
+/// Percent-encode a local path for a `file://` URI (Linux ShowItems).
+fn file_uri_from_path(path: &str) -> String {
+    // file:// + absolute path; encode non-unreserved octets.
+    let mut out = String::from("file://");
+    for b in path.as_bytes() {
+        match *b {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'/'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'~' => out.push(*b as char),
+            b' ' => out.push_str("%20"),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Reveal a path in the OS file manager and **select** the item when possible.
+///
+/// | OS | Method |
+/// |----|--------|
+/// | macOS | `open -R <path>` |
+/// | Windows | `explorer /select,<native-path>` (no CREATE_NO_WINDOW) |
+/// | Linux | `org.freedesktop.FileManager1.ShowItems` → fallback `xdg-open` parent |
+///
+/// Important: do **not** use [`command`] here on Windows — `CREATE_NO_WINDOW`
+/// makes explorer open a default page instead of selecting the file.
+pub fn reveal_in_file_manager(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("path not found: {}", path.display()));
+    }
+    let path_s = path_for_file_manager(path);
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Stdio;
+        StdCommand::new("open")
+            .args(["-R", &path_s])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("open -R: {e}"))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Split `/select,` and path (same as doctor export / side_browser download).
+        // Combined `/select,C:\path with spaces` is fragile; two args handle spaces.
+        // Do not set CREATE_NO_WINDOW — explorer is a GUI process.
+        StdCommand::new("explorer")
+            .args(["/select,", &path_s])
+            .spawn()
+            .map_err(|e| format!("explorer /select: {e}"))?;
+        // explorer often returns non-zero even when the window opens — ignore status.
+        return Ok(());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        use std::process::Stdio;
+        let uri = file_uri_from_path(&path_s);
+        // Prefer FileManager1.ShowItems so the file is selected (Nautilus, Dolphin, …).
+        // dbus-send needs quotes around the URI when it contains special chars.
+        let shown = StdCommand::new("dbus-send")
+            .args([
+                "--session",
+                "--print-reply",
+                "--dest=org.freedesktop.FileManager1",
+                "--type=method_call",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1.ShowItems",
+                &format!("array:string:\"{uri}\""),
+                "string:\"\"",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if shown {
+            return Ok(());
+        }
+        // Fallback: open parent directory (no select).
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| path.to_path_buf());
+        let parent_s = path_for_file_manager(&parent);
+        StdCommand::new("xdg-open")
+            .arg(&parent_s)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("xdg-open: {e}"))?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err("reveal not supported on this platform".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -436,6 +583,23 @@ mod tests {
     #[test]
     fn user_home_nonempty() {
         assert!(!user_home().as_os_str().is_empty());
+    }
+
+    #[test]
+    fn strip_extended_path_prefix_windows_style() {
+        assert_eq!(
+            strip_extended_path_prefix(r"\\?\C:\Users\a\b.png"),
+            r"C:\Users\a\b.png"
+        );
+        assert_eq!(
+            strip_extended_path_prefix(r"\\?\UNC\server\share\f.png"),
+            r"\\server\share\f.png"
+        );
+        assert_eq!(
+            strip_extended_path_prefix(r"C:\Users\a\b.png"),
+            r"C:\Users\a\b.png"
+        );
+        assert_eq!(strip_extended_path_prefix("/Users/a/b"), "/Users/a/b");
     }
 
     #[test]

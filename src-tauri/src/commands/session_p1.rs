@@ -565,7 +565,7 @@ pub async fn project_set_color(id: String, color: Option<String>) -> Result<Proj
     store::set_project_color(&id, color)
 }
 
-/// Reveal project folder in the OS file manager (Finder / Explorer).
+/// Reveal project folder in the OS file manager (Finder / Explorer / Files).
 #[tauri::command]
 pub async fn project_reveal(id: String) -> Result<(), String> {
     let list = store::load_projects();
@@ -573,29 +573,10 @@ pub async fn project_reveal(id: String) -> Result<(), String> {
         .iter()
         .find(|p| p.id == id)
         .ok_or_else(|| "project not found".to_string())?;
-    let path = p.path.clone();
-    #[cfg(target_os = "macos")]
-    {
-        crate::process_util::command("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(target_os = "windows")]
-    {
-        crate::process_util::command("explorer")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        crate::process_util::command("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    let pb = std::path::PathBuf::from(&p.path);
+    tokio::task::spawn_blocking(move || crate::process_util::reveal_in_file_manager(&pb))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

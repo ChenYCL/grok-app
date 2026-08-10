@@ -395,18 +395,9 @@ fn finish_ok(app: &AppHandle, label: &str, file_name: &str, path: PathBuf) {
     );
     crate::path_scope::grant_path(&path);
     let path_s = path.display().to_string();
-    #[cfg(target_os = "macos")]
-    {
-        let _ = crate::process_util::command("open")
-            .args(["-R", &path_s])
-            .status();
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let _ = crate::process_util::command("explorer")
-            .args(["/select,", &path_s])
-            .status();
-    }
+    // Shared reveal: macOS open -R / Windows explorer /select / Linux ShowItems.
+    // Do not use process_util::command (CREATE_NO_WINDOW breaks explorer select).
+    let _ = crate::process_util::reveal_in_file_manager(&path);
     let name = path
         .file_name()
         .and_then(|n| n.to_str())
