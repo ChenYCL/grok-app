@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isSameView,
   isViewingSendTarget,
+  resolveComposerSendSessionId,
   shouldAdoptView,
   type ViewFocus,
 } from "./viewFocus";
@@ -58,5 +59,39 @@ describe("viewFocus", () => {
     expect(isViewingSendTarget(originS1, at("s1", 7), "s1")).toBe(true);
     expect(isViewingSendTarget(originS1, at("s2", 7), "s1")).toBe(false);
     expect(isViewingSendTarget(originS1, at(null, 7), "s1")).toBe(false);
+  });
+
+  it("binds composer send to the viewed chat during openSession race", () => {
+    // Viewing already on B; shell still holds stuck A until journal load ends.
+    expect(
+      resolveComposerSendSessionId({
+        viewingSessionId: "b-stuck-switch",
+        shellSessionId: "a-stuck-thinking",
+      }),
+    ).toBe("b-stuck-switch");
+    expect(
+      resolveComposerSendSessionId({
+        viewingSessionId: "same",
+        shellSessionId: "same",
+      }),
+    ).toBe("same");
+    expect(
+      resolveComposerSendSessionId({
+        viewingSessionId: null,
+        shellSessionId: "only-shell",
+      }),
+    ).toBe("only-shell");
+    expect(
+      resolveComposerSendSessionId({
+        viewingSessionId: "only-view",
+        shellSessionId: null,
+      }),
+    ).toBe("only-view");
+    expect(
+      resolveComposerSendSessionId({
+        viewingSessionId: null,
+        shellSessionId: null,
+      }),
+    ).toBeNull();
   });
 });

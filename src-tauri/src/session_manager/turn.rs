@@ -460,8 +460,15 @@ impl SessionManager {
                 Ok(()) => {
                     // #522: even if PromptComplete events were dropped/raced,
                     // a successful session/prompt must release the busy gate.
+                    // Also heal sticky Streaming when `prompt_in_flight` was
+                    // already cleared (dropped PromptComplete / partial finish)
+                    // but FSM never left Streaming — UI shows "thinking" forever
+                    // while the agent turn already ended (journal may hold body).
                     let mut need_emit = false;
                     mgr.with_session_mut(&turn_sid, |s| {
+                        // Only heal sticky *Streaming* here — leave
+                        // AwaitingPermission alone (user gate still live).
+                        let sticky_streaming = s.fsm.state() == SessionState::Streaming;
                         if s.prompt_in_flight {
                             tracing::warn!(
                                 target: "session",
@@ -477,6 +484,34 @@ impl SessionManager {
                                 Some(&app2),
                             )
                             .is_some();
+                        } else if sticky_streaming {
+                            tracing::warn!(
+                                target: "session",
+                                session = %turn_sid,
+                                "prompt RPC Ok but FSM still Streaming with prompt_in_flight=false — force-finish sticky stream"
+                            );
+                            if s.deferred_prompt_complete.is_none() {
+                                s.deferred_prompt_complete = Some("end_turn".into());
+                            }
+                            need_emit = SessionManager::try_finish_deferred_prompt_complete(
+                                s,
+                                Some(&app2),
+                            )
+                            .is_some();
+                            // If gates still block finish, at least drop busy so
+                            // reconnect/send are not wedged forever.
+                            if !need_emit
+                                && s.open_tool_ids.is_empty()
+                                && s.pending_plan_rpc_id.is_none()
+                                && s.pending_ask_user_rpc_id.is_none()
+                            {
+                                let _ = s.fsm.end_stream();
+                                s.streaming_message_id = None;
+                                s.active_turn_id = None;
+                                s.stream_message_id_locked = false;
+                                s.deferred_prompt_complete = None;
+                                need_emit = true;
+                            }
                         }
                     });
                     if need_emit {
@@ -767,6 +802,38 @@ impl SessionManager {
             })
             .ok_or("no active session")?;
         let had_pending_ask = pending_ask.is_some();
+        if had_pending_ask {
+            let _ = app.emit(
+                "session://ask_user_cleared",
+                serde_json::json!({
+                    "sessionId": target,
+                    "reason": "user_stop",
+                }),
+            );
+        }
+        // Publish Ready *before* agent cancel. `session/cancel` goes through
+        // stdin write (up to STDIN_WRITE_TIMEOUT) — if the agent is wedged or
+        // the turn already ended with sticky Streaming, awaiting cancel first
+        // left the UI/Host consumers blocked on Stop for the whole timeout
+        // (user report: Stop does nothing while thinking is stuck).
+        self.promote_background_ready_to_parked(&target);
+        self.emit_for_session(&app, &target);
+        // Prefer the stopped chat's snapshot (not the live focus slot).
+        let stopped_snap = if self.is_live_session(&target) {
+            self.snapshot()
+        } else if let Some(snap) = self
+            .background
+            .lock()
+            .get(&target)
+            .map(Self::snapshot_from_live)
+        {
+            snap
+        } else {
+            // Parked after promote, or already idle — return live focus snap.
+            self.snapshot()
+        };
+
+        // Best-effort agent cancel after UI is already unblocked.
         if let Some(acp) = acp {
             // Reply to reverse-RPCs before session/cancel so the agent does not
             // sit forever on an unanswered ask_user_question after Host "stop".
@@ -784,35 +851,17 @@ impl SessionManager {
                 }
             }
             // Target the session explicitly (shared process safety).
-            let _ = match agent_sid {
-                Some(sid) => acp.cancel_for(&sid).await,
+            if let Err(e) = match agent_sid {
+                Some(ref sid) => acp.cancel_for(sid).await,
                 None => acp.cancel().await,
-            };
+            } {
+                tracing::warn!(
+                    target: "session",
+                    session = %target,
+                    "stop: session/cancel after Ready emit failed (UI already settled): {e}"
+                );
+            }
         }
-        if had_pending_ask {
-            let _ = app.emit(
-                "session://ask_user_cleared",
-                serde_json::json!({
-                    "sessionId": target,
-                    "reason": "user_stop",
-                }),
-            );
-        }
-        // Stopped background turn is Ready again → park it warm.
-        self.promote_background_ready_to_parked(&target);
-        self.emit_for_session(&app, &target);
-        // Prefer the stopped chat's snapshot (not the live focus slot).
-        if self.is_live_session(&target) {
-            return Ok(self.snapshot());
-        }
-        if let Some(snap) = self
-            .background
-            .lock()
-            .get(&target)
-            .map(Self::snapshot_from_live)
-        {
-            return Ok(snap);
-        }
-        Ok(self.snapshot())
+        Ok(stopped_snap)
     }
 }

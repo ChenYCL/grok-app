@@ -309,6 +309,10 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
               c.messagesBySessionRef.current.set(sid, next);
               // patchSession / setMessages both honor session ownership.
               c.patchSessionMessages(sid, () => next);
+              // Journal often holds the full `grok-automation` fence after a
+              // truncated stream. Apply must run post-rehydrate for the
+              // *viewed* session too (stream `done` alone is not enough).
+              void c.tryApplyAutomationFromSession(sid);
               if (attempt === 0) {
                 window.setTimeout(() => {
                   if (!cancelled) scheduleJournalRehydrate(sid, 1, opts);
@@ -466,6 +470,12 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
                   }
                   return next;
                 });
+                // Viewed-session backup: stream `done` can fire before the full
+                // fence lands (or be missed). Non-viewed path already applies
+                // below; viewed chats previously only relied on stream done.
+                if (s.sessionId) {
+                  void c.tryApplyAutomationFromSession(s.sessionId);
+                }
               } else if (
                 (s.state === "streaming" || s.state === "awaiting_permission") &&
                 s.sessionId === c.viewingSessionIdRef.current

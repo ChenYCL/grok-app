@@ -31,8 +31,9 @@
 5. **自动** `automation_create` 仅当 `shouldAutoApplyAutomationFence`：显式 AI 创建会话，或近期用户消息像真实排程；toast「已创建定时任务：{title}」。
 6. **否则**（意外 fence，如角色卡 /goal 误路由）：应用内确认（非 `window.confirm`）；取消则不落库。手动表单创建路径不变。
 7. 同一消息 id / payload 只处理一次；reload 时也会剥 fence，避免用户看到 JSON。
+8. **Apply 不止 stream `done`**：当前正在看的会话在 turn → ready、journal rehydrate、deferred reconcile 后也必须再跑 `tryApplyAutomationFromSession`。此前 backup 路径只在**非当前会话**上触发，观看中的对话若 stream 截断/漏 `done`，journal 里已有完整 fence 也不会入库（#490c24e8 类问题）。
 
-实现：`src/lib/automationSetup.ts` · 拦截在 `AppWorkbench.tsx` `tryApplyAutomationFromSession`。
+实现：`src/lib/automationSetup.ts` · 拦截在 `AppWorkbench.tsx` `tryApplyAutomationFromSession` · Host 事件在 `useSessionHostEvents.ts`。
 
 **与 Goal 分流**：Goal = 有限目标干完即停；已安排 = 闹钟。勿把会话原则当成定时任务。
 

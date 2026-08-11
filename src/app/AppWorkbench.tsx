@@ -288,7 +288,8 @@ import { shouldEscapeStopGeneration } from "@/lib/escapeStop";
 import {
   isSameView,
   isViewingSendTarget,
-  shouldAdoptView
+  resolveComposerSendSessionId,
+  shouldAdoptView,
 } from "@/lib/viewFocus";
 import {
   projectHostIntoLiveMap,
@@ -4181,6 +4182,32 @@ export function AppWorkbench() {
     // Point viewing id immediately so late stream chunks land in the right cache.
     openingSessionIdRef.current = s.id;
     viewingSessionIdRef.current = s.id;
+    // Bind shell sessionId immediately too — otherwise send/stop still use the
+    // previous chat id while the user is already composing on this thread
+    // (sticky-thinking chat A + switch to B → send landed on A).
+    {
+      const liveEarly = liveHostRef.current;
+      const resumeEarly = resumeStateForSession(
+        s.id,
+        liveEarly,
+        liveMapRef.current,
+      );
+      if (liveEarly.sessionId === s.id) {
+        setSession({
+          ...liveEarly,
+          title: s.title || liveEarly.title || "Untitled",
+        });
+      } else {
+        setSession({
+          ...IDLE_SNAPSHOT,
+          sessionId: s.id,
+          title: s.title || "Untitled",
+          state: resumeEarly.state,
+          streamingMessageId: resumeEarly.streamingMessageId,
+          backend: "grok_agent_stdio",
+        });
+      }
+    }
     // Restore this thread's follow-up draft immediately (sync localStorage) so
     // the composer matches the session before journal load, and mid-load typing
     // is attributed to the right thread on the next switch.
@@ -4487,6 +4514,8 @@ export function AppWorkbench() {
               setContextUsage(
                 restoreContextUsageForSession(s.id, strippedR),
               );
+              // Reconcile can surface a fence that stream/open missed.
+              void tryApplyAutomationFromSession(s.id);
             } catch {
               /* soft-fail reconcile */
             }
@@ -7364,10 +7393,16 @@ export function AppWorkbench() {
       sendInFlightRef.current = false;
       return false;
     }
+    // Prefer viewing id over shell sessionId — openSession points viewing at
+    // the new chat before journal load finishes setSession; using only shell
+    // mis-routed sends into the previous (often stuck) chat.
     const sendTargetId =
       opts.targetSessionId !== undefined
         ? opts.targetSessionId
-        : session.sessionId;
+        : resolveComposerSendSessionId({
+            viewingSessionId: viewingSessionIdRef.current,
+            shellSessionId: session.sessionId,
+          });
     const cacheKey = sendTargetId ?? "__draft__";
     // Draft sends have no id to compare, so pin them to the view they came from:
     // otherwise the optimistic bubbles / streaming state paint whatever *new*
@@ -11774,12 +11809,63 @@ export function AppWorkbench() {
     const armed = armStopLatch(stopLatchRef.current, sid, now);
     stopLatchRef.current = armed;
     setStopLatch(armed);
-    let timeoutSettledSessionId: string | null = null;
-    // Force-unlock if Host stays busy past STOP_LATCH_MS.
+
+    /** Always clear local busy chrome for this chat (ghost / sticky stream). */
+    const forceUnlockLocal = (id: string | null, reason: "ok" | "force") => {
+      if (!id) {
+        setMessages((m) => m.map((x) => ({ ...x, streaming: false })));
+        return;
+      }
+      settleStoppedSessionUi(id);
+      clearPendingGates(id);
+      if (
+        id ===
+        (viewingSessionIdRef.current || liveHostRef.current.sessionId)
+      ) {
+        setAskUser(null);
+        setPerm(null);
+      }
+      patchSessionMessages(id, (m) =>
+        m.map((x) => ({ ...x, streaming: false })),
+      );
+      patchSessionMessages(id, (prev) => {
+        if (
+          prev.some(
+            (x) =>
+              x.marker === "turn_end" ||
+              x.marker === "turn_cancelled" ||
+              x.content?.startsWith("turn_end|") ||
+              x.content?.startsWith("turn_cancelled|"),
+          )
+        ) {
+          return prev;
+        }
+        return applyTurnMarker(prev, {
+          sessionId: id,
+          messageId: `end-stop-${reason}-${Date.now()}`,
+          marker: "turn_end",
+          reason: "user_stop",
+          content: endOfTurnMarkerContent("user_stop"),
+        });
+      });
+      setRetryStatus(null);
+      setStreamStall(null);
+      setTurnStartedAt(null);
+    };
+
+    // Optimistic unlock: sticky "thinking" + wedged cancel used to keep the
+    // UI busy until `sessionStop` returned (or forever on Host hang).
+    forceUnlockLocal(sid, "force");
+
+    let timeoutSettledSessionId: string | null = sid;
+    // Force-unlock again if Host stays busy past STOP_LATCH_MS.
     window.setTimeout(() => {
+      // Prefer this chat's liveMap row; fall back to focused Host slot.
+      const mapState =
+        (sid && liveMapRef.current[sid]?.state) || liveHostRef.current.state;
       const tick = tickStopLatch(
         stopLatchRef.current,
-        liveHostRef.current.state,
+        mapState,
         Date.now(),
         STOP_LATCH_MS,
       );
@@ -11787,25 +11873,8 @@ export function AppWorkbench() {
       setStopLatch(tick.latch);
       if (tick.forceComplete) {
         const id = sid || liveHostRef.current.sessionId;
-        if (id) {
-          timeoutSettledSessionId = id;
-          settleStoppedSessionUi(id);
-          patchSessionMessages(id, (prev) =>
-            applyTurnMarker(prev, {
-              sessionId: id,
-              messageId: `end-stop-${Date.now()}`,
-              marker: "turn_end",
-              reason: "user_stop",
-              content: endOfTurnMarkerContent("user_stop"),
-            }),
-          );
-          patchSessionMessages(id, (m) =>
-            m.map((x) => ({ ...x, streaming: false })),
-          );
-        }
-        setRetryStatus(null);
-        setStreamStall(null);
-        setTurnStartedAt(null);
+        timeoutSettledSessionId = id;
+        forceUnlockLocal(id, "force");
       }
     }, STOP_LATCH_MS + 50);
     try {
@@ -11825,42 +11894,25 @@ export function AppWorkbench() {
         setPerm(null);
       }
       const liveId = sid || liveHostRef.current.sessionId;
-      if (liveId) {
-        if (timeoutSettledSessionId !== liveId) {
-          settleStoppedSessionUi(liveId);
-        }
+      if (liveId && timeoutSettledSessionId !== liveId) {
+        forceUnlockLocal(liveId, "ok");
+      } else if (liveId) {
+        // Already optimistically unlocked — still ensure Host projection Ready.
+        settleStoppedSessionUi(liveId);
         patchSessionMessages(liveId, (m) =>
           m.map((x) => ({ ...x, streaming: false })),
         );
-        // Prefer a clean end marker when stop settles normally.
-        if (stopLatchRef.current.phase !== "force_idle") {
-          patchSessionMessages(liveId, (prev) => {
-            if (
-              prev.some(
-                (x) =>
-                  x.marker === "turn_end" ||
-                  x.marker === "turn_cancelled" ||
-                  x.content?.startsWith("turn_end|"),
-              )
-            ) {
-              return prev;
-            }
-            return applyTurnMarker(prev, {
-              sessionId: liveId,
-              messageId: `end-stop-ok-${Date.now()}`,
-              marker: "turn_end",
-              reason: "user_stop",
-              content: endOfTurnMarkerContent("user_stop"),
-            });
-          });
-        }
-      } else {
-        setMessages((m) => m.map((x) => ({ ...x, streaming: false })));
       }
       const cleared = createStopLatchState();
       stopLatchRef.current = cleared;
       setStopLatch(cleared);
     } catch (e) {
+      // Host stop can fail ("no active session") while UI still shows thinking.
+      // Always finish local unlock so Stop never leaves a dead busy shell.
+      forceUnlockLocal(sid || liveHostRef.current.sessionId, "force");
+      const cleared = createStopLatchState();
+      stopLatchRef.current = cleared;
+      setStopLatch(cleared);
       setLocalError(String(e));
     }
   };

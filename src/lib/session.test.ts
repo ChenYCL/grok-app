@@ -1720,9 +1720,37 @@ describe("tool activity", () => {
     expect(p?.kind).toBe("read_file");
     expect(p?.title).toBe("Read");
     expect(p?.input).toBe("/Users/me/.agents/skills/content-infographic/SKILL.md");
+    // Promote single-file input: into path so toolPath / path-map work.
+    expect(p?.path).toBe(
+      "/Users/me/.agents/skills/content-infographic/SKILL.md",
+    );
     expect(p?.detail).toContain("name: content-infographic");
     // input line is not part of the expand detail
     expect(p?.detail).not.toContain("input:");
+  });
+
+  it("parseToolStepContent promotes spaced article paths from input:", () => {
+    const abs =
+      "/Users/ronglecat/Documents/document/文章输出/进行中/2026-08-11-Mac Studio本地双模型：河南话问MES，Agent查库出图/04-正文/正文.md";
+    const body = [
+      "tool_step|completed|read_file|Read",
+      `input:${abs}`,
+      "# 车间里先听懂河南话",
+    ].join("\n");
+    const p = parseToolStepContent(body);
+    expect(p?.input).toBe(abs);
+    expect(p?.path).toBe(abs);
+  });
+
+  it("parseToolStepContent does not promote shell commands as path", () => {
+    const body = [
+      "tool_step|completed|run_terminal_command|Run Command",
+      "input:ls -la /tmp",
+      "total 0",
+    ].join("\n");
+    const p = parseToolStepContent(body);
+    expect(p?.input).toBe("ls -la /tmp");
+    expect(p?.path).toBeUndefined();
   });
 
   it("parseToolStepContent recovers multi-line Execute titles and buried input:", () => {

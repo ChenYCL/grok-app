@@ -75,6 +75,14 @@ into a **parked** co-tenant journal:
    Never `rescue_parked` with fake `prompt_in_flight=true` (that caused
    cross-chat journal pollution + sticky “in progress”).
 
+**Composer send target (P0, sticky cross-chat):** `openSession` also binds
+shell `session.sessionId` immediately (not only after journal load). Send uses
+`resolveComposerSendSessionId(viewing, shell)` and **prefers viewing** when they
+disagree — otherwise text typed in chat B while A was still the shell id was
+journaled into A (common when A was stuck “thinking”). Host `live_session_is_busy`
+must not treat pure sticky Streaming (no `prompt_in_flight` / tools / deferred
+gates) as forever-busy, or demote/focus for other chats stays blocked.
+
 **UI transcript ownership (P0, #529):** `openSession` points `viewingSessionId`
 at the target **before** disk journal load. Until messages swap, stream /
 rehydrate / clear-streaming must **not** reduce against the previous chat's

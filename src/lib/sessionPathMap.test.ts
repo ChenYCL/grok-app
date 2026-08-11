@@ -5,6 +5,8 @@ import {
   buildSessionFilePathMap,
   buildUniquePathMap,
   collectAbsolutePathsFromMessage,
+  extractAbsoluteFilePathsFromText,
+  isPlausibleAbsFile,
   mergePathMaps,
   suffixKeysForAbsolute,
 } from "./sessionPathMap";
@@ -13,6 +15,8 @@ const ARTICLE =
   "/Users/ronglecat/Documents/document/文章输出/进行中/2026-07-24-用Grok开发一款桌面应用/04-正文/正文.md";
 const OTHER =
   "/Users/ronglecat/Documents/document/文章输出/进行中/2026-06-22-codex画布标注指哪打哪/04-正文/正文.md";
+const MAC_ARTICLE =
+  "/Users/ronglecat/Documents/document/文章输出/进行中/2026-08-11-Mac Studio本地双模型：河南话问MES，Agent查库出图/04-正文/正文.md";
 const PROJECT = "/Users/ronglecat/Documents/document/文章输出";
 
 function toolMsg(path: string, title?: string): ChatMessage {
@@ -22,6 +26,21 @@ function toolMsg(path: string, title?: string): ChatMessage {
     marker: "tool_step",
     toolPath: path,
     content: `tool_step|completed|read|Read \`${title || path}\`\n${path}`,
+  };
+}
+
+/** Modern host shape: file target only on `input:` (no legacy path line). */
+function toolMsgInputOnly(path: string): ChatMessage {
+  return {
+    id: `in-${path}`,
+    role: "tool",
+    marker: "tool_step",
+    toolInput: path,
+    content: [
+      "tool_step|completed|read_file|Read",
+      `input:${path}`,
+      "# body preview",
+    ].join("\n"),
   };
 }
 
@@ -41,7 +60,9 @@ describe("sessionPathMap", () => {
     expect(unique["正文.md"]).toBe(ARTICLE);
     expect(unique["04-正文/正文.md"]).toBe(ARTICLE);
 
-    const ambig = buildUniquePathMap([ARTICLE, OTHER], PROJECT);
+    const ambig = buildUniquePathMap([ARTICLE, OTHER], PROJECT, {
+      onAmbiguous: "unique",
+    });
     expect(ambig["正文.md"]).toBeUndefined();
     expect(ambig["04-正文/正文.md"]).toBeUndefined();
     // Longer unique tails still map
@@ -51,9 +72,29 @@ describe("sessionPathMap", () => {
     expect(ambig[ARTICLE]).toBe(ARTICLE);
   });
 
+  it("onAmbiguous last prefers the most recently touched homonym", () => {
+    const map = buildUniquePathMap([ARTICLE, OTHER, MAC_ARTICLE], PROJECT, {
+      onAmbiguous: "last",
+    });
+    expect(map["正文.md"]).toBe(MAC_ARTICLE);
+    expect(map["04-正文/正文.md"]).toBe(MAC_ARTICLE);
+    // Distinct longer tails still unique
+    expect(
+      map["进行中/2026-07-24-用Grok开发一款桌面应用/04-正文/正文.md"],
+    ).toBe(ARTICLE);
+  });
+
   it("collects tool_step absolute paths", () => {
     const m = toolMsg(ARTICLE);
     expect(collectAbsolutePathsFromMessage(m)).toContain(ARTICLE);
+  });
+
+  it("collects host input: file paths (spaces in folder names)", () => {
+    const m = toolMsgInputOnly(MAC_ARTICLE);
+    const paths = collectAbsolutePathsFromMessage(m);
+    expect(paths).toContain(MAC_ARTICLE);
+    // Must not collect the space-truncated tail alone
+    expect(paths.some((p) => p.endsWith("/Mac"))).toBe(false);
   });
 
   it("buildSessionFilePathMap resolves 04-正文/正文.md from tools", () => {
@@ -68,6 +109,44 @@ describe("sessionPathMap", () => {
     const map = buildSessionFilePathMap(messages, PROJECT);
     expect(map["04-正文/正文.md"]).toBe(ARTICLE);
     expect(map["正文.md"]).toBe(ARTICLE);
+  });
+
+  it("session map prefers last toolInput when multiple 正文.md were touched", () => {
+    // Style-ref read (Grok App article) then active edits on Mac Studio article.
+    const messages: ChatMessage[] = [
+      toolMsgInputOnly(ARTICLE),
+      {
+        id: "asst",
+        role: "assistant",
+        content: "请打开 `04-正文/正文.md` 审稿",
+      },
+      toolMsgInputOnly(MAC_ARTICLE),
+      toolMsgInputOnly(MAC_ARTICLE),
+    ];
+    const map = buildSessionFilePathMap(messages, PROJECT);
+    expect(map["04-正文/正文.md"]).toBe(MAC_ARTICLE);
+    expect(map["正文.md"]).toBe(MAC_ARTICLE);
+    expect(
+      resolveFileToken("04-正文/正文.md", {
+        projectPath: PROJECT,
+        pathMap: map,
+      }),
+    ).toBe(MAC_ARTICLE);
+  });
+
+  it("extractAbsoluteFilePathsFromText keeps spaces in folder names", () => {
+    const text = `路径：\n\`\`\`text\n${MAC_ARTICLE}\n\`\`\`\n也可 \`${MAC_ARTICLE}\``;
+    const paths = extractAbsoluteFilePathsFromText(text);
+    expect(paths).toContain(MAC_ARTICLE);
+  });
+
+  it("isPlausibleAbsFile rejects space-truncated folder tails", () => {
+    expect(
+      isPlausibleAbsFile(
+        "/Users/ronglecat/Documents/document/文章输出/进行中/2026-08-11-Mac",
+      ),
+    ).toBe(false);
+    expect(isPlausibleAbsFile(MAC_ARTICLE)).toBe(true);
   });
 
   it("collects image attachments so images/1.jpg maps in every segment", () => {
@@ -98,8 +177,7 @@ describe("sessionPathMap", () => {
   });
 
   it("collects home-relative tilde paths from assistant prose", () => {
-    const tilde =
-      "~/.grok/docs/user-guide/01-getting-started.md";
+    const tilde = "~/.grok/docs/user-guide/01-getting-started.md";
     const m: ChatMessage = {
       id: "a",
       role: "assistant",
@@ -110,8 +188,7 @@ describe("sessionPathMap", () => {
   });
 
   it("maps basename from unique tilde path in session", () => {
-    const tilde =
-      "~/.grok/docs/user-guide/01-getting-started.md";
+    const tilde = "~/.grok/docs/user-guide/01-getting-started.md";
     const messages: ChatMessage[] = [
       {
         id: "a",
@@ -125,8 +202,7 @@ describe("sessionPathMap", () => {
   });
 
   it("resolveFileToken opens sibling bare name under unique tilde parent", () => {
-    const tilde =
-      "~/.grok/docs/user-guide/01-getting-started.md";
+    const tilde = "~/.grok/docs/user-guide/01-getting-started.md";
     const map = buildSessionFilePathMap(
       [
         {

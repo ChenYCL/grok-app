@@ -53,11 +53,21 @@ Video covers remain separate (`video-posters` + ffmpeg).
 
 | Kind | Agent should write | UI |
 |------|--------------------|-----|
-| Local media to preview | Real absolute path in backticks (real spaces, no shell `\ `) | ImageUi / VideoUi via loopback media |
-| Project code/docs | Project-relative (`apps/web/foo.ts`) | FilePathCard (basename); Host smart open |
+| Local media to preview | Real absolute path in **inline** backticks (real spaces, no shell `\ `) | ImageUi / VideoUi via loopback media |
+| Project code/docs | Project-relative with **enough unique segments** (not bare `正文.md` / shared `04-正文/正文.md` when many exist) | FilePathCard; Host smart open + session path map (last-touch) |
 | Web/CMS assets | Full `https://…` | URL card — never treat `/images/…` as local FS |
 
-Host injects a short **path citation** block into session `--rules` (`path_citation_session_rules` in `official_aux.rs`). Soft guidance only.
+### How the agent must cite (product rule)
+
+Host injects always-on **path citation** text into session `grok --rules` via `path_citation_session_rules` → `merge_extra_rules` (`official_aux.rs`). Soft guidance only, but the UI contract is hard:
+
+1. **Inline backticks only** for clickable path cards: `` `path/to/file` ``.  
+   Fenced blocks (```` ``` ```` / ```` ```text ````) stay plain `CodeBlock` — **not** FilePathCards. Do not put the only path handoff inside a fence.
+2. **Not tool-journal form** in user-facing prose: no `input:/abs/path`, no `tool_step|…` dumps as the citation style.
+3. **Disambiguate homonyms**: article / template trees often share short tails (`正文.md`, `04-正文/正文.md`). Cite from project root with unique parents so Host + path map open the right file.
+4. **Spaces**: write real spaces in absolute paths (e.g. `Mac Studio…`); never shell-escape `\ `.
+
+Frontend path map (`sessionPathMap.ts`) collects tool `input:` / last-touched abs paths so short tokens in the same session can still resolve after tools ran — but **user-facing citations should still be unambiguous** without relying on that.
 
 Frontend normalize (`src/lib/pathNormalize.ts` + `src/lib/attachments.ts`):
 

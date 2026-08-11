@@ -1445,14 +1445,19 @@ If search_tool is partial/empty, retry once with query "official-aux" or "x_keyw
 /// Narrow path-citation rules for Grok App UI (all routes).
 ///
 /// Soft guidance only — Host still normalizes shell escapes / rejects site-root
-/// paths. Prefer short project-relative code paths; absolute only for local media.
+/// paths. Prefer disambiguated project-relative code paths; absolute only for
+/// local media. Always-on via [`merge_extra_rules`] → `grok --rules`.
 pub fn path_citation_session_rules() -> &'static str {
-    r#"Path citations (Grok App UI):
-- Local media the user should preview (images/videos on disk): put the real absolute filesystem path in backticks. Use real spaces — never shell escapes like `\ ` or `\(1\)`.
-- You may also cite a short session-relative form after the absolute path (e.g. `images/1.jpg`).
-- Project code and docs: prefer project-relative paths (`apps/web/foo.ts`). Do not expand every file to a long absolute path.
-- Web/CMS/OSS assets: use full `https://…` URLs. Never present site-root paths like `/images/…` as local files.
-- Do not invent paths that do not exist on disk."#
+    // Keep compact: injected on every session spawn. Inline backticks only —
+    // fenced ``` blocks are NOT turned into FilePathCards in the chat UI.
+    r#"Path citations (Grok App UI — so path cards / previews work):
+- Cite paths as **inline** backticks only: `path/to/file.ext`. One path per backtick span.
+- Do **not** put the only path citation inside a fenced code block (``` … ``` / ```text). Fenced blocks stay plain text and are not clickable path cards. Fences are for multi-line content previews, not for path handoff.
+- Do **not** write tool-journal forms in user-facing prose (`input:/abs/path`, `tool_step|…`, shell-only dumps). Cite the path for the human, not as a tool field.
+- Project code and docs: prefer **project-relative** paths with enough unique segments to disambiguate. When many files share the same basename or short tail (e.g. many article templates all have `04-正文/正文.md` or bare `正文.md`), include the unique parent folders from the project root — never cite only the shared tail.
+- Local media the user should preview (images/videos on disk): real absolute filesystem path in **inline** backticks. Use real spaces — never shell escapes like `\ ` or `\(1\)`. You may also add a short session-relative form after it (e.g. `images/1.jpg`).
+- Web/CMS/OSS assets: full `https://…` URLs. Never present site-root paths like `/images/…` as local files.
+- Do not invent paths that do not exist on disk. Prefer one clear citation near the claim; avoid repeating the same long absolute path on every minor edit."#
 }
 
 /// Merge user session extra_rules with always-on path rules + official-aux inject.
@@ -2308,6 +2313,25 @@ A UI screenshot.
         let only_path = merge_extra_rules(None).expect("path rules alone");
         assert!(only_path.contains("Path citations"));
         assert!(only_path.contains("project-relative"));
+        // Product guidance: inline backticks, not fenced-only handoff.
+        assert!(only_path.contains("inline"));
+        assert!(only_path.to_lowercase().contains("fenced") || only_path.contains("```"));
+        // Homonym / template tails must be disambiguated.
+        assert!(
+            only_path.contains("disambiguate")
+                || only_path.contains("unique parent")
+                || only_path.contains("shared tail")
+        );
+        // Never teach tool-journal `input:` as the user-facing path form.
+        assert!(only_path.contains("input:/abs/path") || only_path.contains("tool-journal"));
+    }
+
+    #[test]
+    fn path_citation_rules_stay_compact() {
+        // Always-on --rules must not bloat every session spawn.
+        let rules = path_citation_session_rules();
+        assert!(rules.len() < 2_500, "path rules too long: {}", rules.len());
+        assert!(!rules.is_empty());
     }
 
     #[test]

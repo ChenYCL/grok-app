@@ -141,6 +141,20 @@ impl SessionManager {
         if s.prompt_in_flight {
             return true;
         }
+        // Sticky ghost Streaming: turn fully ended (no pif / tools / gates /
+        // deferred complete) but FSM never left Streaming (and may still hold
+        // streaming_message_id). Treating this as busy forever blocked
+        // demote/focus and made other chats' sends race the stuck live slot.
+        // Real mid-turn keeps prompt_in_flight and/or deferred_prompt_complete
+        // and/or open tools after early prompt_complete.
+        if matches!(s.fsm.state(), SessionState::Streaming)
+            && s.open_tool_ids.is_empty()
+            && s.deferred_prompt_complete.is_none()
+            && s.pending_plan_rpc_id.is_none()
+            && s.pending_ask_user_rpc_id.is_none()
+        {
+            return false;
+        }
         if matches!(
             s.fsm.state(),
             SessionState::Streaming | SessionState::AwaitingPermission | SessionState::Connecting

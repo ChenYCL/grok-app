@@ -52,3 +52,23 @@ export function isViewingSendTarget(
   if (targetSessionId != null) return current.sessionId === targetSessionId;
   return current.sessionId == null && isSameView(origin, current);
 }
+
+/**
+ * Which App session id a composer send should bind to.
+ *
+ * `openSession` points `viewingSessionId` at the target **before** the shell
+ * `session.sessionId` finishes swapping (journal load is async). If send used
+ * only the shell id during that window, text typed in chat B was journaled
+ * into the previous stuck chat A (user report with sticky thinking).
+ *
+ * Prefer the **viewed** id whenever it disagrees with the shell.
+ */
+export function resolveComposerSendSessionId(opts: {
+  viewingSessionId: string | null | undefined;
+  shellSessionId: string | null | undefined;
+}): string | null {
+  const view = opts.viewingSessionId?.trim() || null;
+  const shell = opts.shellSessionId?.trim() || null;
+  if (view && shell && view !== shell) return view;
+  return view ?? shell;
+}

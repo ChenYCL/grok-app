@@ -1327,6 +1327,27 @@ export function parseToolStepContent(content: string): {
     // 3+ lines: full body is detail (Host X / vision dumps).
     detail = rest.join("\n").trim() || undefined;
   }
+
+  // Modern Host rows put the file target on `input:` (read_file / write / edit)
+  // and leave legacy `path` empty. Promote a single-line absolute/home file path
+  // so toolPath / session path-map / activity rail all see the real target —
+  // critical when the path has spaces (article folders like `Mac Studio…`).
+  if (!path && input) {
+    const candidate = input.trim();
+    if (
+      candidate &&
+      !candidate.includes("\n") &&
+      !candidate.includes("://") &&
+      !/\s(-{1,2}[A-Za-z]|&&|\||;)/.test(candidate) &&
+      (candidate.startsWith("/") ||
+        candidate.startsWith("~/") ||
+        /^[A-Za-z]:[\\/]/.test(candidate)) &&
+      /\.[\w]{1,12}$/.test(candidate.split(/[/\\]/).pop() || "")
+    ) {
+      path = candidate;
+    }
+  }
+
   return {
     status,
     kind,
