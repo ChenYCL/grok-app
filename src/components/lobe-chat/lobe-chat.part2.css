@@ -399,6 +399,20 @@
   padding-left: 4px;
   border-left: 1px solid var(--chat-border, rgb(255 255 255 / 6%));
 }
+/* Full thought text revealed when a phase’s 💡 step is expanded — muted like
+   the standalone Thinking block, capped so a huge reasoning trace does not
+   bury the tool rows around it. */
+.grok-act__thought-body {
+  margin: 2px 0 4px;
+  padding: 4px 10px;
+  border-left: 2px solid var(--chat-border, rgb(255 255 255 / 8%));
+  max-height: 240px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--chat-text-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
 .lobe-timeline-tool-group {
   width: 100%;
   margin: 0;
