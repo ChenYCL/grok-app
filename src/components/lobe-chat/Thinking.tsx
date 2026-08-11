@@ -16,12 +16,6 @@ import { cn } from "@/lib/utils";
 import { MarkdownChat } from "./MarkdownChat";
 import { createT, type Locale } from "@/i18n";
 import { COLLAPSE_ALL_ACTIVITY_EVENT } from "@/lib/collapseAllActivity";
-import {
-  loadThinkingExpandPref,
-  thinkingDefaultOpenWhenDone,
-  THINKING_PREF_EVENT,
-  type ThinkingExpandPref,
-} from "@/lib/thinkingPref";
 import { formatWorkDuration } from "@/lib/formatWorkDuration";
 import { resolveThinkingChromeLabel } from "@/lib/thinkingChromeLabel";
 
@@ -31,7 +25,6 @@ export const Thinking = memo(function Thinking({
   durationMs,
   startedAt,
   locale = "en",
-  expandPref,
   onOpenExternalLink,
 }: {
   content?: string | ReactNode;
@@ -44,18 +37,13 @@ export const Thinking = memo(function Thinking({
    */
   startedAt?: number | null;
   locale?: Locale;
-  /** Global default for finished blocks (Settings). Per-block toggles are local. */
-  expandPref?: ThinkingExpandPref;
   onOpenExternalLink?: (url: string) => void;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
-  const [pref, setPref] = useState<ThinkingExpandPref>(
-    () => expandPref ?? loadThinkingExpandPref(),
-  );
-  // Done → start collapsed (auto-collapse default). Streaming → open.
-  const [open, setOpen] = useState(() =>
-    thinking ? true : thinkingDefaultOpenWhenDone(pref),
-  );
+  // Open while live, collapsed when done — same model as the work/phase block.
+  // The keep-open pref no longer auto-opens finished blocks; finished thoughts
+  // collapse on episode end and can be re-opened with a click.
+  const [open, setOpen] = useState(() => !!thinking);
   const startRef = useRef<number | null>(null);
   const [localDuration, setLocalDuration] = useState<number | undefined>(
     durationMs,
@@ -63,39 +51,6 @@ export const Thinking = memo(function Thinking({
   const userToggled = useRef(false);
   const thinkingRef = useRef(!!thinking);
   thinkingRef.current = !!thinking;
-
-  useEffect(() => {
-    if (expandPref != null) setPref(expandPref);
-  }, [expandPref]);
-
-  useEffect(() => {
-    if (expandPref != null) return;
-    const apply = (next: ThinkingExpandPref) => {
-      setPref(next);
-      if (!thinkingRef.current && !userToggled.current) {
-        setOpen(thinkingDefaultOpenWhenDone(next));
-      }
-    };
-    const onPref = (e: Event) => {
-      const detail = (e as CustomEvent<ThinkingExpandPref>).detail;
-      apply(
-        detail === "keep-open" || detail === "auto-collapse"
-          ? detail
-          : loadThinkingExpandPref(),
-      );
-    };
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "grok.thinkingExpanded") {
-        apply(loadThinkingExpandPref());
-      }
-    };
-    window.addEventListener(THINKING_PREF_EVENT, onPref);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener(THINKING_PREF_EVENT, onPref);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, [expandPref]);
 
   useEffect(() => {
     const onCollapseAll = () => {
@@ -154,11 +109,13 @@ export const Thinking = memo(function Thinking({
       }
       frozenRef.current = true;
     }
-    // Finished → collapse unless user prefers keep-open and hasn’t toggled.
+    // Collapse when not live — mirrors the work/phase block. The keep-open pref
+    // no longer auto-opens finished blocks (it was the reason they stayed
+    // expanded after the answer began). The user can still click to expand.
     if (!userToggled.current) {
-      setOpen(thinkingDefaultOpenWhenDone(pref));
+      setOpen(false);
     }
-  }, [thinking, pref, startedAt, durationMs]);
+  }, [thinking, startedAt, durationMs]);
 
   useEffect(() => {
     if (durationMs != null) setLocalDuration(durationMs);
