@@ -9,6 +9,7 @@ import {
   resolveManualUpdateUrls,
   resolveUpdateChannelHonesty,
   resolveUpdateChannelHonestyPreferHost,
+  isUpdateAffordanceVisible,
   shouldShowInstallButton,
   shouldShowInstallProgress,
   shouldShowManualDownloadCtas,
@@ -210,19 +211,21 @@ describe("formatUpdateProgressLine", () => {
 });
 
 describe("shouldShowInstallProgress / busy / CTAs", () => {
-  it("shows progress only for downloading and installing", () => {
+  it("shows progress only for downloading, installing, restarting", () => {
     expect(shouldShowInstallProgress({ state: "downloading" })).toBe(true);
     expect(shouldShowInstallProgress({ state: "installing" })).toBe(true);
+    expect(shouldShowInstallProgress({ state: "restarting" })).toBe(true);
     expect(shouldShowInstallProgress({ state: "available" })).toBe(false);
     expect(shouldShowInstallProgress({ state: "ready" })).toBe(false);
     expect(shouldShowInstallProgress({ state: "checking" })).toBe(false);
     expect(shouldShowInstallProgress(null)).toBe(false);
   });
 
-  it("marks check/install busy for checking + progress", () => {
+  it("marks check/install busy for checking + progress + restarting", () => {
     expect(isUpdateActionBusy({ state: "checking" })).toBe(true);
     expect(isUpdateActionBusy({ state: "downloading" })).toBe(true);
     expect(isUpdateActionBusy({ state: "installing" })).toBe(true);
+    expect(isUpdateActionBusy({ state: "restarting" })).toBe(true);
     expect(isUpdateActionBusy({ state: "ready" })).toBe(false);
   });
 
@@ -233,6 +236,20 @@ describe("shouldShowInstallProgress / busy / CTAs", () => {
       true,
     );
     expect(shouldShowManualDownloadCtas({ state: "available" })).toBe(false);
+  });
+
+  it("sidebar update affordance shows for known newer build / in-flight", () => {
+    expect(isUpdateAffordanceVisible({ state: "available" })).toBe(true);
+    expect(isUpdateAffordanceVisible({ state: "downloading" })).toBe(true);
+    expect(isUpdateAffordanceVisible({ state: "ready" })).toBe(true);
+    expect(isUpdateAffordanceVisible({ state: "installing" })).toBe(true);
+    expect(isUpdateAffordanceVisible({ state: "restarting" })).toBe(true);
+    expect(isUpdateAffordanceVisible({ state: "manual-required" })).toBe(true);
+    expect(isUpdateAffordanceVisible({ state: "idle" })).toBe(false);
+    expect(isUpdateAffordanceVisible({ state: "checking" })).toBe(false);
+    expect(isUpdateAffordanceVisible({ state: "up-to-date" })).toBe(false);
+    expect(isUpdateAffordanceVisible({ state: "error" })).toBe(false);
+    expect(isUpdateAffordanceVisible(null)).toBe(false);
   });
 });
 

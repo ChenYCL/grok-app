@@ -602,6 +602,72 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   white-space: nowrap;
 }
 
+/* App update affordance — right of brand logo, accent glyph + corner dot. */
+.sidebar-update-btn {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--accent, #6b9fff);
+  cursor: pointer;
+  overflow: visible;
+}
+
+.sidebar-update-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent, #6b9fff) 14%, transparent);
+  color: var(--accent-hover, var(--accent, #6b9fff));
+}
+
+.sidebar-update-btn:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.sidebar-update-btn--busy {
+  opacity: 0.9;
+}
+
+.sidebar-update-btn__dot {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent, #6b9fff);
+  box-shadow: 0 0 0 1.5px var(--bg-secondary, var(--bg-primary, #1a1a1a));
+  pointer-events: none;
+}
+
+.sidebar-update-btn__dot--pulse {
+  animation: sidebar-update-dot-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes sidebar-update-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-update-btn__dot--pulse {
+    animation: none;
+  }
+}
+
 .chrome-btn {
   /* relative: rp-chrome__badge is position:absolute; without this it
      anchors to .main / window and drifts to the top-right corner. */

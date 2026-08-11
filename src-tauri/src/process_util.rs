@@ -326,23 +326,140 @@ pub fn user_tool_path_dirs(home: &Path) -> Vec<PathBuf> {
         push_dir(home.join(".asdf").join("shims"));
         push_dir(home.join(".asdf").join("bin"));
         push_dir(home.join(".local").join("share").join("fnm"));
-        let nvm_default = home.join(".nvm").join("alias").join("default");
-        if let Ok(ver) = std::fs::read_to_string(&nvm_default) {
-            let ver = ver.trim();
-            if !ver.is_empty() && !ver.contains('/') {
-                push_dir(
-                    home.join(".nvm")
-                        .join("versions")
-                        .join("node")
-                        .join(ver)
-                        .join("bin"),
-                );
-            }
-        }
         push_dir(home.join(".volta").join("bin"));
     }
 
+    // nvm (unix-style ~/.nvm): alias/default is often a major (`22`) or nested
+    // alias (`lts/*`), not the on-disk folder (`v22.22.0`). Exact join misses
+    // node → GUI `grok update --check` (installer=npm) fails with ENOENT.
+    for bin in nvm_node_bin_dirs(home) {
+        push_dir(bin);
+    }
+
     out
+}
+
+/// Resolve nvm-managed Node `…/bin` directories under `home/.nvm`.
+///
+/// Pure helper (takes `home`) for unit tests. Returns only existing dirs.
+pub fn nvm_node_bin_dirs(home: &Path) -> Vec<PathBuf> {
+    let nvm_root = home.join(".nvm");
+    if !nvm_root.is_dir() {
+        return Vec::new();
+    }
+    let mut out: Vec<PathBuf> = Vec::new();
+    if let Some(bin) = resolve_nvm_ref_to_bin(&nvm_root, "default", 0) {
+        if bin.is_dir() {
+            out.push(bin);
+        }
+    }
+    // Fallback when default is missing / broken: newest installed node.
+    if out.is_empty() {
+        if let Some(bin) = newest_nvm_node_bin(&nvm_root) {
+            if bin.is_dir() {
+                out.push(bin);
+            }
+        }
+    }
+    out
+}
+
+/// Resolve an nvm alias or version label to `versions/node/<ver>/bin`.
+///
+/// Walks nested aliases (`default` → `22` → `v22.22.0`, `lts/*` → …) and
+/// prefix-matches major-only labels against installed folders.
+fn resolve_nvm_ref_to_bin(nvm_root: &Path, raw: &str, depth: u8) -> Option<PathBuf> {
+    if depth > 12 {
+        return None;
+    }
+    let name = raw.trim();
+    if name.is_empty() {
+        return None;
+    }
+
+    // Alias files first so `default` / `lts/iron` / major shims resolve correctly.
+    let alias_path = nvm_root.join("alias").join(name);
+    if alias_path.is_file() {
+        if let Ok(target) = std::fs::read_to_string(&alias_path) {
+            let t = target.trim();
+            if !t.is_empty() && t != name {
+                if let Some(bin) = resolve_nvm_ref_to_bin(nvm_root, t, depth + 1) {
+                    return Some(bin);
+                }
+            }
+        }
+    }
+
+    let versions = nvm_root.join("versions").join("node");
+    if !versions.is_dir() {
+        return None;
+    }
+
+    // Exact on-disk names: `v22.22.0`, bare `22.22.0`, or raw alias text.
+    let stripped = name.trim_start_matches('v');
+    for cand in [
+        versions.join(name).join("bin"),
+        versions.join(format!("v{stripped}")).join("bin"),
+        versions.join(stripped).join("bin"),
+    ] {
+        if cand.is_dir() {
+            return Some(cand);
+        }
+    }
+
+    // Prefix / major match: alias `22` → highest `v22.*` install.
+    fuzzy_match_nvm_version_bin(&versions, name)
+}
+
+fn fuzzy_match_nvm_version_bin(versions_dir: &Path, query: &str) -> Option<PathBuf> {
+    let q = query.trim().trim_start_matches('v');
+    if q.is_empty() || q.contains('/') {
+        return None;
+    }
+    let mut hits: Vec<(String, PathBuf)> = Vec::new();
+    let rd = std::fs::read_dir(versions_dir).ok()?;
+    for entry in rd.flatten() {
+        let fname = entry.file_name().to_string_lossy().into_owned();
+        let n = fname.trim_start_matches('v').to_string();
+        if n == q || n.starts_with(&format!("{q}.")) {
+            let bin = entry.path().join("bin");
+            if bin.is_dir() {
+                hits.push((n, bin));
+            }
+        }
+    }
+    hits.sort_by(|a, b| cmp_loose_semver(&a.0, &b.0));
+    hits.pop().map(|(_, bin)| bin)
+}
+
+fn newest_nvm_node_bin(nvm_root: &Path) -> Option<PathBuf> {
+    let versions = nvm_root.join("versions").join("node");
+    if !versions.is_dir() {
+        return None;
+    }
+    let mut hits: Vec<(String, PathBuf)> = Vec::new();
+    let rd = std::fs::read_dir(&versions).ok()?;
+    for entry in rd.flatten() {
+        let fname = entry.file_name().to_string_lossy().into_owned();
+        let n = fname.trim_start_matches('v').to_string();
+        let bin = entry.path().join("bin");
+        if bin.is_dir() {
+            hits.push((n, bin));
+        }
+    }
+    hits.sort_by(|a, b| cmp_loose_semver(&a.0, &b.0));
+    hits.pop().map(|(_, bin)| bin)
+}
+
+/// Compare dotted version-ish strings (`22.9.0` vs `22.22.0`) by numeric parts.
+fn cmp_loose_semver(a: &str, b: &str) -> std::cmp::Ordering {
+    let parse = |s: &str| -> Vec<u64> {
+        s.split(|c: char| !c.is_ascii_digit())
+            .filter(|p| !p.is_empty())
+            .filter_map(|p| p.parse::<u64>().ok())
+            .collect()
+    };
+    parse(a).cmp(&parse(b))
 }
 
 /// Build PATH suitable for GUI-spawned agent processes.
@@ -680,6 +797,115 @@ mod tests {
             found
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn nvm_resolves_major_alias_default_to_installed_bin() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-nvm-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        // Real-world shape: alias/default = "22", install at versions/node/v22.22.0
+        let bin = tmp
+            .join(".nvm")
+            .join("versions")
+            .join("node")
+            .join("v22.22.0")
+            .join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        // Older patch also present — must pick highest.
+        let older = tmp
+            .join(".nvm")
+            .join("versions")
+            .join("node")
+            .join("v22.9.0")
+            .join("bin");
+        std::fs::create_dir_all(&older).unwrap();
+        let alias_dir = tmp.join(".nvm").join("alias");
+        std::fs::create_dir_all(&alias_dir).unwrap();
+        std::fs::write(alias_dir.join("default"), "22\n").unwrap();
+
+        let dirs = nvm_node_bin_dirs(&tmp);
+        assert_eq!(dirs, vec![bin.clone()], "got {dirs:?}");
+
+        // Also exposed via user_tool_path_dirs.
+        let tools = user_tool_path_dirs(&tmp);
+        assert!(
+            tools.iter().any(|p| p == &bin),
+            "expected nvm bin in user_tool_path_dirs: {tools:?}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn nvm_resolves_nested_lts_alias() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-nvm-lts-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let bin = tmp
+            .join(".nvm")
+            .join("versions")
+            .join("node")
+            .join("v20.18.1")
+            .join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let alias = tmp.join(".nvm").join("alias");
+        std::fs::create_dir_all(alias.join("lts")).unwrap();
+        std::fs::write(alias.join("default"), "lts/iron\n").unwrap();
+        std::fs::write(alias.join("lts").join("iron"), "v20.18.1\n").unwrap();
+
+        let dirs = nvm_node_bin_dirs(&tmp);
+        assert_eq!(dirs, vec![bin]);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn nvm_falls_back_to_newest_when_default_missing() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-nvm-fallback-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let v18 = tmp
+            .join(".nvm")
+            .join("versions")
+            .join("node")
+            .join("v18.20.0")
+            .join("bin");
+        let v22 = tmp
+            .join(".nvm")
+            .join("versions")
+            .join("node")
+            .join("v22.22.0")
+            .join("bin");
+        std::fs::create_dir_all(&v18).unwrap();
+        std::fs::create_dir_all(&v22).unwrap();
+        // No alias/default
+        let dirs = nvm_node_bin_dirs(&tmp);
+        assert_eq!(dirs, vec![v22]);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn cmp_loose_semver_orders_patch_and_minor() {
+        assert_eq!(cmp_loose_semver("22.9.0", "22.22.0"), std::cmp::Ordering::Less);
+        assert_eq!(cmp_loose_semver("22.22.0", "22.22.0"), std::cmp::Ordering::Equal);
+        assert_eq!(cmp_loose_semver("23.0.0", "22.99.0"), std::cmp::Ordering::Greater);
     }
 
     #[test]

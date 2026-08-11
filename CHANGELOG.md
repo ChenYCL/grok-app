@@ -11,6 +11,15 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- **CLI update check `No such file or directory (os error 2)`**: GUI PATH enrichment only joined nvm `alias/default` literally (e.g. `22` → `~/.nvm/versions/node/22/bin`, missing). Now resolves nested aliases (`lts/*`), major shims, and picks the highest matching install (`v22.22.0`) so `grok update --check --json` (installer=`npm`) finds `node`/`npm` without loading shell rc.
+
+**中文 · 修复**
+- **设置 → CLI 检查更新 os error 2**：正确解析 nvm 别名到真实 Node `bin`，GUI 下 `grok update --check` 不再因找不到 node 失败。
+
+### Notes
+- **v0.2.13 GitHub Release 构建未产出安装包**：tag 已推送，但 release workflow 在 **Setup pnpm** 秒挂——`package.json` 的 `packageManager: pnpm@9.15.9` 与 workflow 里 `pnpm/action-setup` 的 `version: 9` 冲突（`Multiple versions of pnpm specified`）。修法：去掉 workflow 硬编码 `version`（`release.yml` + `ci.yml`），再 `workflow_dispatch` 重跑 tag。
+
 ## [0.2.13] - 2026-08-11
 
 > **Highlight:** Mid-turn Queue Steer is live again (no deadlock), Windows can spawn Grok Build via WSL, Find Skills ranks by the draft prompt, native desktop alerts land on macOS, and a pre-release hardening pass closes stop-during-vision, permission RPC ordering, and WSL path injection.

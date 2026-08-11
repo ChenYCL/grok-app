@@ -56,4 +56,10 @@ export const zhTWSidebar = {
   "sidebar.archiveOlderConfirmAction": "封存 {n} 個",
   "sidebar.scheduled": "已排程",
   "sidebar.newSession": "新增對話",
+  "sidebar.update.available": "有可用更新{version}",
+  "sidebar.update.downloading": "正在下載更新{version}…",
+  "sidebar.update.ready": "安裝更新並重新啟動{version}",
+  "sidebar.update.installing": "正在安裝更新{version}…",
+  "sidebar.update.restarting": "正在重新啟動以完成更新{version}…",
+  "sidebar.update.manual": "有新版本 — 開啟下載{version}",
 };

@@ -56,4 +56,10 @@ export const enSidebar = {
   "sidebar.archiveOlderConfirmAction": "Archive {n}",
   "sidebar.scheduled": "Scheduled",
   "sidebar.newSession": "New session",
+  "sidebar.update.available": "Update available{version}",
+  "sidebar.update.downloading": "Downloading update{version}…",
+  "sidebar.update.ready": "Install update and restart{version}",
+  "sidebar.update.installing": "Installing update{version}…",
+  "sidebar.update.restarting": "Restarting to finish update{version}…",
+  "sidebar.update.manual": "New version available — open download{version}",
 } as const;

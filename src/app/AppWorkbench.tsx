@@ -673,6 +673,7 @@ import {
 import { sortSessionsForSidebar } from "@/lib/sidebarDateGroups";
 import { GrokLogo } from "@/components/GrokLogo";
 import { SidebarBrand } from "@/components/SidebarBrand";
+import { SidebarUpdateButton } from "@/components/SidebarUpdateButton";
 import type { SetupCliInfo } from "@/components/SetupWizard";
 import {
   buildAuthDeferredFlags,
@@ -17100,6 +17101,7 @@ export function AppWorkbench() {
                     : "Grok"
                 }
               />
+              <SidebarUpdateButton t={tr} />
             </div>
             <Tip label={tr("sidebar.search")}>
               <button

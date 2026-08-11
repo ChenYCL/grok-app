@@ -575,8 +575,28 @@ pub fn run() {
                     if let Err(e) = relay_stream_proxy::ensure_started().await {
                         tracing::warn!(error = %e, "relay stream proxy failed to start");
                     }
-                    if let Err(e) = relay_stream_proxy::repair_sanitize_proxy_bases() {
-                        tracing::warn!(error = %e, "relay stream proxy base_url repair failed");
+                    // Repair does sync FS I/O + ensure_started_blocking. After
+                    // ensure_started().await the port fast-path avoids nested
+                    // block_on on this worker; spawn_blocking also keeps FS off
+                    // the async pool.
+                    match tauri::async_runtime::spawn_blocking(
+                        relay_stream_proxy::repair_sanitize_proxy_bases,
+                    )
+                    .await
+                    {
+                        Ok(Ok(_)) => {}
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                error = %e,
+                                "relay stream proxy base_url repair failed"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                "relay stream proxy base_url repair join failed"
+                            );
+                        }
                     }
                 });
             }

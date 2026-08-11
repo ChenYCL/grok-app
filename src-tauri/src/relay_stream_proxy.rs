@@ -195,8 +195,34 @@ pub async fn ensure_started() -> Result<u16, String> {
     Ok(bound)
 }
 
-/// Blocking wrapper for sync provider writers.
+/// Blocking wrapper for sync provider writers / startup repair.
+///
+/// Safe to call from:
+/// - plain sync code (no Tokio context)
+/// - `spawn_blocking` threads
+/// - async tasks **after** the proxy is already up (fast path — no nested runtime)
+///
+/// Never calls `block_on` on a Tokio worker thread (that panics:
+/// "Cannot start a runtime from within a runtime"). When the port is not yet
+/// bound and we are already inside a runtime, start on a dedicated OS thread.
 pub fn ensure_started_blocking() -> Result<u16, String> {
+    let port = LISTEN_PORT.load(Ordering::SeqCst);
+    if port != 0 {
+        return Ok(port);
+    }
+
+    // Nested `block_on` on a multi-thread worker panics. Detect a current
+    // Handle and offload to a fresh OS thread that may safely enter the
+    // Tauri global runtime.
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::Builder::new()
+            .name("relay-proxy-start".into())
+            .spawn(|| tauri::async_runtime::block_on(ensure_started()))
+            .map_err(|e| format!("relay stream proxy start spawn: {e}"))?
+            .join()
+            .map_err(|_| "relay stream proxy start thread panicked".to_string())?;
+    }
+
     tauri::async_runtime::block_on(ensure_started())
 }
 
@@ -549,6 +575,16 @@ mod tests {
     fn host_detects_opencode() {
         assert!(host_needs_stream_sanitize("https://opencode.ai/zen/go/v1"));
         assert!(!host_needs_stream_sanitize("https://api.deepseek.com/v1"));
+    }
+
+    #[test]
+    fn ensure_started_blocking_fast_path_when_port_set() {
+        // Do not start a real listener — only exercise the AtomicU16 short-circuit
+        // so nested block_on is never attempted in unit tests.
+        let prev = LISTEN_PORT.swap(54321, Ordering::SeqCst);
+        let got = ensure_started_blocking().expect("fast path");
+        assert_eq!(got, 54321);
+        LISTEN_PORT.store(prev, Ordering::SeqCst);
     }
 
     #[test]

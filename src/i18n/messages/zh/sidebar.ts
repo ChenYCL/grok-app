@@ -56,4 +56,10 @@ export const zhSidebar = {
   "sidebar.archiveOlderConfirmAction": "归档 {n} 个",
   "sidebar.scheduled": "已安排",
   "sidebar.newSession": "新建会话",
+  "sidebar.update.available": "有可用更新{version}",
+  "sidebar.update.downloading": "正在下载更新{version}…",
+  "sidebar.update.ready": "安装更新并重启{version}",
+  "sidebar.update.installing": "正在安装更新{version}…",
+  "sidebar.update.restarting": "正在重启以完成更新{version}…",
+  "sidebar.update.manual": "有新版本 — 打开下载{version}",
 };

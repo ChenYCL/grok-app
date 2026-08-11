@@ -13,6 +13,16 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { invoke } from "@tauri-apps/api/core";
 import { isDesktopHost, type AppUpdateCheck } from "@/lib/api";
+import { DEVELOPER_MODE_CHANGE_EVENT } from "@/lib/developerModePref";
+import {
+  UPDATE_SIM_CHANGE_EVENT,
+  UPDATE_SIM_VERSION,
+  clearUpdateSimIfDeveloperModeOff,
+  installDeveloperModeSimCleanup,
+  installUpdateSimConsoleApi,
+  readUpdateSimMode,
+  sleepMs,
+} from "@/lib/updateSim";
 
 export type UpdateStatus =
   | { state: "idle" }
@@ -22,6 +32,8 @@ export type UpdateStatus =
   | { state: "downloading"; version: string }
   | { state: "installing"; version: string }
   | { state: "ready"; version: string }
+  /** Install staged; process is about to relaunch (or sim page reload). */
+  | { state: "restarting"; version: string }
   | { state: "error"; message: string }
   | {
       state: "manual-required";
@@ -40,6 +52,7 @@ const BACKGROUND_BLOCKED_STATES = new Set<UpdateStatus["state"]>([
   "downloading",
   "installing",
   "ready",
+  "restarting",
   "manual-required",
 ]);
 
@@ -109,6 +122,14 @@ export type UpdaterChannelInfo = {
   endpoint: string;
 };
 
+export type ApplyUpdateResult =
+  | { kind: "manual"; releaseUrl: string; downloadUrl?: string | null }
+  | { kind: "busy" }
+  | { kind: "installing" }
+  | { kind: "pending" }
+  | { kind: "checking" }
+  | { kind: "noop" };
+
 export function useUpdater() {
   const [status, setStatusState] = useState<UpdateStatus>(initialUpdateStatus);
   const [channelInfo, setChannelInfo] = useState<UpdaterChannelInfo>({
@@ -123,6 +144,12 @@ export function useUpdater() {
   const downloadInFlightRef = useRef(false);
   const installInFlightRef = useRef(false);
   const manualResultRequestedRef = useRef(false);
+  /**
+   * When true, finish download → install → relaunch without a second click
+   * (sidebar affordance or Settings → About “Check for updates”).
+   * Background discovery only stages to `ready` (badge / Install CTA).
+   */
+  const installWhenReadyRef = useRef(false);
   /** Bumped on unmount so in-flight async work never setState on a dead tree. */
   const generationRef = useRef(0);
   const aliveRef = useRef(true);
@@ -158,9 +185,97 @@ export function useUpdater() {
     }
   }, []);
 
+  const performInstall = useCallback(
+    async (version: string) => {
+      if (installInFlightRef.current) {
+        return;
+      }
+
+      // Sim silent path: full chain install → restarting → page reload
+      // (stand-in for process relaunch). Developer mode + sim prefs persist.
+      if (readUpdateSimMode() === "silent") {
+        installInFlightRef.current = true;
+        installWhenReadyRef.current = false;
+        try {
+          setStatus({ state: "installing", version });
+          await sleepMs(900);
+          if (!aliveRef.current) return;
+          setStatus({ state: "restarting", version });
+          await sleepMs(700);
+          if (!aliveRef.current) return;
+          console.info(
+            `[grok] Update sim: install complete for ${version} — reloading to simulate relaunch`,
+          );
+          // Full-flow completion: same as product relaunch from the UI's POV.
+          window.location.reload();
+        } catch (err) {
+          if (!aliveRef.current) return;
+          setStatus({ state: "error", message: toErrorMessage(err) });
+          installInFlightRef.current = false;
+        }
+        // Leave installInFlight true across reload; page tear-down clears it.
+        return;
+      }
+
+      const update = updateRef.current;
+      if (!update) {
+        setStatus({
+          state: "error",
+          message: "Update is not ready to install yet",
+        });
+        return;
+      }
+
+      installInFlightRef.current = true;
+      installWhenReadyRef.current = false;
+      try {
+        setStatus({ state: "installing", version });
+        // P0: stage the update first. Only tear down children after install succeeds
+        // so a failed install leaves agents / IM / mirror intact.
+        await update.install();
+        try {
+          await prepareForAppUpdate();
+        } catch (prepErr) {
+          // Install already staged — still relaunch so the new binary can start.
+          console.warn(
+            "prepare_for_app_update failed; continuing relaunch",
+            prepErr,
+          );
+        }
+        updateRef.current = null;
+        if (!aliveRef.current) return;
+        setStatus({ state: "restarting", version });
+        await relaunch();
+      } catch (err) {
+        if (!aliveRef.current) return;
+        setStatus({ state: "error", message: toErrorMessage(err) });
+      } finally {
+        installInFlightRef.current = false;
+      }
+    },
+    [setStatus],
+  );
+
   const downloadUpdate = useCallback(
     async (version: string) => {
       if (downloadInFlightRef.current) {
+        return;
+      }
+
+      // DEV sim silent path — no Tauri Update handle.
+      if (readUpdateSimMode() === "silent") {
+        downloadInFlightRef.current = true;
+        try {
+          setStatus({ state: "downloading", version });
+          await sleepMs(1200);
+          if (!aliveRef.current) return;
+          setStatus({ state: "ready", version });
+          if (installWhenReadyRef.current) {
+            await performInstall(version);
+          }
+        } finally {
+          downloadInFlightRef.current = false;
+        }
         return;
       }
 
@@ -175,26 +290,22 @@ export function useUpdater() {
         await update.download();
         if (!aliveRef.current) return;
         setStatus({ state: "ready", version });
+        // User-initiated path: install + relaunch immediately (no second click).
+        if (installWhenReadyRef.current) {
+          await performInstall(version);
+        }
       } catch (err) {
         if (!aliveRef.current) return;
+        installWhenReadyRef.current = false;
         setStatus({ state: "error", message: toErrorMessage(err) });
       } finally {
         downloadInFlightRef.current = false;
       }
     },
-    [setStatus],
+    [performInstall, setStatus],
   );
 
   const installAndRelaunch = useCallback(async () => {
-    if (installInFlightRef.current) {
-      return;
-    }
-
-    const update = updateRef.current;
-    if (!update) {
-      return;
-    }
-
     // Only install when download has finished (status ready).
     const current = statusRef.current;
     if (current.state !== "ready") {
@@ -204,42 +315,21 @@ export function useUpdater() {
       });
       return;
     }
-    const version = current.version;
-
-    installInFlightRef.current = true;
-    try {
-      setStatus({ state: "installing", version });
-      // P0: stage the update first. Only tear down children after install succeeds
-      // so a failed install leaves agents / IM / mirror intact.
-      await update.install();
-      try {
-        await prepareForAppUpdate();
-      } catch (prepErr) {
-        // Install already staged — still relaunch so the new binary can start.
-        console.warn(
-          "prepare_for_app_update failed; continuing relaunch",
-          prepErr,
-        );
-      }
-      updateRef.current = null;
-      await relaunch();
-    } catch (err) {
-      if (!aliveRef.current) return;
-      setStatus({ state: "error", message: toErrorMessage(err) });
-    } finally {
-      installInFlightRef.current = false;
-    }
-  }, [setStatus]);
+    await performInstall(current.version);
+  }, [performInstall, setStatus]);
 
   const applyGithubResult = useCallback(
     (r: AppUpdateCheck) => {
       if (!r.updateAvailable) {
+        installWhenReadyRef.current = false;
         setStatus({
           state: "up-to-date",
           version: r.currentVersion,
         });
         return;
       }
+      // Manual / GitHub path cannot silent-install.
+      installWhenReadyRef.current = false;
       setStatus({
         state: "manual-required",
         version: r.latestVersion,
@@ -263,6 +353,7 @@ export function useUpdater() {
       } catch (err) {
         if (!aliveRef.current) return;
         if (shouldShow) {
+          installWhenReadyRef.current = false;
           setStatus({ state: "error", message: toErrorMessage(err) });
         }
       }
@@ -272,6 +363,53 @@ export function useUpdater() {
 
   const runUpdateCheck = useCallback(
     async ({ background }: { background: boolean }) => {
+      const simMode = readUpdateSimMode();
+
+      // DEV simulation: skip host/plugin I/O entirely.
+      if (simMode !== "off") {
+        if (checkInFlightRef.current) {
+          if (!background) {
+            manualResultRequestedRef.current = true;
+            setStatus({ state: "checking" });
+          }
+          return;
+        }
+        if (downloadInFlightRef.current || installInFlightRef.current) {
+          return;
+        }
+        if (background && !canRunBackgroundCheck(statusRef.current)) {
+          return;
+        }
+
+        checkInFlightRef.current = true;
+        try {
+          if (!background) {
+            setStatus({ state: "checking" });
+          }
+          await sleepMs(background ? 350 : 500);
+          if (!aliveRef.current) return;
+
+          if (simMode === "manual") {
+            installWhenReadyRef.current = false;
+            setStatus({
+              state: "manual-required",
+              version: UPDATE_SIM_VERSION,
+              releaseUrl: GITHUB_RELEASES_URL,
+              downloadUrl: GITHUB_RELEASES_URL,
+              assetNames: ["GrokApp-sim.dmg", "GrokApp-sim.exe"],
+            });
+            return;
+          }
+
+          // silent
+          setStatus({ state: "available", version: UPDATE_SIM_VERSION });
+          void downloadUpdate(UPDATE_SIM_VERSION);
+        } finally {
+          checkInFlightRef.current = false;
+        }
+        return;
+      }
+
       if (!isDesktopHost()) {
         if (!background) {
           setStatus({
@@ -372,6 +510,7 @@ export function useUpdater() {
             setStatus({ state: "available", version: update.version });
             void downloadUpdate(update.version);
           } else {
+            installWhenReadyRef.current = false;
             try {
               await update.close();
             } catch {
@@ -385,6 +524,7 @@ export function useUpdater() {
             });
           }
         } else if (shouldShowQuietResult) {
+          installWhenReadyRef.current = false;
           setStatus({ state: "up-to-date" });
         }
       } finally {
@@ -398,64 +538,189 @@ export function useUpdater() {
   );
 
   const checkForUpdate = useCallback(async () => {
+    // About “Check for updates”: if a package is found, download then
+    // install + relaunch automatically (no second Install click).
+    // Already staged from background discovery → install immediately.
+    const current = statusRef.current;
+    if (current.state === "restarting" || current.state === "installing") {
+      return;
+    }
+    if (current.state === "ready") {
+      installWhenReadyRef.current = true;
+      await installAndRelaunch();
+      return;
+    }
+    if (current.state === "downloading") {
+      installWhenReadyRef.current = true;
+      return;
+    }
+    if (current.state === "available") {
+      installWhenReadyRef.current = true;
+      if (!downloadInFlightRef.current) {
+        void downloadUpdate(current.version);
+      }
+      return;
+    }
+    installWhenReadyRef.current = true;
     await runUpdateCheck({ background: false });
-  }, [runUpdateCheck]);
+  }, [downloadUpdate, installAndRelaunch, runUpdateCheck]);
 
   const checkForUpdateInBackground = useCallback(async () => {
     await runUpdateCheck({ background: true });
   }, [runUpdateCheck]);
 
+  /**
+   * Sidebar / one-shot update affordance.
+   * - Silent path: download (if needed) → install → relaunch automatically.
+   * - Manual path: return URLs so the UI can open GitHub (same as About).
+   */
+  const applyAvailableUpdate = useCallback(async (): Promise<ApplyUpdateResult> => {
+    const current = statusRef.current;
+
+    if (current.state === "manual-required") {
+      return {
+        kind: "manual",
+        releaseUrl: current.releaseUrl,
+        downloadUrl: current.downloadUrl,
+      };
+    }
+
+    if (
+      current.state === "installing" ||
+      current.state === "restarting"
+    ) {
+      return { kind: "busy" };
+    }
+
+    // One click: install + auto-restart (no second confirm).
+    if (current.state === "ready") {
+      installWhenReadyRef.current = true;
+      await installAndRelaunch();
+      return { kind: "installing" };
+    }
+
+    if (current.state === "downloading" || current.state === "available") {
+      // Finish download → install → relaunch without another click.
+      installWhenReadyRef.current = true;
+      if (current.state === "available" && !downloadInFlightRef.current) {
+        // Real path needs a Tauri Update handle; silent sim does not.
+        if (updateRef.current || readUpdateSimMode() === "silent") {
+          void downloadUpdate(current.version);
+        }
+      }
+      return { kind: "pending" };
+    }
+
+    if (current.state === "checking") {
+      installWhenReadyRef.current = true;
+      return { kind: "checking" };
+    }
+
+    // idle / up-to-date / error — run a full user-initiated check (auto-install).
+    installWhenReadyRef.current = true;
+    await runUpdateCheck({ background: false });
+    return { kind: "checking" };
+  }, [downloadUpdate, installAndRelaunch, runUpdateCheck]);
+
+  const refreshChannelInfo = useCallback(async () => {
+    const simMode = readUpdateSimMode();
+    if (simMode !== "off") {
+      setChannelInfo({
+        channel: simMode === "silent" ? "silent" : "github_manual",
+        pluginEnabled: simMode === "silent",
+        platformSupported: true,
+        endpoint: simMode === "silent" ? "sim://local-dev" : "",
+      });
+      return;
+    }
+    if (!isDesktopHost()) return;
+    try {
+      const s = await invoke<{
+        platformSupported: boolean;
+        pluginEnabled: boolean;
+        channel: string;
+        endpoint: string;
+      }>("updater_status");
+      if (!aliveRef.current) return;
+      setChannelInfo({
+        channel:
+          s.channel === "silent"
+            ? "silent"
+            : s.channel === "github_manual"
+              ? "github_manual"
+              : "unknown",
+        pluginEnabled: !!s.pluginEnabled,
+        platformSupported: !!s.platformSupported,
+        endpoint: s.endpoint || "",
+      });
+    } catch {
+      /* ignore — About still works via status machine */
+    }
+  }, []);
+
+  /**
+   * Re-seed after Settings developer / sim toggles. Resets blocked states so
+   * background discovery is not stuck on a previous sim `ready`.
+   */
+  const reseedFromPrefs = useCallback(async () => {
+    clearUpdateSimIfDeveloperModeOff();
+    installUpdateSimConsoleApi();
+    installWhenReadyRef.current = false;
+    downloadInFlightRef.current = false;
+    installInFlightRef.current = false;
+    checkInFlightRef.current = false;
+    await closeUpdate();
+    setStatus({ state: "idle" });
+    await refreshChannelInfo();
+    await runUpdateCheck({ background: true });
+  }, [closeUpdate, refreshChannelInfo, runUpdateCheck, setStatus]);
+
   useEffect(() => {
     aliveRef.current = true;
     const gen = ++generationRef.current;
+    installDeveloperModeSimCleanup();
+    installUpdateSimConsoleApi();
 
-    // Resolve channel once for About / Doctor (does not start download).
-    void (async () => {
-      if (!isDesktopHost()) return;
-      try {
-        const s = await invoke<{
-          platformSupported: boolean;
-          pluginEnabled: boolean;
-          channel: string;
-          endpoint: string;
-        }>("updater_status");
-        if (!aliveRef.current || generationRef.current !== gen) return;
-        setChannelInfo({
-          channel:
-            s.channel === "silent"
-              ? "silent"
-              : s.channel === "github_manual"
-                ? "github_manual"
-                : "unknown",
-          pluginEnabled: !!s.pluginEnabled,
-          platformSupported: !!s.platformSupported,
-          endpoint: s.endpoint || "",
-        });
-      } catch {
-        /* ignore — About still works via status machine */
-      }
-    })();
+    void refreshChannelInfo();
 
+    // Startup + periodic discovery (download only; no silent install).
     void checkForUpdateInBackground();
 
     const intervalId = window.setInterval(() => {
       if (generationRef.current !== gen) return;
+      // While simulating, discovery is driven by sim reseed / click path.
+      if (readUpdateSimMode() !== "off") return;
       void checkForUpdateInBackground();
     }, BACKGROUND_UPDATE_CHECK_INTERVAL_MS);
+
+    const onPrefsChange = () => {
+      if (generationRef.current !== gen) return;
+      void reseedFromPrefs();
+    };
+    window.addEventListener(UPDATE_SIM_CHANGE_EVENT, onPrefsChange);
+    window.addEventListener(DEVELOPER_MODE_CHANGE_EVENT, onPrefsChange);
 
     return () => {
       aliveRef.current = false;
       generationRef.current += 1;
       window.clearInterval(intervalId);
+      window.removeEventListener(UPDATE_SIM_CHANGE_EVENT, onPrefsChange);
+      window.removeEventListener(DEVELOPER_MODE_CHANGE_EVENT, onPrefsChange);
       void closeUpdate();
     };
-  }, [checkForUpdateInBackground, closeUpdate]);
+  }, [
+    checkForUpdateInBackground,
+    closeUpdate,
+    refreshChannelInfo,
+    reseedFromPrefs,
+  ]);
 
   return {
     status,
     channelInfo,
     checkForUpdate,
     installAndRelaunch,
+    applyAvailableUpdate,
     githubReleasesUrl: GITHUB_RELEASES_URL,
   };
 }

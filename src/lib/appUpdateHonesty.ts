@@ -24,6 +24,7 @@ export type AppUpdateStatusState =
   | "downloading"
   | "installing"
   | "ready"
+  | "restarting"
   | "error"
   | "manual-required";
 
@@ -69,6 +70,7 @@ export type UpdateStatusTitleKey =
   | "settings.autoUpdateDownloading"
   | "settings.autoUpdateReady"
   | "settings.autoUpdateInstalling"
+  | "settings.autoUpdateRestarting"
   | "settings.autoUpdateManualRequired"
   | "settings.autoUpdateError"
   | "settings.autoUpdateIdle";
@@ -78,6 +80,7 @@ export type UpdateStatusBodyKey =
   | "settings.autoUpdateBody.checking"
   | "settings.autoUpdateBody.downloading"
   | "settings.autoUpdateBody.installing"
+  | "settings.autoUpdateBody.restarting"
   | "settings.autoUpdateBody.ready"
   | "settings.autoUpdateBody.manual"
   | "settings.autoUpdateBody.agentsNote"
@@ -248,6 +251,15 @@ export function mapUpdateStatusCopy(
         errorKind: null,
         errorMessage: null,
       };
+    case "restarting":
+      return {
+        titleKey: "settings.autoUpdateRestarting",
+        bodyKey: "settings.autoUpdateBody.restarting",
+        severity: "info",
+        version,
+        errorKind: null,
+        errorMessage: null,
+      };
     case "manual-required":
       return {
         titleKey: "settings.autoUpdateManualRequired",
@@ -319,7 +331,11 @@ export function shouldShowInstallProgress(
   status: AppUpdateStatusLike | { state: string } | null | undefined,
 ): boolean {
   const state = status?.state;
-  return state === "downloading" || state === "installing";
+  return (
+    state === "downloading" ||
+    state === "installing" ||
+    state === "restarting"
+  );
 }
 
 /** Whether check / install buttons should be disabled (in-flight). */
@@ -330,7 +346,8 @@ export function isUpdateActionBusy(
   return (
     state === "checking" ||
     state === "downloading" ||
-    state === "installing"
+    state === "installing" ||
+    state === "restarting"
   );
 }
 
@@ -346,6 +363,24 @@ export function shouldShowManualDownloadCtas(
   status: AppUpdateStatusLike | { state: string } | null | undefined,
 ): boolean {
   return status?.state === "manual-required";
+}
+
+/**
+ * Sidebar brand-row update affordance: show when a newer build is known or
+ * an in-app update is in flight (not while idle / up-to-date / error).
+ */
+export function isUpdateAffordanceVisible(
+  status: AppUpdateStatusLike | { state: string } | null | undefined,
+): boolean {
+  const state = status?.state;
+  return (
+    state === "available" ||
+    state === "downloading" ||
+    state === "ready" ||
+    state === "installing" ||
+    state === "restarting" ||
+    state === "manual-required"
+  );
 }
 
 /**

@@ -46,6 +46,8 @@ export function AboutUpdateRow({
         return t("settings.autoUpdateReady");
       case "installing":
         return t("settings.autoUpdateInstalling");
+      case "restarting":
+        return t("settings.autoUpdateRestarting");
       case "manual-required":
         return t("settings.autoUpdateManualRequired", {
           version: status.version,
@@ -60,11 +62,14 @@ export function AboutUpdateRow({
   const busy =
     status.state === "checking" ||
     status.state === "downloading" ||
-    status.state === "installing";
+    status.state === "installing" ||
+    status.state === "restarting";
 
   // Only show install when download finished (ready), never on available.
+  // After install, restart runs automatically (no second click).
   const showInstall = status.state === "ready";
-  const showInstalling = status.state === "installing";
+  const showInstalling =
+    status.state === "installing" || status.state === "restarting";
   const showOpenRelease = status.state === "manual-required";
   const releaseUrl =
     status.state === "manual-required" ? status.releaseUrl : githubReleasesUrl;
@@ -106,7 +111,9 @@ export function AboutUpdateRow({
           </button>
           {showInstalling ? (
             <button type="button" className="btn btn--solid" disabled>
-              {t("settings.autoUpdateInstalling")}
+              {status.state === "restarting"
+                ? t("settings.autoUpdateRestarting")
+                : t("settings.autoUpdateInstalling")}
             </button>
           ) : showInstall ? (
             <button
