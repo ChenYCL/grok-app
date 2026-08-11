@@ -6,6 +6,7 @@
 import { useEffect, useRef } from "react";
 import * as api from "@/lib/api";
 import { isMirrorClient } from "@/lib/mirrorTransport";
+import { isValidAskUserPayload } from "@/lib/askUserPayload";
 import {
   applyContextCompact,
   applyGeneratedImage,
@@ -1513,7 +1514,10 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
         await track(
           api.listen<AskUserPayload>("session://ask_user", (p) => {
             if (cancelled) return;
-            if (!p?.rpcId || !Array.isArray(p.questions) || !p.questions.length) {
+            // rpcId may legitimately be 0 (JSON-RPC ids start at 0). A truthy
+            // guard here used to drop id=0 questions, so the modal never showed
+            // and the turn hung until cancelled.
+            if (!isValidAskUserPayload(p)) {
               return;
             }
             if (p.sessionId) {
