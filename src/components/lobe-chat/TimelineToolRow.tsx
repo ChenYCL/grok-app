@@ -413,6 +413,13 @@ export function toolSegmentFromMessage(
     detail: m.toolDetail,
     path: m.toolPath,
     input: m.toolInput,
+    // Recover real output captured behind the journal sentinel — standalone
+    // (unwoven) tool rows must expand the same way woven/live rows do.
+    output:
+      m.toolOutput ||
+      (m.content?.startsWith("tool_step|")
+        ? parseToolStepContent(m.content)?.output
+        : undefined),
     streaming: !!m.streaming || status === "running",
     isError: !!m.isError || status === "failed",
     createdAt: m.createdAt,

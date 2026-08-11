@@ -109,6 +109,7 @@ export function mapStoredMessageToChat(
     toolDetail: toolParsed?.detail,
     toolPath: toolParsed?.path,
     toolInput: toolParsed?.input,
+    toolOutput: toolParsed?.output,
     streaming: false,
   };
 }
