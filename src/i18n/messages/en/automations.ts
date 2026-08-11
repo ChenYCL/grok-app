@@ -138,6 +138,7 @@ export const enAutomations = {
   "automations.oneshot.outcome.unknown": "One-shot finished with an unknown result.",
   "automations.aiComposerHint": "Describe what to run on a schedule and how often — this creates a timer. Role rules or Goal tasks do not belong here.",
   "automations.createdToast": "Created scheduled task: {title}",
+  "automations.updatedToast": "Updated scheduled task: {title}",
   "automations.createFailed": "Could not create the scheduled task. Try again in chat.",
   "automations.confirmUnexpected.title": "Create scheduled task?",
   "automations.confirmUnexpected.message": "A schedule config “{title}” ({frequency} · {time}) appeared in chat. If you only set a goal or standing rules — not a timer — cancel. Confirm to save it under Scheduled.",

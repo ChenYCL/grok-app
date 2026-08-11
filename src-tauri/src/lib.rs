@@ -836,6 +836,8 @@ pub fn run() {
 
             commands::project_set_pinned,
 
+            commands::projects_reorder,
+
             commands::project_set_color,
 
             commands::project_reveal,

@@ -2,6 +2,10 @@
 export const zhTWProject = {
   "project.pin": "置頂專案",
   "project.unpin": "取消置頂",
+  "project.moveUp": "上移",
+  "project.moveDown": "下移",
+  "project.dragReorder": "拖曳排序",
+  "project.reorderFailed": "無法儲存專案順序",
   "project.reveal": "在 Finder 中顯示",
   "project.rename": "重新命名專案",
   "project.relocate": "重新定位…",

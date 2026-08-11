@@ -573,6 +573,13 @@ pub async fn project_set_pinned(id: String, pinned: bool) -> Result<Project, Str
     store::set_project_pinned(&id, pinned)
 }
 
+/// Reorder sidebar projects by explicit id list.
+/// Host always re-applies pin partition so nothing sits above pinned projects.
+#[tauri::command]
+pub async fn projects_reorder(ordered_ids: Vec<String>) -> Result<Vec<Project>, String> {
+    store::reorder_projects(ordered_ids)
+}
+
 /// Set or clear a project sidebar accent color.
 /// `color = null` / empty / `"none"` clears the accent.
 /// Accepts named tokens (`blue`|`green`|…) or `#rgb`/`#rrggbb`.

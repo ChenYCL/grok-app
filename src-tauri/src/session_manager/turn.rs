@@ -505,6 +505,16 @@ impl SessionManager {
                                 && s.pending_plan_rpc_id.is_none()
                                 && s.pending_ask_user_rpc_id.is_none()
                             {
+                                // Best-effort flush so partial stream_buf is not lost
+                                // when we force-end without try_finish.
+                                SessionManager::flush_pending_stream_emit_done(
+                                    s,
+                                    Some(&app2),
+                                );
+                                SessionManager::maybe_flush_stream_journal(s, true, false);
+                                s.stream_buf.clear();
+                                s.stream_thought.clear();
+                                s.stream_last_was_assistant = false;
                                 let _ = s.fsm.end_stream();
                                 s.streaming_message_id = None;
                                 s.active_turn_id = None;
@@ -514,8 +524,24 @@ impl SessionManager {
                             }
                         }
                     });
+                    // Always best-effort pull missing assistant/tool rows from
+                    // agent chat_history after the prompt RPC completes. Stream
+                    // path can leave App journal on a partial mid-sentence while
+                    // the CLI already has the full turn (user: stuck thinking,
+                    // no final result — agent finished, UI never got body).
+                    let changed =
+                        crate::cli_sessions::try_reconcile_linked_session(&turn_sid);
                     if need_emit {
                         mgr.emit_for_session(&app2, &turn_sid);
+                    }
+                    if changed > 0 {
+                        let _ = app2.emit(
+                            "session://journal_reconciled",
+                            serde_json::json!({
+                                "sessionId": turn_sid,
+                                "changed": changed,
+                            }),
+                        );
                     }
                 }
             }

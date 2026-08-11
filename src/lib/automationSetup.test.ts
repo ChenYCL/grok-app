@@ -5,9 +5,11 @@ import {
   hasExplicitScheduleSignal,
   looksLikeScheduleIntent,
   looksLikeScheduleReject,
+  looksLikeScheduleUpdateIntent,
   looksLikeStandingModeIntent,
   parseAutomationConfigJson,
   recentUserPlainText,
+  resolveAutomationUpsertTarget,
   shouldAutoApplyAutomationFence,
   wrapAutomationSetupAgentText,
 } from "./automationSetup";
@@ -107,6 +109,73 @@ describe("automationSetup", () => {
         recentUserText: t,
       }),
     ).toBe(false);
+  });
+
+  it("detects schedule update intent without clock language", () => {
+    expect(
+      looksLikeScheduleUpdateIntent(
+        "语料库路径挪了，改一下这个定时任务的提示词",
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeScheduleUpdateIntent("我看提示词里一点都没改，再看看是哪里的问题"),
+    ).toBe(true);
+    expect(looksLikeScheduleUpdateIntent("帮我改一下登录按钮颜色")).toBe(
+      false,
+    );
+    expect(
+      shouldAutoApplyAutomationFence({
+        inExplicitAutomationSetup: false,
+        recentUserText: "更新已安排里那条收录任务的路径",
+      }),
+    ).toBe(true);
+  });
+
+  it("upserts by title instead of stacking create", () => {
+    const list = [
+      {
+        id: "old",
+        title: "每日 X 输出收录语料库",
+        updatedAt: "2026-08-11T12:00:00.000Z",
+      },
+      {
+        id: "newer",
+        title: "每日 X 输出收录语料库",
+        updatedAt: "2026-08-11T13:00:00.000Z",
+      },
+    ];
+    expect(
+      resolveAutomationUpsertTarget(list, {
+        title: "每日 X 输出收录语料库",
+        action: "upsert",
+      }),
+    ).toEqual({ kind: "update", id: "newer" });
+    expect(
+      resolveAutomationUpsertTarget(list, {
+        title: "每日 X 输出收录语料库",
+        existingId: "old",
+      }),
+    ).toEqual({ kind: "update", id: "old" });
+    expect(
+      resolveAutomationUpsertTarget(list, {
+        title: "全新任务",
+        action: "upsert",
+      }),
+    ).toEqual({ kind: "create" });
+    expect(
+      resolveAutomationUpsertTarget(list, {
+        title: "每日 X 输出收录语料库",
+        action: "create",
+      }),
+    ).toEqual({ kind: "create" });
+  });
+
+  it("parses fence action and id for upsert", () => {
+    const text = `好的\n\`\`\`grok-automation\n{"title":"t","prompt":"p","frequency":"daily","time":"03:30","action":"upsert","id":"abc"}\n\`\`\``;
+    const { input, existingId, action } = extractAutomationPayload(text);
+    expect(input?.title).toBe("t");
+    expect(existingId).toBe("abc");
+    expect(action).toBe("upsert");
   });
 
   it("auto-applies for explicit setup or clear schedule; not for bare goal text", () => {

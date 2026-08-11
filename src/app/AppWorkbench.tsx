@@ -860,9 +860,11 @@ import { recordAutomationRun } from "@/lib/automationRunHistory";
 import {
   extractAutomationPayload,
   looksLikeScheduleIntent,
+  looksLikeScheduleUpdateIntent,
   recentUserPlainText,
+  resolveAutomationUpsertTarget,
   shouldAutoApplyAutomationFence,
-  wrapAutomationSetupAgentText
+  wrapAutomationSetupAgentText,
 } from "@/lib/automationSetup";
 import {
   ComposerAccessMenu,
@@ -1017,6 +1019,11 @@ import {
   type Project,
   type SessionRow
 } from "@/lib/app/sidebarModels";
+import {
+  canMoveProjectInPinGroup,
+  moveProjectInPinGroup,
+} from "@/lib/app/projectOrder";
+import { useSidebarProjectReorder } from "@/hooks/useSidebarProjectReorder";
 import type { ContextMenuState } from "@/lib/app/appDialogTypes";
 import { useSessionRuntime } from "@/hooks/useSessionRuntime";
 import { sessionTranscriptStore } from "@/lib/sessionTranscriptStore";
@@ -3555,9 +3562,8 @@ export function AppWorkbench() {
       const applyKey = assistant.id || `${sessionId}:last`;
       if (automationAppliedRef.current.has(applyKey)) return;
 
-      const { cleanText, input, rawJson } = extractAutomationPayload(
-        assistant.content || "",
-      );
+      const { cleanText, input, rawJson, existingId, action } =
+        extractAutomationPayload(assistant.content || "");
       // Always strip fence from UI when present (even if JSON incomplete).
       if (cleanText !== (assistant.content || "")) {
         const aid = assistant.id;
@@ -3578,15 +3584,44 @@ export function AppWorkbench() {
         recentUserText,
       });
 
-      const doCreate = async () => {
+      const doApply = async () => {
         automationAppliedRef.current.add(applyKey);
         automationAppliedRef.current.add(payloadKey);
         try {
-          await api.automationCreate(input);
-          automationSetupSessionsRef.current.delete(sessionId);
-          setToast(
-            tr("automations.createdToast", { title: input.title }),
-          );
+          const list = await api.automationsList();
+          const target = resolveAutomationUpsertTarget(list, {
+            title: input.title,
+            existingId,
+            action,
+          });
+          if (target.kind === "update") {
+            const prev = list.find((a) => a.id === target.id);
+            await api.automationUpdate(target.id, {
+              ...input,
+              projectId:
+                input.projectId !== undefined && input.projectId !== null
+                  ? input.projectId
+                  : (prev?.projectId ?? null),
+              modelId:
+                input.modelId !== undefined && input.modelId !== null
+                  ? input.modelId
+                  : (prev?.modelId ?? null),
+              effort:
+                input.effort !== undefined && input.effort !== null
+                  ? input.effort
+                  : (prev?.effort ?? null),
+            });
+            automationSetupSessionsRef.current.delete(sessionId);
+            setToast(
+              tr("automations.updatedToast", { title: input.title }),
+            );
+          } else {
+            await api.automationCreate(input);
+            automationSetupSessionsRef.current.delete(sessionId);
+            setToast(
+              tr("automations.createdToast", { title: input.title }),
+            );
+          }
           window.setTimeout(() => setToast(null), 4200);
         } catch {
           automationAppliedRef.current.delete(applyKey);
@@ -3597,7 +3632,7 @@ export function AppWorkbench() {
       };
 
       if (auto) {
-        await doCreate();
+        await doApply();
         return;
       }
 
@@ -3614,7 +3649,7 @@ export function AppWorkbench() {
         }),
         confirmLabel: tr("automations.confirmUnexpected.confirm"),
         onConfirm: () => {
-          void doCreate();
+          void doApply();
         },
         onDismiss: () => {
           automationAppliedRef.current.add(payloadKey);
@@ -5675,6 +5710,51 @@ export function AppWorkbench() {
     }
   };
 
+  /** Persist sidebar project order (pin groups enforced on Host). */
+  const projectsOrderRef = useRef(projects);
+  projectsOrderRef.current = projects;
+  const applyProjectsOrder = useCallback(
+    async (next: Project[]) => {
+      const prev = projectsOrderRef.current;
+      setProjects(next);
+      projectsOrderRef.current = next;
+      try {
+        const saved = mapProjectsList(
+          (await api.projectsReorder(next.map((p) => p.id))) as Project[],
+        );
+        setProjects(saved);
+        projectsOrderRef.current = saved;
+      } catch (e) {
+        setProjects(prev);
+        projectsOrderRef.current = prev;
+        setLocalError(
+          e instanceof Error ? e.message : tr("project.reorderFailed"),
+        );
+      }
+    },
+    [tr],
+  );
+
+  const projectReorder = useSidebarProjectReorder({
+    projects,
+    enabled:
+      !sessionSelectMode &&
+      !isMirrorClient() &&
+      projects.length > 1,
+    onReorder: (next) => {
+      void applyProjectsOrder(next);
+    },
+  });
+
+  const moveProjectByMenu = useCallback(
+    (projId: string, direction: "up" | "down") => {
+      const next = moveProjectInPinGroup(projects, projId, direction);
+      if (next === projects) return;
+      void applyProjectsOrder(next);
+    },
+    [projects, applyProjectsOrder],
+  );
+
   const applySessionTitle = useCallback(
     (sessionId: string, title: string) => {
       setSessions((list) =>
@@ -7426,7 +7506,9 @@ export function AppWorkbench() {
     // Goal mode is finite objective work — do not silently enter schedule setup
     // unless the user opened “用 AI 创建” (sticky) for this session.
     const scheduleIntent =
-      !useGoal && looksLikeScheduleIntent(userIntentText);
+      !useGoal &&
+      (looksLikeScheduleIntent(userIntentText) ||
+        looksLikeScheduleUpdateIntent(userIntentText));
     const inAutomationSetup = explicitAutomationSticky || scheduleIntent;
     if (inAutomationSetup) {
       agentText = wrapAutomationSetupAgentText(agentText);
@@ -17412,19 +17494,26 @@ export function AppWorkbench() {
                 );
                 return (
                   <div key={proj.id} className="tree-project">
-                    {/* L2 — project folder: expand/collapse only (not selectable) */}
+                    {/* L2 — project folder: expand/collapse; drag row to reorder */}
                     <div
                       className={
                         "tree-l2" +
                         (isProjectPathMissing(proj.pathOk)
                           ? " tree-l2--path-missing"
                           : "") +
-                        (sessionSelectMode ? " tree-l2--select-mode" : "")
+                        (sessionSelectMode ? " tree-l2--select-mode" : "") +
+                        (projectReorder.enabled ? " tree-l2--reorderable" : "")
                       }
+                      data-project-reorder-id={proj.id}
                       role="button"
                       tabIndex={0}
                       aria-expanded={open}
+                      {...(projectReorder.enabled
+                        ? projectReorder.bindRow(proj.id)
+                        : {})}
                       onClick={() => {
+                        // After a completed drag, ignore the trailing click.
+                        if (projectReorder.suppressNextClick()) return;
                         setExpandedProjects((e) => ({
                           ...e,
                           [proj.id]: !open,
@@ -23378,6 +23467,12 @@ export function AppWorkbench() {
         } else if (ctxMenu?.kind === "project") {
           const proj = projects.find((p) => p.id === ctxMenu.id);
           if (proj) {
+            const canUp = canMoveProjectInPinGroup(projects, proj.id, "up");
+            const canDown = canMoveProjectInPinGroup(
+              projects,
+              proj.id,
+              "down",
+            );
             items = [
               {
                 id: "pin",
@@ -23395,6 +23490,24 @@ export function AppWorkbench() {
                     .then(() => refreshProjects());
                 },
               },
+              ...(projectReorder.enabled
+                ? [
+                    {
+                      id: "move-up",
+                      label: tr("project.moveUp"),
+                      icon: <IconChevronUp size={16} />,
+                      disabled: !canUp,
+                      onClick: () => moveProjectByMenu(proj.id, "up"),
+                    } satisfies ContextMenuItem,
+                    {
+                      id: "move-down",
+                      label: tr("project.moveDown"),
+                      icon: <IconChevronDown size={16} />,
+                      disabled: !canDown,
+                      onClick: () => moveProjectByMenu(proj.id, "down"),
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
               {
                 id: "color",
                 label: tr("project.color"),

@@ -2,6 +2,10 @@
 export const enProject = {
   "project.pin": "Pin project",
   "project.unpin": "Unpin project",
+  "project.moveUp": "Move up",
+  "project.moveDown": "Move down",
+  "project.dragReorder": "Drag to reorder",
+  "project.reorderFailed": "Could not save project order",
   "project.reveal": "Reveal in Finder",
   "project.rename": "Rename project",
   "project.relocate": "Relocate…",

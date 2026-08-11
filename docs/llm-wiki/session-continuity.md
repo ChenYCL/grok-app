@@ -83,6 +83,13 @@ journaled into A (common when A was stuck “thinking”). Host `live_session_is
 must not treat pure sticky Streaming (no `prompt_in_flight` / tools / deferred
 gates) as forever-busy, or demote/focus for other chats stays blocked.
 
+**Turn end journal heal (P0):** after every successful `session/prompt` Ok, Host
+force-finishes sticky Streaming (#522) **and** runs
+`try_reconcile_linked_session` to pull missing assistant/tool rows from agent
+`chat_history`. Emits `session://journal_reconciled` so the viewed chat rehydrates
+even when stream chunks never painted the final body (user saw endless thinking
+while CLI already had the full answer).
+
 **UI transcript ownership (P0, #529):** `openSession` points `viewingSessionId`
 at the target **before** disk journal load. Until messages swap, stream /
 rehydrate / clear-streaming must **not** reduce against the previous chat's

@@ -21,18 +21,19 @@ export function automationSetupAgentPrefix(): string {
   return [
     "[INTERNAL — automation setup mode. Never quote this block or mention JSON/schema/fields to the user.]",
     "You help the user create a scheduled task for this app shell (not only Build CLI scheduler).",
-    "Only schedule when the user clearly wants a timed/recurring run (when + what). Role cards, product principles, /goal, or standing “mode” instructions are NOT schedules — do not emit a fence for those.",
+    "Only schedule when the user clearly wants a timed/recurring run (when + what), or wants to **update** an existing schedule (change prompt/path/time). Role cards, product principles, /goal, or standing “mode” instructions are NOT schedules — do not emit a fence for those.",
     "Ask briefly only if schedule is ambiguous: what to run, how often (daily / weekdays / weekly / once), local time.",
     "When you have enough, confirm in natural language (title, when, what will run).",
     "Then end with EXACTLY one fenced block (nothing after it):",
     "```" + AUTOMATION_FENCE_LANG,
-    '{"title":"short title","prompt":"standalone instructions each run","frequency":"daily|weekly|weekdays|once","time":"HH:MM","weekdays":[],"enabled":true,"nextRunAt":null}',
+    '{"title":"short title","prompt":"standalone instructions each run","frequency":"daily|weekly|weekdays|once","time":"HH:MM","weekdays":[],"enabled":true,"nextRunAt":null,"action":"upsert"}',
     "```",
     "Rules:",
     "- weekdays: 0=Sun … 6=Sat only when frequency is weekly; else [].",
     "- prompt: actionable standalone instructions (not a chat reply).",
     "- For relative delays (e.g. in 3 minutes / 一小时后): set frequency to once, time to local HH:MM of that moment, AND nextRunAt to ISO-8601 UTC of that instant.",
     "- For wall-clock recurring (daily 09:00): nextRunAt may be null (shell computes).",
+    "- Prefer the **same title** when updating an existing task. Optional id when known. Default action is upsert (shell merges by id/title — does not stack duplicates).",
     "- Do not explain field names. Do not put the fence mid-sentence.",
     "- If the user forbids schedules (禁止定时 / no schedule / not a timer), do not emit a fence.",
   ].join("\n");
@@ -49,10 +50,16 @@ export function wrapAutomationSetupAgentText(userVisibleText: string): string {
 const FENCE_RE =
   /```(?:grok-automation|json)[^\n\r]*\r?\n([\s\S]*?)```/gi;
 
+export type AutomationFenceAction = "create" | "update" | "upsert";
+
 export type ExtractedAutomation = {
   cleanText: string;
   input: AutomationInputDto | null;
   rawJson: string | null;
+  /** Optional existing task id from fence JSON (for update/upsert). */
+  existingId: string | null;
+  /** Fence action; default upsert when omitted. */
+  action: AutomationFenceAction;
 };
 
 function normalizeFrequency(v: unknown): string {
@@ -149,17 +156,80 @@ export function parseAutomationConfigJson(
   return input;
 }
 
+function parseFenceAction(raw: unknown): AutomationFenceAction {
+  const s = String(raw ?? "upsert")
+    .trim()
+    .toLowerCase();
+  if (s === "create" || s === "update" || s === "upsert") return s;
+  return "upsert";
+}
+
+/** Normalize title for same-task matching (upsert key). */
+export function normalizeAutomationTitle(title: string): string {
+  return (title || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export type AutomationUpsertListItem = {
+  id: string;
+  title: string;
+  updatedAt: string;
+};
+
+/**
+ * Decide create vs update for a chat fence against the current list.
+ * - id match → update
+ * - upsert/update + unique/latest same title → update
+ * - create action or no match → create
+ */
+export function resolveAutomationUpsertTarget(
+  list: AutomationUpsertListItem[],
+  opts: {
+    title: string;
+    existingId?: string | null;
+    action?: AutomationFenceAction | string | null;
+  },
+): { kind: "create" } | { kind: "update"; id: string } {
+  const action = parseFenceAction(opts.action);
+  const id = (opts.existingId || "").trim();
+  if (id) {
+    const byId = list.find((a) => a.id === id);
+    if (byId) return { kind: "update", id: byId.id };
+  }
+  if (action === "create") return { kind: "create" };
+
+  const key = normalizeAutomationTitle(opts.title);
+  if (!key) return { kind: "create" };
+  const same = list
+    .filter((a) => normalizeAutomationTitle(a.title) === key)
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+  if (same.length > 0) {
+    return { kind: "update", id: same[0]!.id };
+  }
+  return { kind: "create" };
+}
+
 /**
  * Strip automation fences from assistant text and parse the last valid config.
  * Prefer ```grok-automation; also accept ```json as fallback.
  */
 export function extractAutomationPayload(text: string): ExtractedAutomation {
   if (!text) {
-    return { cleanText: text, input: null, rawJson: null };
+    return {
+      cleanText: text,
+      input: null,
+      rawJson: null,
+      existingId: null,
+      action: "upsert",
+    };
   }
 
   let input: AutomationInputDto | null = null;
   let rawJson: string | null = null;
+  let existingId: string | null = null;
+  let action: AutomationFenceAction = "upsert";
   FENCE_RE.lastIndex = 0;
   const matches = [...text.matchAll(FENCE_RE)];
 
@@ -174,6 +244,15 @@ export function extractAutomationPayload(text: string): ExtractedAutomation {
     if (parsed) {
       input = parsed;
       rawJson = jsonBody;
+      try {
+        const o = JSON.parse(jsonBody) as Record<string, unknown>;
+        existingId =
+          typeof o.id === "string" && o.id.trim() ? o.id.trim() : null;
+        action = parseFenceAction(o.action);
+      } catch {
+        existingId = null;
+        action = "upsert";
+      }
     }
   }
 
@@ -183,7 +262,7 @@ export function extractAutomationPayload(text: string): ExtractedAutomation {
     cleanText = "";
   }
 
-  return { cleanText, input, rawJson };
+  return { cleanText, input, rawJson, existingId, action };
 }
 
 /** True if text still contains an automation fence. */
@@ -291,9 +370,28 @@ export function recentUserPlainText(
 }
 
 /**
- * Whether the shell should create an automation without asking.
+ * User wants to change an existing scheduled task (prompt/path/time), not only
+ * create a brand-new timer. Does not require “每天 3:30” clock language.
+ */
+export function looksLikeScheduleUpdateIntent(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t || looksLikeScheduleReject(t)) return false;
+  const mentionsTask =
+    /定时|排程|已安排|已排程|自动化|自動化|schedule|automation|语料|語料|corpus|收录|收錄|任务|任務|提示词|提示詞/.test(
+      t,
+    );
+  const updateVerb =
+    /修改|更新|改一下|改成|改了|没改|沒改|有没有改|有沒有改|覆盖|覆寫|改路径|改路徑|改提示|重新登记|重新登記|换成|換成|upsert|\bupdate\b|\bchange\b/.test(
+      t,
+    );
+  return mentionsTask && updateVerb;
+}
+
+/**
+ * Whether the shell should create/update an automation without asking.
  * - Explicit AI-create / setup session → yes (unless user rejected schedules).
  * - Recent user text looks like a real schedule → yes.
+ * - Recent text looks like updating an existing schedule → yes.
  * - Otherwise → no (confirm or skip); protects /goal and role cards.
  */
 export function shouldAutoApplyAutomationFence(opts: {
@@ -303,5 +401,6 @@ export function shouldAutoApplyAutomationFence(opts: {
   const recent = opts.recentUserText || "";
   if (looksLikeScheduleReject(recent)) return false;
   if (opts.inExplicitAutomationSetup) return true;
-  return looksLikeScheduleIntent(recent);
+  if (looksLikeScheduleIntent(recent)) return true;
+  return looksLikeScheduleUpdateIntent(recent);
 }

@@ -713,11 +713,18 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   padding: 4px 10px 10px;
 }
 
-.sidebar__scroll .tree-l2,
+/*
+ * Only session rows use content-visibility. Project headers (tree-l2) must
+ * always paint — culling them caused intermittent blank rows on drag start.
+ */
 .sidebar__scroll .tree-l3 {
   content-visibility: auto;
   contain-intrinsic-size: auto 32px;
   contain: layout style;
+  border-radius: 8px;
+}
+
+.sidebar__scroll .tree-l2 {
   border-radius: 8px;
 }
 
@@ -852,6 +859,7 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 .tree-project {
+  position: relative;
   margin-bottom: 2px;
 }
 
@@ -875,6 +883,81 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .tree-l2:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+/* Project reorder — whole-row drag + floating ghost (pin-group only). */
+.tree-l2--reorderable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.tree-l2--reorderable.tree-l2--dragging,
+.tree-project--dragging .tree-l2 {
+  cursor: grabbing;
+}
+
+/*
+ * While reordering: force paint of session rows too (VirtualList windows
+ * can otherwise briefly reserve empty intrinsic boxes).
+ */
+.sidebar--project-reordering .tree-l3 {
+  content-visibility: visible !important;
+  contain: none !important;
+}
+
+/* Source header is a faint placeholder; children (sessions) stay laid out. */
+.tree-project--dragging > .tree-l2 {
+  opacity: 0.35;
+  background: var(--bg-hover);
+  /* Keep fixed row box so the list does not jump. */
+  min-height: 32px;
+  max-height: 32px;
+}
+
+.tree-project--drop-before::before,
+.tree-project--drop-after::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent, #3b82f6);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Pin the insert line to the header row, not mid expanded session list. */
+.tree-project--drop-before::before {
+  top: 0;
+}
+
+.tree-project--drop-after::after {
+  /* After header (32px), not after the whole expanded block */
+  top: 31px;
+  bottom: auto;
+}
+
+/* Floating drag ghost (cloned header, appended to body). */
+.tree-l2--drag-ghost {
+  opacity: 0.92;
+  cursor: grabbing !important;
+  border-radius: 8px;
+  border: 1.5px dashed var(--accent, #3b82f6);
+  background: var(--bg-elevated, var(--bg-sidebar-solid, var(--bg-app))) !important;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.1);
+  color: var(--text-primary);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  /* Never participate in content-visibility culling */
+  content-visibility: visible !important;
+  contain: none !important;
+}
+
+.tree-l2--drag-ghost .tree-l2__actions {
+  display: none !important;
 }
 
 /* Folder gone / not a directory (D05) — keep row usable for relocate/remove. */

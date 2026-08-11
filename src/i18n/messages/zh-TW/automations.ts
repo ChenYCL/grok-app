@@ -138,6 +138,7 @@ export const zhTWAutomations = {
   "automations.oneshot.outcome.unknown": "一次性助手以未知結果結束。",
   "automations.aiComposerHint": "用自然語言描述要定期做什麼、多久一次——會建立定時任務。角色原則或 Goal 任務請不要走這裡。",
   "automations.createdToast": "已建立定時任務：{title}",
+  "automations.updatedToast": "已更新定時任務：{title}",
   "automations.createFailed": "建立已排程任務失敗，請在對話裡再試一次。",
   "automations.confirmUnexpected.title": "建立定時任務？",
   "automations.confirmUnexpected.message": "對話裡出現了定時設定「{title}」（{frequency} · {time}）。若你只是在設目標/原則而不是鬧鐘，請取消。確認後才會寫入已排程。",

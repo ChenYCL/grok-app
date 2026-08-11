@@ -842,6 +842,55 @@ pub fn save_settings(s: &AppSettings) -> Result<(), String> {
     write_json(&settings_file(), s)
 }
 
+/// Stable pin partition: all pinned first, then unpinned.
+/// Relative order within each group is preserved (user order / file order).
+/// Does **not** sort by `last_opened_at` — sidebar order is manual.
+pub fn apply_project_pin_partition(list: &mut Vec<Project>) {
+    let mut pinned = Vec::with_capacity(list.len());
+    let mut unpinned = Vec::with_capacity(list.len());
+    for p in list.drain(..) {
+        if p.pinned {
+            pinned.push(p);
+        } else {
+            unpinned.push(p);
+        }
+    }
+    list.extend(pinned);
+    list.extend(unpinned);
+}
+
+/// Rebuild project list from an explicit id order, then pin-partition.
+/// Unknown ids are skipped; projects missing from `ordered_ids` are appended
+/// in their previous relative order (then partitioned).
+pub fn reorder_projects_by_ids(list: &[Project], ordered_ids: &[String]) -> Vec<Project> {
+    let mut by_id: std::collections::HashMap<String, Project> = list
+        .iter()
+        .cloned()
+        .map(|p| (p.id.clone(), p))
+        .collect();
+    let mut next = Vec::with_capacity(list.len());
+    let mut seen = std::collections::HashSet::new();
+    for id in ordered_ids {
+        if seen.contains(id) {
+            continue;
+        }
+        if let Some(p) = by_id.remove(id) {
+            seen.insert(id.clone());
+            next.push(p);
+        }
+    }
+    // Preserve prior relative order for anything not in ordered_ids.
+    for p in list {
+        if !seen.contains(&p.id) {
+            if let Some(rest) = by_id.remove(&p.id) {
+                next.push(rest);
+            }
+        }
+    }
+    apply_project_pin_partition(&mut next);
+    next
+}
+
 pub fn load_projects() -> Vec<Project> {
     let _ = ensure_app_dirs();
     let _ = ensure_general_workspace_dir();
@@ -852,11 +901,8 @@ pub fn load_projects() -> Vec<Project> {
     for p in &mut list {
         p.path_ok = PathBuf::from(&p.path).is_dir();
     }
-    list.sort_by(|a, b| match (b.pinned, a.pinned) {
-        (true, false) => std::cmp::Ordering::Greater,
-        (false, true) => std::cmp::Ordering::Less,
-        _ => b.last_opened_at.cmp(&a.last_opened_at),
-    });
+    // Pin group first; keep manual order within each group (no last_opened sort).
+    apply_project_pin_partition(&mut list);
     list
 }
 
@@ -946,9 +992,23 @@ pub fn add_project(path: String, trust: bool) -> Result<Project, String> {
         sandbox_profile: None,
         color: None,
     };
+    // New projects land at the end of the unpinned group (after pin partition).
     list.push(p.clone());
+    apply_project_pin_partition(&mut list);
     save_projects(&list)?;
     Ok(p)
+}
+
+/// Persist a user-defined sidebar project order.
+/// Pin groups are re-applied so unpinned items cannot sit above pinned ones.
+pub fn reorder_projects(ordered_ids: Vec<String>) -> Result<Vec<Project>, String> {
+    let list = load_projects();
+    if list.is_empty() {
+        return Ok(list);
+    }
+    let next = reorder_projects_by_ids(&list, &ordered_ids);
+    save_projects(&next)?;
+    Ok(next)
 }
 
 /// Remove project from the app list only — does **not** delete the disk folder
@@ -1004,14 +1064,25 @@ pub fn rename_project(id: &str, name: &str) -> Result<Project, String> {
 
 pub fn set_project_pinned(id: &str, pinned: bool) -> Result<Project, String> {
     let mut list = load_projects();
-    let p = list
-        .iter_mut()
-        .find(|p| p.id == id)
+    let idx = list
+        .iter()
+        .position(|p| p.id == id)
         .ok_or_else(|| "project not found".to_string())?;
+    if list[idx].pinned == pinned {
+        return Ok(list[idx].clone());
+    }
+    let mut p = list.remove(idx);
     p.pinned = pinned;
-    let clone = p.clone();
+    // Pin → end of pinned group; unpin → end of list (unpinned group).
+    if pinned {
+        let insert_at = list.iter().filter(|x| x.pinned).count();
+        list.insert(insert_at, p.clone());
+    } else {
+        list.push(p.clone());
+    }
+    apply_project_pin_partition(&mut list);
     save_projects(&list)?;
-    Ok(clone)
+    Ok(p)
 }
 
 /// Named project accent tokens (sidebar color dot).
@@ -3030,6 +3101,112 @@ mod tests {
             ids,
             vec!["pinned-new", "pinned-old", "unpinned-new", "unpinned-mid"]
         );
+    }
+
+    fn sample_project(id: &str, pinned: bool, opened: DateTime<Utc>) -> Project {
+        Project {
+            id: id.into(),
+            name: id.into(),
+            path: format!("/tmp/{id}"),
+            trusted: true,
+            last_opened_at: opened,
+            path_ok: true,
+            pinned,
+            system: false,
+            model_id: None,
+            effort: None,
+            mode: None,
+            permission_policy: None,
+            sandbox_profile: None,
+            color: None,
+        }
+    }
+
+    #[test]
+    fn project_pin_partition_preserves_relative_order() {
+        let t1 = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+        let t2 = Utc.with_ymd_and_hms(2024, 1, 2, 0, 0, 0).unwrap();
+        let t3 = Utc.with_ymd_and_hms(2024, 1, 3, 0, 0, 0).unwrap();
+        let mut list = vec![
+            sample_project("u-old", false, t1),
+            sample_project("p-b", true, t2),
+            sample_project("u-new", false, t3),
+            sample_project("p-a", true, t1),
+        ];
+        apply_project_pin_partition(&mut list);
+        let ids: Vec<&str> = list.iter().map(|p| p.id.as_str()).collect();
+        // Relative order within each group preserved (not last_opened).
+        assert_eq!(ids, vec!["p-b", "p-a", "u-old", "u-new"]);
+    }
+
+    #[test]
+    fn reorder_projects_by_ids_clamps_unpinned_below_pinned() {
+        let t = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+        let list = vec![
+            sample_project("p1", true, t),
+            sample_project("p2", true, t),
+            sample_project("u1", false, t),
+            sample_project("u2", false, t),
+        ];
+        // Client tries to put unpinned above pinned — host pin-partitions back.
+        let ordered = ["u2", "p2", "u1", "p1"]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>();
+        let next = reorder_projects_by_ids(&list, &ordered);
+        let ids: Vec<&str> = next.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["p2", "p1", "u2", "u1"]);
+    }
+
+    #[test]
+    fn reorder_projects_by_ids_reorders_within_groups() {
+        let t = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+        let list = vec![
+            sample_project("p1", true, t),
+            sample_project("p2", true, t),
+            sample_project("u1", false, t),
+            sample_project("u2", false, t),
+        ];
+        let ordered = ["p2", "p1", "u2", "u1"]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>();
+        let next = reorder_projects_by_ids(&list, &ordered);
+        let ids: Vec<&str> = next.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["p2", "p1", "u2", "u1"]);
+    }
+
+    #[test]
+    fn set_project_pinned_moves_to_group_end() {
+        let _g = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-pin-order-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("tmp home");
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _ = ensure_app_dirs();
+        let t = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+        let seed = vec![
+            sample_project("p1", true, t),
+            sample_project("u1", false, t),
+            sample_project("u2", false, t),
+        ];
+        write_json(&projects_file(), &seed).expect("seed");
+        set_project_pinned("u1", true).expect("pin");
+        let listed = load_projects();
+        let ids: Vec<&str> = listed.iter().map(|p| p.id.as_str()).collect();
+        // u1 becomes pinned and lands at end of pinned group.
+        assert_eq!(ids, vec!["p1", "u1", "u2"]);
+        set_project_pinned("p1", false).expect("unpin");
+        let listed2 = load_projects();
+        let ids2: Vec<&str> = listed2.iter().map(|p| p.id.as_str()).collect();
+        // p1 unpinned → end of unpinned group.
+        assert_eq!(ids2, vec!["u1", "u2", "p1"]);
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

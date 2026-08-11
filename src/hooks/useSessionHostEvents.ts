@@ -381,6 +381,22 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
           }
         }
 
+        // Host finished a turn but App journal may still miss the final
+        // assistant body (stream dropped / sticky finish). Rehydrate so UI
+        // leaves "thinking" and shows the real answer.
+        await track(
+          api.listen<{ sessionId?: string; changed?: number }>(
+            "session://journal_reconciled",
+            (p) => {
+              if (cancelled || !p?.sessionId) return;
+              const sid = p.sessionId;
+              if (c.viewingSessionIdRef.current === sid) {
+                scheduleJournalRehydrate(sid, 0, { clearStreaming: true });
+              }
+              void c.tryApplyAutomationFromSession(sid);
+            },
+          ),
+        );
         await track(
           api.listen<SessionSnapshot>("session://state", (s) => {
             if (cancelled) return;

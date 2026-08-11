@@ -28,10 +28,11 @@
 ````
 
 4. 壳层在 stream `done` 时 `extractAutomationPayload`：从气泡**剥掉 fence**。
-5. **自动** `automation_create` 仅当 `shouldAutoApplyAutomationFence`：显式 AI 创建会话，或近期用户消息像真实排程；toast「已创建定时任务：{title}」。
-6. **否则**（意外 fence，如角色卡 /goal 误路由）：应用内确认（非 `window.confirm`）；取消则不落库。手动表单创建路径不变。
-7. 同一消息 id / payload 只处理一次；reload 时也会剥 fence，避免用户看到 JSON。
-8. **Apply 不止 stream `done`**：当前正在看的会话在 turn → ready、journal rehydrate、deferred reconcile 后也必须再跑 `tryApplyAutomationFromSession`。此前 backup 路径只在**非当前会话**上触发，观看中的对话若 stream 截断/漏 `done`，journal 里已有完整 fence 也不会入库（#490c24e8 类问题）。
+5. **自动**落库当 `shouldAutoApplyAutomationFence`：显式 AI 创建会话、近期像真实排程，**或**像在改已有任务（改路径/提示词/覆盖）；toast 区分「已创建 / 已更新」。
+6. **默认 upsert**（非纯 create）：按 fence 可选 `id`，否则同 title（规范化）取 `updatedAt` 最新一条 → `automation_update`；无匹配 → `automation_create`。禁止对话再发 fence  silently 堆出同名第二份。
+7. **否则**（意外 fence，如角色卡 /goal 误路由）：应用内确认（非 `window.confirm`）；取消则不落库。手动表单创建路径不变。
+8. 同一消息 id / payload 只处理一次；reload 时也会剥 fence，避免用户看到 JSON。
+9. **Apply 不止 stream `done`**：当前正在看的会话在 turn → ready、journal rehydrate、deferred reconcile、以及 Host `session://journal_reconciled` 后也必须再跑 `tryApplyAutomationFromSession`。
 
 实现：`src/lib/automationSetup.ts` · 拦截在 `AppWorkbench.tsx` `tryApplyAutomationFromSession` · Host 事件在 `useSessionHostEvents.ts`。
 
