@@ -2131,3 +2131,33 @@ describe("tool_step output capture", () => {
     expect(tool2.output).toContain("# Project");
   });
 });
+
+describe("tool history replay kind recovery", () => {
+  it("recovers toolKind from the journal body when the row field is empty", () => {
+    // History-loaded rows carry only the tool_step content; the kind field on
+    // the message is empty. Replay must parse it out so the typed icon/label
+    // (and the humanized fallback for internal tools) survives reload.
+    const woven = weaveToolsIntoAssistantSegments([
+      { id: "u1", role: "user", content: "plan something" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "done",
+        segments: [{ kind: "content", text: "done" }],
+      },
+      {
+        id: "tool-c1",
+        role: "tool",
+        // No toolKind field — must come from the parsed body below.
+        content: "tool_step|completed|enter_plan_mode|Enter Plan Mode",
+        marker: "tool_step",
+        createdAt: "2026-08-11T01:00:00Z",
+      },
+    ]);
+    const asst = woven.find((m) => m.role === "assistant")!;
+    const tool = asst.segments?.find((s) => s.kind === "tool") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolKind).toBe("enter_plan_mode");
+    expect(tool.title).toBeTruthy();
+  });
+});

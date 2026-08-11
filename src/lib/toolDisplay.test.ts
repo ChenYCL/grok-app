@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyToolKind,
+  humanizeToolKind,
   isContextToolKind,
   resolveToolPrimaryLabel,
   summarizeToolDisplay,
@@ -202,5 +203,35 @@ describe("toolDisplay", () => {
     expect(body).toContain("line 0");
     expect(body).toContain("line 999");
     expect(body).toMatch(/… \d+ more lines …/);
+  });
+});
+
+describe("humanizeToolKind", () => {
+  it("turns a machine tool name into readable words", () => {
+    expect(humanizeToolKind("enter_plan_mode")).toBe("Enter Plan Mode");
+    expect(humanizeToolKind("exit_plan_mode")).toBe("Exit Plan Mode");
+    expect(humanizeToolKind("run_terminal_command")).toBe("Run Terminal Command");
+  });
+
+  it("returns undefined for empty / bare tool", () => {
+    expect(humanizeToolKind("")).toBeUndefined();
+    expect(humanizeToolKind("tool")).toBeUndefined();
+    expect(humanizeToolKind(undefined)).toBeUndefined();
+  });
+});
+
+describe("resolveToolPrimaryLabel fallback", () => {
+  it("uses the humanized machine name instead of bare 工具 for unknown tools", () => {
+    const label = resolveToolPrimaryLabel(
+      { toolKind: "enter_plan_mode", toolCallId: "call_x" },
+      enTr,
+    );
+    expect(label).toBe("Enter Plan Mode");
+    expect(label).not.toBe("Tool");
+  });
+
+  it("falls back to the generic label only when nothing is known", () => {
+    const label = resolveToolPrimaryLabel({ toolCallId: "call_x" }, enTr);
+    expect(label).toBe("Tool");
   });
 });

@@ -450,24 +450,30 @@ function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null 
   const tcid = toolCallIdOf(row);
   if (!tcid) return null;
   const status = (row.toolStatus || "completed").toLowerCase();
-  // Journal often stores empty kind + title "tool"; recover from call-id prefix.
+  // Re-parse the journal body early: the persisted `kind` (machine tool name
+  // like `read_file` / `enter_plan_mode`) lives here, and `row.toolKind` is
+  // empty for history-loaded rows. Without this fallback, replayed tools lost
+  // their typed icon/label and collapsed to bare “工具”.
+  const raw = (row.content || "").trim();
+  const parsed = raw.startsWith("tool_step|") ? parseToolStepContent(raw) : null;
   const toolKind =
-    (row.toolKind || "").trim() || inferKindFromToolCallId(tcid) || undefined;
+    (row.toolKind || "").trim() ||
+    (parsed?.kind || "").trim() ||
+    inferKindFromToolCallId(tcid) ||
+    undefined;
   // Prefer field detail; if content still has full tool_step body, re-parse
   // (App maps title-only into content and used to keep only first detail line).
   let detail = row.toolDetail;
   let path = row.toolPath;
   let input = row.toolInput;
   let output = row.toolOutput;
-  const raw = (row.content || "").trim();
-  if (raw.startsWith("tool_step|")) {
-    const parsed = parseToolStepContent(raw);
-    if (parsed?.detail && (!detail || parsed.detail.length > detail.length)) {
+  if (parsed) {
+    if (parsed.detail && (!detail || parsed.detail.length > detail.length)) {
       detail = parsed.detail;
     }
-    if (parsed?.path && !path) path = parsed.path;
-    if (parsed?.input && !input) input = parsed.input;
-    if (parsed?.output && !output) output = parsed.output;
+    if (parsed.path && !path) path = parsed.path;
+    if (parsed.input && !input) input = parsed.input;
+    if (parsed.output && !output) output = parsed.output;
   }
   return toolSegmentFromFields({
     toolCallId: tcid,

@@ -216,6 +216,31 @@ export function toolLabelKeyFor(
   return toolBucketLabelKey(bucket);
 }
 
+/**
+ * Friendly display name for an otherwise-unrecognized machine tool name.
+ *
+ * Used so internal CLI tools (`enter_plan_mode`, `exit_plan_mode`, …) and any
+ * future tool without a typed bucket still tell the user what ran, instead of
+ * the bare generic “工具”.
+ */
+export function humanizeToolKind(
+  toolKind: string | null | undefined,
+): string | undefined {
+  const k = (toolKind || "").trim();
+  if (!k || k.toLowerCase() === "tool") return undefined;
+  // Known acronyms keep their casing; everything else is title-cased so short
+  // verbs like “run” don’t become “RUN”.
+  const ACRONYMS = new Set(["api", "url", "uri", "mcp", "lsp", "css", "html", "json", "xml", "sql", "cli", "tls", "dns", "x"]);
+  const words = k.replace(/[_-]+/g, " ").trim().split(/\s+/);
+  return words
+    .map((w) => {
+      const lower = w.toLowerCase();
+      if (ACRONYMS.has(lower)) return lower === "x" ? "X" : lower.toUpperCase();
+      return w[0]!.toUpperCase() + w.slice(1);
+    })
+    .join(" ");
+}
+
 /** Short base name of a tool path (for “Read file · main.ts” companion text). */
 export function toolPathBase(path?: string | null): string | undefined {
   const p = (path || "").trim().replace(/\\/g, "/");
@@ -414,7 +439,13 @@ export function resolveToolPrimaryLabel(
     tool.title,
     tool.toolCallId,
   );
-  let summary = tr(toolLabelKeyFor(tool.toolKind, bucket));
+  // Fallback bucket + a real machine tool name (e.g. enter_plan_mode) → show a
+  // humanized name instead of the bare generic “工具”. The generic label is the
+  // last resort, only when we truly know nothing about the tool.
+  let summary =
+    bucket === "fallback"
+      ? humanizeToolKind(tool.toolKind) || tr(toolLabelKeyFor(tool.toolKind, bucket))
+      : tr(toolLabelKeyFor(tool.toolKind, bucket));
   const specific =
     toolInputDisplay(tool.input, bucket) ||
     (bucket === "bash"

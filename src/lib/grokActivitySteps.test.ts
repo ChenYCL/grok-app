@@ -161,10 +161,7 @@ describe("grokActivitySteps", () => {
     >;
     expect(grp.reads).toBe(2);
     expect(grp.searches).toBe(0);
-    const kids = grp.children.filter((s) => s.type === "tool") as Extract<
-      GrokPhaseItem,
-      { kind: "tool" }
-    >[] as any;
+    const kids = grp.children.filter((s) => s.type === "tool");
     expect(kids[0]).toMatchObject({ bucket: "read", inputLabel: "SKILL.md" });
     expect(kids[1]).toMatchObject({ bucket: "read", inputLabel: "workbuddy" });
     expect(steps[1]).toMatchObject({ bucket: "bash" });
