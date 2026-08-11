@@ -318,14 +318,18 @@ pub fn set_permission_rules_in_toml(text: &str, rules: &PermissionRules) -> Stri
             continue;
         }
 
-        if trimmed.starts_with('[') {
+        if crate::agent_home_config::parse_table_header(trimmed).is_some() {
             if in_permission && !injected {
                 for l in &inject_lines {
                     out.push(l.clone());
                 }
                 injected = true;
             }
-            in_permission = trimmed == "[permission]";
+            // Accept trailing comments: `[permission] # rules`
+            in_permission = matches!(
+                crate::agent_home_config::parse_table_header(trimmed),
+                Some((false, "permission"))
+            );
             if in_permission {
                 permission_found = true;
                 injected = false;

@@ -8,8 +8,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::agent_home_config::{set_table_bool, update_config_toml_if_independent};
 use crate::cli_probe;
-use crate::paths::{agent_config_toml, ensure_app_dirs, resolve_agent_grok_home};
+use crate::paths::resolve_agent_grok_home;
 use crate::process_util;
 
 /// Top-level CLI flag (before `agent`) for the experimental_memory setting.
@@ -40,69 +41,21 @@ pub fn set_memory_enabled_in_toml(text: &str, enabled: bool) -> String {
     set_table_bool(text, "memory", "enabled", enabled)
 }
 
-fn set_table_bool(text: &str, table: &str, key: &str, value: bool) -> String {
-    let header = format!("[{table}]");
-    let line_val = format!("{key} = {value}");
-    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
-    let mut in_table = false;
-    let mut table_start: Option<usize> = None;
-    for i in 0..lines.len() {
-        let trimmed = lines[i].trim().to_string();
-        if trimmed.starts_with('[') {
-            if trimmed == header {
-                in_table = true;
-                table_start = Some(i);
-            } else if in_table {
-                lines.insert(i, line_val);
-                return lines.join("\n") + "\n";
-            } else {
-                in_table = false;
-            }
-            continue;
-        }
-        if in_table {
-            let key_part = trimmed.split('=').next().map(str::trim).unwrap_or("");
-            if key_part == key {
-                lines[i] = line_val;
-                return lines.join("\n") + "\n";
-            }
-        }
-    }
-    if let Some(start) = table_start {
-        lines.insert(start + 1, line_val);
-        return lines.join("\n") + "\n";
-    }
-    let block = format!("\n{header}\n{line_val}\n");
-    let base = text.trim_end();
-    if base.is_empty() {
-        format!("{header}\n{line_val}\n")
-    } else {
-        format!("{base}{block}")
-    }
-}
-
 /// Write `[memory] enabled` into App agent-home (independent GROK_HOME only).
 pub fn sync_memory_to_agent_profile(
     session_data_mode: &str,
     experimental_memory: bool,
 ) -> Result<(), String> {
-    if session_data_mode == "shared" {
-        // Never rewrite the user's personal ~/.grok/config.toml from the App.
-        return Ok(());
+    let path = update_config_toml_if_independent(session_data_mode, |existing| {
+        set_memory_enabled_in_toml(existing, experimental_memory)
+    })?;
+    if let Some(path) = path {
+        tracing::info!(
+            "agent_memory: synced [memory] enabled={} → {}",
+            experimental_memory,
+            path.display()
+        );
     }
-    let _ = ensure_app_dirs();
-    let path = agent_config_toml();
-    let existing = fs::read_to_string(&path).unwrap_or_default();
-    let next = set_memory_enabled_in_toml(&existing, experimental_memory);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    fs::write(&path, next).map_err(|e| e.to_string())?;
-    tracing::info!(
-        "agent_memory: synced [memory] enabled={} → {}",
-        experimental_memory,
-        path.display()
-    );
     Ok(())
 }
 

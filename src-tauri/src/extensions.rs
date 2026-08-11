@@ -1869,55 +1869,9 @@ pub fn set_mcp_enabled_in_toml(text: &str, name: &str, enabled: bool) -> String 
     if name.is_empty() {
         return text.to_string();
     }
-    let header = format!("[mcp_servers.{name}]");
-    let line_val = format!("enabled = {enabled}");
-    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
-    let mut in_table = false;
-    let mut table_start: Option<usize> = None;
-    for i in 0..lines.len() {
-        let trimmed = lines[i].trim().to_string();
-        if trimmed.starts_with('[') {
-            if trimmed == header {
-                in_table = true;
-                table_start = Some(i);
-            } else if in_table {
-                // Leaving our table without finding enabled — insert before next header.
-                lines.insert(i, line_val);
-                return lines.join("\n") + trailing_nl(text);
-            } else {
-                in_table = false;
-            }
-            continue;
-        }
-        if in_table {
-            // Match bare `enabled = …` (not nested env tables).
-            let key = trimmed.split('=').next().map(str::trim).unwrap_or("");
-            if key == "enabled" {
-                lines[i] = line_val;
-                return lines.join("\n") + trailing_nl(text);
-            }
-        }
-    }
-    if let Some(start) = table_start {
-        lines.insert(start + 1, line_val);
-        return lines.join("\n") + trailing_nl(text);
-    }
-    // Section missing — append a minimal table so independent agent-home can gate it.
-    let block = format!("\n{header}\n{line_val}\n");
-    let base = text.trim_end();
-    if base.is_empty() {
-        format!("{header}\n{line_val}\n")
-    } else {
-        format!("{base}{block}")
-    }
-}
-
-fn trailing_nl(text: &str) -> &'static str {
-    if text.ends_with('\n') || text.is_empty() {
-        ""
-    } else {
-        "\n"
-    }
+    let table = format!("mcp_servers.{name}");
+    // Shared upsert: exact key match + header trailing-comment tolerant.
+    crate::agent_home_config::set_table_bool(text, &table, "enabled", enabled)
 }
 
 /// Write App enable prefs into the agent GROK_HOME config.toml `enabled` flags.

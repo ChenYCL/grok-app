@@ -1269,6 +1269,26 @@ impl AcpClient {
             // off removes the managed hook file.
             let _ =
                 crate::official_aux::sync_native_media_block_hook_for_current(session_data_mode);
+            // Heal duplicate keys left by older upsert bugs (e.g. yolo vs yolo_mode).
+            // Valid configs are never rewritten. Soft-fail so spawn still attempts.
+            match crate::agent_home_config::ensure_agent_home_config_sane(session_data_mode) {
+                Ok(report) if report.changed => {
+                    tracing::info!(
+                        target: "acp_client",
+                        removed = report.removed_duplicates,
+                        backup = ?report.backup_path,
+                        "agent-home config.toml healed before spawn"
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        target: "acp_client",
+                        error = %e,
+                        "agent-home config.toml heal failed; spawn may AGENT_CRASHED"
+                    );
+                }
+            }
         }
 
         // Native: `grok …`; WSL: `wsl.exe [-d] --cd <linux_cwd> -- <linux_cli> …`

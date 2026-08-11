@@ -7,7 +7,10 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::paths::{agent_config_toml, agent_home_dir, ensure_app_dirs, resolve_agent_grok_home};
+use crate::agent_home_config::{
+    set_table_bool, set_table_string, update_config_toml_if_independent,
+};
+use crate::paths::{agent_home_dir, resolve_agent_grok_home};
 use crate::permission::PermissionPolicy;
 
 /// Map App policy → `[ui] permission_mode` values used by Grok Build config.toml.
@@ -35,55 +38,16 @@ pub fn claude_default_mode(policy: &str) -> &'static str {
     }
 }
 
-fn set_ui_bool(text: &str, key: &str, value: bool) -> String {
-    set_table_key(text, "ui", key, &value.to_string(), false)
-}
-
-fn set_ui_string(text: &str, key: &str, value: &str) -> String {
-    set_table_key(text, "ui", key, value, true)
-}
-
-/// Upsert `key = value` under `[table]` in a TOML-ish text file.
-fn set_table_key(text: &str, table: &str, key: &str, value: &str, quoted: bool) -> String {
-    let header = format!("[{table}]");
-    let line_val = if quoted {
-        format!("{key} = \"{value}\"")
-    } else {
-        format!("{key} = {value}")
-    };
-    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
-    let mut in_table = false;
-    let mut table_start: Option<usize> = None;
-    for i in 0..lines.len() {
-        let trimmed = lines[i].trim().to_string();
-        if trimmed.starts_with('[') {
-            if trimmed == header {
-                in_table = true;
-                table_start = Some(i);
-            } else if in_table {
-                lines.insert(i, line_val);
-                return lines.join("\n") + "\n";
-            } else {
-                in_table = false;
-            }
-            continue;
-        }
-        if in_table && trimmed.starts_with(key) && trimmed.contains('=') {
-            lines[i] = line_val;
-            return lines.join("\n") + "\n";
-        }
-    }
-    if let Some(start) = table_start {
-        lines.insert(start + 1, line_val);
-        return lines.join("\n") + "\n";
-    }
-    let block = format!("\n{header}\n{line_val}\n");
-    let base = text.trim_end();
-    if base.is_empty() {
-        format!("{header}\n{line_val}\n")
-    } else {
-        format!("{base}{block}")
-    }
+/// Apply `[ui] permission_mode` + `yolo` to a TOML-ish text blob (exact key match).
+pub fn set_permission_in_toml(text: &str, permission_policy: &str) -> String {
+    let mode = ui_permission_mode(permission_policy);
+    let yolo = matches!(
+        PermissionPolicy::parse(permission_policy),
+        PermissionPolicy::AlwaysApprove
+    );
+    let mut next = set_table_string(text, "ui", "permission_mode", mode);
+    next = set_table_bool(&next, "ui", "yolo", yolo);
+    next
 }
 
 /// Write permission prefs into App agent-home (independent GROK_HOME only).
@@ -91,43 +55,38 @@ pub fn sync_permission_to_agent_profile(
     session_data_mode: &str,
     permission_policy: &str,
 ) -> Result<(), String> {
-    if session_data_mode == "shared" {
-        // Never rewrite the user's personal ~/.grok/config.toml from the App.
-        return Ok(());
-    }
-    let _ = ensure_app_dirs();
-    let path = agent_config_toml();
-    let existing = fs::read_to_string(&path).unwrap_or_default();
     let mode = ui_permission_mode(permission_policy);
     let yolo = matches!(
         PermissionPolicy::parse(permission_policy),
         PermissionPolicy::AlwaysApprove
     );
-    let mut next = set_ui_string(&existing, "permission_mode", mode);
-    next = set_ui_bool(&next, "yolo", yolo);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    fs::write(&path, next).map_err(|e| e.to_string())?;
+    let path = update_config_toml_if_independent(session_data_mode, |existing| {
+        set_permission_in_toml(existing, permission_policy)
+    })?;
 
     // Belt-and-suspenders: Claude-compatible defaultMode (agent reads when present).
-    let claude_dir = agent_home_dir().join(".claude");
-    let _ = fs::create_dir_all(&claude_dir);
-    let settings = serde_json::json!({
-        "permissions": {
-            "defaultMode": claude_default_mode(permission_policy)
-        }
-    });
-    fs::write(
-        claude_dir.join("settings.json"),
-        serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".into()),
-    )
-    .map_err(|e| e.to_string())?;
+    // Only touch agent-home under independent mode (same gate as config write).
+    if path.is_some() {
+        let claude_dir = agent_home_dir().join(".claude");
+        let _ = fs::create_dir_all(&claude_dir);
+        let settings = serde_json::json!({
+            "permissions": {
+                "defaultMode": claude_default_mode(permission_policy)
+            }
+        });
+        fs::write(
+            claude_dir.join("settings.json"),
+            serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".into()),
+        )
+        .map_err(|e| e.to_string())?;
 
-    tracing::info!(
-        "agent_prefs: synced permission_mode={mode} yolo={yolo} → {}",
-        path.display()
-    );
+        if let Some(ref path) = path {
+            tracing::info!(
+                "agent_prefs: synced permission_mode={mode} yolo={yolo} → {}",
+                path.display()
+            );
+        }
+    }
     Ok(())
 }
 
@@ -150,6 +109,7 @@ pub fn agent_grok_home(session_data_mode: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent_home_config::count_duplicate_assignments;
 
     #[test]
     fn maps_policies() {
@@ -164,13 +124,29 @@ mod tests {
 
     #[test]
     fn upserts_ui_table() {
-        let t = set_ui_string("", "permission_mode", "default");
+        let t = set_permission_in_toml("", "ask");
         assert!(t.contains("[ui]"));
         assert!(t.contains("permission_mode = \"default\""));
-        let t2 = set_ui_bool(&t, "yolo", false);
-        assert!(t2.contains("yolo = false"));
-        let t3 = set_ui_string(&t2, "permission_mode", "dontAsk");
-        assert!(t3.contains("permission_mode = \"dontAsk\""));
-        assert_eq!(t3.matches("permission_mode").count(), 1);
+        assert!(t.contains("yolo = false"));
+        let t2 = set_permission_in_toml(&t, "always_approve");
+        assert!(t2.contains("permission_mode = \"always-approve\""));
+        assert!(t2.contains("yolo = true"));
+        assert_eq!(t2.matches("permission_mode").count(), 1);
+        assert_eq!(t2.matches("yolo =").count(), 1);
+    }
+
+    #[test]
+    fn does_not_prefix_match_yolo_mode() {
+        let base = "[ui]\npermission_mode = \"default\"\nyolo_mode = false\nyolo = false\n";
+        let next = set_permission_in_toml(base, "always_approve");
+        assert!(next.contains("yolo_mode = false"), "{next}");
+        assert!(next.contains("yolo = true"), "{next}");
+        assert_eq!(next.matches("yolo =").count(), 1, "{next}");
+        assert_eq!(count_duplicate_assignments(&next).0, 0, "{next}");
+    }
+
+    #[test]
+    fn shared_mode_skips_write() {
+        assert!(sync_permission_to_agent_profile("shared", "always_approve").is_ok());
     }
 }

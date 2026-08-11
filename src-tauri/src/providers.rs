@@ -570,20 +570,32 @@ fn parse_model_sections(text: &str) -> Vec<Section> {
     sections
 }
 
+fn is_models_table_header(trimmed: &str) -> bool {
+    matches!(
+        crate::agent_home_config::parse_table_header(trimmed),
+        Some((false, "models"))
+    )
+}
+
+fn assignment_key_exact(trimmed: &str) -> Option<&str> {
+    crate::agent_home_config::assignment_key(trimmed)
+}
+
 fn get_models_default(text: &str) -> Option<String> {
     let mut in_models = false;
     for line in text.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            in_models = trimmed == "[models]";
+        if crate::agent_home_config::parse_table_header(trimmed).is_some() {
+            in_models = is_models_table_header(trimmed);
             continue;
         }
         if !in_models || trimmed.starts_with('#') || trimmed.is_empty() {
             continue;
         }
-        if let Some(rest) = trimmed.strip_prefix("default") {
-            let rest = rest.trim().strip_prefix('=')?.trim();
-            return Some(unquote(rest));
+        // Exact key match — never starts_with("default") (would hit default_model).
+        if assignment_key_exact(trimmed) == Some("default") {
+            let eq = trimmed.find('=')?;
+            return Some(unquote(trimmed[eq + 1..].trim()));
         }
     }
     None
@@ -593,27 +605,28 @@ fn set_models_default(text: &str, model_id: &str) -> String {
     let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
     let mut in_models = false;
     let mut models_start: Option<usize> = None;
+    let line_val = format!("default = {}", quote(model_id));
     for i in 0..lines.len() {
         let trimmed = lines[i].trim().to_string();
-        if trimmed.starts_with('[') {
-            if trimmed == "[models]" {
+        if crate::agent_home_config::parse_table_header(&trimmed).is_some() {
+            if is_models_table_header(&trimmed) {
                 in_models = true;
                 models_start = Some(i);
             } else if in_models {
-                lines.insert(i, format!("default = {}", quote(model_id)));
+                lines.insert(i, line_val);
                 return lines.join("\n");
             } else {
                 in_models = false;
             }
             continue;
         }
-        if in_models && trimmed.starts_with("default") && trimmed.contains('=') {
-            lines[i] = format!("default = {}", quote(model_id));
+        if in_models && assignment_key_exact(&trimmed) == Some("default") {
+            lines[i] = line_val;
             return lines.join("\n");
         }
     }
     if let Some(start) = models_start {
-        lines.insert(start + 1, format!("default = {}", quote(model_id)));
+        lines.insert(start + 1, line_val);
         return lines.join("\n");
     }
     let block = format!("\n[models]\ndefault = {}\n", quote(model_id));
@@ -861,25 +874,27 @@ pub fn ensure_models_retry_cap() -> Result<(), String> {
     Ok(())
 }
 
-/// Read a u32 field under `[models]` if present.
+/// Read a u32 field under `[models]` if present (not under `[models.*]`).
 fn read_models_u32_field(text: &str, key: &str) -> Option<u32> {
     let mut in_models = false;
     for line in text.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            in_models = trimmed == "[models]" || trimmed.starts_with("[models.");
+        if crate::agent_home_config::parse_table_header(trimmed).is_some() {
+            // Only the root `[models]` table — not `[models.foo]` sections.
+            in_models = is_models_table_header(trimmed);
             continue;
         }
         if !in_models {
             continue;
         }
-        let Some((k, v)) = trimmed.split_once('=') else {
-            continue;
-        };
-        if k.trim() != key {
+        if assignment_key_exact(trimmed) != Some(key) {
             continue;
         }
-        let raw = v.trim().trim_matches('"').trim_matches('\'');
+        let eq = trimmed.find('=')?;
+        let raw = trimmed[eq + 1..]
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'');
         if let Ok(n) = raw.parse::<u32>() {
             return Some(n);
         }
@@ -891,27 +906,29 @@ fn set_models_u32_field(text: &str, key: &str, value: u32) -> String {
     let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
     let mut in_models = false;
     let mut models_start: Option<usize> = None;
+    let line_val = format!("{key} = {value}");
     for i in 0..lines.len() {
         let trimmed = lines[i].trim().to_string();
-        if trimmed.starts_with('[') {
-            if trimmed == "[models]" {
+        if crate::agent_home_config::parse_table_header(&trimmed).is_some() {
+            if is_models_table_header(&trimmed) {
                 in_models = true;
                 models_start = Some(i);
             } else if in_models {
-                lines.insert(i, format!("{key} = {value}"));
+                lines.insert(i, line_val);
                 return lines.join("\n");
             } else {
                 in_models = false;
             }
             continue;
         }
-        if in_models && trimmed.starts_with(key) && trimmed.contains('=') {
-            lines[i] = format!("{key} = {value}");
+        // Exact key match — never starts_with(key) (would hit max_retries_extra).
+        if in_models && assignment_key_exact(&trimmed) == Some(key) {
+            lines[i] = line_val;
             return lines.join("\n");
         }
     }
     if let Some(start) = models_start {
-        lines.insert(start + 1, format!("{key} = {value}"));
+        lines.insert(start + 1, line_val);
         return lines.join("\n");
     }
     let block = format!("\n[models]\n{key} = {value}\n");
