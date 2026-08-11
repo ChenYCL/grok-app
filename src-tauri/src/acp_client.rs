@@ -2659,18 +2659,41 @@ impl AcpClient {
             ));
         }
 
-        // Build ACP mcpServers off the async runtime (CLI list / file IO).
+        // Build ACP mcpServers off the async runtime. **Never block connect** on
+        // MCP/OAuth: connect builder skips network refresh + CLI list, and a
+        // hard budget falls back to `[]` so session/new|load always proceeds.
         // Official aux side-channel uses empty inject (no nested official-aux MCP).
         let mcp_servers = if self.empty_mcp_servers {
             info!("acp session open empty mcpServers (side-channel)");
             serde_json::json!([])
         } else {
             let project_cwd = cwd.clone();
-            let servers = tauri::async_runtime::spawn_blocking(move || {
-                crate::extensions::build_session_mcp_servers(Some(project_cwd.as_str()))
-            })
+            let budget = crate::extensions::MCP_CONNECT_BUDGET;
+            let servers = match tokio::time::timeout(
+                budget,
+                tauri::async_runtime::spawn_blocking(move || {
+                    crate::extensions::build_session_mcp_servers_for_connect(Some(
+                        project_cwd.as_str(),
+                    ))
+                }),
+            )
             .await
-            .unwrap_or_else(|_| serde_json::json!([]));
+            {
+                Ok(Ok(v)) => v,
+                Ok(Err(join_e)) => {
+                    warn!(
+                        "acp session open mcpServers join error ({join_e}); empty inject (connect proceeds)"
+                    );
+                    serde_json::json!([])
+                }
+                Err(_) => {
+                    warn!(
+                        budget_ms = budget.as_millis() as u64,
+                        "acp session open mcpServers exceeded budget; empty inject (connect proceeds)"
+                    );
+                    serde_json::json!([])
+                }
+            };
             let mcp_count = servers.as_array().map(|a| a.len()).unwrap_or(0);
             info!("acp session open injecting mcpServers count={mcp_count}");
             servers

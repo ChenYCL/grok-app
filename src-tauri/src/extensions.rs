@@ -22,6 +22,40 @@ use crate::store;
 const MCP_LIST_TIMEOUT_SECS: u64 = 8;
 const MCP_CACHE_TTL: Duration = Duration::from_secs(300);
 
+/// Hard budget for MCP inject on the **session open** path (`session/new|load`).
+/// OAuth / `grok mcp list` / discovery must never push connect past this.
+pub const MCP_CONNECT_BUDGET: Duration = Duration::from_secs(2);
+
+/// How ACP `mcpServers` are built for a given call site.
+#[derive(Debug, Clone, Copy)]
+pub struct McpInjectOptions {
+    /// When true, silently refresh OAuth remotes over the network (can block
+    /// tens of seconds). **Connect / open_session must use `false`.**
+    pub refresh_oauth: bool,
+    /// Prefer parsing `config.toml` only — skip `grok mcp list` / inspect CLI
+    /// probes (connect path). Settings / hot-swap keep the full discovery path.
+    pub config_only: bool,
+}
+
+impl Default for McpInjectOptions {
+    fn default() -> Self {
+        Self {
+            refresh_oauth: true,
+            config_only: false,
+        }
+    }
+}
+
+impl McpInjectOptions {
+    /// Connect / open_session: no network OAuth, config-only defs, never hang.
+    pub const fn for_connect() -> Self {
+        Self {
+            refresh_oauth: false,
+            config_only: true,
+        }
+    }
+}
+
 /// App-side enable prefs for MCP servers and skills.
 /// Missing name defaults to **enabled** (opt-out).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -193,24 +227,38 @@ fn env_map_to_named_array(map: Option<&HashMap<String, String>>) -> Vec<Value> {
 /// Before gating, OAuth remotes are silently refreshed (Codex parity) when a
 /// `refresh_token` is stored — so a one-time browser authorize stays usable
 /// across short access-token TTLs (e.g. ChatCut 1h).
+///
+/// Prefer [`build_acp_mcp_servers_with_opts`] on the connect path with
+/// [`McpInjectOptions::for_connect`] so OAuth network work cannot block ACP.
 pub fn build_acp_mcp_servers(defs: &[McpServerDef], prefs: &ExtensionsPrefs) -> Value {
+    build_acp_mcp_servers_with_opts(defs, prefs, McpInjectOptions::default())
+}
+
+/// Same as [`build_acp_mcp_servers`] with explicit inject options.
+pub fn build_acp_mcp_servers_with_opts(
+    defs: &[McpServerDef],
+    prefs: &ExtensionsPrefs,
+    opts: McpInjectOptions,
+) -> Value {
     let enabled: Vec<&McpServerDef> = filter_enabled_mcp(defs, prefs);
     // Proactive refresh for OAuth remotes (ChatCut etc.) before inject gate.
-    // Keep the caller's `defs` list (tests pass fixtures; live path already listed).
-    // Fresh access tokens are applied from mcp_credentials.json in the mapper.
-    let refresh_names: Vec<String> = enabled
-        .iter()
-        .filter(|d| mcp_def_is_remote_http(d) && mcp_remote_likely_needs_oauth(d))
-        .map(|d| d.name.clone())
-        .collect();
-    if !refresh_names.is_empty() {
-        crate::mcp_oauth::ensure_all_remote_mcp_tokens(&refresh_names);
+    // **Skipped on connect** (`refresh_oauth: false`) — expired remotes are
+    // simply omitted so session/new|load is never blocked on network OAuth.
+    if opts.refresh_oauth {
+        let refresh_names: Vec<String> = enabled
+            .iter()
+            .filter(|d| mcp_def_is_remote_http(d) && mcp_remote_likely_needs_oauth(d))
+            .map(|d| d.name.clone())
+            .collect();
+        if !refresh_names.is_empty() {
+            crate::mcp_oauth::ensure_all_remote_mcp_tokens(&refresh_names);
+        }
     }
     // Re-read clock after possible network refresh.
     let now = mcp_auth_now_secs();
     let arr: Vec<Value> = enabled
         .into_iter()
-        .filter_map(|def| mcp_def_to_acp_for_session(def, now))
+        .filter_map(|def| mcp_def_to_acp_for_session(def, now, opts.refresh_oauth))
         .collect();
     Value::Array(arr)
 }
@@ -523,10 +571,17 @@ pub fn clear_mcp_auth_rejects() {
 }
 
 /// Map def → ACP entry for session inject, applying the auth gate.
-fn mcp_def_to_acp_for_session(def: &McpServerDef, now_secs: u64) -> Option<Value> {
+///
+/// When `refresh_oauth` is false (connect path), never call network refresh —
+/// use on-disk credentials only and skip servers that would AuthRequired.
+fn mcp_def_to_acp_for_session(
+    def: &McpServerDef,
+    now_secs: u64,
+    refresh_oauth: bool,
+) -> Option<Value> {
     // Per-server ensure (cheap no-op when still valid) — covers non-chatcut OAuth
-    // remotes and any path that skipped the bulk pre-pass.
-    if mcp_def_is_remote_http(def) && mcp_remote_likely_needs_oauth(def) {
+    // remotes and any path that skipped the bulk pre-pass. Connect path skips.
+    if refresh_oauth && mcp_def_is_remote_http(def) && mcp_remote_likely_needs_oauth(def) {
         let _ = crate::mcp_oauth::ensure_mcp_access_token(&def.name);
     }
 
@@ -1219,14 +1274,62 @@ fn fetch_mcp_from_inspect(project_cwd: Option<&str>) -> Vec<McpServerDef> {
 /// other user MCPs are **omitted** so slow/failing servers (Playwright, …) do
 /// not keep official-aux in a 30s "connecting" window. Set
 /// `official_aux_with_user_mcp` to also load extension MCPs after official-aux.
+///
+/// For **session open / connect**, use [`build_session_mcp_servers_for_connect`]
+/// so MCP/OAuth failures cannot block ACP.
 pub fn build_session_mcp_servers(project_cwd: Option<&str>) -> Value {
+    build_session_mcp_servers_with_opts(project_cwd, McpInjectOptions::default())
+}
+
+/// Connect / open_session inject: config-only, no OAuth network, panic-safe.
+///
+/// Returns `[]` on any failure so `session/new|load` always proceeds. Callers
+/// should also wrap with [`MCP_CONNECT_BUDGET`] so a stuck CLI probe cannot
+/// stall the async runtime.
+pub fn build_session_mcp_servers_for_connect(project_cwd: Option<&str>) -> Value {
+    let start = Instant::now();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        build_session_mcp_servers_with_opts(project_cwd, McpInjectOptions::for_connect())
+    }));
+    match result {
+        Ok(v) => {
+            let n = v.as_array().map(|a| a.len()).unwrap_or(0);
+            tracing::info!(
+                target: "mcp_inject",
+                count = n,
+                elapsed_ms = start.elapsed().as_millis() as u64,
+                "connect mcpServers built (no oauth network)"
+            );
+            v
+        }
+        Err(_) => {
+            tracing::warn!(
+                target: "mcp_inject",
+                "connect mcpServers panicked — injecting empty list (ACP proceeds)"
+            );
+            json!([])
+        }
+    }
+}
+
+/// Shared builder used by full inject and the connect soft-fail path.
+pub fn build_session_mcp_servers_with_opts(
+    project_cwd: Option<&str>,
+    opts: McpInjectOptions,
+) -> Value {
     let inject = crate::official_aux::should_inject_mcp_for_main();
     let load_user = !inject || crate::official_aux::should_load_user_mcp_with_official_aux();
 
     let mut arr: Vec<Value> = if load_user {
         let prefs = load_prefs();
-        let defs = list_mcp_server_defs(project_cwd);
-        match build_acp_mcp_servers(&defs, &prefs) {
+        let defs = if opts.config_only {
+            // Fast path: no `grok mcp list` / version probe (connect).
+            let settings = store::load_settings();
+            load_mcp_defs_from_configs(&settings.session_data_mode)
+        } else {
+            list_mcp_server_defs(project_cwd)
+        };
+        match build_acp_mcp_servers_with_opts(&defs, &prefs, opts) {
             Value::Array(a) => a,
             other => {
                 tracing::warn!("mcpServers not an array: {other:?}");
@@ -2104,6 +2207,53 @@ mod tests {
         let a = arr.as_array().unwrap();
         assert_eq!(a.len(), 1);
         assert_eq!(a[0]["name"], "ok");
+    }
+
+    #[test]
+    fn connect_inject_opts_skip_oauth_and_keep_stdio() {
+        // Connect path must never require network OAuth: remote without a
+        // usable bearer is skipped; stdio still injects.
+        let defs = vec![
+            McpServerDef {
+                name: "local".into(),
+                command: Some("npx".into()),
+                args: Some(vec!["-y".into(), "tool".into()]),
+                env: None,
+                url: None,
+                headers: None,
+                transport: Some("stdio".into()),
+                enabled: None,
+                scope: None,
+            },
+            // Unique name so on-disk `mcp_credentials.json` for real "chatcut"
+            // cannot make this fixture Usable; still OAuth-flagged by URL.
+            McpServerDef {
+                name: "chatcut-fixture-no-token".into(),
+                command: None,
+                args: None,
+                env: None,
+                url: Some("https://api.chatcut.io/api/external-mcp/mcp".into()),
+                headers: None,
+                transport: Some("http".into()),
+                enabled: None,
+                scope: None,
+            },
+        ];
+        let prefs = ExtensionsPrefs::default();
+        let arr = build_acp_mcp_servers_with_opts(&defs, &prefs, McpInjectOptions::for_connect());
+        let a = arr.as_array().expect("array");
+        assert_eq!(a.len(), 1, "oauth remote without creds skipped on connect");
+        assert_eq!(a[0]["name"], "local");
+        assert!(!McpInjectOptions::for_connect().refresh_oauth);
+        assert!(McpInjectOptions::for_connect().config_only);
+        assert!(MCP_CONNECT_BUDGET.as_secs() <= 3);
+    }
+
+    #[test]
+    fn connect_builder_never_panics_returns_array() {
+        // Empty cwd / no config — still a JSON array, never panic.
+        let v = build_session_mcp_servers_for_connect(Some("/nonexistent/project/path"));
+        assert!(v.is_array(), "connect inject must always yield an array");
     }
 
     #[test]
