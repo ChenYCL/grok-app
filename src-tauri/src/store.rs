@@ -2131,7 +2131,9 @@ fn global_prefs(settings: &AppSettings) -> (String, String, String, String) {
         if settings.mode.trim().is_empty() {
             "agent".into()
         } else {
-            settings.mode.clone()
+            // Heal a `plan` default already written by an older build: plan mode
+            // must never be inherited by a new session.
+            non_plan_mode(&settings.mode)
         },
         if settings.permission_policy.trim().is_empty() {
             "ask".into()
@@ -2184,7 +2186,12 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
                 ComposerPrefs {
                     model_id: p.model_id.filter(|s| !s.is_empty()).unwrap_or(g_model),
                     effort: p.effort.filter(|s| !s.is_empty()).unwrap_or(g_effort),
-                    mode: p.mode.filter(|s| !s.is_empty()).unwrap_or(g_mode),
+                    mode: p
+                        .mode
+                        .filter(|s| !s.is_empty())
+                        // Project defaults never carry plan mode (heals old data).
+                        .map(|m| non_plan_mode(&m))
+                        .unwrap_or(g_mode),
                     permission_policy,
                     scope: scope.as_str().into(),
                     source: "project".into(),
@@ -2215,6 +2222,8 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
                 .as_ref()
                 .and_then(|p| p.mode.clone())
                 .filter(|s| !s.is_empty())
+                // A project default of `plan` is never inherited (heals old data).
+                .map(|m| non_plan_mode(&m))
                 .unwrap_or(g_mode.clone());
 
             if let Some(s) = sess {
@@ -2240,6 +2249,28 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
     }
 }
 
+/// Plan mode is a **transient, per-session** state, never a sticky default.
+///
+/// It used to be persisted like any other mode, so a single `/plan` wrote
+/// `mode: "plan"` into global settings and every later session started in plan
+/// mode. Session scope may still record it (that session really is planning);
+/// global / project defaults drop it.
+fn sticky_mode(mode: Option<String>) -> Option<String> {
+    match mode {
+        Some(m) if m.trim().eq_ignore_ascii_case("plan") => None,
+        other => other,
+    }
+}
+
+/// Read a stored default mode, healing a `plan` value already on disk.
+pub(crate) fn non_plan_mode(mode: &str) -> String {
+    let m = mode.trim();
+    if m.is_empty() || m.eq_ignore_ascii_case("plan") {
+        return "agent".into();
+    }
+    m.to_string()
+}
+
 /// Persist a partial composer prefs update at the configured scope.
 pub fn save_composer_prefs(
     project_id: Option<&str>,
@@ -2261,7 +2292,7 @@ pub fn save_composer_prefs(
             if let Some(v) = effort {
                 s.effort = Some(v);
             }
-            if let Some(v) = mode {
+            if let Some(v) = sticky_mode(mode) {
                 s.mode = v;
             }
             if let Some(v) = permission_policy {
@@ -2280,7 +2311,7 @@ pub fn save_composer_prefs(
                     if let Some(v) = effort.clone() {
                         p.effort = Some(v);
                     }
-                    if let Some(v) = mode.clone() {
+                    if let Some(v) = sticky_mode(mode.clone()) {
                         p.mode = Some(v);
                     }
                     if let Some(v) = permission_policy.clone() {
@@ -2297,7 +2328,7 @@ pub fn save_composer_prefs(
             if let Some(v) = effort {
                 s.effort = Some(v);
             }
-            if let Some(v) = mode {
+            if let Some(v) = sticky_mode(mode) {
                 s.mode = v;
             }
             if let Some(v) = permission_policy {
@@ -2333,7 +2364,7 @@ pub fn save_composer_prefs(
                     if let Some(v) = effort {
                         s.effort = Some(v);
                     }
-                    if let Some(v) = mode {
+                    if let Some(v) = sticky_mode(mode) {
                         s.mode = v;
                     }
                     if let Some(v) = permission_policy {
@@ -2349,7 +2380,7 @@ pub fn save_composer_prefs(
                 if let Some(v) = effort {
                     s.effort = Some(v);
                 }
-                if let Some(v) = mode {
+                if let Some(v) = sticky_mode(mode) {
                     s.mode = v;
                 }
                 if let Some(v) = permission_policy {
@@ -2367,6 +2398,26 @@ pub fn save_composer_prefs(
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn non_plan_mode_heals_plan_default() {
+        // Plan mode must never be a sticky default: empty or "plan" → "agent".
+        assert_eq!(non_plan_mode(""), "agent");
+        assert_eq!(non_plan_mode("plan"), "agent");
+        assert_eq!(non_plan_mode("PLAN"), "agent");
+        assert_eq!(non_plan_mode("agent"), "agent");
+        assert_eq!(non_plan_mode("ask"), "ask");
+    }
+
+    #[test]
+    fn sticky_mode_drops_plan_for_global_persistence() {
+        assert_eq!(sticky_mode(None), None);
+        assert_eq!(sticky_mode(Some("plan".into())), None);
+        assert_eq!(sticky_mode(Some("PLAN".into())), None);
+        // Real sticky modes pass through.
+        assert_eq!(sticky_mode(Some("agent".into())), Some("agent".into()));
+        assert_eq!(sticky_mode(Some("ask".into())), Some("ask".into()));
+    }
 
     #[test]
     fn redact_scrubs_long_tokenish() {

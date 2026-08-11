@@ -539,6 +539,26 @@ pub(super) fn normalize_tool_kind_for_journal(kind: &str, title: &str) -> String
     String::new()
 }
 
+/// Read the grok CLI tool meta block (`_meta["x.ai/tool"]`).
+///
+/// The key contains a literal `/`, so a JSON Pointer must escape it as `~1`
+/// (RFC 6901). Plain `/_meta/x.ai/tool/...` never resolves and silently
+/// dropped the machine tool name — journals then recorded `tool_step|…|tool|tool`.
+pub(super) fn tool_meta(raw: &serde_json::Value) -> Option<&serde_json::Value> {
+    raw.pointer("/_meta/x.ai~1tool")
+        .or_else(|| raw.pointer("/_meta/tool"))
+}
+
+/// String field from the CLI tool meta block (`name` / `label` / `kind`).
+pub(super) fn tool_meta_str(raw: &serde_json::Value, field: &str) -> Option<String> {
+    tool_meta(raw)?
+        .get(field)
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
 /// Tool identity learned from the in_progress `tool_call` notification.
 ///
 /// The grok CLI sends the full identity (`title`, `kind`, `toolName`, `rawInput`)
@@ -618,8 +638,11 @@ pub(super) fn remember_tool_identity(
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .unwrap_or("")
-        .to_string();
+        .map(|s| s.to_string())
+        // grok CLI never sends a top-level `toolName`: the machine name lives in
+        // `_meta["x.ai/tool"].name` on the start notification only.
+        .or_else(|| tool_meta_str(raw, "name"))
+        .unwrap_or_default();
     let t = title.trim();
     let k = kind.trim();
     let input = extract_tool_input(raw);
@@ -736,7 +759,7 @@ pub(super) fn enrich_tool_identity_from_raw(
         }
         let mcp_tool = pick_str(&["/rawOutput/tool_name", "/rawInput/tool_name"]);
         let mcp_server = pick_str(&["/rawOutput/server_name", "/rawOutput/server"]);
-        let meta_name = pick_str(&["/_meta/x.ai/tool/name", "/_meta/x.ai/tool/label"]);
+        let meta_name = tool_meta_str(raw, "name").or_else(|| tool_meta_str(raw, "label"));
         let variant = pick_str(&["/rawInput/variant"]);
         let update_title = pick_str(&["/title"]);
 
@@ -770,7 +793,8 @@ pub(super) fn enrich_tool_identity_from_raw(
     if kind_out.is_empty() || kind_out.eq_ignore_ascii_case("other") {
         kind_out = normalize_tool_kind_for_journal(&kind_out, &title_out);
         if kind_out.is_empty() {
-            if let Some(n) = pick_str(&["/_meta/x.ai/tool/name", "/rawInput/variant"]) {
+            if let Some(n) = tool_meta_str(raw, "name").or_else(|| pick_str(&["/rawInput/variant"]))
+            {
                 kind_out = match n.as_str() {
                     "SearchTool" | "search_tool" => "search_tool".into(),
                     "UseTool" | "use_tool" => "use_tool".into(),
@@ -958,6 +982,84 @@ pub(super) fn extract_tool_content_snippets(
             .or_else(|| raw.pointer("/rawInput/after")),
     );
     (before, after)
+}
+
+/// Cap persisted tool output so a single `cat` of a huge file cannot bloat the
+/// journal. The live event carries the same cap; the UI scrolls inside expand.
+pub(super) const TOOL_OUTPUT_MAX: usize = 20_000;
+
+/// Same cap, re-exported for the CLI session importer (`cli_sessions`).
+pub(crate) const TOOL_OUTPUT_MAX_PUB: usize = TOOL_OUTPUT_MAX;
+
+/// Marker line that separates the legacy `tool_step|` body from real tool
+/// output. Everything before it keeps the historical layout byte-for-byte, so
+/// old journals and the positional `detail\npath` heuristic stay valid; the
+/// parser only has to split on this line. Chosen to never collide with stdout.
+pub(crate) const TOOL_OUTPUT_SENTINEL: &str = "\u{1}output";
+
+/// Real tool **output** from the ACP terminal `tool_call_update`.
+///
+/// Grok CLI puts what the tool produced in `content[]`, which this crate
+/// previously never read — so `detail` only ever held the *call argument*
+/// echoed back from `rawInput`, and read/list/search tools (no command/query
+/// key) produced no expandable body at all.
+///
+/// Shapes observed on the wire:
+/// - `{"type":"content","content":{"type":"text","text":"…"}}` — stdout / file text
+/// - `{"type":"diff","path":…,"oldText":…,"newText":…}` — edit/write preview
+///
+/// Diff entries are summarized as a `--- path` header (the diff panel renders
+/// the real before/after via {@link extract_tool_content_snippets}).
+pub(super) fn extract_tool_output(raw: &serde_json::Value) -> Option<String> {
+    let items = raw.get("content")?.as_array()?;
+    let mut out = String::new();
+    for item in items {
+        // Bare string entries (lenient wrappers).
+        if let Some(s) = item.as_str() {
+            push_output_chunk(&mut out, s);
+            continue;
+        }
+        let obj = match item.as_object() {
+            Some(o) => o,
+            None => continue,
+        };
+        let ty = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if ty == "diff" {
+            let path = obj.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            if !path.is_empty() {
+                push_output_chunk(&mut out, &format!("--- {path}"));
+            }
+            continue;
+        }
+        // `{type:"content", content:{type:"text", text:"…"}}`
+        let text = obj
+            .get("content")
+            .and_then(|c| c.get("text"))
+            .and_then(|v| v.as_str())
+            // Some wrappers inline the text one level up.
+            .or_else(|| obj.get("text").and_then(|v| v.as_str()));
+        if let Some(t) = text {
+            push_output_chunk(&mut out, t);
+        }
+        if out.chars().count() >= TOOL_OUTPUT_MAX {
+            break;
+        }
+    }
+    let trimmed = out.trim_end();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.chars().take(TOOL_OUTPUT_MAX).collect())
+}
+
+fn push_output_chunk(out: &mut String, chunk: &str) {
+    if chunk.trim().is_empty() {
+        return;
+    }
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(chunk);
 }
 
 /// When user asks to open a Grok App / foreign agent session by UUID, steer tools.

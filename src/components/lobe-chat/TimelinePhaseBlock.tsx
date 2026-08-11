@@ -53,6 +53,8 @@ import {
   type ActivityStepExpandState,
 } from "@/lib/grokActivityVirtualize";
 import { VirtualList } from "@/components/VirtualList";
+import { ToolExpandBody } from "./ToolExpandBody";
+import { MarkdownChat } from "./MarkdownChat";
 import {
   IconBulb,
   IconChevronDown,
@@ -125,7 +127,7 @@ function StepIcon({ step }: { step: GrokActivityStep }) {
   const size = 15;
   const stroke = 1.5;
   if (step.type === "thought") return <IconBulb size={size} stroke={stroke} />;
-  if (step.type === "search-group")
+  if (step.type === "search-group" || step.type === "explore-group")
     return <IconSearch size={size} stroke={stroke} />;
   if (step.type === "web-search")
     // Official uses globe+search hybrid; World is closest available
@@ -136,6 +138,31 @@ function StepIcon({ step }: { step: GrokActivityStep }) {
       <ToolBucketIcon bucket={step.bucket} toolKind={step.tool.toolKind} />
     );
   return <IconCircle size={size} stroke={stroke} />;
+}
+
+function exploreLabel(
+  step: Extract<GrokActivityStep, { type: "explore-group" }>,
+  tr: ReturnType<typeof createT>,
+): string {
+  // “探索 · 1 次搜索, 3 个文件” — omit a clause when its count is zero so a
+  // pure-read burst reads as “探索 · 3 个文件”.
+  const parts: string[] = [];
+  if (step.searches > 0) {
+    parts.push(
+      step.searches === 1
+        ? tr("chat.exploreSearchesOne")
+        : tr("chat.exploreSearches", { n: String(step.searches) }),
+    );
+  }
+  if (step.reads > 0) {
+    parts.push(
+      step.reads === 1
+        ? tr("chat.exploreFilesOne")
+        : tr("chat.exploreFiles", { n: String(step.reads) }),
+    );
+  }
+  const detail = parts.join(", ");
+  return detail ? `${tr("chat.explored")} · ${detail}` : tr("chat.explored");
 }
 
 function StepMainText({
@@ -159,6 +186,10 @@ function StepMainText({
             ? tr("chat.ranSearch")
             : tr("chat.ranSearches", { n: String(step.count) })}
         </span>
+      );
+    case "explore-group":
+      return (
+        <span className="grok-act__label-text">{exploreLabel(step, tr)}</span>
       );
     case "web-search":
       return (
@@ -190,6 +221,7 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
   step,
   isLast,
   tr,
+  locale,
   expanded,
   onUserToggle,
   onPolicySync,
@@ -197,6 +229,7 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
   step: GrokActivityStep;
   isLast: boolean;
   tr: ReturnType<typeof createT>;
+  locale: Locale;
   /** Parent-owned open state — survives VirtualList → map remount. */
   expanded: boolean;
   /** User click: mark user-toggled + set open (parent). */
@@ -225,9 +258,24 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
     step.type === "web-search" ? step.resultDomains : undefined;
 
   const expandTool = step.type === "tool" ? step.tool : null;
-  const { failHint, failHintShort, detailTail, hasBody } = expandTool
+  const expand = expandTool
     ? toolExpandBody(expandTool, failed)
-    : { failHint: "", failHintShort: "", detailTail: "", hasBody: false };
+    : {
+        failHint: "",
+        failHintShort: "",
+        detailTail: "",
+        outputBody: "",
+        command: "",
+        hasBody: false,
+      };
+  // An explore-group is always expandable: its body is the child step list.
+  // A thought step is expandable when it has body text beyond the one-line
+  // summary — otherwise the reasoning is unreadable inside the phase (only the
+  // summary showed, with no way to open the full text like tools could).
+  const hasBody =
+    expand.hasBody ||
+    (step.type === "explore-group" && step.children.length > 0) ||
+    (step.type === "thought" && step.text.trim().length > 0);
 
   const runningRef = useRef(running);
   runningRef.current = running;
@@ -322,18 +370,22 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
           ) : null}
         </div>
         {showBody ? (
-          <div className="lobe-timeline-tool__body grok-act__expand-body">
-            {failHintShort ? (
-              <div className="lobe-timeline-tool__fail-hint" title={failHint}>
-                {failHintShort}
-              </div>
-            ) : null}
-            {detailTail &&
-            detailTail !== failHint &&
-            detailTail !== failHintShort ? (
-              <pre className="lobe-timeline-tool__detail">{detailTail}</pre>
-            ) : null}
-          </div>
+          step.type === "explore-group" ? (
+            <div className="grok-act__explore-children">
+              <GrokActivitySteps steps={step.children} tr={tr} locale={locale} />
+            </div>
+          ) : step.type === "thought" ? (
+            <div className="grok-act__thought-body">
+              <MarkdownChat locale={locale} muted pathCards={false}>
+                {step.text}
+              </MarkdownChat>
+            </div>
+          ) : (
+            <ToolExpandBody
+              body={expand}
+              className="lobe-timeline-tool__body grok-act__expand-body"
+            />
+          )
         ) : null}
       </div>
     </div>
@@ -352,10 +404,12 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
 export function GrokActivitySteps({
   steps,
   tr,
+  locale,
   live = false,
 }: {
   steps: GrokActivityStep[];
   tr: ReturnType<typeof createT>;
+  locale: Locale;
   /** When true, prefer showing the tail of a virtualized list. */
   live?: boolean;
 }) {
@@ -389,12 +443,13 @@ export function GrokActivitySteps({
         step={step}
         isLast={idx === total - 1}
         tr={tr}
+        locale={locale}
         expanded={expandState.expandedKeys.has(step.key)}
         onUserToggle={onUserToggle}
         onPolicySync={onPolicySync}
       />
     ),
-    [total, tr, expandState.expandedKeys, onUserToggle, onPolicySync],
+    [total, tr, locale, expandState.expandedKeys, onUserToggle, onPolicySync],
   );
 
   if (!total) return null;
@@ -408,6 +463,7 @@ export function GrokActivitySteps({
             step={step}
             isLast={idx === total - 1}
             tr={tr}
+            locale={locale}
             expanded={expandState.expandedKeys.has(step.key)}
             onUserToggle={onUserToggle}
             onPolicySync={onPolicySync}
@@ -589,7 +645,7 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
         data-phase-id={phase.id}
         data-live="1"
       >
-        <GrokActivitySteps steps={stepsResolved} tr={tr} live />
+        <GrokActivitySteps steps={stepsResolved} tr={tr} locale={locale} live />
         <div className="grok-act__working" role="status" aria-live="polite">
           <span className="grok-act__working-icon" aria-hidden>
             <IconGridDots size={15} stroke={1.5} />
@@ -629,7 +685,7 @@ export const TimelinePhaseBlock = memo(function TimelinePhaseBlock({
           )}
         </span>
       </button>
-      {open ? <GrokActivitySteps steps={stepsResolved} tr={tr} /> : null}
+      {open ? <GrokActivitySteps steps={stepsResolved} tr={tr} locale={locale} /> : null}
     </div>
   );
 });

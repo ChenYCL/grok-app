@@ -32,6 +32,7 @@ import {
   IconWorld,
 } from "@/components/icons";
 import { ToolBucketIcon } from "./TimelinePhaseBlock";
+import { ToolExpandBody } from "./ToolExpandBody";
 
 export function toolSegmentIsRunning(seg: MessageToolSegment): boolean {
   if (seg.streaming) return true;
@@ -85,10 +86,8 @@ export const TimelineToolRow = memo(function TimelineToolRow({
 
   // Host tools use the same expand body as native tools (full detail / stream
   // dump), not a special 2-line scroller under a second title.
-  const { failHint, failHintShort, detailTail, hasBody } = toolExpandBody(
-    tool,
-    failed,
-  );
+  const { failHint, failHintShort, detailTail, outputBody, command, hasBody } =
+    toolExpandBody(tool, failed);
 
   const [autoCollapse, setAutoCollapse] = useState(
     () => autoCollapseProp ?? loadToolStepsAutoCollapsePref(),
@@ -187,18 +186,9 @@ export const TimelineToolRow = memo(function TimelineToolRow({
         <span className="grok-act__label">{summary}</span>
       )}
       {showBody ? (
-        <div className="lobe-timeline-tool__body">
-          {failHintShort ? (
-            <div className="lobe-timeline-tool__fail-hint" title={failHint}>
-              {failHintShort}
-            </div>
-          ) : null}
-          {detailTail &&
-          detailTail !== failHint &&
-          detailTail !== failHintShort ? (
-            <pre className="lobe-timeline-tool__detail">{detailTail}</pre>
-          ) : null}
-        </div>
+        <ToolExpandBody
+          body={{ failHint, failHintShort, detailTail, outputBody, command, hasBody }}
+        />
       ) : null}
     </div>
   );

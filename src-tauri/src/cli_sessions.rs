@@ -16,7 +16,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::paths::resolve_agent_grok_home;
-use crate::session_manager::{extract_tool_input, tool_journal_richer};
+use crate::session_manager::{
+    TOOL_OUTPUT_MAX_PUB, TOOL_OUTPUT_SENTINEL, extract_tool_input, tool_journal_richer,
+};
 use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -1608,6 +1610,20 @@ pub fn reconcile_journal_from_chat_history(
         if !detail_clean.is_empty() {
             row_content.push('\n');
             row_content.push_str(&detail_clean.chars().take(400).collect::<String>());
+            // Full tool output behind the sentinel so imported terminal sessions
+            // expand the same way live ones do (the 400-char lead above stays
+            // for the legacy positional detail parse).
+            if detail_clean.chars().count() > 400 {
+                row_content.push('\n');
+                row_content.push_str(TOOL_OUTPUT_SENTINEL);
+                row_content.push('\n');
+                row_content.push_str(
+                    &detail_clean
+                        .chars()
+                        .take(TOOL_OUTPUT_MAX_PUB)
+                        .collect::<String>(),
+                );
+            }
         }
         if let Some(slot) = journal.iter_mut().find(|m| m.id == mid) {
             // Upgrade sparse rows (tool_step|…|tool|tool) to named rows; never

@@ -216,6 +216,31 @@ export function toolLabelKeyFor(
   return toolBucketLabelKey(bucket);
 }
 
+/**
+ * Friendly display name for an otherwise-unrecognized machine tool name.
+ *
+ * Used so internal CLI tools (`enter_plan_mode`, `exit_plan_mode`, …) and any
+ * future tool without a typed bucket still tell the user what ran, instead of
+ * the bare generic “工具”.
+ */
+export function humanizeToolKind(
+  toolKind: string | null | undefined,
+): string | undefined {
+  const k = (toolKind || "").trim();
+  if (!k || k.toLowerCase() === "tool") return undefined;
+  // Known acronyms keep their casing; everything else is title-cased so short
+  // verbs like “run” don’t become “RUN”.
+  const ACRONYMS = new Set(["api", "url", "uri", "mcp", "lsp", "css", "html", "json", "xml", "sql", "cli", "tls", "dns", "x"]);
+  const words = k.replace(/[_-]+/g, " ").trim().split(/\s+/);
+  return words
+    .map((w) => {
+      const lower = w.toLowerCase();
+      if (ACRONYMS.has(lower)) return lower === "x" ? "X" : lower.toUpperCase();
+      return w[0]!.toUpperCase() + w.slice(1);
+    })
+    .join(" ");
+}
+
 /** Short base name of a tool path (for “Read file · main.ts” companion text). */
 export function toolPathBase(path?: string | null): string | undefined {
   const p = (path || "").trim().replace(/\\/g, "/");
@@ -366,6 +391,8 @@ export type ToolLabelSource = {
   input?: string | null;
   path?: string | null;
   detail?: string | null;
+  /** Real tool output (ACP `content[]`) — the expand body when present. */
+  output?: string | null;
 };
 
 /** i18n translator — accepts message keys used by chat.tool.* / chat.browsed. */
@@ -412,7 +439,13 @@ export function resolveToolPrimaryLabel(
     tool.title,
     tool.toolCallId,
   );
-  let summary = tr(toolLabelKeyFor(tool.toolKind, bucket));
+  // Fallback bucket + a real machine tool name (e.g. enter_plan_mode) → show a
+  // humanized name instead of the bare generic “工具”. The generic label is the
+  // last resort, only when we truly know nothing about the tool.
+  let summary =
+    bucket === "fallback"
+      ? humanizeToolKind(tool.toolKind) || tr(toolLabelKeyFor(tool.toolKind, bucket))
+      : tr(toolLabelKeyFor(tool.toolKind, bucket));
   const specific =
     toolInputDisplay(tool.input, bucket) ||
     (bucket === "bash"
@@ -451,9 +484,39 @@ function browseUrlForPrimaryLabel(tool: ToolLabelSource): string {
   return fallback || "…";
 }
 
+/** Max lines kept for a tool output body (UI scrolls inside the expand box). */
+const TOOL_OUTPUT_BODY_MAX_LINES = 400;
+
 /**
- * Expand body for tool step secondary detail (fail hint + detail tail).
- * Shared by TimelineToolRow and phase GrokActivityStepRow.
+ * Trim a tool output body: keep the head (where errors and the first rows of a
+ * file / listing live) and the tail, eliding the middle. Reading a 3k-line file
+ * must not push 3k rows into the DOM.
+ */
+export function toolOutputBody(
+  output: string | null | undefined,
+  maxLines = TOOL_OUTPUT_BODY_MAX_LINES,
+): string {
+  const raw = (output || "").replace(/\r\n/g, "\n").replace(/\s+$/, "");
+  if (!raw) return "";
+  const lines = raw.split("\n");
+  if (lines.length <= maxLines) return raw;
+  const head = Math.ceil(maxLines * 0.7);
+  const tail = maxLines - head;
+  const elided = lines.length - head - tail;
+  return [
+    ...lines.slice(0, head),
+    `… ${elided} more lines …`,
+    ...lines.slice(lines.length - tail),
+  ].join("\n");
+}
+
+/**
+ * Expand body for a tool step.
+ *
+ * Precedence: real tool output (ACP `content[]`) wins; `detail` is only a
+ * fallback for rows recorded before output capture existed (and for Host
+ * side-channels, whose body *is* the detail). `command` is surfaced separately
+ * so the UI can echo `$ cmd` above the output like a terminal transcript.
  */
 export function toolExpandBody(
   seg: ToolLabelSource & { isError?: boolean; status?: string },
@@ -462,6 +525,10 @@ export function toolExpandBody(
   failHint: string;
   failHintShort: string;
   detailTail: string;
+  /** Full tool output (elided in the middle when very long). */
+  outputBody: string;
+  /** Shell command to echo above the output, when this is a bash-ish tool. */
+  command: string;
   hasBody: boolean;
 } {
   const failHint = failed
@@ -470,9 +537,27 @@ export function toolExpandBody(
   const failHintShort =
     failHint.length > 72 ? `${failHint.slice(0, 71)}…` : failHint;
   const hostSide = /^(host-vision|host-x)/i.test(seg.toolCallId || "");
-  const detailTail = toolDetailTail(seg.detail, hostSide ? 24 : 8);
+  const outputBody = toolOutputBody(seg.output);
+  // Detail is the call argument echoed back — showing it under a label that
+  // already says the same thing is noise. Keep it only when there is no real
+  // output to show (legacy rows, Host side-channels).
+  const detailTail = outputBody ? "" : toolDetailTail(seg.detail, hostSide ? 24 : 8);
+  const bucket = classifyToolKind(seg.toolKind, seg.title, seg.toolCallId);
+  const command =
+    bucket === "bash"
+      ? (seg.input || bashArgFromToolTitle(seg.title) || "").trim()
+      : "";
   const hasBody =
     !!failHintShort ||
+    !!outputBody ||
+    (!!command && !!outputBody) ||
     (!!detailTail && detailTail !== failHint && detailTail !== failHintShort);
-  return { failHint, failHintShort, detailTail, hasBody };
+  return {
+    failHint,
+    failHintShort,
+    detailTail,
+    outputBody,
+    command,
+    hasBody,
+  };
 }

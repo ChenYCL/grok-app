@@ -212,6 +212,72 @@ fn extract_tool_input_accepts_bare_string_raw_input() {
 }
 
 #[test]
+fn tool_meta_reads_escaped_x_ai_pointer() {
+    // Real grok CLI payload: the _meta key is literally "x.ai/tool".
+    // A JSON Pointer MUST escape the inner slash as ~1 (RFC 6901); the unescaped
+    // form never resolves and silently dropped the machine tool name.
+    let raw: serde_json::Value = serde_json::from_str(
+        r#"{"_meta":{"x.ai/tool":{"name":"read_file","kind":"read","label":"Read"}}}"#,
+    )
+    .unwrap();
+    assert!(raw.pointer("/_meta/x.ai/tool/name").is_none());
+    assert_eq!(tool_meta_str(&raw, "name").as_deref(), Some("read_file"));
+    assert_eq!(tool_meta_str(&raw, "label").as_deref(), Some("Read"));
+    assert_eq!(tool_meta_str(&raw, "kind").as_deref(), Some("read"));
+}
+
+#[test]
+fn enrich_tool_identity_recovers_from_meta_when_title_is_machine_name() {
+    // Start notification: title is the raw machine name, kind is absent — the
+    // _meta block is the only source for a typed kind. Used to fall through to
+    // kind="tool" / title="tool" because the pointer was unescaped.
+    let raw: serde_json::Value = serde_json::from_str(
+        r#"{"title":"read_file","_meta":{"x.ai/tool":{"name":"read_file","kind":"read","label":"Read"}}}"#,
+    )
+    .unwrap();
+    let (kind, title) = enrich_tool_identity_from_raw(&raw, "read_file", "");
+    // The journal stores the machine tool name as `kind` so the UI can map it
+    // to a typed icon/label (read_file → “查看/读取”). The pre-fix result was
+    // the bare fallback "tool"; the recovery must yield a real identity.
+    assert_eq!(title, "read_file");
+    assert_ne!(kind, "tool");
+    assert!(!kind.is_empty());
+}
+
+#[test]
+fn extract_tool_output_pulls_text_and_diff_headers() {
+    let raw: serde_json::Value = serde_json::from_str(
+        r#"{
+            "content": [
+                {"type":"content","content":{"type":"text","text":"1→package foo\n2→bar"}},
+                {"type":"diff","path":"src/lib.rs","oldText":"","newText":"fn main(){}"}
+            ]
+        }"#,
+    )
+    .unwrap();
+    let out = extract_tool_output(&raw).expect("output");
+    assert!(out.contains("1→package foo"));
+    assert!(out.contains("--- src/lib.rs"));
+    // Diff bodies are summarized as a header only — the diff panel renders them.
+    assert!(!out.contains("fn main(){}"));
+}
+
+#[test]
+fn extract_tool_output_handles_bare_string_entries() {
+    let raw: serde_json::Value =
+        serde_json::json!({ "content": ["hello\nworld", "", "tail"] });
+    let out = extract_tool_output(&raw).expect("output");
+    // Empty chunks are dropped; the rest join with single newlines.
+    assert_eq!(out, "hello\nworld\ntail");
+}
+
+#[test]
+fn extract_tool_output_returns_none_when_empty() {
+    assert!(extract_tool_output(&serde_json::json!({ "content": [] })).is_none());
+    assert!(extract_tool_output(&serde_json::json!({})).is_none());
+}
+
+#[test]
 fn provider_retry_abort_skips_idle_and_connecting_reconnect() {
     // Diagnostic 65fa7759: session/load residual retry_state while Connecting/Ready
     // must not write NETWORK_PROVIDER or fail_with without a host turn.

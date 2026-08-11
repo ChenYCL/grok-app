@@ -14,6 +14,7 @@ import { extractThinkingSummary } from "./thinkingSummary";
 import {
   classifyToolKind,
   isBrowseToolKind,
+  isContextToolKind,
   isSearchToolKind,
   summarizeToolDisplay,
   toolInputDisplay,
@@ -35,6 +36,21 @@ export type GrokActivityStep =
       count: number;
       failed: boolean;
       running: boolean;
+    }
+  | {
+      /**
+       * Mixed context-gathering burst (reads + searches) collapsed like zCode’s
+       * “探索 · N 次搜索, M 个文件”. Expandable to the individual tool rows.
+       * Browse tools keep their own “Browsed …” row and are NOT folded in.
+       */
+      type: "explore-group";
+      key: string;
+      searches: number;
+      reads: number;
+      failed: boolean;
+      running: boolean;
+      /** Child steps rendered when the group is expanded. */
+      children: GrokActivityStep[];
     }
   | {
       /** Individual web search with query string (official: “Searched web for …”). */
@@ -239,6 +255,17 @@ export function buildGrokActivitySteps(
   items: GrokPhaseItem[],
   options: { live?: boolean; messageStreaming?: boolean } = {},
 ): GrokActivityStep[] {
+  return buildStepsInternal(items, options, true);
+}
+
+/** Two consecutive read/search context tools are worth a zCode-style “探索” row. */
+const EXPLORE_GROUP_MIN = 2;
+
+function buildStepsInternal(
+  items: GrokPhaseItem[],
+  options: { live?: boolean; messageStreaming?: boolean },
+  grouping: boolean,
+): GrokActivityStep[] {
   const live = !!options.live;
   const messageStreaming = !!options.messageStreaming;
   const steps: GrokActivityStep[] = [];
@@ -310,6 +337,66 @@ export function buildGrokActivitySteps(
       });
       i += 1;
       continue;
+    }
+
+    // Mixed context-gathering burst (reads + searches, browse excluded) →
+    // zCode-style “探索 · N 次搜索, M 个文件”. Pure-search runs keep their own
+    // “Ran N searches” path; only fold when the run mixes kinds or is reads.
+    if (grouping) {
+      let runEnd = i;
+      while (runEnd < items.length) {
+        const it = items[runEnd]!;
+        if (it.kind !== "tool") break;
+        const t = it.tool;
+        if (isBrowseToolKind(t.toolKind, t.title, t.toolCallId)) break;
+        if (!isContextToolKind(t.toolKind, t.title, t.toolCallId)) break;
+        const hid = (t.toolCallId || "").toLowerCase();
+        if (hid.startsWith("host-vision") || hid.startsWith("host-x")) break;
+        runEnd += 1;
+      }
+      const runLen = runEnd - i;
+      const runIsPureSearch =
+        runLen > 0 &&
+        items
+          .slice(i, runEnd)
+          .every(
+            (it) =>
+              it.kind === "tool" &&
+              isSearchToolKind(
+                it.tool.toolKind,
+                it.tool.title,
+                it.tool.toolCallId,
+              ),
+          );
+      if (runLen >= EXPLORE_GROUP_MIN && !runIsPureSearch) {
+        let searches = 0;
+        let reads = 0;
+        let failed = false;
+        let running = false;
+        for (let k = i; k < runEnd; k++) {
+          const t = (items[k] as { kind: "tool"; tool: MessageToolSegment }).tool;
+          if (isSearchToolKind(t.toolKind, t.title, t.toolCallId)) searches += 1;
+          else reads += 1;
+          if (toolFailed(t)) failed = true;
+          if (stepRunning(t, messageStreaming)) running = true;
+        }
+        const children = buildStepsInternal(
+          items.slice(i, runEnd),
+          options,
+          false,
+        );
+        steps.push({
+          type: "explore-group",
+          key: `explore-${i}`,
+          searches,
+          reads,
+          failed,
+          running,
+          children,
+        });
+        i = runEnd;
+        continue;
+      }
     }
 
     // Browse page

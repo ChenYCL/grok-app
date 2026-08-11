@@ -3440,7 +3440,8 @@ pub fn decode_permission_request(rpc_id: u64, params: &Value) -> AcpEvent {
     // Kind alone breaks tool-scoped session fallbacks (#542 shell →
     // allow-always-command).
     let tool_name = tool_call
-        .pointer("/_meta/x.ai/tool/name")
+        // `_meta` key is literally "x.ai/tool" — JSON Pointer needs `~1` (RFC 6901).
+        .pointer("/_meta/x.ai~1tool/name")
         .or_else(|| tool_call.pointer("/_meta/tool/name"))
         .or_else(|| tool_call.get("name"))
         .and_then(|v| v.as_str())

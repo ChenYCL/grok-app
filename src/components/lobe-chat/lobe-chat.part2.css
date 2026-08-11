@@ -346,6 +346,73 @@
   white-space: nowrap;
   max-width: 100%;
 }
+
+/* Real tool output (ACP content[]) — terminal-transcript block, like zCode.
+   Boxed so a long stdout dump reads as a distinct surface rather than bleeding
+   into the activity rail, and scrolls internally instead of growing the turn. */
+.lobe-timeline-tool__output,
+.lobe-timeline-tool__cmd {
+  margin: 0;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--chat-border, rgb(255 255 255 / 8%));
+  border-radius: 8px;
+  background: var(--chat-surface-2, rgb(255 255 255 / 3%));
+}
+.lobe-timeline-tool__cmd {
+  padding: 6px 10px;
+  color: var(--chat-text-2);
+  /* Command sits directly above its output: join the two boxes. */
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  white-space: pre-wrap;
+}
+.lobe-timeline-tool__cmd-sigil {
+  color: var(--chat-text-3);
+  user-select: none;
+}
+.lobe-timeline-tool__output {
+  padding: 8px 10px;
+  color: var(--chat-text-2);
+  max-height: 320px;
+}
+/* When a command box precedes the output, drop the doubled top corner. */
+.lobe-timeline-tool__cmd + .lobe-timeline-tool__output {
+  border-radius: 0 0 8px 8px;
+}
+/* Inside a phase rail the outer body already scrolls — let the output grow to
+   its own cap and keep a single scroller (nested scrollbars trap the wheel). */
+.grok-act__expand-body {
+  max-height: none;
+  overflow: visible;
+}
+/* Nested step list inside an “探索” group: indent under the parent rail so the
+   child rows read as contents of the exploration burst, not peers of it. */
+.grok-act__explore-children {
+  margin: 2px 0 4px;
+  padding-left: 4px;
+  border-left: 1px solid var(--chat-border, rgb(255 255 255 / 6%));
+}
+/* Full thought text revealed when a phase’s 💡 step is expanded — muted like
+   the standalone Thinking block, capped so a huge reasoning trace does not
+   bury the tool rows around it. */
+.grok-act__thought-body {
+  margin: 2px 0 4px;
+  padding: 4px 10px;
+  border-left: 2px solid var(--chat-border, rgb(255 255 255 / 8%));
+  max-height: 240px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--chat-text-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
 .lobe-timeline-tool-group {
   width: 100%;
   margin: 0;

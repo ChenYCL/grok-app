@@ -66,6 +66,12 @@ export interface MessageToolSegment {
   path?: string;
   /** Call argument recorded by the host (target file / command / query). */
   input?: string;
+  /**
+   * What the tool actually produced (stdout / file text) from ACP `content[]`.
+   * Distinct from {@link detail}, which only echoes the *call argument*.
+   * This is the expandable body — never part of the one-line primary label.
+   */
+  output?: string;
   streaming?: boolean;
   isError?: boolean;
   /** ISO time when the tool row was created (history duration). */
@@ -120,6 +126,8 @@ export interface ChatMessage {
   toolPath?: string;
   /** Call argument recorded by the host (target file / command / query). */
   toolInput?: string;
+  /** Real tool output (ACP `content[]`) — expandable body, not a label. */
+  toolOutput?: string;
   /**
    * Parent tool call id when the host/ACP marks nested tools (e.g. subagent
    * children). Optional — Tasks panel may infer when missing.
@@ -137,6 +145,8 @@ export interface ToolEventPayload {
   detail?: string | null;
   /** Call argument (target file / command / query) from live session://tool. */
   input?: string | null;
+  /** Real tool output (ACP `content[]`) from live session://tool. */
+  output?: string | null;
   /** Parent tool call id when the wire event includes nesting. */
   parentId?: string | null;
 }
@@ -281,6 +291,7 @@ export function toolSegmentFromFields(fields: {
   detail?: string;
   path?: string;
   input?: string;
+  output?: string;
   streaming?: boolean;
   isError?: boolean;
   createdAt?: string;
@@ -294,6 +305,7 @@ export function toolSegmentFromFields(fields: {
     detail: fields.detail,
     path: fields.path,
     input: fields.input,
+    output: fields.output,
     streaming: !!fields.streaming,
     isError: !!fields.isError,
     createdAt: fields.createdAt,
@@ -438,22 +450,30 @@ function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null 
   const tcid = toolCallIdOf(row);
   if (!tcid) return null;
   const status = (row.toolStatus || "completed").toLowerCase();
-  // Journal often stores empty kind + title "tool"; recover from call-id prefix.
+  // Re-parse the journal body early: the persisted `kind` (machine tool name
+  // like `read_file` / `enter_plan_mode`) lives here, and `row.toolKind` is
+  // empty for history-loaded rows. Without this fallback, replayed tools lost
+  // their typed icon/label and collapsed to bare “工具”.
+  const raw = (row.content || "").trim();
+  const parsed = raw.startsWith("tool_step|") ? parseToolStepContent(raw) : null;
   const toolKind =
-    (row.toolKind || "").trim() || inferKindFromToolCallId(tcid) || undefined;
+    (row.toolKind || "").trim() ||
+    (parsed?.kind || "").trim() ||
+    inferKindFromToolCallId(tcid) ||
+    undefined;
   // Prefer field detail; if content still has full tool_step body, re-parse
   // (App maps title-only into content and used to keep only first detail line).
   let detail = row.toolDetail;
   let path = row.toolPath;
   let input = row.toolInput;
-  const raw = (row.content || "").trim();
-  if (raw.startsWith("tool_step|")) {
-    const parsed = parseToolStepContent(raw);
-    if (parsed?.detail && (!detail || parsed.detail.length > detail.length)) {
+  let output = row.toolOutput;
+  if (parsed) {
+    if (parsed.detail && (!detail || parsed.detail.length > detail.length)) {
       detail = parsed.detail;
     }
-    if (parsed?.path && !path) path = parsed.path;
-    if (parsed?.input && !input) input = parsed.input;
+    if (parsed.path && !path) path = parsed.path;
+    if (parsed.input && !input) input = parsed.input;
+    if (parsed.output && !output) output = parsed.output;
   }
   return toolSegmentFromFields({
     toolCallId: tcid,
@@ -463,6 +483,7 @@ function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null 
     detail,
     path,
     input,
+    output,
     streaming: false,
     isError: !!row.isError || status === "failed" || status === "error",
     createdAt: row.createdAt,
@@ -905,6 +926,8 @@ export function syncTurnToolsIntoAssistant(
       status,
       detail: m.toolDetail,
       path: m.toolPath,
+      input: m.toolInput,
+      output: m.toolOutput,
       streaming: !!m.streaming,
       isError: !!m.isError || status === "failed" || status === "error",
       createdAt: m.createdAt,
@@ -976,6 +999,13 @@ export function applyToolEvent(
   // Status-only ticks omit input; keep the first non-empty call argument.
   const toolInput =
     (payload.input || "").trim() || prev?.toolInput || undefined;
+  // Tool output arrives on the terminal tick; never let a later sparse tick
+  // erase it, and prefer the longer body when the host streams in chunks.
+  const prevOutput = (prev?.toolOutput || "").trim();
+  const nextOutput = (payload.output || "").trim();
+  const toolOutput =
+    (nextOutput.length >= prevOutput.length ? nextOutput : prevOutput) ||
+    undefined;
   const isError = status === "failed" || status === "error";
 
   // Host vision / X: **only** live on the assistant timeline. A separate
@@ -1008,6 +1038,7 @@ export function applyToolEvent(
         toolDetail: mergedDetail,
         toolPath,
         toolInput,
+        toolOutput,
         toolParentId: parentId,
         streaming: running,
         marker: "tool_step",
@@ -1025,6 +1056,7 @@ export function applyToolEvent(
       detail: mergedDetail,
       path: toolPath,
       input: toolInput,
+      output: toolOutput,
       streaming: running,
       isError,
       createdAt: prev?.createdAt || now,
@@ -1047,6 +1079,7 @@ export function applyToolEvent(
     toolDetail: mergedDetail,
     toolPath,
     toolInput,
+    toolOutput,
     toolParentId: parentId,
     streaming: running,
     marker: "tool_step",
@@ -1067,6 +1100,7 @@ export function applyToolEvent(
       toolDetail: mergedDetail,
       toolPath: toolPath || prev!.toolPath,
       toolInput: toolInput || prev!.toolInput,
+      toolOutput: toolOutput || prev!.toolOutput,
       toolKind: toolKind || prev!.toolKind,
       toolParentId: parentId || prev!.toolParentId,
     };
@@ -1085,6 +1119,7 @@ export function applyToolEvent(
     detail: row.toolDetail,
     path: row.toolPath,
     input: row.toolInput,
+    output: row.toolOutput,
     streaming: running,
     isError: !!row.isError,
     createdAt: row.createdAt || prev?.createdAt || now,
@@ -1235,6 +1270,14 @@ export function toolStepDisplayTitle(m: ChatMessage): string {
   );
 }
 
+/**
+ * Sentinel line separating the legacy `tool_step|` body from real tool output.
+ * Everything before it keeps the historical layout, so old journals (which have
+ * no sentinel) parse exactly as before. Mirrors `TOOL_OUTPUT_SENTINEL` in
+ * `src-tauri/src/session_manager/types.rs`.
+ */
+export const TOOL_OUTPUT_SENTINEL = "\u0001output";
+
 /** Parse persisted tool_step journal lines. */
 export function parseToolStepContent(content: string): {
   status: string;
@@ -1243,8 +1286,19 @@ export function parseToolStepContent(content: string): {
   detail?: string;
   path?: string;
   input?: string;
+  output?: string;
 } | null {
   if (!content.startsWith("tool_step|")) return null;
+  // Split real tool output off first: it is free-form multi-line stdout and
+  // must never reach the positional `detail\npath` heuristic below.
+  let output: string | undefined;
+  const sentinelAt = content.indexOf(`\n${TOOL_OUTPUT_SENTINEL}\n`);
+  if (sentinelAt >= 0) {
+    output =
+      content.slice(sentinelAt + TOOL_OUTPUT_SENTINEL.length + 2).trim() ||
+      undefined;
+    content = content.slice(0, sentinelAt);
+  }
   let [header, ...rest] = content.split("\n");
   const parts = (header || "").split("|");
   // tool_step|status|kind|title
@@ -1355,6 +1409,7 @@ export function parseToolStepContent(content: string): {
     detail,
     path,
     input,
+    output,
   };
 }
 
@@ -1549,11 +1604,15 @@ function preferRicherTool(
   else if (bDetail !== aDetail) pick = bDetail > aDetail ? b : a;
   else pick = b;
   const other = pick === a ? b : a;
-  // Never drop a known call argument when coalescing host-family rows.
+  // Never drop a known call argument / captured output when coalescing rows.
   return {
     ...pick,
     input: pick.input || other.input,
     path: pick.path || other.path,
+    output:
+      (pick.output || "").length >= (other.output || "").length
+        ? pick.output || other.output
+        : other.output,
   };
 }
 
@@ -1597,6 +1656,12 @@ export function compactMessageSegments(
           path: raw.path || prev.path,
           // Coalesce must not wipe a known call argument.
           input: raw.input || prev.input,
+          // …nor the captured output (terminal tick carries it; later sparse
+          // status ticks would otherwise blank the expand body).
+          output:
+            (raw.output || "").length >= (prev.output || "").length
+              ? raw.output || prev.output
+              : prev.output,
           toolKind: raw.toolKind || prev.toolKind,
         };
         continue;

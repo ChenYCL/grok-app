@@ -1226,6 +1226,12 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
   const timelineUnits = buildTimelineUnits(segs, {
     streaming: !!m.streaming,
   });
+  // Once the body has started streaming, every thinking episode is over: the
+  // live thought block must collapse immediately (streaming-expand → content-
+  // collapse), not stay open until the whole turn finishes.
+  const messageHasContent = segs.some(
+    (s) => s.kind === "content" && s.text.trim().length > 0,
+  );
 
   return wrap(
     <ChatItem
@@ -1348,7 +1354,10 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
                   >
                     <Thinking
                       locale={locale}
-                      thinking={streaming}
+                      // “Live” = the message is streaming AND the body hasn’t
+                      // started yet. Mirrors the work/phase block, which opens
+                      // while live and collapses the instant content splits it.
+                      thinking={!!m.streaming && !messageHasContent}
                       content={joined}
                       startedAt={
                         isPrimary || streaming ? thinkingStartedAt : null
