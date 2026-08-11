@@ -66,9 +66,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup pnpm
+        # Do not hardcode version — package.json packageManager (pnpm@9.15.9)
+        # is the single source. Dual version input fails with:
+        # "Multiple versions of pnpm specified".
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

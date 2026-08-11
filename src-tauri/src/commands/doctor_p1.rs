@@ -85,19 +85,19 @@ mod import_settings_tests {
     use super::*;
 
     #[test]
-    fn import_onboarding_does_not_force_shared_mode() {
-        // E05: import_grok_* must not flip session_data_mode to shared.
+    fn import_onboarding_does_not_flip_session_data_mode() {
+        // E05: import_grok_* must not flip session_data_mode (product default is shared).
         let mut s = AppSettings::default();
-        assert_eq!(s.session_data_mode, "independent");
+        assert_eq!(s.session_data_mode, "shared");
         s.onboarding_done = false;
         apply_import_onboarding_done(&mut s);
         assert!(s.onboarding_done);
-        assert_eq!(s.session_data_mode, "independent");
-
-        // If user already chose shared, import still leaves it alone.
-        s.session_data_mode = "shared".into();
-        apply_import_onboarding_done(&mut s);
         assert_eq!(s.session_data_mode, "shared");
+
+        // If user already chose independent, import still leaves it alone.
+        s.session_data_mode = "independent".into();
+        apply_import_onboarding_done(&mut s);
+        assert_eq!(s.session_data_mode, "independent");
     }
 }
 

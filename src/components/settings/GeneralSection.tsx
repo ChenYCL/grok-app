@@ -1899,11 +1899,11 @@ export function GeneralSection() {
                   value={sessionDataMode}
                   onChange={onSessionDataMode}
                   options={[
+                    { value: "shared", label: t("settings.modeShared") },
                     {
                       value: "independent",
                       label: t("settings.modeIndependent"),
                     },
-                    { value: "shared", label: t("settings.modeShared") },
                   ]}
                 />
               </div>

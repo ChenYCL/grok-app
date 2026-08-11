@@ -19,8 +19,8 @@ Desktop never reimplements tools/sampling. It is an ACP client + UI shell.
 
 | Session data mode | `GROK_HOME` for spawned agent |
 |-------------------|-------------------------------|
-| `independent` (default) | `~/.grok-app/agent-home` (or `$GROK_APP_HOME/agent-home`) |
-| `shared` | `~/.grok` (CLI default) |
+| `shared` (default) | `~/.grok` (same home as terminal Grok Build CLI) |
+| `independent` | `~/.grok-app/agent-home` (or `$GROK_APP_HOME/agent-home`) |
 
 Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` sections so the agent can use `base_url` + `api_key` without OAuth fallback.
 

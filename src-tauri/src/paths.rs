@@ -1,4 +1,5 @@
-//! App data roots: independent default `~/.grok-app` (Win: %APPDATA%/grok-app).
+//! App data roots: UI store under app data (`~/.grok-app` / Win: %APPDATA%/grok-app).
+//! Agent `GROK_HOME` defaults to shared CLI home (`~/.grok`); independent mode uses `agent-home`.
 
 use std::fs;
 use std::path::{Path, PathBuf};

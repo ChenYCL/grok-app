@@ -14,13 +14,14 @@ import {
 } from "./sessionDataMode";
 
 describe("normalizeSessionDataMode", () => {
-  it("defaults to independent", () => {
-    expect(normalizeSessionDataMode(null)).toBe("independent");
-    expect(normalizeSessionDataMode(undefined)).toBe("independent");
-    expect(normalizeSessionDataMode("")).toBe("independent");
-    expect(normalizeSessionDataMode("  ")).toBe("independent");
+  it("defaults to shared", () => {
+    expect(normalizeSessionDataMode(null)).toBe("shared");
+    expect(normalizeSessionDataMode(undefined)).toBe("shared");
+    expect(normalizeSessionDataMode("")).toBe("shared");
+    expect(normalizeSessionDataMode("  ")).toBe("shared");
     expect(normalizeSessionDataMode("bogus")).toBe(DEFAULT_SESSION_DATA_MODE);
-    expect(normalizeSessionDataMode(42)).toBe("independent");
+    expect(normalizeSessionDataMode(42)).toBe("shared");
+    expect(DEFAULT_SESSION_DATA_MODE).toBe("shared");
   });
 
   it("accepts independent / shared (case-insensitive)", () => {
@@ -58,9 +59,9 @@ describe("sessionDataModeHomeLabel", () => {
     );
   });
 
-  it("normalizes garbage to independent home", () => {
-    expect(sessionDataModeHomeLabel("???")).toBe("~/.grok-app/agent-home");
-    expect(sessionDataModeHomeLabel(null)).toBe("~/.grok-app/agent-home");
+  it("normalizes garbage to shared home (product default)", () => {
+    expect(sessionDataModeHomeLabel("???")).toBe("~/.grok");
+    expect(sessionDataModeHomeLabel(null)).toBe("~/.grok");
   });
 });
 

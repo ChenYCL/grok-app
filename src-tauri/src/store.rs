@@ -553,7 +553,9 @@ impl Default for AppSettings {
             theme: "system".into(),
             // Product default is English; users can switch to zh / zh-TW in Settings.
             locale: "en".into(),
-            session_data_mode: "independent".into(),
+            // Product default: share GROK_HOME (~/.grok) with terminal Grok Build CLI.
+            // Existing installs keep whatever is already persisted in settings.json.
+            session_data_mode: "shared".into(),
             manual_cli_path: None,
             cli_backend: default_cli_backend(),
             wsl_distro: None,
@@ -2411,9 +2413,9 @@ mod tests {
     }
 
     #[test]
-    fn default_settings_independent_mode() {
+    fn default_settings_shared_mode() {
         let s = AppSettings::default();
-        assert_eq!(s.session_data_mode, "independent");
+        assert_eq!(s.session_data_mode, "shared");
         assert_eq!(s.permission_policy, "ask");
         assert_eq!(s.theme, "system");
         assert_eq!(s.locale, "en");

@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   aiCreateSeedPrompt,
   extractAutomationPayload,
+  hasExplicitScheduleSignal,
   looksLikeScheduleIntent,
+  looksLikeScheduleReject,
+  looksLikeStandingModeIntent,
   parseAutomationConfigJson,
+  recentUserPlainText,
+  shouldAutoApplyAutomationFence,
   wrapAutomationSetupAgentText,
 } from "./automationSetup";
 
@@ -20,6 +25,7 @@ describe("automationSetup", () => {
     expect(w).toContain("User request:");
     expect(w).toContain("每天 9 点查天气");
     expect(w).toContain("grok-automation");
+    expect(w).toMatch(/Only schedule when|role cards|NOT schedules/i);
   });
 
   it("parses valid fence and strips from display", () => {
@@ -63,13 +69,79 @@ describe("automationSetup", () => {
     expect(cleanText).not.toContain("grok-automation");
   });
 
-  it("detects schedule intent", () => {
+  it("detects schedule intent for real timers", () => {
     expect(
       looksLikeScheduleIntent(
         "过 3 分钟帮我从知识库里找一个关于美女的图片提示词",
       ),
     ).toBe(true);
+    expect(looksLikeScheduleIntent("每天早上 9 点查天气")).toBe(true);
     expect(looksLikeScheduleIntent("帮我改一下登录按钮颜色")).toBe(false);
+  });
+
+  it("does not treat goal/role standing cards as schedule intent", () => {
+    const roleCard = [
+      "# 角色与模式",
+      "你是负责「奥德赛」产品的搭档，运行在【目标模式】下。",
+      "目标模式 = 始终对齐用户的最终体验目标；每次回复只服务沉浸。",
+      "产品原则：线性主线 > 自由沙盒。",
+    ].join("\n");
+    expect(looksLikeStandingModeIntent(roleCard)).toBe(true);
+    expect(hasExplicitScheduleSignal(roleCard)).toBe(false);
+    expect(looksLikeScheduleIntent(roleCard)).toBe(false);
+    expect(
+      shouldAutoApplyAutomationFence({
+        inExplicitAutomationSetup: false,
+        recentUserText: roleCard,
+      }),
+    ).toBe(false);
+  });
+
+  it("honors explicit reject even with daily language", () => {
+    const t = "禁止定时任务。每天只在对话里提醒我原则，不要创建已安排。";
+    expect(looksLikeScheduleReject(t)).toBe(true);
+    expect(looksLikeScheduleIntent(t)).toBe(false);
+    expect(
+      shouldAutoApplyAutomationFence({
+        inExplicitAutomationSetup: true,
+        recentUserText: t,
+      }),
+    ).toBe(false);
+  });
+
+  it("auto-applies for explicit setup or clear schedule; not for bare goal text", () => {
+    expect(
+      shouldAutoApplyAutomationFence({
+        inExplicitAutomationSetup: true,
+        recentUserText: "帮我配置一下",
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoApplyAutomationFence({
+        inExplicitAutomationSetup: false,
+        recentUserText: "每天 9 点查 @user",
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoApplyAutomationFence({
+        inExplicitAutomationSetup: false,
+        recentUserText: "/goal 收敛主线点燃进厅探洞",
+      }),
+    ).toBe(false);
+  });
+
+  it("recentUserPlainText joins last N user messages", () => {
+    const text = recentUserPlainText(
+      [
+        { role: "user", content: "u1" },
+        { role: "assistant", content: "a1" },
+        { role: "user", content: "u2" },
+        { role: "assistant", content: "a2" },
+        { role: "user", content: "u3" },
+      ],
+      2,
+    );
+    expect(text).toBe("u2\nu3");
   });
 
   it("rejects incomplete config", () => {

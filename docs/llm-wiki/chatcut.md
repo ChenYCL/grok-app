@@ -68,16 +68,18 @@ App **Settings → Extensions → Plugins → 推荐** offers ChatCut as an opti
 
 After install, enable/disable from the recommended or installed row; MCP OAuth still under **扩展 → MCP**.
 
-### Independent session mode (App default)
+### Session data mode vs MCP (shared default)
 
-App settings often use `sessionDataMode: independent` → agent / doctor use:
+Product default is **`sessionDataMode: shared`** → agent / doctor use CLI home **`~/.grok`** (same as terminal `grok mcp …`).
+
+In **independent** mode, agent / doctor use App agent-home:
 
 `~/Library/Application Support/com.grokapp.grok-app/agent-home`
 
-while bare terminal `grok mcp …` writes **`~/.grok`**.  
-If MCP only exists under `~/.grok`, the App list may still show it (merged), but **doctor reports `MCP server 'chatcut' not found`** and **no 授权 button** until the server is present in agent-home.
+while bare terminal still writes **`~/.grok`**.  
+If MCP only exists under `~/.grok` while the App is independent, the App list may still show it (merged), but **doctor reports `MCP server 'chatcut' not found`** and **no 授权 button** until the server is present in agent-home.
 
-**Fix:** re-run MCP 诊断 in App (auto-mirrors user HTTP MCP into agent-home), or add:
+**Fix (independent):** re-run MCP 诊断 in App (auto-mirrors user HTTP MCP into agent-home), or add:
 
 ```toml
 # agent-home/config.toml

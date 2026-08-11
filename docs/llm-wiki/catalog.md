@@ -171,9 +171,9 @@ grok --no-auto-update --permission-mode <mode> agent [--model <id>] [--reasoning
 
 `--permission-mode` 为 **top-level**；`--always-approve` 为 **agent** option。
 
-**Independent 模式**（默认）：写入 `~/.grok-app/agent-home/config.toml` 与 `agent-home/.claude/settings.json`，agent 进程侧真正按策略执行。
+**Shared 模式**（默认）：使用 `~/.grok` 作为 `GROK_HOME`，与终端 Grok Build 同一会话/配置树；App **不**改写用户 `~/.grok/config.toml`；Host 策略 + spawn flags（含 `--permission-mode` / YOLO 时的 `--always-approve`）。
 
-**Shared 模式**：不改写用户 `~/.grok/config.toml`；Host 策略 + spawn flags（含 `--permission-mode` / YOLO 时的 `--always-approve`）。
+**Independent 模式**：写入 `~/.grok-app/agent-home/config.toml` 与 `agent-home/.claude/settings.json`，agent 进程侧真正按策略执行；与 CLI `~/.grok` 隔离。
 
 中途改权限：同步配置 + soft-respawn（含 YOLO 降级）。Host 在收到 `session/request_permission` 时仍按 live policy 自动放行/拒绝。
 

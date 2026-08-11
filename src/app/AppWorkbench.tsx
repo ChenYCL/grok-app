@@ -158,6 +158,10 @@ import {
   type PermissionPayload,
   type SessionSnapshot
 } from "@/lib/session";
+import {
+  DEFAULT_SESSION_DATA_MODE,
+  normalizeSessionDataMode,
+} from "@/lib/sessionDataMode";
 import { UiErrorBoundary } from "@/components/UiErrorBoundary";
 import {
   buildCompactSlashCommand,
@@ -855,6 +859,8 @@ import { recordAutomationRun } from "@/lib/automationRunHistory";
 import {
   extractAutomationPayload,
   looksLikeScheduleIntent,
+  recentUserPlainText,
+  shouldAutoApplyAutomationFence,
   wrapAutomationSetupAgentText
 } from "@/lib/automationSetup";
 import {
@@ -1611,7 +1617,7 @@ export function AppWorkbench() {
   const composerWrapRef = useRef<HTMLDivElement>(null);
   /** Set by newChat; applied after chat pane + textarea mount. */
   const pendingComposerFocus = useRef(false);
-  const [sessionDataMode, setSessionDataMode] = useState("independent");
+  const [sessionDataMode, setSessionDataMode] = useState(DEFAULT_SESSION_DATA_MODE);
   const [defaultOpenTarget, setDefaultOpenTarget] = useState("finder");
   const [showUserMenu, setShowUserMenu] = useState(false);
   /** Desktop Connect panel (AC7) — close does not stop host. */
@@ -2986,7 +2992,11 @@ export function AppWorkbench() {
           ) {
             setPrefsScope(settings.composerPrefsScope);
           }
-          setSessionDataMode(settings.sessionDataMode || "independent");
+          setSessionDataMode(
+            normalizeSessionDataMode(
+              settings.sessionDataMode || DEFAULT_SESSION_DATA_MODE,
+            ),
+          );
         }
         const catalog: ModelOption[] =
           modelsRes?.models?.length
@@ -3187,7 +3197,11 @@ export function AppWorkbench() {
           );
         }
       }
-      setSessionDataMode(settings.sessionDataMode || "independent");
+      setSessionDataMode(
+        normalizeSessionDataMode(
+          settings.sessionDataMode || DEFAULT_SESSION_DATA_MODE,
+        ),
+      );
       setDefaultOpenTarget(
         (settings as { defaultOpenTarget?: string }).defaultOpenTarget ||
           "finder",
@@ -3512,8 +3526,13 @@ export function AppWorkbench() {
 
   /**
    * After any turn, if the last assistant message contains a grok-automation
-   * fence, strip it from the bubble and call automation_create.
-   * Applies to all sessions (not only “用 AI 创建”), so normal chat can schedule.
+   * fence, strip it from the bubble and maybe call automation_create.
+   *
+   * Auto-create when:
+   * - session is in explicit AI-create setup, or
+   * - recent user text looks like a real schedule (time / recurrence).
+   * Otherwise confirm (reduces role-card / /goal mis-schedules) without
+   * removing intentional chat-driven scheduling.
    * Deduped per assistant message id.
    */
   const tryApplyAutomationFromSession = useCallback(
@@ -3551,19 +3570,59 @@ export function AppWorkbench() {
       const payloadKey = `${sessionId}:${rawJson ?? input.title}`;
       if (automationAppliedRef.current.has(payloadKey)) return;
 
-      automationAppliedRef.current.add(applyKey);
-      automationAppliedRef.current.add(payloadKey);
-      try {
-        await api.automationCreate(input);
-        automationSetupSessionsRef.current.delete(sessionId);
-      } catch {
-        automationAppliedRef.current.delete(applyKey);
-        automationAppliedRef.current.delete(payloadKey);
-        setToast(tr("automations.createFailed"));
-        window.setTimeout(() => setToast(null), 4200);
+      const recentUserText = recentUserPlainText(msgs, 4);
+      const auto = shouldAutoApplyAutomationFence({
+        inExplicitAutomationSetup:
+          automationSetupSessionsRef.current.has(sessionId),
+        recentUserText,
+      });
+
+      const doCreate = async () => {
+        automationAppliedRef.current.add(applyKey);
+        automationAppliedRef.current.add(payloadKey);
+        try {
+          await api.automationCreate(input);
+          automationSetupSessionsRef.current.delete(sessionId);
+          setToast(
+            tr("automations.createdToast", { title: input.title }),
+          );
+          window.setTimeout(() => setToast(null), 4200);
+        } catch {
+          automationAppliedRef.current.delete(applyKey);
+          automationAppliedRef.current.delete(payloadKey);
+          setToast(tr("automations.createFailed"));
+          window.setTimeout(() => setToast(null), 4200);
+        }
+      };
+
+      if (auto) {
+        await doCreate();
+        return;
       }
+
+      // Unexpected fence (e.g. role card / goal mis-route): ask once, never
+      // window.confirm. Mark applyKey so we do not re-open on every tick.
+      automationAppliedRef.current.add(applyKey);
+      setAppDialog({
+        kind: "confirm",
+        title: tr("automations.confirmUnexpected.title"),
+        message: tr("automations.confirmUnexpected.message", {
+          title: input.title,
+          frequency: input.frequency || "—",
+          time: input.time || "—",
+        }),
+        confirmLabel: tr("automations.confirmUnexpected.confirm"),
+        onConfirm: () => {
+          void doCreate();
+        },
+        onDismiss: () => {
+          automationAppliedRef.current.add(payloadKey);
+          setToast(tr("automations.confirmUnexpected.dismissed"));
+          window.setTimeout(() => setToast(null), 3600);
+        },
+      });
     },
-    [patchSessionMessages, tr],
+    [patchSessionMessages, setAppDialog, tr],
   );
 
   // Phone mirror chrome: track WS + host account from hello (DESIGN §4.3).
@@ -7323,12 +7382,17 @@ export function AppWorkbench() {
     if (schemaForSend && isActiveJsonSchema(schemaForSend)) {
       agentText = wrapAgentTextWithJsonSchema(agentText, schemaForSend);
     }
-    const scheduleIntent = looksLikeScheduleIntent(agentText);
-    const inAutomationSetup =
+    // Intent from user-visible body only (not /goal prefix or attachment paths).
+    const userIntentText = serializeForAgent(segments).trim();
+    const explicitAutomationSticky =
       automationSetupDraftRef.current ||
-      scheduleIntent ||
       (!!sendTargetId &&
         automationSetupSessionsRef.current.has(sendTargetId));
+    // Goal mode is finite objective work — do not silently enter schedule setup
+    // unless the user opened “用 AI 创建” (sticky) for this session.
+    const scheduleIntent =
+      !useGoal && looksLikeScheduleIntent(userIntentText);
+    const inAutomationSetup = explicitAutomationSticky || scheduleIntent;
     if (inAutomationSetup) {
       agentText = wrapAutomationSetupAgentText(agentText);
     }
@@ -7486,7 +7550,9 @@ export function AppWorkbench() {
           messagesBySessionRef.current.delete("__draft__");
         }
       }
-      if (automationSetupDraftRef.current || inAutomationSetup) {
+      // Sticky setup only for explicit “用 AI 创建”, so a one-off “每天…” line
+      // does not force every later message in the chat into automation mode.
+      if (automationSetupDraftRef.current) {
         automationSetupSessionsRef.current.add(sessionId);
         automationSetupDraftRef.current = false;
       }
@@ -16394,10 +16460,11 @@ export function AppWorkbench() {
           })();
           }}
           onSessionDataMode={(v) => {
+          const mode = normalizeSessionDataMode(v);
           const commit = () => {
-          setSessionDataMode(v);
+          setSessionDataMode(mode);
           void api.settingsGet().then((s) =>
-          api.settingsSet({ ...s, sessionDataMode: v }),
+          api.settingsSet({ ...s, sessionDataMode: mode }),
           );
           };
           // Tauri WebView: window.confirm is unreliable (often always false).

@@ -16,7 +16,9 @@
 ## 对话创建协议（静默）
 
 1. 用户用自然语言描述「做什么 + 何时跑」。
-2. 发送时 Host 给 Agent 追加**不进 journal 展示**的 setup 前缀（`wrapAutomationSetupAgentText`）。
+2. 发送时 Host 给 Agent 追加**不进 journal 展示**的 setup 前缀（`wrapAutomationSetupAgentText`），仅当：
+   - 侧栏 **用 AI 创建** 进入的会话（sticky `automationSetupSessionsRef`），或
+   - 当前用户正文 `looksLikeScheduleIntent`（明确时间/周期；**排除**「禁止定时」与纯角色/目标模式长文），且**未**开 Composer Goal。
 3. Agent 用自然语言确认；收齐信息后在回复**末尾**附加唯一 fence：
 
 ````text
@@ -25,10 +27,14 @@
 ```
 ````
 
-4. 壳层在 stream `done` 时 `extractAutomationPayload`：从气泡**剥掉 fence**，调用 `automation_create`，toast「已安排：{title}」。
-5. 同一会话只 apply 一次；reload 时也会剥 fence，避免用户看到 JSON。
+4. 壳层在 stream `done` 时 `extractAutomationPayload`：从气泡**剥掉 fence**。
+5. **自动** `automation_create` 仅当 `shouldAutoApplyAutomationFence`：显式 AI 创建会话，或近期用户消息像真实排程；toast「已创建定时任务：{title}」。
+6. **否则**（意外 fence，如角色卡 /goal 误路由）：应用内确认（非 `window.confirm`）；取消则不落库。手动表单创建路径不变。
+7. 同一消息 id / payload 只处理一次；reload 时也会剥 fence，避免用户看到 JSON。
 
-实现：`src/lib/automationSetup.ts` · 拦截在 `App.tsx` `tryApplyAutomationFromSession`。
+实现：`src/lib/automationSetup.ts` · 拦截在 `AppWorkbench.tsx` `tryApplyAutomationFromSession`。
+
+**与 Goal 分流**：Goal = 有限目标干完即停；已安排 = 闹钟。勿把会话原则当成定时任务。
 
 ## 数据
 

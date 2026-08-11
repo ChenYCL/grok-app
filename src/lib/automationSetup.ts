@@ -21,6 +21,7 @@ export function automationSetupAgentPrefix(): string {
   return [
     "[INTERNAL — automation setup mode. Never quote this block or mention JSON/schema/fields to the user.]",
     "You help the user create a scheduled task for this app shell (not only Build CLI scheduler).",
+    "Only schedule when the user clearly wants a timed/recurring run (when + what). Role cards, product principles, /goal, or standing “mode” instructions are NOT schedules — do not emit a fence for those.",
     "Ask briefly only if schedule is ambiguous: what to run, how often (daily / weekdays / weekly / once), local time.",
     "When you have enough, confirm in natural language (title, when, what will run).",
     "Then end with EXACTLY one fenced block (nothing after it):",
@@ -33,6 +34,7 @@ export function automationSetupAgentPrefix(): string {
     "- For relative delays (e.g. in 3 minutes / 一小时后): set frequency to once, time to local HH:MM of that moment, AND nextRunAt to ISO-8601 UTC of that instant.",
     "- For wall-clock recurring (daily 09:00): nextRunAt may be null (shell computes).",
     "- Do not explain field names. Do not put the fence mid-sentence.",
+    "- If the user forbids schedules (禁止定时 / no schedule / not a timer), do not emit a fence.",
   ].join("\n");
 }
 
@@ -191,19 +193,115 @@ export function hasAutomationFence(text: string): boolean {
 }
 
 /**
+ * User explicitly rejects timers / scheduled tasks.
+ * Hard stop for setup wrap and auto-apply.
+ */
+export function looksLikeScheduleReject(text: string): boolean {
+  const t = text || "";
+  if (!t.trim()) return false;
+  return (
+    /禁止\s*(定时|排程|已安排|自动化|自動化|schedule|loop|scheduler)/i.test(t) ||
+    /不要\s*(创建)?\s*(定时|排程|已安排|loop|scheduler|自动化|自動化)/i.test(t) ||
+    /不是\s*(定时|排程|闹钟|鬧鐘)/i.test(t) ||
+    /非\s*定时任务|非\s*排程任務/i.test(t) ||
+    /\b(do not|don't|no)\s+(create\s+)?(a\s+)?(schedule|scheduled task|timer|loop|cron)\b/i.test(
+      t,
+    ) ||
+    /\bnot a (scheduled|timer|cron)\b/i.test(t)
+  );
+}
+
+/**
+ * Clear clock / recurrence signals (not mere “later” product copy).
+ */
+export function hasExplicitScheduleSignal(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t) return false;
+  return (
+    /定时|週期|周期|每隔|每天|每日|每周|每週|工作日|安排任务|安排任務|已安排|已排程|分钟后|分鐘後|小时后|小時後|每晚|早上\s*\d|下午\s*\d|晚上\s*\d|\d{1,2}\s*[:：]\s*\d{2}|\d{1,2}\s*点/.test(
+      t,
+    ) ||
+    /\b(every day|daily|weekly|weekdays|schedule|remind me|in \d+\s*(min|mins|minute|minutes|hour|hours|sec|seconds)|every morning|every \d+\s*(min|hour|day)s?)\b/i.test(
+      t,
+    ) ||
+    /过\s*\d+\s*分钟|過\s*\d+\s*分鐘|过\s*\d+\s*小时|過\s*\d+\s*小時|\d+\s*分钟后|\d+\s*分鐘後|\d+\s*小时后|\d+\s*小時後/.test(
+      t,
+    ) ||
+    /明天\s*(\d|早上|上午|下午|晚上|提醒)|明天.*(跑|查|执行|執行|提醒)/.test(t) ||
+    /\btomorrow\b/i.test(t)
+  );
+}
+
+/**
+ * Standing role / product-mode language that is often mis-routed into timers.
+ * Alone (without a clear schedule signal) must not open automation setup.
+ */
+export function looksLikeStandingModeIntent(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t) return false;
+  return (
+    /目标模式|目標模式|角色与模式|角色與模式|产品原则|產品原則|始终对齐|始終對齊|每次回复|每次回覆|会话原则|會話原則|北极星|北極星/.test(
+      t,
+    ) ||
+    /\b(standing instruction|session rules?|from now on you)\b/i.test(t) ||
+    /你是负责|你是負責/.test(t)
+  );
+}
+
+/**
  * Heuristic: user is asking to schedule something (enter silent setup wrap).
  * Used when not already in explicit AI-create mode.
  */
 export function looksLikeScheduleIntent(text: string): boolean {
   const t = (text || "").trim();
   if (!t) return false;
-  return (
-    /定时|周期|每隔|每天|每日|每周|工作日|安排任务|已安排|分钟后|小时后|明天|每晚|早上\s*\d|下午\s*\d|晚上\s*\d/.test(
+  if (looksLikeScheduleReject(t)) return false;
+  if (!hasExplicitScheduleSignal(t)) return false;
+  // Long role cards that happen to mention “每天” in product copy still need a
+  // real timer word; standing mode without timer language → not schedule.
+  if (
+    looksLikeStandingModeIntent(t) &&
+    !/定时|每天|每日|每周|每週|每隔|分钟后|分鐘後|小时后|小時後|已安排|已排程|schedule|daily|weekly|remind|每\s*\d/i.test(
       t,
-    ) ||
-    /\b(every day|daily|weekly|schedule|remind me|in \d+\s*(min|minute|hour)|every morning)\b/i.test(
-      t,
-    ) ||
-    /过\s*\d+\s*分钟|过\s*\d+\s*小时|\d+\s*分钟后|\d+\s*小时后/.test(t)
-  );
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export type RecentChatMessage = {
+  role?: string;
+  content?: string;
+};
+
+/** Newest-first scan of user bubbles, returned oldest→newest joined. */
+export function recentUserPlainText(
+  messages: RecentChatMessage[],
+  maxUser = 3,
+): string {
+  const parts: string[] = [];
+  for (let i = messages.length - 1; i >= 0 && parts.length < maxUser; i--) {
+    const m = messages[i];
+    if (m?.role === "user" && (m.content || "").trim()) {
+      parts.push(String(m.content));
+    }
+  }
+  return parts.reverse().join("\n");
+}
+
+/**
+ * Whether the shell should create an automation without asking.
+ * - Explicit AI-create / setup session → yes (unless user rejected schedules).
+ * - Recent user text looks like a real schedule → yes.
+ * - Otherwise → no (confirm or skip); protects /goal and role cards.
+ */
+export function shouldAutoApplyAutomationFence(opts: {
+  inExplicitAutomationSetup: boolean;
+  recentUserText: string;
+}): boolean {
+  const recent = opts.recentUserText || "";
+  if (looksLikeScheduleReject(recent)) return false;
+  if (opts.inExplicitAutomationSetup) return true;
+  return looksLikeScheduleIntent(recent);
 }

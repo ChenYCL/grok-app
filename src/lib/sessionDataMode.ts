@@ -1,8 +1,8 @@
 /**
  * Session data mode honesty — pure helpers for independent | shared.
  *
- * - **independent** (default): App agent-home `~/.grok-app/agent-home`
- * - **shared**: CLI home `~/.grok` (same sessions as terminal Grok Build)
+ * - **shared** (default): CLI home `~/.grok` (same sessions as terminal Grok Build)
+ * - **independent**: App agent-home `~/.grok-app/agent-home`
  *
  * Flipping modes never silently merges histories (E04). Host recycles all
  * agents on `session_data_mode` change so reconnect does not `session/load`
@@ -13,9 +13,9 @@
 
 // ── Modes ───────────────────────────────────────────────────────────────────
 
-export const SESSION_DATA_MODES = ["independent", "shared"] as const;
+export const SESSION_DATA_MODES = ["shared", "independent"] as const;
 export type SessionDataMode = (typeof SESSION_DATA_MODES)[number];
-export const DEFAULT_SESSION_DATA_MODE: SessionDataMode = "independent";
+export const DEFAULT_SESSION_DATA_MODE: SessionDataMode = "shared";
 
 const MODE_SET = new Set<string>(SESSION_DATA_MODES);
 
@@ -49,7 +49,7 @@ export function isSessionDataMode(raw: unknown): raw is SessionDataMode {
 
 /**
  * Normalize a settings / host value to a known session data mode.
- * Unknown / empty → {@link DEFAULT_SESSION_DATA_MODE} (`independent`).
+ * Unknown / empty → {@link DEFAULT_SESSION_DATA_MODE} (`shared`).
  */
 export function normalizeSessionDataMode(raw: unknown): SessionDataMode {
   if (raw == null) return DEFAULT_SESSION_DATA_MODE;

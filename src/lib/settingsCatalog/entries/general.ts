@@ -1018,8 +1018,8 @@ export const GENERAL_ENTRIES: readonly SettingsEntry[] = [
     labelKey: "settings.sessionDataMode",
     descKeys: [
       "settings.sessionDataModeDesc",
-      "settings.modeIndependent",
       "settings.modeShared",
+      "settings.modeIndependent",
       "settings.sessionModeHelp",
       "settings.sessionDataMode.status",
       "settings.sessionDataMode.banner.sharedWithCli",

@@ -113,7 +113,7 @@ mod integration {
         let _ = ensure_app_dirs();
         // Factory defaults (not necessarily what's already on disk)
         let factory = AppSettings::default();
-        assert_eq!(factory.session_data_mode, "independent");
+        assert_eq!(factory.session_data_mode, "shared");
         assert_eq!(factory.permission_policy, "ask");
         assert_eq!(factory.sandbox_profile, "workspace");
         assert!(!factory.reopen_last_session);

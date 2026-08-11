@@ -10,8 +10,9 @@ Product rules for the slash palette, skill chips, mode markers, and Doctor.
 - Storage / user bubble text uses stable tokens: `[[skill:name]]`.
 - Agent prompt serialization:
   - Skills → `/name` tokens (Grok Build invocable form), then plain text.
-  - Goal mode on → prefix `/goal\n`.
+  - Goal task on → prefix `/goal\n` (finite objective until done — **not** a scheduled timer; copy says 目标任务 / Goal task).
   - Attachments still append `@/abs/path` lines via `buildAgentPrompt`.
+- Goal chip + schedule: with Goal on, normal sends do **not** enter silent automation-setup wrap (unless the session is sticky “Create with AI”). Unexpected `grok-automation` fences confirm before create — see [automations.md](./automations.md).
 
 ## Slash trigger
 

@@ -11,14 +11,37 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-08-11
+
+> **Highlight:** App and terminal Grok Build share sessions by default, release CI no longer dies on pnpm version conflict, sidebar one-click update, agent-home config heal, and goal/role chats no longer mis-create schedules.
+>
+> **中文 · 亮点：** 默认与 Grok Build 共享会话、修复发版 pnpm 冲突、侧栏一键更新、agent-home 配置自愈、目标/角色对话不再误建定时任务。
+
+### Added
+- **Sidebar update badge + install→restart**: When a newer App build is known, an accent control next to the brand mark runs download → install → relaunch (sim path reloads). Settings → About → Developer mode gates the update simulator and future debug tools.
+- **Agent-home `config.toml` heal**: Spawn-time dedupe for duplicate keys (exact match, comment-tolerant tables, backup + write lock) stops `AGENT_CRASHED` from broken independent agent-home configs; valid files are never rewritten.
+
+**中文 · 新增**
+- **侧栏更新角标与安装后重启**：发现新版本可一键下载安装并重启；关于页开发者模式控制更新模拟器。
+- **agent-home config.toml 自愈**：spawn 前去重损坏配置，避免独立模式下 Agent 秒崩。
+
+### Changed
+- **Default session data mode is shared**: Fresh installs use `session_data_mode=shared` (`GROK_HOME=~/.grok`) so Grok App and terminal Grok Build share the same agent home / CLI sessions. Existing installs keep the value already in settings. Independent mode (`~/.grok-app/agent-home`) remains available in Settings → Session data mode.
+- **Release/CI pnpm setup**: Drop hard-coded `pnpm/action-setup` `version: 9` so `packageManager: pnpm@9.15.9` is the single source (fixes `Multiple versions of pnpm specified` that blocked v0.2.13 install assets).
+
+**中文 · 变更**
+- **默认与 Grok Build 共享会话数据**：新装默认 `shared`（`~/.grok`）；已安装用户保留原设置。独立模式仍可在设置中切换。
+- **发版/CI pnpm**：去掉 workflow 硬编码版本，避免与 `packageManager` 冲突（修复 v0.2.13 Release 无安装包）。
+
 ### Fixed
 - **CLI update check `No such file or directory (os error 2)`**: GUI PATH enrichment only joined nvm `alias/default` literally (e.g. `22` → `~/.nvm/versions/node/22/bin`, missing). Now resolves nested aliases (`lts/*`), major shims, and picks the highest matching install (`v22.22.0`) so `grok update --check --json` (installer=`npm`) finds `node`/`npm` without loading shell rc.
+- **Scheduled-task mis-create from role/goal chat**: `grok-automation` fences auto-apply only for explicit “Create with AI” sessions or clear schedule intent; unexpected fences ask once in-app. One-off “每天…” no longer sticks the whole chat in automation setup. Goal chip / empty-state copy distinguishes timers from Goal tasks. Intentional 已安排 / manual form paths unchanged.
+- **Relay sanitize base repair nested `block_on`**: Avoid runtime panic when repairing OpenCode Go proxy bases on the async worker.
 
 **中文 · 修复**
 - **设置 → CLI 检查更新 os error 2**：正确解析 nvm 别名到真实 Node `bin`，GUI 下 `grok update --check` 不再因找不到 node 失败。
-
-### Notes
-- **v0.2.13 GitHub Release 构建未产出安装包**：tag 已推送，但 release workflow 在 **Setup pnpm** 秒挂——`package.json` 的 `packageManager: pnpm@9.15.9` 与 workflow 里 `pnpm/action-setup` 的 `version: 9` 冲突（`Multiple versions of pnpm specified`）。修法：去掉 workflow 硬编码 `version`（`release.yml` + `ci.yml`），再 `workflow_dispatch` 重跑 tag。
+- **目标/角色对话误建定时任务**：仅 AI 创建入口或明确排程意图才自动落库；意外 fence 需确认。不影响手动/已安排正常定时功能。
+- **中继 sanitize base 修复嵌套 block_on**：异步 worker 上不再 panic。
 
 ## [0.2.13] - 2026-08-11
 
