@@ -42,6 +42,8 @@ export type PlanStatusBarProps = {
   /** Optional revision note (same contract as PlanReviewPanel). */
   onRequestChanges?: (note?: string) => void;
   onDismiss?: () => void;
+  /** Exit the bare plan-mode chip (mode === "plan", no plan body). */
+  onExitPlanMode?: () => void;
   /** Exit goal mode from the sticky goal strip. */
   onClearGoal?: () => void;
   /** Scroll / focus the in-thread plan card when present. */
@@ -79,6 +81,7 @@ export function PlanStatusBar({
   onApprove,
   onRequestChanges,
   onDismiss,
+  onExitPlanMode,
   onClearGoal,
   onOpenDetails,
 }: PlanStatusBarProps) {
@@ -210,9 +213,21 @@ export function PlanStatusBar({
           <button
             type="button"
             className="icon-btn plan-bar__close"
-            onClick={onDismiss}
+            onClick={() => void onDismiss()}
             aria-label={labels.dismiss}
             title={labels.dismiss}
+          >
+            <IconClose size={14} />
+          </button>
+        ) : null}
+        {model.kind === "plan_mode" && onExitPlanMode ? (
+          <button
+            type="button"
+            className="icon-btn plan-bar__close"
+            onClick={() => onExitPlanMode()}
+            aria-label={labels.dismiss}
+            title={labels.dismiss}
+            data-testid="plan-status-exit-plan-mode"
           >
             <IconClose size={14} />
           </button>

@@ -2068,3 +2068,66 @@ describe("tool activity", () => {
     expect(m[0]?.content).toBe("npm test");
   });
 });
+
+describe("tool_step output capture", () => {
+  it("parseToolStepContent splits real output off the sentinel", () => {
+    // New journal shape: legacy body intact, output appended after the sentinel.
+    const body = [
+      "tool_step|completed|read_file|Read",
+      "input:src/lib/session.ts",
+      "\u0001output",
+      "1→export function foo() {",
+      "2→  return 42;",
+      "3→}",
+    ].join("\n");
+    const p = parseToolStepContent(body);
+    expect(p?.kind).toBe("read_file");
+    expect(p?.input).toBe("src/lib/session.ts");
+    // Output is the full multiline body — never reaches the positional detail.
+    expect(p?.output).toContain("export function foo()");
+    expect(p?.output).toContain("return 42");
+    expect(p?.detail).toBeUndefined();
+  });
+
+  it("parseToolStepContent keeps legacy rows byte-identical (no sentinel)", () => {
+    // Old journal rows have no sentinel and must parse exactly as before.
+    const body = [
+      "tool_step|completed|grep|Search",
+      "input:foo",
+      "src/a.ts:1:foo",
+      "src/b.ts:2:foo",
+    ].join("\n");
+    const p = parseToolStepContent(body);
+    expect(p?.output).toBeUndefined();
+    expect(p?.input).toBe("foo");
+    // Positional detail/path heuristic still runs on the pre-sentinel body.
+    expect(p?.detail).toContain("src/a.ts:1:foo");
+  });
+
+  it("applyToolEvent threads output into the tool segment", () => {
+    let m = applyToolEvent(
+      [{ id: "a1", role: "assistant", content: "thinking…" }],
+      {
+        toolCallId: "call_1",
+        title: "Read",
+        kind: "read_file",
+        status: "completed",
+        input: "README.md",
+        output: "# Project\nA short readme.",
+      },
+    );
+    const asst = m.find((x) => x.role === "assistant")!;
+    const tool = asst.segments?.find((s) => s.kind === "tool")!;
+    expect(tool).toBeTruthy();
+    expect((tool as any).output).toContain("# Project");
+    expect((tool as any).input).toBe("README.md");
+    // A later sparse status tick must not erase the captured output.
+    m = applyToolEvent(m, {
+      toolCallId: "call_1",
+      status: "completed",
+    });
+    const asst2 = m.find((x) => x.role === "assistant")!;
+    const tool2 = asst2.segments?.find((s) => s.kind === "tool") as any;
+    expect(tool2.output).toContain("# Project");
+  });
+});

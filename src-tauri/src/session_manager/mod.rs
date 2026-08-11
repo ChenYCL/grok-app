@@ -49,8 +49,8 @@ use crate::session_fsm::SessionState;
 use types::*;
 
 pub(crate) use types::{
-    RewindExecuteResult, RewindPointDto, SessionSnapshot, UiPermissionRequest, extract_tool_input,
-    tool_journal_richer,
+    RewindExecuteResult, RewindPointDto, SessionSnapshot, TOOL_OUTPUT_MAX_PUB,
+    TOOL_OUTPUT_SENTINEL, UiPermissionRequest, extract_tool_input, tool_journal_richer,
 };
 
 pub struct SessionManager {

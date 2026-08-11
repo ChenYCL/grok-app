@@ -53,6 +53,7 @@ import {
   type ActivityStepExpandState,
 } from "@/lib/grokActivityVirtualize";
 import { VirtualList } from "@/components/VirtualList";
+import { ToolExpandBody } from "./ToolExpandBody";
 import {
   IconBulb,
   IconChevronDown,
@@ -225,9 +226,17 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
     step.type === "web-search" ? step.resultDomains : undefined;
 
   const expandTool = step.type === "tool" ? step.tool : null;
-  const { failHint, failHintShort, detailTail, hasBody } = expandTool
+  const expand = expandTool
     ? toolExpandBody(expandTool, failed)
-    : { failHint: "", failHintShort: "", detailTail: "", hasBody: false };
+    : {
+        failHint: "",
+        failHintShort: "",
+        detailTail: "",
+        outputBody: "",
+        command: "",
+        hasBody: false,
+      };
+  const hasBody = expand.hasBody;
 
   const runningRef = useRef(running);
   runningRef.current = running;
@@ -322,18 +331,10 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
           ) : null}
         </div>
         {showBody ? (
-          <div className="lobe-timeline-tool__body grok-act__expand-body">
-            {failHintShort ? (
-              <div className="lobe-timeline-tool__fail-hint" title={failHint}>
-                {failHintShort}
-              </div>
-            ) : null}
-            {detailTail &&
-            detailTail !== failHint &&
-            detailTail !== failHintShort ? (
-              <pre className="lobe-timeline-tool__detail">{detailTail}</pre>
-            ) : null}
-          </div>
+          <ToolExpandBody
+            body={expand}
+            className="lobe-timeline-tool__body grok-act__expand-body"
+          />
         ) : null}
       </div>
     </div>

@@ -9862,6 +9862,27 @@ export function AppWorkbench() {
     setPlanFocusKey((k) => k + 1);
   }, [openAsidePane]);
 
+  /**
+   * Exit the bare “计划模式” chip (mode === "plan", no plan content yet).
+   *
+   * Distinct from {@link dismissPlan}, which archives an in-flight plan /
+   * abandons a review rpc. This just flips the composer mode back to agent and
+   * persists it — the only way out when the bar is showing the idle plan chip
+   * with no entries / body / rpc (previously there was no exit control at all).
+   */
+  const exitPlanMode = useCallback(() => {
+    if (modeRef.current !== "plan") return;
+    setMode("agent");
+    setGoalMode(false);
+    void api
+      .composerPrefsSet({
+        projectId: activeProject?.id ?? null,
+        sessionId: session.sessionId ?? null,
+        mode: "agent",
+      })
+      .catch((e) => showToast(String(e), 4000));
+  }, [activeProject?.id, session.sessionId, showToast]);
+
   const sendQueueLabels = useMemo(
     () => ({
       sendFailed: tr("composer.queueSendFailed"),
@@ -18570,6 +18591,7 @@ export function AppWorkbench() {
               onApprove={() => void approvePlan()}
               onRequestChanges={() => openRequestPlanChanges()}
               onDismiss={() => void dismissPlan()}
+              onExitPlanMode={exitPlanMode}
               onClearGoal={() => setGoalMode(false)}
               onOpenDetails={() => openPlanInResource()}
             />

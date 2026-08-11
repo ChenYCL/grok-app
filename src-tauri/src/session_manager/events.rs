@@ -488,6 +488,8 @@ impl SessionManager {
                     .or(path_hint)
                     .filter(|p| !p.is_empty());
                 let (before_snip, after_snip) = extract_tool_content_snippets(&raw);
+                // Real tool output (ACP `content[]`) — powers the expandable body.
+                let output = extract_tool_output(&raw);
 
                 let prepared = structured_media
                     .as_deref()
@@ -658,6 +660,8 @@ impl SessionManager {
                         "detail": detail,
                         // Call argument (target file / command / query) for primary labels.
                         "input": input2,
+                        // What the tool actually produced (stdout / file text) — expand body.
+                        "output": output,
                         // Optional content snippets for the session Changes / diff panel.
                         "before": before_snip,
                         "after": after_snip,
@@ -698,6 +702,15 @@ impl SessionManager {
                         // Always persist path/url so reload can paint “Browsed …”.
                         content.push('\n');
                         content.push_str(p);
+                    }
+                    // Real tool output last, behind a sentinel line, so everything
+                    // above stays byte-identical to the legacy layout (old rows and
+                    // the positional detail/path heuristic keep parsing unchanged).
+                    if let Some(ref o) = output {
+                        content.push('\n');
+                        content.push_str(TOOL_OUTPUT_SENTINEL);
+                        content.push('\n');
+                        content.push_str(o);
                     }
                     let mid = format!("tool-{tool_call_id}");
                     // Upsert: replace only when new content is richer (never downgrade
