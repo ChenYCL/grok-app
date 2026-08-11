@@ -152,23 +152,35 @@ describe("grokActivitySteps", () => {
       },
     ];
     const steps = buildGrokActivitySteps(items);
-    expect(steps.map((s) => s.type)).toEqual(["tool", "tool", "tool", "tool"]);
+    // First two (read_file + list_dir) are a context burst → one explore-group;
+    // bash + edit break the run and stay individual rows.
+    expect(steps.map((s) => s.type)).toEqual(["explore-group", "tool", "tool"]);
+    const grp = steps[0] as Extract<
+      (typeof steps)[number],
+      { type: "explore-group" }
+    >;
+    expect(grp.reads).toBe(2);
+    expect(grp.searches).toBe(0);
+    const kids = grp.children.filter((s) => s.type === "tool") as Extract<
+      GrokPhaseItem,
+      { kind: "tool" }
+    >[] as any;
+    expect(kids[0]).toMatchObject({ bucket: "read", inputLabel: "SKILL.md" });
+    expect(kids[1]).toMatchObject({ bucket: "read", inputLabel: "workbuddy" });
+    expect(steps[1]).toMatchObject({ bucket: "bash" });
+    // bash input = first simple command, clipped, whitespace collapsed
+    expect((steps[1] as any).inputLabel).toContain("ls -la");
+    expect((steps[2] as any).inputLabel).toBe("main.ts");
+    expect(steps[2]).toMatchObject({ bucket: "edit" });
     // Raw tool OUTPUT must never leak into the collapsed label.
-    for (const s of steps) {
-      expect(s.type === "tool" ? (s as any).summary : "").not.toContain(
+    for (const s of [...kids, steps[1], steps[2]]) {
+      expect(s && s.type === "tool" ? (s as any).summary : "").not.toContain(
         "exit:",
       );
-      expect(s.type === "tool" ? (s as any).summary : "").not.toContain(
+      expect(s && s.type === "tool" ? (s as any).summary : "").not.toContain(
         "<!DOCTYPE",
       );
     }
-    expect(steps[0]).toMatchObject({ bucket: "read", inputLabel: "SKILL.md" });
-    expect(steps[1]).toMatchObject({ bucket: "read", inputLabel: "workbuddy" });
-    expect(steps[2]).toMatchObject({ bucket: "bash" });
-    // bash input = first simple command, clipped, whitespace collapsed
-    expect((steps[2] as any).inputLabel).toContain("ls -la");
-    expect((steps[3] as any).inputLabel).toBe("main.ts");
-    expect(steps[3]).toMatchObject({ bucket: "edit" });
   });
 
   it("extractBrowseUrl keeps directory trailing slash like Grok web", () => {
@@ -179,5 +191,67 @@ describe("grokActivitySteps", () => {
         }),
       ),
     ).toBe("developer.apple.com/cn/help/account/");
+  });
+});
+
+describe("grokActivitySteps explore-group", () => {
+  it("folds a mixed read+search burst into one explore-group", () => {
+    const items: GrokPhaseItem[] = [
+      { kind: "tool", tool: tool("r1", "read_file", "Read", { input: "a.ts" }) },
+      { kind: "tool", tool: tool("s1", "web_search", "Search A") },
+      { kind: "tool", tool: tool("r2", "read_file", "Read", { input: "b.ts" }) },
+    ];
+    const steps = buildGrokActivitySteps(items);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.type).toBe("explore-group");
+    const grp = steps[0] as Extract<
+      (typeof steps)[number],
+      { type: "explore-group" }
+    >;
+    expect(grp.searches).toBe(1);
+    expect(grp.reads).toBe(2);
+    // Children are the individual leaf steps (no nested grouping).
+    expect(grp.children.length).toBe(3);
+    expect(grp.children.some((s) => s.type === "web-search")).toBe(true);
+    expect(grp.children.filter((s) => s.type === "tool").length).toBe(2);
+  });
+
+  it("does not collapse a pure-search run (keeps Ran N searches)", () => {
+    const items: GrokPhaseItem[] = [
+      { kind: "tool", tool: tool("s1", "web_search", "Search A") },
+      { kind: "tool", tool: tool("s2", "web_search", "Search B") },
+      { kind: "tool", tool: tool("s3", "web_search", "Search C") },
+      { kind: "tool", tool: tool("s4", "web_search", "Search D") },
+    ];
+    const steps = buildGrokActivitySteps(items);
+    // 4 searches with no query text → single search-group, NOT explore-group.
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.type).toBe("search-group");
+  });
+
+  it("a single read followed by an edit does not become an explore group", () => {
+    const items: GrokPhaseItem[] = [
+      { kind: "tool", tool: tool("r1", "read_file", "Read", { input: "a.ts" }) },
+      { kind: "tool", tool: tool("e1", "search_replace", "Edit", { input: "a.ts" }) },
+    ];
+    const steps = buildGrokActivitySteps(items);
+    // edit breaks the context run → two individual rows, no group.
+    expect(steps.map((s) => s.type)).toEqual(["tool", "tool"]);
+  });
+
+  it("browse breaks an explore run (keeps its own Browsed row)", () => {
+    const items: GrokPhaseItem[] = [
+      { kind: "tool", tool: tool("r1", "read_file", "Read", { input: "a.ts" }) },
+      {
+        kind: "tool",
+        tool: tool("b1", "web_fetch", "Fetch", {
+          path: "https://example.com/page",
+        }),
+      },
+      { kind: "tool", tool: tool("r2", "read_file", "Read", { input: "b.ts" }) },
+    ];
+    const steps = buildGrokActivitySteps(items);
+    // First read is alone (< threshold) → individual; browse → browse; last read → individual.
+    expect(steps.map((s) => s.type)).toEqual(["tool", "browse", "tool"]);
   });
 });

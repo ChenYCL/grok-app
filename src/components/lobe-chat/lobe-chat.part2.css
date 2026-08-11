@@ -392,6 +392,13 @@
   max-height: none;
   overflow: visible;
 }
+/* Nested step list inside an “探索” group: indent under the parent rail so the
+   child rows read as contents of the exploration burst, not peers of it. */
+.grok-act__explore-children {
+  margin: 2px 0 4px;
+  padding-left: 4px;
+  border-left: 1px solid var(--chat-border, rgb(255 255 255 / 6%));
+}
 .lobe-timeline-tool-group {
   width: 100%;
   margin: 0;

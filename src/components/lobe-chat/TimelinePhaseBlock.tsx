@@ -126,7 +126,7 @@ function StepIcon({ step }: { step: GrokActivityStep }) {
   const size = 15;
   const stroke = 1.5;
   if (step.type === "thought") return <IconBulb size={size} stroke={stroke} />;
-  if (step.type === "search-group")
+  if (step.type === "search-group" || step.type === "explore-group")
     return <IconSearch size={size} stroke={stroke} />;
   if (step.type === "web-search")
     // Official uses globe+search hybrid; World is closest available
@@ -137,6 +137,31 @@ function StepIcon({ step }: { step: GrokActivityStep }) {
       <ToolBucketIcon bucket={step.bucket} toolKind={step.tool.toolKind} />
     );
   return <IconCircle size={size} stroke={stroke} />;
+}
+
+function exploreLabel(
+  step: Extract<GrokActivityStep, { type: "explore-group" }>,
+  tr: ReturnType<typeof createT>,
+): string {
+  // “探索 · 1 次搜索, 3 个文件” — omit a clause when its count is zero so a
+  // pure-read burst reads as “探索 · 3 个文件”.
+  const parts: string[] = [];
+  if (step.searches > 0) {
+    parts.push(
+      step.searches === 1
+        ? tr("chat.exploreSearchesOne")
+        : tr("chat.exploreSearches", { n: String(step.searches) }),
+    );
+  }
+  if (step.reads > 0) {
+    parts.push(
+      step.reads === 1
+        ? tr("chat.exploreFilesOne")
+        : tr("chat.exploreFiles", { n: String(step.reads) }),
+    );
+  }
+  const detail = parts.join(", ");
+  return detail ? `${tr("chat.explored")} · ${detail}` : tr("chat.explored");
 }
 
 function StepMainText({
@@ -160,6 +185,10 @@ function StepMainText({
             ? tr("chat.ranSearch")
             : tr("chat.ranSearches", { n: String(step.count) })}
         </span>
+      );
+    case "explore-group":
+      return (
+        <span className="grok-act__label-text">{exploreLabel(step, tr)}</span>
       );
     case "web-search":
       return (
@@ -236,7 +265,8 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
         command: "",
         hasBody: false,
       };
-  const hasBody = expand.hasBody;
+  // An explore-group is always expandable: its body is the child step list.
+  const hasBody = expand.hasBody || (step.type === "explore-group" && step.children.length > 0);
 
   const runningRef = useRef(running);
   runningRef.current = running;
@@ -331,10 +361,16 @@ const GrokActivityStepRow = memo(function GrokActivityStepRow({
           ) : null}
         </div>
         {showBody ? (
-          <ToolExpandBody
-            body={expand}
-            className="lobe-timeline-tool__body grok-act__expand-body"
-          />
+          step.type === "explore-group" ? (
+            <div className="grok-act__explore-children">
+              <GrokActivitySteps steps={step.children} tr={tr} />
+            </div>
+          ) : (
+            <ToolExpandBody
+              body={expand}
+              className="lobe-timeline-tool__body grok-act__expand-body"
+            />
+          )
         ) : null}
       </div>
     </div>
