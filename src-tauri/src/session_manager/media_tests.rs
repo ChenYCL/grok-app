@@ -199,7 +199,12 @@ fn web_fetch_and_mcp_stay_media_capable() {
     // wan-3-0 cover came from a web_fetch og:image). ChatCut MCP plain-text
     // thumbs must keep attaching too.
     let web = json!({"rawOutput": {"output": "image: https://cdn.evolink.ai/models/wan-3-0/wan-3-0-release-cover-v2.webp"}});
-    assert!(tool_is_media_capable("web_fetch", "fetch", "Web Fetch", &web));
+    assert!(tool_is_media_capable(
+        "web_fetch",
+        "fetch",
+        "Web Fetch",
+        &web
+    ));
     assert_eq!(
         extract_freeform_media_path(&web).as_deref(),
         Some("https://cdn.evolink.ai/models/wan-3-0/wan-3-0-release-cover-v2.webp")

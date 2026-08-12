@@ -191,7 +191,11 @@ fn decode_wsl_list_output(bytes: &[u8]) -> String {
     if bytes.len() >= 2 && bytes.len() % 2 == 0 {
         // UTF-16 LE BOM or high null density → treat as UTF-16 LE
         let looks_utf16 = bytes[0] == 0xFF && bytes[1] == 0xFE
-            || bytes.chunks(2).filter(|c| c.len() == 2 && c[1] == 0).count() > bytes.len() / 4;
+            || bytes
+                .chunks(2)
+                .filter(|c| c.len() == 2 && c[1] == 0)
+                .count()
+                > bytes.len() / 4;
         if looks_utf16 {
             let u16s: Vec<u16> = bytes
                 .chunks_exact(2)
@@ -209,10 +213,7 @@ fn decode_wsl_list_output(bytes: &[u8]) -> String {
 /// Central dispatcher so every spawn/probe gate (connect cold spawn, prewarm,
 /// Settings probe) agrees on where `grok` lives. Without this, a WSL-only install
 /// fails connect with `CliNotFound` because the native probe never looks inside WSL.
-pub fn probe_cli_for_settings(
-    settings: &AppSettings,
-    manual_path: Option<&str>,
-) -> CliProbeResult {
+pub fn probe_cli_for_settings(settings: &AppSettings, manual_path: Option<&str>) -> CliProbeResult {
     if wsl_backend_active(settings) {
         probe_wsl_cli(settings)
     } else {
@@ -294,10 +295,7 @@ pub fn read_wsl_version(launch: &WslLaunch) -> Option<String> {
     version
 }
 
-fn run_wsl_cli_probe(
-    wsl: &Path,
-    launch: &WslLaunch,
-) -> (Option<String>, Option<String>, bool) {
+fn run_wsl_cli_probe(wsl: &Path, launch: &WslLaunch) -> (Option<String>, Option<String>, bool) {
     // Expand optional ~ and prefer explicit path; otherwise PATH + ~/.grok/bin.
     // Print: first line = resolved path, rest = --version banner.
     let script = r#"
@@ -368,7 +366,9 @@ echo "$CLI"
                 let (resolved_path, version) = match (&path, &version_line) {
                     (Some(p), Some(v)) => (Some(p.clone()), Some(v.clone())),
                     (Some(p), None) => {
-                        if extract_version_token(p).is_some() || p.to_ascii_lowercase().contains("grok ") {
+                        if extract_version_token(p).is_some()
+                            || p.to_ascii_lowercase().contains("grok ")
+                        {
                             (None, Some(p.clone()))
                         } else {
                             (Some(p.clone()), None)
@@ -406,10 +406,8 @@ fn is_safe_wsl_cli_path(path: &str) -> bool {
     if p.split('/').any(|seg| seg == "..") {
         return false;
     }
-    p.chars().all(|c| {
-        c.is_ascii_alphanumeric()
-            || matches!(c, '/' | '.' | '_' | '-' | '~' | '+')
-    })
+    p.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '_' | '-' | '~' | '+'))
 }
 
 /// Start a tokio `Command` that runs the Linux CLI inside WSL.
@@ -577,10 +575,7 @@ mod tests {
     #[test]
     fn windows_drive_to_mnt() {
         let p = PathBuf::from(r"C:\Users\alice\proj");
-        assert_eq!(
-            windows_path_to_wsl(&p).unwrap(),
-            "/mnt/c/Users/alice/proj"
-        );
+        assert_eq!(windows_path_to_wsl(&p).unwrap(), "/mnt/c/Users/alice/proj");
         let p2 = PathBuf::from(r"D:/code");
         assert_eq!(windows_path_to_wsl(&p2).unwrap(), "/mnt/d/code");
     }
@@ -594,10 +589,7 @@ mod tests {
     #[test]
     fn wsl_share_path() {
         let p = PathBuf::from(r"\\wsl$\Ubuntu\home\alice\.grok");
-        assert_eq!(
-            windows_path_to_wsl(&p).unwrap(),
-            "/home/alice/.grok"
-        );
+        assert_eq!(windows_path_to_wsl(&p).unwrap(), "/home/alice/.grok");
     }
 
     #[test]

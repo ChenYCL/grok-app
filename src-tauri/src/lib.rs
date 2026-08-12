@@ -161,8 +161,8 @@ mod store_lock;
 
 mod stream_emit;
 
-mod stream_stall;
 mod pending_quit;
+mod stream_stall;
 
 mod streaming_acp_ndjson;
 
@@ -184,8 +184,8 @@ mod turn_complete;
 
 mod updater;
 
-mod video_poster;
 mod image_thumb;
+mod video_poster;
 
 mod voice_auth;
 
@@ -1598,8 +1598,14 @@ fn load_restored_main_geometry(app: &tauri::App) -> Option<RestoredMainGeometry>
             .and_then(|v| v.as_i64())
             .map(|v| v as i32)
             .unwrap_or(y),
-        maximized: m.get("maximized").and_then(|b| b.as_bool()).unwrap_or(false),
-        fullscreen: m.get("fullscreen").and_then(|b| b.as_bool()).unwrap_or(false),
+        maximized: m
+            .get("maximized")
+            .and_then(|b| b.as_bool())
+            .unwrap_or(false),
+        fullscreen: m
+            .get("fullscreen")
+            .and_then(|b| b.as_bool())
+            .unwrap_or(false),
     })
 }
 

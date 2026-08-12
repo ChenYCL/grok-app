@@ -532,6 +532,7 @@ pub async fn secrets_get_masked() -> Result<serde_json::Value, String> {
             active_provider_id: None,
             config_path: String::new(),
             agent_home: String::new(),
+            switched_to_independent: false,
         }
     });
     let has_provider_key = providers.providers.iter().any(|p| p.has_api_key);

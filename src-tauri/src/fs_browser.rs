@@ -974,7 +974,6 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
     read_path(found, name)
 }
 
-
 fn search_under_project_and_parent(
     project_root: Option<&str>,
     path_or_suffix: &str,
@@ -1225,17 +1224,9 @@ fn read_path(path: PathBuf, rel_in: String) -> Result<FsReadResult, String> {
         // OfficeDocumentPreview loads binary via media HTTP; host text
         // extract used to block chat→pane open on large docx/xlsx/pptx.
         return Ok(ok_result(
-            &path,
-            rel_in,
-            name,
-            size,
-            kind,
-            mime,
-            None,
-            None,
+            &path, rel_in, name, size, kind, mime, None, None,
             true, // stream → frontend fetches binary via asset/media URL
-            false,
-            None,
+            false, None,
         ));
     }
 

@@ -93,6 +93,18 @@ Left / right split (`ProvidersPanel`):
 
 Each card has **Use** to activate that route (`providers_activate`). Clicking a card opens detail/edit. No long intro copy, agent-home path, or separate “active route” switcher.
 
+### Custom route requires independent data mode (#557)
+
+Custom providers are written only under App **agent-home** `config.toml`. Default `session_data_mode=shared` uses `GROK_HOME=~/.grok`, where those sections are invisible — so third-party channels would fail without official login.
+
+| Event | Host action |
+|-------|-------------|
+| `providers_activate(custom)` / set custom as default | Force `session_data_mode=independent` when still `shared`; set `switchedToIndependent` on the result |
+| `prepare_route_auth_for_agent` on custom | Heal the same way before spawn |
+| UI | Toast `prov.switchedToIndependent`; refresh Settings session-data control |
+
+Official route does **not** force mode back to shared.
+
 ## Official tool injection
 
 Settings → Account → **Extras** → toggle **Inject official tools** (`official_aux_inject`).

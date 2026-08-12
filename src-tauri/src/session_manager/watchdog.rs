@@ -22,7 +22,8 @@ impl SessionManager {
                 ticker.tick().await;
                 mgr.tick_idle_recycle(&app).await;
                 // Prewarm processes left un-consumed expire after a few minutes.
-                mgr.sweep_expired_prewarm(Duration::from_secs(10 * 60)).await;
+                mgr.sweep_expired_prewarm(Duration::from_secs(10 * 60))
+                    .await;
             }
         });
     }
@@ -190,11 +191,9 @@ impl SessionManager {
                 );
                 // Unblock the agent: force_end only cleared Host FSM; without cancel
                 // the CLI stays blocked on model inference and refuses the next send.
-                if let Some((acp, agent_sid)) =
-                    self.with_session_mut(&session_id, |s| {
-                        (s.acp.clone(), s.meta.agent_session_id.clone())
-                    })
-                {
+                if let Some((acp, agent_sid)) = self.with_session_mut(&session_id, |s| {
+                    (s.acp.clone(), s.meta.agent_session_id.clone())
+                }) {
                     if let Some(acp) = acp {
                         let msg = format!("stream stall recovery ({reason})");
                         acp.abort_pending_prompts(&msg);

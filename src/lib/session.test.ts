@@ -2144,19 +2144,23 @@ describe("tool_step output capture", () => {
         output: "# Project\nA short readme.",
       },
     );
-    const asst = m.find((x) => x.role === "assistant")!;
-    const tool = asst.segments?.find((s) => s.kind === "tool")!;
+    const asst = m.find((x) => x.role === "assistant");
+    expect(asst).toBeDefined();
+    const tool = asst?.segments?.find((s) => s.kind === "tool");
     expect(tool).toBeTruthy();
-    expect((tool as any).output).toContain("# Project");
-    expect((tool as any).input).toBe("README.md");
+    expect((tool as { output?: string }).output).toContain("# Project");
+    expect((tool as { input?: string }).input).toBe("README.md");
     // A later sparse status tick must not erase the captured output.
     m = applyToolEvent(m, {
       toolCallId: "call_1",
       status: "completed",
     });
-    const asst2 = m.find((x) => x.role === "assistant")!;
-    const tool2 = asst2.segments?.find((s) => s.kind === "tool") as any;
-    expect(tool2.output).toContain("# Project");
+    const asst2 = m.find((x) => x.role === "assistant");
+    expect(asst2).toBeDefined();
+    const tool2 = asst2?.segments?.find((s) => s.kind === "tool") as
+      | { output?: string }
+      | undefined;
+    expect(tool2?.output).toContain("# Project");
   });
 });
 

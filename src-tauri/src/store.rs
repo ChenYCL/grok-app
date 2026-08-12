@@ -811,10 +811,8 @@ pub fn load_settings() -> AppSettings {
         if !s.workflows_enabled {
             tracing::info!("settings migration: workflowsEnabled false → true (CLI default)");
             s.workflows_enabled = true;
-            let _ = crate::agent_workflows::sync_workflows_to_agent_profile(
-                &s.session_data_mode,
-                true,
-            );
+            let _ =
+                crate::agent_workflows::sync_workflows_to_agent_profile(&s.session_data_mode, true);
         }
         s.workflows_default_migrated = true;
         let _ = write_json(&settings_file(), &s);
@@ -863,11 +861,8 @@ pub fn apply_project_pin_partition(list: &mut Vec<Project>) {
 /// Unknown ids are skipped; projects missing from `ordered_ids` are appended
 /// in their previous relative order (then partitioned).
 pub fn reorder_projects_by_ids(list: &[Project], ordered_ids: &[String]) -> Vec<Project> {
-    let mut by_id: std::collections::HashMap<String, Project> = list
-        .iter()
-        .cloned()
-        .map(|p| (p.id.clone(), p))
-        .collect();
+    let mut by_id: std::collections::HashMap<String, Project> =
+        list.iter().cloned().map(|p| (p.id.clone(), p)).collect();
     let mut next = Vec::with_capacity(list.len());
     let mut seen = std::collections::HashSet::new();
     for id in ordered_ids {
@@ -2573,10 +2568,7 @@ mod tests {
 
     #[test]
     fn migrate_legacy_effort_lifts_medium_and_unset() {
-        assert_eq!(
-            migrate_legacy_effort_default(None).as_deref(),
-            Some("high")
-        );
+        assert_eq!(migrate_legacy_effort_default(None).as_deref(), Some("high"));
         assert_eq!(
             migrate_legacy_effort_default(Some("")).as_deref(),
             Some("high")

@@ -50,6 +50,11 @@ export interface ProvidersListResult {
   activeProviderId: string | null;
   configPath: string;
   agentHome: string;
+  /**
+   * Host forced session_data_mode shared → independent so custom agent-home
+   * config is live (#557). UI should refresh mode + toast when true.
+   */
+  switchedToIndependent?: boolean;
 }
 
 export async function providersList() {

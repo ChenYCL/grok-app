@@ -343,9 +343,9 @@ impl SessionManager {
                 provider_retry_aborted: false,
                 needs_history_bootstrap: false,
                 pending_plan_rpc_id: None,
-            pending_permission_rpc_id: None,
-            pending_permission_options: None,
-            pending_permission_tool_name: None,
+                pending_permission_rpc_id: None,
+                pending_permission_options: None,
+                pending_permission_tool_name: None,
                 pending_ask_user_rpc_id: None,
                 last_activity: now,
                 last_stream_progress: now,
@@ -444,10 +444,10 @@ impl SessionManager {
                 // Diagnostics: why reuse misses (only logged when nothing matches).
                 let mut rejected: Vec<String> = Vec::new();
                 let reject_reason = |alive: bool,
-                                    p_policy: PermissionPolicy,
-                                    p_effort: Option<&str>,
-                                    p_sandbox: Option<&str>,
-                                    p_custom: bool| {
+                                     p_policy: PermissionPolicy,
+                                     p_effort: Option<&str>,
+                                     p_sandbox: Option<&str>,
+                                     p_custom: bool| {
                     let mut parts = Vec::new();
                     if !alive {
                         parts.push("dead".into());
@@ -456,7 +456,11 @@ impl SessionManager {
                         parts.push(format!("policy {}≠{}", p_policy.as_str(), policy.as_str()));
                     }
                     if p_effort != Some(prefs.effort.as_str()) {
-                        parts.push(format!("effort {:?}≠{:?}", p_effort, Some(prefs.effort.as_str())));
+                        parts.push(format!(
+                            "effort {:?}≠{:?}",
+                            p_effort,
+                            Some(prefs.effort.as_str())
+                        ));
                     }
                     if p_sandbox.unwrap_or("off") != eff_sandbox.as_str() {
                         parts.push(format!(
@@ -509,8 +513,7 @@ impl SessionManager {
                                 }
                             }
                             PrewarmState::Spawning { since }
-                                if since.elapsed()
-                                    < std::time::Duration::from_millis(2500) =>
+                                if since.elapsed() < std::time::Duration::from_millis(2500) =>
                             {
                                 *pw = PrewarmState::Spawning { since };
                                 None
@@ -525,13 +528,9 @@ impl SessionManager {
                         best = Some((acp, pid, at));
                         break;
                     }
-                    let still_spawning = matches!(
-                        *self.prewarm.lock(),
-                        PrewarmState::Spawning { .. }
-                    );
-                    if !still_spawning
-                        || std::time::Instant::now() >= prewarm_wait_deadline
-                    {
+                    let still_spawning =
+                        matches!(*self.prewarm.lock(), PrewarmState::Spawning { .. });
+                    if !still_spawning || std::time::Instant::now() >= prewarm_wait_deadline {
                         break;
                     }
                     // Brief yield so the prewarm task can progress (it spawns
@@ -539,7 +538,7 @@ impl SessionManager {
                     tokio::time::sleep(std::time::Duration::from_millis(120)).await;
                 }
                 if best.is_none() {
-                let parked = self.parked.lock();
+                    let parked = self.parked.lock();
                     for p in parked.values() {
                         if !gate(
                             p.acp.is_alive(),
@@ -585,9 +584,7 @@ impl SessionManager {
                                     s.acp.as_ref().is_some_and(|c| c.is_alive()),
                                     s.policy,
                                     s.effort.as_deref(),
-                                    s.acp.as_ref()
-                                        .and_then(|c| c.sandbox_profile())
-                                        .as_deref(),
+                                    s.acp.as_ref().and_then(|c| c.sandbox_profile()).as_deref(),
                                     s_custom,
                                 )
                             ));
@@ -1147,7 +1144,9 @@ impl SessionManager {
                 // every refresh leaks a CLI process.
                 if let PrewarmState::Ready(p) = std::mem::replace(
                     &mut *pw,
-                    PrewarmState::Spawning { since: Instant::now() },
+                    PrewarmState::Spawning {
+                        since: Instant::now(),
+                    },
                 ) {
                     tokio::spawn(async move {
                         p.acp.kill().await;
@@ -1204,8 +1203,7 @@ impl SessionManager {
         // Command::current_dir (spawn fails silently otherwise).
         let _ = store::ensure_general_workspace_dir();
         let cwd = crate::paths::general_workspace_dir();
-        let effective_sandbox =
-            store::resolve_sandbox_profile(&settings.sandbox_profile, None);
+        let effective_sandbox = store::resolve_sandbox_profile(&settings.sandbox_profile, None);
         let spawn_opts = crate::acp_client::SpawnOptions {
             model_id: Some(agent_model),
             effort: Some(prefs.effort.clone()),

@@ -336,7 +336,8 @@ impl SessionManager {
                 } else {
                     kind_j.clone()
                 };
-                let live_title = tool_journal_label(&title_enriched, &kind_store, &detail, &path_out);
+                let live_title =
+                    tool_journal_label(&title_enriched, &kind_store, &detail, &path_out);
                 let live_title = if live_title.is_empty() || live_title.eq_ignore_ascii_case("tool")
                 {
                     if !title_enriched.is_empty() {
@@ -388,8 +389,7 @@ impl SessionManager {
                             && !tool_call_id.is_empty()
                         {
                             let title_line = tool_journal_one_line(&live_title, 240);
-                            let mut content =
-                                format!("tool_step|{st}|{kind_store}|{title_line}");
+                            let mut content = format!("tool_step|{st}|{kind_store}|{title_line}");
                             if let Some(inp) = input2.as_deref().filter(|s| !s.trim().is_empty()) {
                                 content.push('\n');
                                 content.push_str("input:");

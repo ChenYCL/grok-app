@@ -612,16 +612,13 @@ fn finish_probe_result(
     cli_auth_present: bool,
     version_supported: Option<bool>,
 ) -> CliProbeResult {
-    let meets_recommended = version
-        .as_deref()
-        .and_then(cli_meets_recommended);
+    let meets_recommended = version.as_deref().and_then(cli_meets_recommended);
     let (agent_path, agent_version) = if found {
         probe_agent_sidecar(path.as_deref())
     } else {
         (None, None)
     };
-    let agent_binary_skew =
-        version_tokens_skew(version.as_deref(), agent_version.as_deref());
+    let agent_binary_skew = version_tokens_skew(version.as_deref(), agent_version.as_deref());
     CliProbeResult {
         found,
         path,

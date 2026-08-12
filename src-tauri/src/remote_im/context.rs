@@ -155,8 +155,7 @@ fn parse_compact(kind: &str, update: &Value) -> Option<ContextCompactSnapshot> {
     let tokens_after = token_u64(update, &["tokens_after", "tokensAfter"]);
     // Kind / token counters only — never free-text `title` substrings.
     // Tool titles often embed "compact" in shell scripts and must not count.
-    let is_compact =
-        kind.contains("compact") || tokens_before.is_some() || tokens_after.is_some();
+    let is_compact = kind.contains("compact") || tokens_before.is_some() || tokens_after.is_some();
     if !is_compact {
         return None;
     }

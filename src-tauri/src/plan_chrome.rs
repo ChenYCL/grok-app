@@ -286,10 +286,12 @@ pub fn load_agent_plan_snapshot(session_id: &str) -> AgentPlanSnapshot {
 
     let settings = load_settings();
     let projects = load_projects();
-    let project_path = meta
-        .project_id
-        .as_ref()
-        .and_then(|pid| projects.iter().find(|p| &p.id == pid).map(|p| p.path.clone()));
+    let project_path = meta.project_id.as_ref().and_then(|pid| {
+        projects
+            .iter()
+            .find(|p| &p.id == pid)
+            .map(|p| p.path.clone())
+    });
 
     let Some(dir) = find_agent_session_dir(
         &agent_id,
@@ -334,8 +336,8 @@ pub fn load_agent_plan_snapshot(session_id: &str) -> AgentPlanSnapshot {
         chrome.awaiting_agent_approval = true;
         chrome.gate_stale = chrome.rpc_id.is_none();
         chrome.rpc_id = None;
-        chrome.visible = !chrome.user_closed
-            && (!chrome.body.trim().is_empty() || out.plan_body.is_some());
+        chrome.visible =
+            !chrome.user_closed && (!chrome.body.trim().is_empty() || out.plan_body.is_some());
         chrome.waiting = false;
         chrome.updated_at = Utc::now().to_rfc3339();
         let _ = save_plan_chrome(session_id, &chrome);

@@ -268,7 +268,9 @@ pub(crate) struct PrewarmedProcess {
 pub(crate) enum PrewarmState {
     None,
     /// initialize+auth in flight; connect may wait briefly for it.
-    Spawning { since: Instant },
+    Spawning {
+        since: Instant,
+    },
     Ready(PrewarmedProcess),
 }
 
@@ -658,9 +660,12 @@ pub(super) fn remember_tool_identity(
     }
     let existing = per.get(tool_call_id);
     let richer = existing.map_or(true, |e| {
-        let e_sparse = e.name.is_empty() && e.title.is_empty() && e.kind.is_empty() && e.input.is_none();
+        let e_sparse =
+            e.name.is_empty() && e.title.is_empty() && e.kind.is_empty() && e.input.is_none();
         let mine_sparse = name.is_empty() && t.is_empty() && k.is_empty() && input.is_none();
-        !e_sparse || mine_sparse || (e.title.is_empty() && !t.is_empty())
+        !e_sparse
+            || mine_sparse
+            || (e.title.is_empty() && !t.is_empty())
             || (e.kind.is_empty() && !k.is_empty())
             || (e.name.is_empty() && !name.is_empty())
             || (e.input.is_none() && input.is_some())
@@ -692,10 +697,7 @@ pub(super) fn resolve_tool_identity(
         return (title.to_string(), kind.to_string(), String::new(), None);
     }
     let map = map.lock().expect("tool identity map poisoned");
-    let Some(id) = map
-        .get(app_sid)
-        .and_then(|m| m.get(tool_call_id))
-    else {
+    let Some(id) = map.get(app_sid).and_then(|m| m.get(tool_call_id)) else {
         return (title.to_string(), kind.to_string(), String::new(), None);
     };
     let t = title.trim();
@@ -882,10 +884,7 @@ pub(super) fn journal_host_tool_step(
 /// Multi-line shell titles (`Execute \`line1\nline2\``) previously broke journal
 /// parsing: only the first line was header, and the `input:` marker got buried.
 pub(super) fn tool_journal_one_line(raw: &str, max_chars: usize) -> String {
-    let collapsed = raw
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.chars().count() <= max_chars {
         return collapsed;
     }
@@ -1743,10 +1742,7 @@ mod journal_attach_tests {
 
     #[test]
     fn append_idempotent() {
-        let once = append_journal_attachment_refs(
-            "hello\n\nworld".into(),
-            &[att("/tmp/a.txt")],
-        );
+        let once = append_journal_attachment_refs("hello\n\nworld".into(), &[att("/tmp/a.txt")]);
         let twice = append_journal_attachment_refs(once.clone(), &[att("/tmp/a.txt")]);
         assert_eq!(once, twice);
     }

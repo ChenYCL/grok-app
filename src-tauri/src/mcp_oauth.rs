@@ -364,10 +364,7 @@ pub fn parse_stored_mcp_oauth(root: &Value, server: &str) -> Option<StoredMcpOAu
             .get("token_type")
             .and_then(|v| v.as_str())
             .map(str::to_string),
-        scope: tr
-            .get("scope")
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
+        scope: tr.get("scope").and_then(|v| v.as_str()).map(str::to_string),
     })
 }
 
@@ -896,7 +893,9 @@ fn ensure_mcp_access_token_inner(server: &str, force: bool) -> EnsureMcpTokenRes
     }
 
     // Serialize refresh across concurrent session opens (avoid RT double-spend).
-    let _guard = refresh_global_lock().lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = refresh_global_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let Some(stored) = load_stored_mcp_oauth(server) else {
         return EnsureMcpTokenResult::NoCredentials;

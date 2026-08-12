@@ -160,4 +160,6 @@ export const enProviders = {
   "prov.balance.err.unsupported": "Balance probe is only supported for DeepSeek right now.",
   "prov.balance.err.hostOnly": "Balance check needs the desktop app.",
   "prov.balance.err.other": "Could not load balance ({detail}).",
+  "prov.switchedToIndependent":
+    "Switched to independent session data so this custom provider can run without official login (agent-home config). Settings → General → Session data to review.",
 } as const;

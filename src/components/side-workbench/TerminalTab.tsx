@@ -15,10 +15,12 @@ import type {
   TerminalPtyDataEvent,
   TerminalPtyExitEvent,
 } from "@/lib/api/system";
+import { buildSideTerminalTheme } from "@/lib/sideTerminalTheme";
 import {
-  TERMINAL_FONT_FAMILY,
-  buildSideTerminalTheme,
-} from "@/lib/sideTerminalTheme";
+  loadTerminalFontFamily,
+  loadTerminalFontSize,
+  resolveTerminalFontFamily,
+} from "@/lib/terminalFontPref";
 
 export type TerminalTabProps = {
   locale: Locale | string;
@@ -67,8 +69,8 @@ export function TerminalTab({
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: "block",
-      fontSize: 13,
-      fontFamily: TERMINAL_FONT_FAMILY,
+      fontSize: loadTerminalFontSize(),
+      fontFamily: resolveTerminalFontFamily(loadTerminalFontFamily()),
       // lineHeight > 1 leaves a fractional-cell gap (looks like a bottom black bar).
       lineHeight: 1,
       letterSpacing: 0,

@@ -160,4 +160,6 @@ export const zhTWProviders = {
   "prov.balance.err.unsupported": "目前僅支援 DeepSeek 餘額查詢。",
   "prov.balance.err.hostOnly": "查詢餘額需要桌面端應用程式。",
   "prov.balance.err.other": "無法載入餘額（{detail}）。",
+  "prov.switchedToIndependent":
+    "已自動切換到獨立工作階段資料模式，以便在無官方登入時使用該第三方通道（寫入 agent-home 設定）。可在 設定 → 一般 → 工作階段資料 查看。",
 };

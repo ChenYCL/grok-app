@@ -11700,7 +11700,15 @@ export function AppWorkbench() {
             providerActiveSource !== "custom" ||
             providerActiveId !== pick.providerId
           ) {
-            await api.providersActivate("custom", pick.providerId);
+            const activated = await api.providersActivate(
+              "custom",
+              pick.providerId,
+            );
+            // #557: custom routes require independent agent-home GROK_HOME.
+            if (activated.switchedToIndependent) {
+              setSessionDataMode("independent");
+              showToast(tr("prov.switchedToIndependent"), 5200);
+            }
           }
           await refreshProviderRoute();
           // Map effort into the picked channel's catalog (Grok ↔ DeepSeek tiers).
@@ -17168,6 +17176,17 @@ export function AppWorkbench() {
           setSession({ ...IDLE_SNAPSHOT });
           }
           await refreshProviderRoute();
+          // #557: custom activate may flip session_data_mode → independent.
+          try {
+            const s = await api.settingsGet();
+            if (s?.sessionDataMode) {
+              setSessionDataMode(
+                s.sessionDataMode === "shared" ? "shared" : "independent",
+              );
+            }
+          } catch {
+            /* soft-fail mode refresh */
+          }
           await refreshAccount({ refreshBilling: false }).catch(() => {
           /* soft-fail billing refresh */
           });

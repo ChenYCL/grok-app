@@ -150,10 +150,7 @@ fn decode_image_bytes(bytes: &[u8]) -> Result<DynamicImage, String> {
     image::load_from_memory(bytes).map_err(|e| format!("decode image: {e}"))
 }
 
-fn build_thumb_from_bytes(
-    bytes: &[u8],
-    out: &Path,
-) -> Result<(u32, u32, bool), String> {
+fn build_thumb_from_bytes(bytes: &[u8], out: &Path) -> Result<(u32, u32, bool), String> {
     let img = decode_image_bytes(bytes)?;
     let width = img.width();
     let height = img.height();
@@ -321,18 +318,12 @@ mod tests {
 
     #[test]
     fn builds_thumb_from_png_bytes() {
-        let img = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
-            20,
-            10,
-            image::Rgb([255, 0, 0]),
-        ));
+        let img =
+            DynamicImage::ImageRgb8(image::RgbImage::from_pixel(20, 10, image::Rgb([255, 0, 0])));
         let mut png = Vec::new();
         img.write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
             .unwrap();
-        let dir = std::env::temp_dir().join(format!(
-            "grok-img-thumb-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("grok-img-thumb-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let out = dir.join("t.jpg");

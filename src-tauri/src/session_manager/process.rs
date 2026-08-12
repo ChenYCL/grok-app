@@ -285,11 +285,16 @@ impl SessionManager {
                     let agent_sid = s.meta.agent_session_id.clone();
                     // Shared process (other sessions still reference it): just
                     // drop our reference; the CLI stays for co-tenants.
-                    let shared = self.parked.lock().values().any(|p| {
-                        p.process_id == pid && p.app_session_id != sid
-                    }) || self.background.lock().values().any(|b| {
-                        b.process_id == pid && b.app_session_id != sid
-                    });
+                    let shared = self
+                        .parked
+                        .lock()
+                        .values()
+                        .any(|p| p.process_id == pid && p.app_session_id != sid)
+                        || self
+                            .background
+                            .lock()
+                            .values()
+                            .any(|b| b.process_id == pid && b.app_session_id != sid);
                     let _ = guard.take();
                     drop(guard);
                     if !shared {

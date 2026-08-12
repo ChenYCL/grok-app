@@ -7,8 +7,8 @@
 
 use tauri::{
     menu::{
-        AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
-        HELP_SUBMENU_ID, WINDOW_SUBMENU_ID,
+        AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID,
+        WINDOW_SUBMENU_ID,
     },
     AppHandle, Emitter, Manager, WebviewWindow, Wry,
 };
@@ -112,10 +112,7 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
         app,
         "File",
         true,
-        &[
-            &close_primary,
-            &PredefinedMenuItem::quit(app, None)?,
-        ],
+        &[&close_primary, &PredefinedMenuItem::quit(app, None)?],
     )?;
     #[cfg(target_os = "macos")]
     let file_menu = Submenu::with_items(app, "File", true, &[&close_primary])?;
@@ -146,13 +143,17 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     #[cfg(target_os = "macos")]
     let menu = Menu::with_items(
         app,
-        &[&app_submenu, &file_menu, &edit_menu, &view_menu, &window_menu, &help_menu],
+        &[
+            &app_submenu,
+            &file_menu,
+            &edit_menu,
+            &view_menu,
+            &window_menu,
+            &help_menu,
+        ],
     )?;
     #[cfg(all(not(target_os = "macos"), not(target_os = "linux")))]
-    let menu = Menu::with_items(
-        app,
-        &[&file_menu, &edit_menu, &window_menu, &help_menu],
-    )?;
+    let menu = Menu::with_items(app, &[&file_menu, &edit_menu, &window_menu, &help_menu])?;
     #[cfg(target_os = "linux")]
     let menu = Menu::with_items(app, &[&edit_menu, &window_menu, &help_menu])?;
 

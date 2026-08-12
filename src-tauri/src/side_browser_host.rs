@@ -223,10 +223,7 @@ fn emit_download(app: &AppHandle, payload: SideBrowserDownloadPayload) {
 }
 
 /// Parent save dialog to the hosting window so it paints above child webviews.
-fn save_dialog_for_webview(
-    webview: &tauri::Webview,
-    suggested: &str,
-) -> Option<PathBuf> {
+fn save_dialog_for_webview(webview: &tauri::Webview, suggested: &str) -> Option<PathBuf> {
     let mut dlg = rfd::FileDialog::new()
         .set_title("Save file / 保存文件")
         .set_file_name(suggested);
@@ -454,10 +451,7 @@ pub fn create(
                                 .map(suggested_from_staging_name)
                         })
                         .unwrap_or_else(|| "download".into());
-                    let label = pending
-                        .as_ref()
-                        .map(|p| p.label.clone())
-                        .unwrap_or(label);
+                    let label = pending.as_ref().map(|p| p.label.clone()).unwrap_or(label);
 
                     if !success {
                         if let Some(ref s) = staging {
@@ -530,56 +524,54 @@ pub fn create(
                     let chosen = save_dialog_for_webview(&webview, &suggested);
                     let app = webview.app_handle().clone();
                     match chosen {
-                        Some(dest) => {
-                            match finalize_download_to(&staging_path, &dest) {
-                                Ok(()) => {
-                                    crate::path_scope::grant_path(&dest);
-                                    let file_name = dest
-                                        .file_name()
-                                        .and_then(|n| n.to_str())
-                                        .map(|s| s.to_string())
-                                        .or(Some(suggested));
-                                    let path_s = dest.display().to_string();
-                                    tracing::info!(
-                                        target: "side_browser",
-                                        %label,
-                                        url = %url_s,
-                                        path = %path_s,
-                                        "download saved"
-                                    );
-                                    emit_download(
-                                        &app,
-                                        SideBrowserDownloadPayload {
-                                            phase: "finished".into(),
-                                            label,
-                                            url: url_s,
-                                            path: Some(path_s),
-                                            success: Some(true),
-                                            file_name,
-                                        },
-                                    );
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        target: "side_browser",
-                                        error = %e,
-                                        "download finalize failed"
-                                    );
-                                    let _ = std::fs::remove_file(&staging_path);
-                                    emit_download(
-                                        &app,
-                                        SideBrowserDownloadPayload {
-                                            phase: "finished".into(),
-                                            label,
-                                            url: url_s,
-                                            path: None,
-                                            success: Some(false),
-                                            file_name: Some(suggested),
-                                        },
-                                    );
-                                }
+                        Some(dest) => match finalize_download_to(&staging_path, &dest) {
+                            Ok(()) => {
+                                crate::path_scope::grant_path(&dest);
+                                let file_name = dest
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .map(|s| s.to_string())
+                                    .or(Some(suggested));
+                                let path_s = dest.display().to_string();
+                                tracing::info!(
+                                    target: "side_browser",
+                                    %label,
+                                    url = %url_s,
+                                    path = %path_s,
+                                    "download saved"
+                                );
+                                emit_download(
+                                    &app,
+                                    SideBrowserDownloadPayload {
+                                        phase: "finished".into(),
+                                        label,
+                                        url: url_s,
+                                        path: Some(path_s),
+                                        success: Some(true),
+                                        file_name,
+                                    },
+                                );
                             }
-                        }
+                            Err(e) => {
+                                tracing::warn!(
+                                    target: "side_browser",
+                                    error = %e,
+                                    "download finalize failed"
+                                );
+                                let _ = std::fs::remove_file(&staging_path);
+                                emit_download(
+                                    &app,
+                                    SideBrowserDownloadPayload {
+                                        phase: "finished".into(),
+                                        label,
+                                        url: url_s,
+                                        path: None,
+                                        success: Some(false),
+                                        file_name: Some(suggested),
+                                    },
+                                );
+                            }
+                        },
                         None => {
                             // User cancelled post-download save — drop staging.
                             let _ = std::fs::remove_file(&staging_path);

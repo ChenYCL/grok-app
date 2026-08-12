@@ -53,8 +53,7 @@ const MAX_HTTP_DOWNLOAD_BYTES: u64 = 1_500 * 1024 * 1024;
 
 static SAVE_SEQ: AtomicU64 = AtomicU64::new(1);
 /// Dedupe concurrent title + Image signals for the same blob id / url.
-static INFLIGHT: LazyLock<Mutex<HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+static INFLIGHT: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
 pub fn is_download_signal_title(title: &str) -> bool {
     title.starts_with(TITLE_BLOB_PREFIX) || title.starts_with(TITLE_URL_PREFIX)
@@ -69,12 +68,7 @@ pub fn handle_title_signal(app: &AppHandle, webview_label: &str, title: &str) {
             Some((n, u)) => (n, u),
             None => return,
         };
-        spawn_http_download(
-            app,
-            webview_label,
-            url.to_string(),
-            sanitize_filename(name),
-        );
+        spawn_http_download(app, webview_label, url.to_string(), sanitize_filename(name));
         return;
     }
 
@@ -187,11 +181,7 @@ fn spawn_http_download(app: &AppHandle, webview_label: &str, url: String, file_n
     }
 
     // Dedupe by render/download path (ignore query noise).
-    let dedupe_key = url
-        .split('?')
-        .next()
-        .unwrap_or(&url)
-        .to_string();
+    let dedupe_key = url.split('?').next().unwrap_or(&url).to_string();
     let key = format!("url:{webview_label}:{dedupe_key}");
     if !try_begin(key.clone()) {
         tracing::info!(
@@ -511,7 +501,10 @@ fn http_download_to_downloads(
                 "http download hop"
             );
 
-            let response = req.send().await.map_err(|e| format!("request hop{hop}: {e}"))?;
+            let response = req
+                .send()
+                .await
+                .map_err(|e| format!("request hop{hop}: {e}"))?;
             let status = response.status();
             tracing::info!(
                 target: "side_browser",
@@ -666,10 +659,7 @@ fn parse_content_disposition_filename(cd: &str) -> Option<String> {
         if lower.starts_with("filename*=") {
             let rest = p.split_once('=')?.1.trim().trim_matches('"');
             // UTF-8''percent-encoded  OR charset'lang'value
-            let encoded = rest
-                .split_once("''")
-                .map(|(_, e)| e)
-                .unwrap_or(rest);
+            let encoded = rest.split_once("''").map(|(_, e)| e).unwrap_or(rest);
             let mut name = urlencoding_decode(encoded).unwrap_or_else(|| encoded.to_string());
             // ChatCut double-encodes in signed URL query
             if name.contains('%') {
@@ -1291,9 +1281,7 @@ fn unique_download_path(dir: &Path, suggested: &str) -> PathBuf {
     let name = sanitize_filename(suggested);
     let (stem, ext) = match name.rsplit_once('.') {
         Some((s, e))
-            if !s.is_empty()
-                && e.len() <= 12
-                && e.chars().all(|c| c.is_ascii_alphanumeric()) =>
+            if !s.is_empty() && e.len() <= 12 && e.chars().all(|c| c.is_ascii_alphanumeric()) =>
         {
             (s.to_string(), format!(".{e}"))
         }
@@ -1446,10 +1434,7 @@ mod tests {
     #[test]
     fn content_disposition() {
         assert_eq!(
-            parse_content_disposition_filename(
-                "attachment; filename=\"clip.mp4\""
-            )
-            .as_deref(),
+            parse_content_disposition_filename("attachment; filename=\"clip.mp4\"").as_deref(),
             Some("clip.mp4")
         );
         let s3 = "https://bucket.s3.amazonaws.com/out.mp4?response-content-disposition=attachment%3B%20filename%2A%3DUTF-8%27%27hello%2520world.mp4&x-id=GetObject";

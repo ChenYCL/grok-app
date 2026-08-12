@@ -1045,7 +1045,13 @@ impl AcpClient {
     pub fn spawn(
         cli_path: PathBuf,
         cwd: PathBuf,
-    ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>), AgentError> {
+    ) -> Result<
+        (
+            Arc<Self>,
+            mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
+        ),
+        AgentError,
+    > {
         Self::spawn_with_options(cli_path, cwd, SpawnOptions::default())
     }
 
@@ -1053,7 +1059,13 @@ impl AcpClient {
         cli_path: PathBuf,
         cwd: PathBuf,
         opts: SpawnOptions,
-    ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>), AgentError> {
+    ) -> Result<
+        (
+            Arc<Self>,
+            mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
+        ),
+        AgentError,
+    > {
         let settings = crate::store::load_settings();
         Self::spawn_with_home(cli_path, cwd, &settings.session_data_mode, opts)
     }
@@ -1064,7 +1076,13 @@ impl AcpClient {
         cwd: PathBuf,
         session_data_mode: &str,
         opts: SpawnOptions,
-    ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>), AgentError> {
+    ) -> Result<
+        (
+            Arc<Self>,
+            mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
+        ),
+        AgentError,
+    > {
         // API mode: if an ACP server address is configured, connect over TCP
         // instead of spawning a local CLI. The server drives an agent running
         // elsewhere (WSL/SSH/container) but speaks the identical ACP protocol.
@@ -1300,9 +1318,8 @@ impl AcpClient {
                     format!("WSL cwd path map failed: {e}"),
                 )
             })?;
-            crate::wsl_backend::start_wsl_tokio_command(w, &linux_cwd).map_err(|e| {
-                AgentError::new(AgentErrorCode::CliNotFound, e)
-            })?
+            crate::wsl_backend::start_wsl_tokio_command(w, &linux_cwd)
+                .map_err(|e| AgentError::new(AgentErrorCode::CliNotFound, e))?
         } else {
             Command::new(&cli_path)
         };
@@ -1568,7 +1585,13 @@ impl AcpClient {
     pub fn connect_tcp(
         addr: &str,
         cwd: PathBuf,
-    ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>), AgentError> {
+    ) -> Result<
+        (
+            Arc<Self>,
+            mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
+        ),
+        AgentError,
+    > {
         let std_stream = std::net::TcpStream::connect(addr).map_err(|e| {
             AgentError::new(
                 AgentErrorCode::CliNotFound,
@@ -1644,7 +1667,9 @@ impl AcpClient {
             c.reader_alive.store(false, Ordering::SeqCst);
             let detail = c.format_exit_detail("Agent stream closed (EOF)");
             c.fail_all_pending(&detail);
-            let _ = c.event_tx.send((None, AcpEvent::ProcessExited { code: None }));
+            let _ = c
+                .event_tx
+                .send((None, AcpEvent::ProcessExited { code: None }));
         });
     }
 
@@ -1715,9 +1740,12 @@ impl AcpClient {
                     // Must still surface the error — do not drop as "unknown id".
                     let full = format_jsonrpc_error(err);
                     warn!("acp late error response id={id} (pending already resolved): {full}");
-                    let _ = self.event_tx.send((None, AcpEvent::Error {
-                        error: classify_rpc_error(&full),
-                    }));
+                    let _ = self.event_tx.send((
+                        None,
+                        AcpEvent::Error {
+                            error: classify_rpc_error(&full),
+                        },
+                    ));
                 } else {
                     debug!(
                         "acp late ok response id={id} (pending already resolved); keys={:?}",
@@ -1763,27 +1791,30 @@ impl AcpClient {
                             .and_then(|v| v.as_u64())
                             .filter(|n| *n > 0)
                     };
-                    let _ = self.event_tx.send((None, AcpEvent::UsageReported {
-                        total_tokens: u64_field("totalTokens", "total_tokens"),
-                        input_tokens: u64_field("inputTokens", "input_tokens"),
-                        output_tokens: u64_field("outputTokens", "output_tokens"),
-                        system_tokens: None,
-                        tools_tokens: None,
-                        history_tokens: None,
-                        cached_read_tokens: u64_field(
-                            "cachedReadTokens",
-                            "cache_read_input_tokens",
-                        ),
-                        cache_creation_tokens: u64_field(
-                            "cacheCreationTokens",
-                            "cache_creation_input_tokens",
-                        ),
-                        reasoning_tokens: u64_field("reasoningTokens", "reasoning_tokens"),
-                        cost_usd_ticks: u64_field("costUsdTicks", "cost_usd_ticks"),
-                        context_window: None,
-                        percentage: None,
-                        source: "turn_completed".to_string(),
-                    }));
+                    let _ = self.event_tx.send((
+                        None,
+                        AcpEvent::UsageReported {
+                            total_tokens: u64_field("totalTokens", "total_tokens"),
+                            input_tokens: u64_field("inputTokens", "input_tokens"),
+                            output_tokens: u64_field("outputTokens", "output_tokens"),
+                            system_tokens: None,
+                            tools_tokens: None,
+                            history_tokens: None,
+                            cached_read_tokens: u64_field(
+                                "cachedReadTokens",
+                                "cache_read_input_tokens",
+                            ),
+                            cache_creation_tokens: u64_field(
+                                "cacheCreationTokens",
+                                "cache_creation_input_tokens",
+                            ),
+                            reasoning_tokens: u64_field("reasoningTokens", "reasoning_tokens"),
+                            cost_usd_ticks: u64_field("costUsdTicks", "cost_usd_ticks"),
+                            context_window: None,
+                            percentage: None,
+                            source: "turn_completed".to_string(),
+                        },
+                    ));
                 }
                 return;
             }
@@ -1824,12 +1855,15 @@ impl AcpClient {
                             "acp exit_plan_mode id={rpc_id} plan_chars={}",
                             plan_content.as_ref().map(|s| s.len()).unwrap_or(0)
                         );
-                        let _ = self.event_tx.send((None, AcpEvent::Plan {
-                            entries: params.get("entries").cloned().unwrap_or(json!([])),
-                            body: plan_content,
-                            rpc_id: Some(rpc_id),
-                            tool_call_id,
-                        }));
+                        let _ = self.event_tx.send((
+                            None,
+                            AcpEvent::Plan {
+                                entries: params.get("entries").cloned().unwrap_or(json!([])),
+                                body: plan_content,
+                                rpc_id: Some(rpc_id),
+                                tool_call_id,
+                            },
+                        ));
                     } else {
                         // ask_user_question: surface UI; reply via respond_ask_user_question.
                         let parsed = parse_ask_user_question_params(&params);
@@ -1850,12 +1884,15 @@ impl AcpClient {
                                 warn!("failed to auto-cancel empty ask_user_question: {e}");
                             }
                         } else {
-                            let _ = self.event_tx.send((None, AcpEvent::AskUserQuestion {
-                                rpc_id,
-                                tool_call_id: parsed.tool_call_id,
-                                questions: parsed.questions,
-                                raw: params,
-                            }));
+                            let _ = self.event_tx.send((
+                                None,
+                                AcpEvent::AskUserQuestion {
+                                    rpc_id,
+                                    tool_call_id: parsed.tool_call_id,
+                                    questions: parsed.questions,
+                                    raw: params,
+                                },
+                            ));
                         }
                     }
                     return;
@@ -1888,10 +1925,13 @@ impl AcpClient {
                         .or_else(|| msg.pointer("/params/session_id"))
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    let _ = self.event_tx.send((sid.clone(), AcpEvent::PromptComplete {
-                        stop_reason: stop.clone(),
-                        authoritative: false,
-                    }));
+                    let _ = self.event_tx.send((
+                        sid.clone(),
+                        AcpEvent::PromptComplete {
+                            stop_reason: stop.clone(),
+                            authoritative: false,
+                        },
+                    ));
                     // Grace period: free waiters only if the RPC result never arrives.
                     self.schedule_prompt_complete_fallback(sid, stop);
                 } else {
@@ -1920,7 +1960,8 @@ impl AcpClient {
     /// Whether a `session/prompt` request is still awaiting its RPC result.
     fn has_pending_prompt_for(&self, session_id: Option<&str>) -> bool {
         self.pending.lock().values().any(|p| {
-            p.method == "session/prompt" && pending_prompt_matches(p.session_id.as_deref(), session_id)
+            p.method == "session/prompt"
+                && pending_prompt_matches(p.session_id.as_deref(), session_id)
         })
     }
 
@@ -1936,7 +1977,11 @@ impl AcpClient {
     /// `session_id` (from the notification envelope) scopes the fallback to
     /// one session's pending prompt when a process hosts several concurrent
     /// turns — another chat's early complete must not free this waiter.
-    fn schedule_prompt_complete_fallback(self: &Arc<Self>, session_id: Option<String>, stop_reason: String) {
+    fn schedule_prompt_complete_fallback(
+        self: &Arc<Self>,
+        session_id: Option<String>,
+        stop_reason: String,
+    ) {
         let this = Arc::clone(self);
         let sid = session_id.as_deref().map(|s| s.to_string());
         tokio::spawn(async move {
@@ -2065,7 +2110,9 @@ impl AcpClient {
                 let detail = self.format_exit_detail(&head);
                 error!("{detail}");
                 self.fail_all_pending(&detail);
-                let _ = self.event_tx.send((None, AcpEvent::ProcessExited { code: None }));
+                let _ = self
+                    .event_tx
+                    .send((None, AcpEvent::ProcessExited { code: None }));
                 self.kill().await;
                 Err(head)
             }
@@ -2125,30 +2172,26 @@ pub fn parse_usage_update(kind: &str, update: &Value) -> Option<AcpEvent> {
     // on the same object (should not happen on live wire).
     let occupancy = json_token_u64(
         root,
-        &[
-            "tokens_used",
-            "tokensUsed",
-            "usedTokens",
-            "used_tokens",
-        ],
+        &["tokens_used", "tokensUsed", "usedTokens", "used_tokens"],
     );
-    let total = occupancy.or_else(|| {
-        json_token_u64(
-            root,
-            &[
-                "totalTokens",
-                "total_tokens",
-                "contextTokens",
-                "context_tokens",
-                "tokens",
-                "total",
-            ],
-        )
-    })
-    .or_else(|| match (input, output) {
-        (Some(i), Some(o)) => Some(i.saturating_add(o)),
-        _ => None,
-    });
+    let total = occupancy
+        .or_else(|| {
+            json_token_u64(
+                root,
+                &[
+                    "totalTokens",
+                    "total_tokens",
+                    "contextTokens",
+                    "context_tokens",
+                    "tokens",
+                    "total",
+                ],
+            )
+        })
+        .or_else(|| match (input, output) {
+            (Some(i), Some(o)) => Some(i.saturating_add(o)),
+            _ => None,
+        });
     let system = json_token_u64(root, &["systemTokens", "system_tokens", "system"]);
     let tools = json_token_u64(
         root,
@@ -2705,11 +2748,14 @@ impl AcpClient {
                 if let Some((sid, model_id)) = self.try_fork_session(rid, &cwd, &mcp_servers).await
                 {
                     *self.agent_session_id.lock() = Some(sid.clone());
-                    let _ = self.event_tx.send((None, AcpEvent::State {
-                        backend: "grok_agent_stdio".into(),
-                        agent_session_id: Some(sid.clone()),
-                        model_id,
-                    }));
+                    let _ = self.event_tx.send((
+                        None,
+                        AcpEvent::State {
+                            backend: "grok_agent_stdio".into(),
+                            agent_session_id: Some(sid.clone()),
+                            model_id,
+                        },
+                    ));
                     // Full parent context was forked — treat like a successful resume
                     // for bootstrap purposes (no journal rewrite needed).
                     return Ok((sid, true));
@@ -2747,11 +2793,14 @@ impl AcpClient {
                             .pointer("/models/currentModelId")
                             .and_then(|v| v.as_str())
                             .map(|s| s.to_string());
-                        let _ = self.event_tx.send((None, AcpEvent::State {
-                            backend: "grok_agent_stdio".into(),
-                            agent_session_id: Some(sid.clone()),
-                            model_id,
-                        }));
+                        let _ = self.event_tx.send((
+                            None,
+                            AcpEvent::State {
+                                backend: "grok_agent_stdio".into(),
+                                agent_session_id: Some(sid.clone()),
+                                model_id,
+                            },
+                        ));
                         return Ok((sid, true));
                     }
                     Err(e) => {
@@ -2795,11 +2844,14 @@ impl AcpClient {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let _ = self.event_tx.send((None, AcpEvent::State {
-            backend: "grok_agent_stdio".into(),
-            agent_session_id: Some(sid.clone()),
-            model_id,
-        }));
+        let _ = self.event_tx.send((
+            None,
+            AcpEvent::State {
+                backend: "grok_agent_stdio".into(),
+                agent_session_id: Some(sid.clone()),
+                model_id,
+            },
+        ));
 
         Ok((sid, false))
     }
@@ -2942,17 +2994,23 @@ impl AcpClient {
             .or_else(|| result.get("modelId"))
             .and_then(|v| v.as_str())
         {
-            let _ = self.event_tx.send((None, AcpEvent::State {
-                backend: "grok_agent_stdio".into(),
-                agent_session_id: Some(sid),
-                model_id: Some(mid.to_string()),
-            }));
+            let _ = self.event_tx.send((
+                None,
+                AcpEvent::State {
+                    backend: "grok_agent_stdio".into(),
+                    agent_session_id: Some(sid),
+                    model_id: Some(mid.to_string()),
+                },
+            ));
         } else {
-            let _ = self.event_tx.send((None, AcpEvent::State {
-                backend: "grok_agent_stdio".into(),
-                agent_session_id: Some(sid),
-                model_id: Some(model_id.to_string()),
-            }));
+            let _ = self.event_tx.send((
+                None,
+                AcpEvent::State {
+                    backend: "grok_agent_stdio".into(),
+                    agent_session_id: Some(sid),
+                    model_id: Some(model_id.to_string()),
+                },
+            ));
         }
         Ok(())
     }
@@ -2969,7 +3027,11 @@ impl AcpClient {
     }
 
     /// Switch product session mode on an explicit session (`session/set_mode`).
-    pub async fn set_mode_for(&self, session_id: &str, product_mode: &str) -> Result<String, String> {
+    pub async fn set_mode_for(
+        &self,
+        session_id: &str,
+        product_mode: &str,
+    ) -> Result<String, String> {
         let sid = session_id.to_string();
         let candidates = crate::agent_prefs::product_mode_candidates(product_mode);
         let mut last_err = String::from("no mode candidates");
@@ -3055,19 +3117,25 @@ impl AcpClient {
             .unwrap_or("end_turn")
             .to_string();
 
-        let _ = self.event_tx.send((Some(sid.clone()), AcpEvent::Stream {
-            kind: StreamKind::Assistant,
-            text: String::new(),
-            message_id: None,
-            done: true,
-        }));
+        let _ = self.event_tx.send((
+            Some(sid.clone()),
+            AcpEvent::Stream {
+                kind: StreamKind::Assistant,
+                text: String::new(),
+                message_id: None,
+                done: true,
+            },
+        ));
         // Belt-and-suspenders with handle_line's unconditional PromptComplete
         // for session/prompt Ok (#522). Duplicate authoritative completes are
         // safe: second pass finds prompt_in_flight already false.
-        let _ = self.event_tx.send((Some(sid), AcpEvent::PromptComplete {
-            stop_reason: stop,
-            authoritative: true,
-        }));
+        let _ = self.event_tx.send((
+            Some(sid),
+            AcpEvent::PromptComplete {
+                stop_reason: stop,
+                authoritative: true,
+            },
+        ));
         Ok(())
     }
 
@@ -3161,11 +3229,8 @@ impl AcpClient {
 
     /// List rewind points on an explicit session (shared-process safe).
     pub async fn rewind_points_for(&self, session_id: &str) -> Result<Value, String> {
-        self.request(
-            "x.ai/rewind/points",
-            json!({ "sessionId": session_id }),
-        )
-        .await
+        self.request("x.ai/rewind/points", json!({ "sessionId": session_id }))
+            .await
     }
 
     /// Truncate agent conversation to a user-prompt index (and optionally restore files).
@@ -3473,11 +3538,7 @@ pub fn decode_permission_request(rpc_id: u64, params: &Value) -> AcpEvent {
         .or_else(|| {
             // Title is often the tool id for Grok Build tools.
             let t = title.trim();
-            if !t.is_empty()
-                && t != "Tool permission"
-                && !t.contains(' ')
-                && t.contains('_')
-            {
+            if !t.is_empty() && t != "Tool permission" && !t.contains(' ') && t.contains('_') {
                 Some(t.to_string())
             } else {
                 None
@@ -3856,8 +3917,7 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
             // `auto_compact_started` / bare `tokens_used` are occupancy snapshots
             // (tokens_used + window), not compact completions — do not emit
             // ContextCompact without before/after (that would wipe the chip).
-            let is_occupancy_only =
-                kind == "tokens_used" || kind == "auto_compact_started";
+            let is_occupancy_only = kind == "tokens_used" || kind == "auto_compact_started";
             if !is_occupancy_only {
                 if let Some((trigger, before, after, summary, note)) =
                     parse_context_compact_update(kind, update)
@@ -4576,9 +4636,7 @@ mod context_tokens_tests {
                 source,
                 input_tokens,
                 ..
-            } if source == "context_size" => {
-                Some((*total_tokens, *input_tokens))
-            }
+            } if source == "context_size" => Some((*total_tokens, *input_tokens)),
             _ => None,
         });
         assert_eq!(size, Some((Some(27148), None)));
@@ -4644,12 +4702,11 @@ mod context_tokens_tests {
             }
             _ => None,
         });
-        assert_eq!(
-            occ,
-            Some((Some(402603), Some(500000), Some(81), None))
-        );
+        assert_eq!(occ, Some((Some(402603), Some(500000), Some(81), None)));
         // Must not emit ContextCompact (no tokens_after yet).
-        assert!(evs.iter().all(|e| !matches!(e, AcpEvent::ContextCompact { .. })));
+        assert!(evs
+            .iter()
+            .all(|e| !matches!(e, AcpEvent::ContextCompact { .. })));
     }
 
     #[test]
@@ -4672,7 +4729,10 @@ mod context_tokens_tests {
             } => Some((*tokens_before, *tokens_after, trigger.clone())),
             _ => None,
         });
-        assert_eq!(compact, Some((Some(402603), Some(34179), "auto".to_string())));
+        assert_eq!(
+            compact,
+            Some((Some(402603), Some(34179), "auto".to_string()))
+        );
     }
 
     /// Regression: session 08dddbec — tool_call_update title carried a python
@@ -4699,7 +4759,8 @@ PY";
             }
         }));
         assert!(
-            evs.iter().all(|e| !matches!(e, AcpEvent::ContextCompact { .. })),
+            evs.iter()
+                .all(|e| !matches!(e, AcpEvent::ContextCompact { .. })),
             "tool title containing the word compact must not be ContextCompact: {evs:?}"
         );
         assert!(
@@ -4721,7 +4782,8 @@ PY";
             }
         }));
         assert!(
-            evs.iter().all(|e| !matches!(e, AcpEvent::ContextCompact { .. })),
+            evs.iter()
+                .all(|e| !matches!(e, AcpEvent::ContextCompact { .. })),
             "unknown update title must not invent compact: {evs:?}"
         );
     }
@@ -4955,10 +5017,7 @@ mod classify_rpc_error_tests {
     #[test]
     fn invalid_or_expired_credentials_is_auth() {
         let msg = "cli-proxy HTTP 401: Invalid or expired credentials (auth_kind=bearer, x_xai_token_auth=none, upstream=PermissionDenied, reason=no auth context)";
-        assert_eq!(
-            classify_rpc_error(msg).code,
-            AgentErrorCode::AuthFailed
-        );
+        assert_eq!(classify_rpc_error(msg).code, AgentErrorCode::AuthFailed);
         assert_eq!(
             classify_rpc_error("WKE=unauthenticated:bad-credentials").code,
             AgentErrorCode::AuthFailed
@@ -5394,7 +5453,9 @@ mod retry_tests {
             "HTTP 503 Service Unavailable"
         ));
         assert!(is_hard_transport_retry_reason(reason));
-        assert!(!is_hard_transport_retry_reason("HTTP 503 Service Unavailable"));
+        assert!(!is_hard_transport_retry_reason(
+            "HTTP 503 Service Unavailable"
+        ));
     }
 }
 
@@ -5813,7 +5874,6 @@ mod permission_mode_spawn_tests {
 
     #[test]
     fn maps_app_policies_to_cli_modes() {
-
         assert_eq!(cli_permission_mode("ask"), "default");
         assert_eq!(cli_permission_mode("accept_edits"), "acceptEdits");
         assert_eq!(cli_permission_mode("allow_for_session"), "default");

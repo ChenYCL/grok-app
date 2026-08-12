@@ -225,6 +225,41 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   align-items: stretch;
 }
 
+.settings-row__controls--grow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.settings-row__controls--grow .settings-input {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+}
+
+.settings-input--narrow {
+  width: 4.5rem;
+  flex: 0 0 auto;
+}
+
+.settings-inline-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm, 13px);
+  color: var(--text-muted, inherit);
+}
+
+.settings-font-preview {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-elevated, rgba(127, 127, 127, 0.12));
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
 /*
  * Follow-up copy under a control inside a stacked row (Select / input).
  * Prefer these over ad-hoc style={{ marginTop }} — bare margin on

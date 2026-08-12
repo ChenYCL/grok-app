@@ -50,6 +50,18 @@ import {
   type CodeFontScale,
 } from "@/lib/codeFontScalePref";
 import {
+  applyUiFontFamily,
+  loadUiFontFamily,
+  saveUiFontFamily,
+} from "@/lib/uiFontPref";
+import {
+  DEFAULT_TERMINAL_FONT_SIZE,
+  loadTerminalFontFamily,
+  loadTerminalFontSize,
+  saveTerminalFontFamily,
+  saveTerminalFontSize,
+} from "@/lib/terminalFontPref";
+import {
   applyChatDensity,
   loadChatDensity,
   saveChatDensity,
@@ -528,6 +540,41 @@ export function SettingsPage({
     setCodeFontScaleState(next);
     saveCodeFontScale(next);
     applyCodeFontScale(next);
+  }, []);
+  /** UI / terminal font families — localStorage only (#553). */
+  const [uiFontFamily, setUiFontFamilyState] = useState(() => loadUiFontFamily());
+  const [terminalFontFamily, setTerminalFontFamilyState] = useState(() =>
+    loadTerminalFontFamily(),
+  );
+  const [terminalFontSize, setTerminalFontSizeState] = useState(() =>
+    loadTerminalFontSize(),
+  );
+  useEffect(() => {
+    applyUiFontFamily(loadUiFontFamily());
+  }, []);
+  const onUiFontFamily = useCallback((next: string) => {
+    setUiFontFamilyState(next);
+    saveUiFontFamily(next);
+    applyUiFontFamily(next);
+  }, []);
+  const onTerminalFontFamily = useCallback((next: string) => {
+    setTerminalFontFamilyState(next);
+    saveTerminalFontFamily(next);
+  }, []);
+  const onTerminalFontSize = useCallback((next: number) => {
+    setTerminalFontSizeState(next);
+    saveTerminalFontSize(next);
+  }, []);
+  const onResetTerminalFont = useCallback(() => {
+    setTerminalFontFamilyState("");
+    saveTerminalFontFamily("");
+    setTerminalFontSizeState(DEFAULT_TERMINAL_FONT_SIZE);
+    saveTerminalFontSize(DEFAULT_TERMINAL_FONT_SIZE);
+  }, []);
+  const onResetUiFont = useCallback(() => {
+    setUiFontFamilyState("");
+    saveUiFontFamily("");
+    applyUiFontFamily("");
   }, []);
   /** Chat transcript density — localStorage only (no AppSettings). */
   const [chatDensity, setChatDensityState] = useState<ChatDensity>(() =>
@@ -1592,6 +1639,14 @@ export function SettingsPage({
     onChatFontScale,
     codeFontScale,
     onCodeFontScale,
+    uiFontFamily,
+    onUiFontFamily,
+    onResetUiFont,
+    terminalFontFamily,
+    onTerminalFontFamily,
+    terminalFontSize,
+    onTerminalFontSize,
+    onResetTerminalFont,
     chatDensity,
     onChatDensity,
     chatWidth,

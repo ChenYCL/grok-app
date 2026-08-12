@@ -551,10 +551,7 @@ pub fn pick_option_id(options: &serde_json::Value, prefer: &str) -> Option<Strin
             .map(|s| s.to_string())
     };
     for o in arr {
-        let kind = o
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let kind = o.get("kind").and_then(|v| v.as_str()).unwrap_or("");
         if !kind.is_empty() && norm_perm_token(kind) == prefer_norm {
             return extract_id(o);
         }
@@ -609,10 +606,7 @@ pub fn fallback_always_allow_for_tool(tool_name: &str) -> &'static str {
     {
         return "allow-always-command";
     }
-    if t.contains("web_fetch")
-        || t.contains("webfetch")
-        || t.contains("web-fetch")
-        || t == "fetch"
+    if t.contains("web_fetch") || t.contains("webfetch") || t.contains("web-fetch") || t == "fetch"
     {
         return "allow-always-domain";
     }
@@ -664,10 +658,7 @@ fn pick_session_scoped_option_id(options: &serde_json::Value) -> Option<String> 
             .map(|s| s.to_string())
     };
     for o in arr {
-        let kind = o
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let kind = o.get("kind").and_then(|v| v.as_str()).unwrap_or("");
         let kn = norm_perm_token(kind);
         // allowalways / allowalwaysbash / allowalwayscommand — not allowonce
         if kn.starts_with("allowalways") {
@@ -761,10 +752,7 @@ pub fn coerce_wire_option_id_for_tool(
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
 
-    let has_list = options
-        .as_array()
-        .map(|a| !a.is_empty())
-        .unwrap_or(false);
+    let has_list = options.as_array().map(|a| !a.is_empty()).unwrap_or(false);
 
     if let Some(ref id) = client {
         if !has_list {
@@ -1207,11 +1195,7 @@ mod tests {
         );
         // Valid client id passes through as the wire form from the list.
         assert_eq!(
-            coerce_wire_option_id(
-                "allow_session",
-                Some("allow-always-command"),
-                &bash
-            ),
+            coerce_wire_option_id("allow_session", Some("allow-always-command"), &bash),
             "allow-always-command"
         );
         assert_eq!(

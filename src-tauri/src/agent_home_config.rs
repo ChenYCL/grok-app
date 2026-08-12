@@ -27,9 +27,7 @@ static CONFIG_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Run `f` while holding the agent-home config write lock.
 pub fn with_config_write_lock<T>(f: impl FnOnce() -> T) -> T {
-    let _guard = CONFIG_WRITE_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _guard = CONFIG_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     f()
 }
 
@@ -338,7 +336,11 @@ pub fn get_table_string(text: &str, table: &str, key: &str) -> Option<String> {
 ///   merges them and rejects duplicate keys across fragments)
 /// - Array table instance `[[hooks]]`: `"[[hooks]]#N"` so each element is
 ///   independent (keys may repeat across elements)
-fn scope_id_for_header(is_array: bool, name: &str, array_ordinals: &mut HashMap<String, usize>) -> String {
+fn scope_id_for_header(
+    is_array: bool,
+    name: &str,
+    array_ordinals: &mut HashMap<String, usize>,
+) -> String {
     if is_array {
         let n = array_ordinals.entry(name.to_string()).or_insert(0);
         let id = format!("[[{name}]]#{n}");
@@ -537,9 +539,7 @@ pub fn ensure_agent_home_config_sane(session_data_mode: &str) -> Result<ConfigHe
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let backup = path.with_file_name(format!(
-            "config.toml.bak-heal-{nanos}"
-        ));
+        let backup = path.with_file_name(format!("config.toml.bak-heal-{nanos}"));
         fs::copy(&path, &backup).map_err(|e| format!("backup config.toml: {e}"))?;
         fs::write(&path, &healed).map_err(|e| format!("write healed config.toml: {e}"))?;
 
@@ -634,10 +634,7 @@ mod tests {
             Some((false, "compat.claude"))
         );
         assert_eq!(parse_table_header("[[hooks]]"), Some((true, "hooks")));
-        assert_eq!(
-            parse_table_header("[[hooks]] # x"),
-            Some((true, "hooks"))
-        );
+        assert_eq!(parse_table_header("[[hooks]] # x"), Some((true, "hooks")));
         assert!(parse_table_header("[ui] junk").is_none());
         assert!(parse_table_header("not a header").is_none());
     }
@@ -693,7 +690,10 @@ mod tests {
             1,
             "{next}"
         );
-        assert!(next.contains("permission_mode = \"always-approve\""), "{next}");
+        assert!(
+            next.contains("permission_mode = \"always-approve\""),
+            "{next}"
+        );
         assert!(next.contains("yolo = false"), "{next}");
         assert_eq!(count_duplicate_assignments(&next).0, 0, "{next}");
     }

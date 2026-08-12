@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::paths::resolve_agent_grok_home;
 use crate::session_manager::{
-    TOOL_OUTPUT_MAX_PUB, TOOL_OUTPUT_SENTINEL, extract_tool_input, tool_journal_richer,
+    extract_tool_input, tool_journal_richer, TOOL_OUTPUT_MAX_PUB, TOOL_OUTPUT_SENTINEL,
 };
 use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
 
@@ -1525,10 +1525,8 @@ pub fn reconcile_journal_from_chat_history(
     }
     // Tool identity + call arguments from the CLI's own update log
     // (terminal ACP updates are status-only; chat_history carries no input).
-    let tool_calls = load_tool_calls_from_updates(
-        &dir.join("updates.jsonl"),
-        &dir.join("events.jsonl"),
-    );
+    let tool_calls =
+        load_tool_calls_from_updates(&dir.join("updates.jsonl"), &dir.join("events.jsonl"));
     let rows = match parse_chat_history_rows(&history) {
         Ok(r) => r,
         Err(_) => return Ok(0),
@@ -1580,7 +1578,9 @@ pub fn reconcile_journal_from_chat_history(
         if role != "tool" {
             continue;
         }
-        let Some(call_id) = tool_call_id else { continue };
+        let Some(call_id) = tool_call_id else {
+            continue;
+        };
         if call_id.is_empty() {
             continue;
         }
@@ -1998,7 +1998,11 @@ mod tests {
             r#"{{"ts":"x","type":"tool_completed","tool_name":"run_terminal_command","tool_call_id":"call-2"}}"#
         )
         .unwrap();
-        writeln!(f, r#"{{"ts":"x","type":"phase_changed","phase":"execute"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"ts":"x","type":"phase_changed","phase":"execute"}}"#
+        )
+        .unwrap();
         let names = load_tool_names_from_events(&path);
         assert_eq!(names.get("call-1").map(String::as_str), Some("read_file"));
         assert_eq!(
@@ -2025,11 +2029,7 @@ mod tests {
             r#"{{"type":"tool_result","tool_call_id":"call-16","content":"1→skill body"}}"#
         )
         .unwrap();
-        writeln!(
-            h,
-            r#"{{"type":"assistant","content":"正在构建信息图。"}}"#
-        )
-        .unwrap();
+        writeln!(h, r#"{{"type":"assistant","content":"正在构建信息图。"}}"#).unwrap();
         writeln!(
             h,
             r#"{{"type":"tool_result","tool_call_id":"call-17","content":"exit: 0\nok"}}"#
@@ -2097,12 +2097,16 @@ mod tests {
         ];
         let rows = parse_chat_history_rows(&dir.join("chat_history.jsonl")).unwrap();
         assert_eq!(rows.len(), 6);
-        let tool_calls = load_tool_calls_from_updates(
-            &dir.join("updates.jsonl"),
-            &dir.join("events.jsonl"),
+        let tool_calls =
+            load_tool_calls_from_updates(&dir.join("updates.jsonl"), &dir.join("events.jsonl"));
+        assert_eq!(
+            tool_calls.get("call-16").map(|r| r.name.as_str()),
+            Some("read_file")
         );
-        assert_eq!(tool_calls.get("call-16").map(|r| r.name.as_str()), Some("read_file"));
-        assert_eq!(tool_calls.get("call-16").map(|r| r.label.as_str()), Some("Read"));
+        assert_eq!(
+            tool_calls.get("call-16").map(|r| r.label.as_str()),
+            Some("Read")
+        );
         assert_eq!(
             tool_calls.get("call-16").and_then(|r| r.input.as_deref()),
             Some("/Users/me/notes.md")
@@ -2201,11 +2205,15 @@ mod tests {
 
         // tool-call-16 upgraded from sparse to named read_file with input.
         let t16 = journal.iter().find(|m| m.id == "tool-call-16").unwrap();
-        assert!(t16.content.starts_with("tool_step|completed|read_file|Read"));
+        assert!(t16
+            .content
+            .starts_with("tool_step|completed|read_file|Read"));
         assert!(t16.content.contains("input:/Users/me/notes.md"));
         // call-17 keeps the rich label + command input.
         let t17 = journal.iter().find(|m| m.id == "tool-call-17").unwrap();
-        assert!(t17.content.starts_with("tool_step|completed|run_terminal_command|Run Command"));
+        assert!(t17
+            .content
+            .starts_with("tool_step|completed|run_terminal_command|Run Command"));
         assert!(t17.content.contains("input:ls -la"));
         // call-17 inserted in stream order between its fragments.
         let order: Vec<&str> = journal.iter().map(|m| m.id.as_str()).collect();

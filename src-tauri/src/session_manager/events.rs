@@ -6,7 +6,8 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use crate::acp_client::{
-    should_abort_provider_retry_ex, AcpEvent, PermissionOutcome, StreamKind, HOST_PROVIDER_MAX_RETRIES,
+    should_abort_provider_retry_ex, AcpEvent, PermissionOutcome, StreamKind,
+    HOST_PROVIDER_MAX_RETRIES,
 };
 use crate::error::{AgentError, AgentErrorCode};
 use crate::journal_throttle::is_paragraph_break;
@@ -100,8 +101,7 @@ impl SessionManager {
                 &parked_hints,
             ) {
                 TurnEventRoute::Background(bg_sid) => {
-                    self.handle_acp_event_on_background(app, &bg_sid, ev)
-                        .await;
+                    self.handle_acp_event_on_background(app, &bg_sid, ev).await;
                     return;
                 }
                 TurnEventRoute::Drop => {
@@ -270,12 +270,8 @@ impl SessionManager {
                 };
                 if let Some(acp) = replay_acp {
                     // CLI wire optionIds are hyphenated (#523 / #542).
-                    let option_id = coerce_wire_option_id_for_tool(
-                        "allow_once",
-                        None,
-                        &options,
-                        &tool_name,
-                    );
+                    let option_id =
+                        coerce_wire_option_id_for_tool("allow_once", None, &options, &tool_name);
                     tracing::debug!(
                         "acp permission auto-resolved during load replay tool={tool_name}"
                     );
@@ -609,7 +605,8 @@ impl SessionManager {
                 } else {
                     kind_j.clone()
                 };
-                let live_title = tool_journal_label(&title_enriched, &kind_store, &detail, &path_out);
+                let live_title =
+                    tool_journal_label(&title_enriched, &kind_store, &detail, &path_out);
                 let live_title =
                     if !live_title.is_empty() && !live_title.eq_ignore_ascii_case("tool") {
                         live_title
@@ -678,7 +675,8 @@ impl SessionManager {
                     && !app_sid.is_empty()
                     && !tool_call_id.is_empty()
                 {
-                    let label = tool_journal_label(&title_enriched, &kind_store, &detail, &path_out);
+                    let label =
+                        tool_journal_label(&title_enriched, &kind_store, &detail, &path_out);
                     let label = if label.is_empty() || label.eq_ignore_ascii_case("tool") {
                         live_title.clone()
                     } else {
@@ -1012,12 +1010,7 @@ impl SessionManager {
                         } else if s.provider_retry_aborted {
                             false
                         } else {
-                            should_abort_provider_retry_ex(
-                                attempt,
-                                max_retries,
-                                &status,
-                                &reason,
-                            )
+                            should_abort_provider_retry_ex(attempt, max_retries, &status, &reason)
                         }
                     } else {
                         false

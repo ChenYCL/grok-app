@@ -142,9 +142,9 @@ fn sample_live_for_empty_run(body: &str, thought: &str, tools: u32, mode: &str) 
         provider_retry_aborted: false,
         needs_history_bootstrap: false,
         pending_plan_rpc_id: None,
-            pending_permission_rpc_id: None,
-            pending_permission_options: None,
-            pending_permission_tool_name: None,
+        pending_permission_rpc_id: None,
+        pending_permission_options: None,
+        pending_permission_tool_name: None,
         pending_ask_user_rpc_id: None,
         last_activity: now,
         last_stream_progress: now,
@@ -201,10 +201,7 @@ fn session_load_replay_gate_matches_prompt_in_flight() {
 fn extract_tool_input_accepts_bare_string_raw_input() {
     // Shell wrappers may send rawInput as a plain string (not an object).
     let bare = serde_json::json!({ "rawInput": "ls -la /tmp" });
-    assert_eq!(
-        extract_tool_input(&bare).as_deref(),
-        Some("ls -la /tmp")
-    );
+    assert_eq!(extract_tool_input(&bare).as_deref(), Some("ls -la /tmp"));
     let obj = serde_json::json!({ "rawInput": { "command": "pwd" } });
     assert_eq!(extract_tool_input(&obj).as_deref(), Some("pwd"));
     let empty = serde_json::json!({ "rawInput": "   " });
@@ -264,8 +261,7 @@ fn extract_tool_output_pulls_text_and_diff_headers() {
 
 #[test]
 fn extract_tool_output_handles_bare_string_entries() {
-    let raw: serde_json::Value =
-        serde_json::json!({ "content": ["hello\nworld", "", "tail"] });
+    let raw: serde_json::Value = serde_json::json!({ "content": ["hello\nworld", "", "tail"] });
     let out = extract_tool_output(&raw).expect("output");
     // Empty chunks are dropped; the rest join with single newlines.
     assert_eq!(out, "hello\nworld\ntail");
@@ -354,8 +350,7 @@ fn provider_retry_abort_skips_idle_and_connecting_reconnect() {
 fn plan_event_gate_accepts_resume_repark_without_prompt() {
     // Grok Build re-issues exit_plan_mode after session/load with no prompt.
     assert!(!SessionManager::should_drop_plan_event(
-        /* prompt_in_flight */ false,
-        /* pending_plan */ false,
+        /* prompt_in_flight */ false, /* pending_plan */ false,
         /* has_rpc_id */ true,
     ));
     // Progress while a gate is already open (prompt may have completed early).
@@ -557,9 +552,9 @@ fn interjection_starts_host_owned_stream_segment() {
         provider_retry_aborted: false,
         needs_history_bootstrap: false,
         pending_plan_rpc_id: None,
-            pending_permission_rpc_id: None,
-            pending_permission_options: None,
-            pending_permission_tool_name: None,
+        pending_permission_rpc_id: None,
+        pending_permission_options: None,
+        pending_permission_tool_name: None,
         pending_ask_user_rpc_id: None,
         last_activity: now,
         last_stream_progress: now,
@@ -676,9 +671,9 @@ fn pick_interjection_target_rejects_non_streaming_session() {
         provider_retry_aborted: false,
         needs_history_bootstrap: false,
         pending_plan_rpc_id: None,
-            pending_permission_rpc_id: None,
-            pending_permission_options: None,
-            pending_permission_tool_name: None,
+        pending_permission_rpc_id: None,
+        pending_permission_options: None,
+        pending_permission_tool_name: None,
         pending_ask_user_rpc_id: None,
         last_activity: now,
         last_stream_progress: now,

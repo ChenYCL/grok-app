@@ -102,6 +102,10 @@ pub struct ProvidersListResult {
     pub active_provider_id: Option<String>,
     pub config_path: String,
     pub agent_home: String,
+    /// True when this call forced `session_data_mode` shared → independent so
+    /// App-written agent-home `config.toml` is visible to the spawned agent (#557).
+    #[serde(default)]
+    pub switched_to_independent: bool,
 }
 
 /// Built-in model id used when routing back to official Grok Build / SuperGrok.
@@ -304,17 +308,12 @@ fn normalize_backend(v: Option<&str>) -> String {
 pub fn parse_app_bool_field(raw: Option<&str>) -> bool {
     match raw.map(str::trim).unwrap_or("") {
         "" => false,
-        s => matches!(
-            s.to_ascii_lowercase().as_str(),
-            "true" | "1" | "yes" | "on"
-        ),
+        s => matches!(s.to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on"),
     }
 }
 
 /// Whether this provider section opts out of automatic `/v1` base_url repair.
-pub fn base_url_full_path_from_fields(
-    fields: &std::collections::HashMap<String, String>,
-) -> bool {
+pub fn base_url_full_path_from_fields(fields: &std::collections::HashMap<String, String>) -> bool {
     parse_app_bool_field(fields.get(APP_BASE_URL_FULL_PATH_KEY).map(|s| s.as_str()))
 }
 
@@ -1011,7 +1010,37 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
         active_provider_id,
         config_path: path.display().to_string(),
         agent_home: home.display().to_string(),
+        switched_to_independent: false,
     }
+}
+
+/// Custom providers are written only under App agent-home. Shared mode uses
+/// `GROK_HOME=~/.grok`, so those sections are invisible to the agent. When the
+/// active route is (or becomes) custom, force independent mode (#557).
+///
+/// Returns `true` when the mode was changed on this call.
+pub fn ensure_independent_for_custom_route() -> bool {
+    match active_route() {
+        ActiveRoute::Custom { .. } => {}
+        ActiveRoute::Official => return false,
+    }
+    let mut settings = crate::store::load_settings();
+    if settings.session_data_mode == "independent" {
+        return false;
+    }
+    settings.session_data_mode = "independent".into();
+    if let Err(e) = crate::store::save_settings(&settings) {
+        tracing::warn!(
+            target: "providers",
+            "failed to switch session_data_mode to independent for custom route: {e}"
+        );
+        return false;
+    }
+    tracing::info!(
+        target: "providers",
+        "switched session_data_mode shared→independent so custom provider config.toml is live (#557)"
+    );
+    true
 }
 
 pub fn list_custom_providers() -> Result<ProvidersListResult, String> {
@@ -1075,6 +1104,8 @@ pub fn agent_spawn_model_id(composer_model: &str) -> String {
 pub fn prepare_route_auth_for_agent() {
     match active_route() {
         ActiveRoute::Custom { ref id } => {
+            // Heal shared→independent before spawn so GROK_HOME matches config (#557).
+            let _ = ensure_independent_for_custom_route();
             crate::account::clear_agent_home_auth();
             tracing::info!(
                 target: "providers",
@@ -1132,7 +1163,7 @@ pub fn activate_provider(
             if !list.providers.iter().any(|p| p.id == id) {
                 return Err(format!("unknown provider `{id}`"));
             }
-            let result = set_default_model_id(id)?;
+            let mut result = set_default_model_id(id)?;
             // Critical: remove OIDC so Grok Build uses [model.<id>].api_key.
             crate::account::clear_agent_home_auth();
             if let Some(p) = result.providers.iter().find(|p| p.id == id) {
@@ -1142,6 +1173,10 @@ pub fn activate_provider(
                 secrets.default_model = Some(id.to_string());
                 let _ = crate::store::save_secrets(&secrets);
             }
+            // #557: agent-home config is only live when GROK_HOME is agent-home.
+            // set_default_model_id may already have switched; OR so we don't clobber.
+            result.switched_to_independent =
+                result.switched_to_independent || ensure_independent_for_custom_route();
             Ok(result)
         }
         _ => Err(format!("unknown source `{source}` (use official|custom)")),
@@ -1202,12 +1237,8 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     }
     // OpenCode Zen Go etc.: CLI talks to loopback sanitize proxy; real host in
     // app_upstream_base_url (ignored by Grok Build).
-    let (base_url, app_upstream) = crate::relay_stream_proxy::rewrite_base_for_cli(
-        &id,
-        &user_base,
-        &api_backend,
-        full_path,
-    )?;
+    let (base_url, app_upstream) =
+        crate::relay_stream_proxy::rewrite_base_for_cli(&id, &user_base, &api_backend, full_path)?;
     let create_only = input.create_only.unwrap_or(false);
     if create_only && existing.is_some() {
         return Err(format!("provider id `{id}` already exists"));
@@ -1320,10 +1351,12 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     }
 
     write_text(&path, &text)?;
-    let result = list_custom_providers()?;
+    let mut result = list_custom_providers()?;
     if input.set_as_default.unwrap_or(false) {
         // Newly defaulted custom channel must not inherit OIDC.
         crate::account::clear_agent_home_auth();
+        // #557: keep GROK_HOME on agent-home when this becomes the live route.
+        result.switched_to_independent = ensure_independent_for_custom_route();
     }
     Ok(result)
 }
@@ -1365,7 +1398,12 @@ pub fn set_default_model_id(model_id: &str) -> Result<ProvidersListResult, Strin
     let mut text = read_text(&path);
     text = set_models_default(&text, id);
     write_text(&path, &text)?;
-    list_custom_providers()
+    let mut result = list_custom_providers()?;
+    // #557: custom default must run under agent-home GROK_HOME.
+    if result.active_source == "custom" {
+        result.switched_to_independent = ensure_independent_for_custom_route();
+    }
+    Ok(result)
 }
 
 fn resolve_stored_key(provider_id: Option<&str>) -> String {
@@ -1690,7 +1728,9 @@ pub fn parse_deepseek_balance_json(body: &str) -> Result<(bool, Vec<ProviderBala
     Ok((is_available, lines))
 }
 
-fn resolve_provider_fields(provider_id: Option<&str>) -> Option<std::collections::HashMap<String, String>> {
+fn resolve_provider_fields(
+    provider_id: Option<&str>,
+) -> Option<std::collections::HashMap<String, String>> {
     let pid = provider_id.map(str::trim).filter(|s| !s.is_empty())?;
     let sid = sanitize_id(pid).ok()?;
     let text = read_text(&agent_config_toml());
@@ -1749,7 +1789,8 @@ pub async fn query_provider_balance(
         return Ok(ProviderBalanceResult {
             kind: "balance".into(),
             provider: "deepseek".into(),
-            endpoint: deepseek_balance_endpoint(&base).unwrap_or_else(|_| DEEPSEEK_BALANCE_FIXED.into()),
+            endpoint: deepseek_balance_endpoint(&base)
+                .unwrap_or_else(|_| DEEPSEEK_BALANCE_FIXED.into()),
             ok: false,
             latency_ms: 0,
             status: None,
@@ -1907,10 +1948,7 @@ mod tests {
             None,
             "https://api.deepseek.com/v1"
         ));
-        assert!(is_deepseek_balance_target(
-            Some("deepseek"),
-            ""
-        ));
+        assert!(is_deepseek_balance_target(Some("deepseek"), ""));
         assert!(!is_deepseek_balance_target(
             Some("amux"),
             "https://api.amux.ai/v1"
@@ -2038,6 +2076,7 @@ mod tests {
             active_provider_id: Some("relay".into()),
             config_path: String::new(),
             agent_home: String::new(),
+            switched_to_independent: false,
         };
         assert!(provider_mutation_needs_agent_reload(true, "other", &active));
         assert!(provider_mutation_needs_agent_reload(
@@ -2388,11 +2427,7 @@ context_window = "1000000"
         );
         // Rewrite like upsert with preserved context_window value from parse.
         let sections = parse_model_sections(&text);
-        let cw = sections[0]
-            .fields
-            .get("context_window")
-            .cloned()
-            .unwrap();
+        let cw = sections[0].fields.get("context_window").cloned().unwrap();
         text = remove_section(&text, "ch");
         text = append_section(
             &text,

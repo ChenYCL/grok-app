@@ -79,6 +79,11 @@ impl SessionManager {
             return Err("no active session".into());
         };
 
+        // A delayed reconcile from the preceding turn performs a journal
+        // read-modify-write. Keep this user append mutually exclusive with
+        // each reconcile attempt so neither can overwrite the other's rows.
+        let journal_lock = self.post_turn_journal_lock(&app_sid);
+        let journal_guard = journal_lock.lock().await;
         let open = self.with_session_mut(&app_sid, |s| {
             if let Some(target) = session_id.as_deref() {
                 if s.app_session_id != target {
@@ -167,6 +172,7 @@ impl SessionManager {
                 turn_id,
             ))
         });
+        drop(journal_guard);
         let (backend, app_sid, acp, agent_sid, agent_prompt, message_id, turn_id) = match open {
             Some(Ok(v)) => v,
             Some(Err(e)) => return Err(e),
@@ -418,12 +424,10 @@ impl SessionManager {
             // target this chat's own agent session.
             let outcome = match agent_sid {
                 Some(sid) => acp.prompt_for(&sid, &agent_prompt).await,
-                None => {
-                    Err(AgentError::new(
-                        AgentErrorCode::AgentCrashed,
-                        "chat has no agent session id (reconnect)",
-                    ))
-                }
+                None => Err(AgentError::new(
+                    AgentErrorCode::AgentCrashed,
+                    "chat has no agent session id (reconnect)",
+                )),
             };
             match outcome {
                 Err(e) => {
@@ -524,16 +528,16 @@ impl SessionManager {
                             }
                         }
                     });
-                    // Always best-effort pull missing assistant/tool rows from
-                    // agent chat_history after the prompt RPC completes. Stream
-                    // path can leave App journal on a partial mid-sentence while
-                    // the CLI already has the full turn (user: stuck thinking,
-                    // no final result — agent finished, UI never got body).
-                    let changed =
-                        crate::cli_sessions::try_reconcile_linked_session(&turn_sid);
                     if need_emit {
                         mgr.emit_for_session(&app2, &turn_sid);
                     }
+                    // Always best-effort pull missing assistant/tool rows from
+                    // agent chat_history after the prompt RPC completes. The
+                    // CLI's final disk flush can trail the RPC response, so use
+                    // a short bounded retry window off the async worker thread.
+                    let changed =
+                        post_turn_reconcile::reconcile_linked_session(&mgr, &turn_sid, &turn_id)
+                            .await;
                     if changed > 0 {
                         let _ = app2.emit(
                             "session://journal_reconciled",
@@ -608,7 +612,15 @@ impl SessionManager {
                     let picked = Self::pick_interjection_target(s)?;
                     let pending_ask = s.pending_ask_user_rpc_id.take();
                     let pending_plan = s.pending_plan_rpc_id.take();
-                    (picked.0, picked.1, picked.2, picked.3, picked.4, pending_ask, pending_plan)
+                    (
+                        picked.0,
+                        picked.1,
+                        picked.2,
+                        picked.3,
+                        picked.4,
+                        pending_ask,
+                        pending_plan,
+                    )
                 } else {
                     drop(guard);
                     let mut background = self.background.lock();
@@ -618,7 +630,15 @@ impl SessionManager {
                     let picked = Self::pick_interjection_target(s)?;
                     let pending_ask = s.pending_ask_user_rpc_id.take();
                     let pending_plan = s.pending_plan_rpc_id.take();
-                    (picked.0, picked.1, picked.2, picked.3, picked.4, pending_ask, pending_plan)
+                    (
+                        picked.0,
+                        picked.1,
+                        picked.2,
+                        picked.3,
+                        picked.4,
+                        pending_ask,
+                        pending_plan,
+                    )
                 }
             } else {
                 let mut guard = self.inner.lock();
@@ -626,7 +646,15 @@ impl SessionManager {
                 let picked = Self::pick_interjection_target(s)?;
                 let pending_ask = s.pending_ask_user_rpc_id.take();
                 let pending_plan = s.pending_plan_rpc_id.take();
-                (picked.0, picked.1, picked.2, picked.3, picked.4, pending_ask, pending_plan)
+                (
+                    picked.0,
+                    picked.1,
+                    picked.2,
+                    picked.3,
+                    picked.4,
+                    pending_ask,
+                    pending_plan,
+                )
             }
         };
 
@@ -650,10 +678,7 @@ impl SessionManager {
                 );
             }
             if let Some(id) = pending_plan {
-                if let Err(e) = client
-                    .respond_exit_plan_mode(id, "cancelled", None)
-                    .await
-                {
+                if let Err(e) = client.respond_exit_plan_mode(id, "cancelled", None).await {
                     tracing::warn!("interject: auto-cancel plan id={id} failed: {e}");
                 }
             }
@@ -711,9 +736,7 @@ impl SessionManager {
 
         // Live/background slot gone after ACP ok: still journal so history is honest
         // and FE can drop the queue item (agent already received the steer).
-        tracing::warn!(
-            "interject: chat {app_sid} left live/background after ACP ok; journal-only"
-        );
+        tracing::warn!("interject: chat {app_sid} left live/background after ACP ok; journal-only");
         if let Err(e) = store::append_message(&app_sid, message.clone()) {
             tracing::error!("interjection journal-only append failed: {e}");
         }

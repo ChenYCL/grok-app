@@ -36,6 +36,7 @@ import {
   applyCodeFontScale,
   loadCodeFontScale,
 } from "./lib/codeFontScalePref";
+import { applyUiFontFamily, loadUiFontFamily } from "./lib/uiFontPref";
 import {
   applyChatDensity,
   loadChatDensity,
@@ -75,6 +76,8 @@ applySkinToDocument(loadSkin(localStorage));
 applyChatFontScale(loadChatFontScale(localStorage));
 // Chat code block font scale (Appearance) — html[data-code-font].
 applyCodeFontScale(loadCodeFontScale(localStorage));
+// UI sans font family (Appearance) — --font-sans override.
+applyUiFontFamily(loadUiFontFamily(localStorage));
 // Chat transcript density (Appearance) — html[data-chat-density].
 applyChatDensity(loadChatDensity(localStorage));
 // Chat transcript reading width (Appearance) — html[data-chat-width].

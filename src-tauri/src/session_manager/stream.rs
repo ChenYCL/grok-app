@@ -70,16 +70,18 @@ pub(crate) fn resolve_turn_event_route(
         }) {
             return TurnEventRoute::Live;
         }
-        if let Some(bg) = backgrounds.iter().find(|b| {
-            b.process_id == process_id && b.agent_session_id.as_deref() == Some(sid)
-        }) {
+        if let Some(bg) = backgrounds
+            .iter()
+            .find(|b| b.process_id == process_id && b.agent_session_id.as_deref() == Some(sid))
+        {
             return TurnEventRoute::Background(bg.app_session_id.clone());
         }
         // Matched a parked agent session: do **not** rescue-and-write.
         // Idle park + load/orphan must not mutate the App journal.
-        if parked.iter().any(|p| {
-            p.process_id == process_id && p.agent_session_id.as_deref() == Some(sid)
-        }) {
+        if parked
+            .iter()
+            .any(|p| p.process_id == process_id && p.agent_session_id.as_deref() == Some(sid))
+        {
             return TurnEventRoute::Drop;
         }
         return TurnEventRoute::Drop;
@@ -956,7 +958,16 @@ impl SessionManager {
     #[allow(clippy::type_complexity)]
     pub(super) fn pick_interjection_target(
         s: &LiveSession,
-    ) -> Result<(String, String, String, Option<String>, Option<Arc<AcpClient>>), String> {
+    ) -> Result<
+        (
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<Arc<AcpClient>>,
+        ),
+        String,
+    > {
         // Align with mid-turn busy, not only FSM Streaming: early prompt_complete
         // can leave prompt_in_flight / tools / stream id while FE still guides.
         // Connecting-only is excluded (no turn to merge into yet).

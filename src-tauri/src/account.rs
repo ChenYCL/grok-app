@@ -77,9 +77,7 @@ pub async fn account_login_submit_code(code: &str) -> Result<(), String> {
     use tokio::io::AsyncWriteExt;
     let mut guard = login_proc().stdin.lock().await;
     let Some(stdin) = guard.as_mut() else {
-        return Err(
-            "no active login waiting for a code — start Sign in first, then paste".into(),
-        );
+        return Err("no active login waiting for a code — start Sign in first, then paste".into());
     };
     let line = format!("{cleaned}\n");
     stdin
@@ -90,7 +88,10 @@ pub async fn account_login_submit_code(code: &str) -> Result<(), String> {
         .flush()
         .await
         .map_err(|e| format!("failed to flush code to grok login: {e}"))?;
-    info!("account: submitted paste-back verification code (len={})", cleaned.len());
+    info!(
+        "account: submitted paste-back verification code (len={})",
+        cleaned.len()
+    );
     Ok(())
 }
 use crate::store;
@@ -1887,10 +1888,7 @@ mod tests {
     #[test]
     fn prefer_auth_profile_picks_fresh_canonical_over_expired_primary() {
         // #528: agent-home mirror can hold expired tokens while ~/.grok is fine.
-        let out = prefer_auth_profile(
-            Some(prof(true, false, true)),
-            Some(prof(true, true, false)),
-        );
+        let out = prefer_auth_profile(Some(prof(true, false, true)), Some(prof(true, true, false)));
         assert!(out.signed_in);
         assert!(out.has_refresh);
         assert!(!out.expired);
@@ -1898,10 +1896,7 @@ mod tests {
 
     #[test]
     fn prefer_auth_profile_keeps_primary_when_stronger() {
-        let out = prefer_auth_profile(
-            Some(prof(true, true, false)),
-            Some(prof(true, false, true)),
-        );
+        let out = prefer_auth_profile(Some(prof(true, true, false)), Some(prof(true, false, true)));
         assert!(out.signed_in);
         assert!(out.has_refresh);
         assert!(!out.expired);

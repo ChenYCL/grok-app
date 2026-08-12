@@ -589,14 +589,9 @@ fn file_uri_from_path(path: &str) -> String {
     let mut out = String::from("file://");
     for b in path.as_bytes() {
         match *b {
-            b'A'..=b'Z'
-            | b'a'..=b'z'
-            | b'0'..=b'9'
-            | b'/'
-            | b'-'
-            | b'_'
-            | b'.'
-            | b'~' => out.push(*b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char)
+            }
             b' ' => out.push_str("%20"),
             _ => out.push_str(&format!("%{b:02X}")),
         }
@@ -903,9 +898,18 @@ mod tests {
 
     #[test]
     fn cmp_loose_semver_orders_patch_and_minor() {
-        assert_eq!(cmp_loose_semver("22.9.0", "22.22.0"), std::cmp::Ordering::Less);
-        assert_eq!(cmp_loose_semver("22.22.0", "22.22.0"), std::cmp::Ordering::Equal);
-        assert_eq!(cmp_loose_semver("23.0.0", "22.99.0"), std::cmp::Ordering::Greater);
+        assert_eq!(
+            cmp_loose_semver("22.9.0", "22.22.0"),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            cmp_loose_semver("22.22.0", "22.22.0"),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            cmp_loose_semver("23.0.0", "22.99.0"),
+            std::cmp::Ordering::Greater
+        );
     }
 
     #[test]

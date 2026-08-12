@@ -781,6 +781,10 @@ export function ProvidersPanel({
     try {
       const r = await api.providersActivate("custom", id);
       setList(r);
+      // #557: Host may auto-switch shared → independent so agent-home config is live.
+      if (r.switchedToIndependent) {
+        onToast?.(tr("prov.switchedToIndependent"), 5200);
+      }
       onProviderActivated?.();
     } catch (err) {
       setError(String(err));

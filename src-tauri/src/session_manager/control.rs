@@ -508,7 +508,12 @@ impl SessionManager {
                 }
             }
         }
-        let live = self.inner.lock().as_ref().map(|s| s.acp.is_some()).unwrap_or(false);
+        let live = self
+            .inner
+            .lock()
+            .as_ref()
+            .map(|s| s.acp.is_some())
+            .unwrap_or(false);
         if live {
             tracing::info!("extensions: MCP prefs changed — soft-respawn live agent");
             self.soft_respawn(app).await;
@@ -590,9 +595,10 @@ impl SessionManager {
         let (acp, project_path, pending_options, tool_name) = self
             .with_session_mut(&target, |s| {
                 Self::touch_activity_locked(s);
-                let opts = s.pending_permission_options.clone().unwrap_or_else(|| {
-                    serde_json::json!([])
-                });
+                let opts = s
+                    .pending_permission_options
+                    .clone()
+                    .unwrap_or_else(|| serde_json::json!([]));
                 let tool = s
                     .pending_permission_tool_name
                     .clone()
@@ -617,9 +623,9 @@ impl SessionManager {
                 .unwrap_or(false);
             if host_nonempty {
                 pending_options
-            } else if let Some(co) = client_options.filter(|v| {
-                v.as_array().map(|a| !a.is_empty()).unwrap_or(false)
-            }) {
+            } else if let Some(co) =
+                client_options.filter(|v| v.as_array().map(|a| !a.is_empty()).unwrap_or(false))
+            {
                 co
             } else {
                 pending_options
@@ -627,9 +633,7 @@ impl SessionManager {
         };
 
         let Some(acp) = acp else {
-            return Err(
-                "no agent process for this chat; permission request expired".into(),
-            );
+            return Err("no agent process for this chat; permission request expired".into());
         };
         // Dead agent after recycle/provider switch: refuse stale UI answers (#524).
         if !acp.is_alive() {

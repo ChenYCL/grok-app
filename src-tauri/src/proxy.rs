@@ -484,7 +484,8 @@ pub fn resolve_from(
             let sys = read_system_proxy();
             match sys.url {
                 Some(url) => {
-                    let merged_np = merge_optional_lists(user_no_proxy.as_deref(), sys.exceptions.as_deref());
+                    let merged_np =
+                        merge_optional_lists(user_no_proxy.as_deref(), sys.exceptions.as_deref());
                     ProxyResolution {
                         decision: ProxyDecision::Use {
                             url,
@@ -651,22 +652,14 @@ fn configure_proxy_on_builder<B>(
 /// With the `system-proxy` feature reqwest already honors OS proxies in
 /// `Inherit` mode; `Direct` disables proxying; `Use` pins the explicit URL.
 pub fn apply_to_reqwest(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
-    configure_proxy_on_builder(
-        builder,
-        |b| b.no_proxy(),
-        |b, p| b.proxy(p),
-    )
+    configure_proxy_on_builder(builder, |b| b.no_proxy(), |b, p| b.proxy(p))
 }
 
 /// Same as [`apply_to_reqwest`] for `reqwest::blocking::ClientBuilder`.
 pub fn apply_to_reqwest_blocking(
     builder: reqwest::blocking::ClientBuilder,
 ) -> reqwest::blocking::ClientBuilder {
-    configure_proxy_on_builder(
-        builder,
-        |b| b.no_proxy(),
-        |b, p| b.proxy(p),
-    )
+    configure_proxy_on_builder(builder, |b| b.no_proxy(), |b, p| b.proxy(p))
 }
 
 /// JSON-friendly snapshot of the effective proxy (credentials redacted).

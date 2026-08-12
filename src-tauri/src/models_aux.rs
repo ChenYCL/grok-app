@@ -1700,6 +1700,7 @@ A red button.
             active_provider_id: Some("deepseek".into()),
             config_path: String::new(),
             agent_home: String::new(),
+            switched_to_independent: false,
         };
         let (t, _, r) = resolve_save_grok_target(&list, true);
         assert_eq!(t.as_deref(), Some("amux"));
@@ -1726,6 +1727,7 @@ A red button.
             active_provider_id: Some("deepseek".into()),
             config_path: String::new(),
             agent_home: String::new(),
+            switched_to_independent: false,
         };
         let (t, _, r) = resolve_save_grok_target(&list, true);
         assert_eq!(t.as_deref(), Some(OFFICIAL_CATALOG_MODEL));
@@ -1753,6 +1755,7 @@ A red button.
             active_provider_id: Some("deepseek".into()),
             config_path: String::new(),
             agent_home: String::new(),
+            switched_to_independent: false,
         };
         let (t, label, r) = resolve_save_grok_target(&list, false);
         assert_eq!(t.as_deref(), Some("amux"));

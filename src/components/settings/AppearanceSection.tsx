@@ -14,6 +14,10 @@ import {
 } from "@/lib/themeSkin";
 import { CHAT_FONT_SCALES } from "@/lib/chatFontScale";
 import { CODE_FONT_SCALES } from "@/lib/codeFontScalePref";
+import {
+  MAX_TERMINAL_FONT_SIZE,
+  MIN_TERMINAL_FONT_SIZE,
+} from "@/lib/terminalFontPref";
 import { CHAT_DENSITIES } from "@/lib/chatDensity";
 import { CHAT_WIDTHS } from "@/lib/chatWidthPref";
 import { SIDEBAR_DENSITIES } from "@/lib/sidebarDensity";
@@ -60,6 +64,9 @@ export function AppearanceSection() {
     goalOrchUiEnabled,
     messageActionsVisibility,
     messageTimeFormat,
+    uiFontFamily = "",
+    terminalFontFamily = "",
+    terminalFontSize = 13,
     onChatDensity,
     onChatFontScale,
     onChatWidth,
@@ -67,6 +74,11 @@ export function AppearanceSection() {
     onClearAllSessionUnread,
     onClearExportLogo,
     onCodeFontScale,
+    onUiFontFamily,
+    onResetUiFont,
+    onTerminalFontFamily,
+    onTerminalFontSize,
+    onResetTerminalFont,
     onExportLogoFile,
     onGoalOrchUiEnabled,
     onMessageActionsVisibility,
@@ -752,6 +764,106 @@ export function AppearanceSection() {
                         },
                       ]}
                     />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-uiFont")
+                  }
+                  id="settings-anchor-uiFont"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.uiFont")}
+                        tip={t("settings.uiFontDesc")}
+                      />
+                    </div>
+                    <div className="settings-row__controls settings-row__controls--grow">
+                      <input
+                        type="text"
+                        className="settings-input"
+                        value={uiFontFamily}
+                        placeholder={t("settings.uiFontPh")}
+                        aria-label={t("settings.uiFont")}
+                        onChange={(e) => onUiFontFamily?.(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        onClick={() => onResetUiFont?.()}
+                      >
+                        {t("settings.fontReset")}
+                      </button>
+                    </div>
+                    <p className="settings-hint muted">
+                      {t("settings.uiFontHint")}
+                    </p>
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-terminalFont")
+                  }
+                  id="settings-anchor-terminalFont"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.terminalFont")}
+                        tip={t("settings.terminalFontDesc")}
+                      />
+                    </div>
+                    <div className="settings-row__controls settings-row__controls--grow">
+                      <input
+                        type="text"
+                        className="settings-input"
+                        value={terminalFontFamily}
+                        placeholder={t("settings.terminalFontPh")}
+                        aria-label={t("settings.terminalFont")}
+                        onChange={(e) =>
+                          onTerminalFontFamily?.(e.target.value)
+                        }
+                      />
+                      <label className="settings-inline-label">
+                        <span>{t("settings.terminalFontSize")}</span>
+                        <input
+                          type="number"
+                          className="settings-input settings-input--narrow"
+                          min={MIN_TERMINAL_FONT_SIZE}
+                          max={MAX_TERMINAL_FONT_SIZE}
+                          value={terminalFontSize}
+                          aria-label={t("settings.terminalFontSize")}
+                          onChange={(e) =>
+                            onTerminalFontSize?.(Number(e.target.value))
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        onClick={() => onResetTerminalFont?.()}
+                      >
+                        {t("settings.fontReset")}
+                      </button>
+                    </div>
+                    <p className="settings-hint muted">
+                      {t("settings.terminalFontHint")}
+                    </p>
+                    <p
+                      className="settings-font-preview"
+                      style={{
+                        fontFamily: terminalFontFamily
+                          ? `"${terminalFontFamily.replace(/"/g, "")}", monospace`
+                          : "MesloLGS NF, JetBrainsMono Nerd Font, Menlo, monospace",
+                        fontSize: terminalFontSize,
+                      }}
+                      aria-hidden
+                    >
+                      {t("settings.terminalFontPreview")}
+                    </p>
                   </div>
                 </div>
                 <div
