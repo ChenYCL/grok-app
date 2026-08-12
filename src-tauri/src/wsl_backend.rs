@@ -267,6 +267,11 @@ pub fn probe_wsl_cli(settings: &AppSettings) -> CliProbeResult {
         agent_path: None,
         agent_version: None,
         agent_binary_skew: false,
+        acp_agent_version: crate::cli_probe::last_acp_agent_version(),
+        acp_agent_version_skew: crate::cli_probe::version_tokens_skew(
+            version.as_deref(),
+            crate::cli_probe::last_acp_agent_version().as_deref(),
+        ),
     }
 }
 
@@ -285,6 +290,8 @@ fn empty_not_found_probe(source: &str) -> CliProbeResult {
         agent_path: None,
         agent_version: None,
         agent_binary_skew: false,
+        acp_agent_version: crate::cli_probe::last_acp_agent_version(),
+        acp_agent_version_skew: false,
     }
 }
 
