@@ -1158,6 +1158,18 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             (p) => {
               if (cancelled || !p) return;
               // session_data_mode flip, custom provider route apply (#376), CLI upgrade, etc.
+              // Mid-turn hard ends also journal turn_cancelled|<reason> chips; toast is a
+              // short global hint (transcript chip is the durable source of truth).
+              if (p.reason === "cli_upgrade") {
+                c.setToast(c.tr("endOfTurn.cliUpgrade"));
+                window.setTimeout(() => c.setToast(null), 4800);
+                return;
+              }
+              if (p.reason === "app_update") {
+                c.setToast(c.tr("endOfTurn.appUpdate"));
+                window.setTimeout(() => c.setToast(null), 4800);
+                return;
+              }
               if (p.reason === "provider_route" || p.reason === "account_auth") {
                 // Model / provider switch — the picker already shows the new
                 // route. Login/logout/account switch: UI already refreshed;

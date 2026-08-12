@@ -1,5 +1,8 @@
 /**
  * Unified end-of-turn reason mapping for transcript chips.
+ *
+ * Host journals `turn_cancelled|<reason>` (and FE may emit `turn_end|<reason>`).
+ * Live chips and history reload must parse the same content so labels match.
  */
 
 export type EndOfTurnReason =
@@ -7,6 +10,11 @@ export type EndOfTurnReason =
   | "agent_exit"
   | "stall"
   | "permission_denied"
+  | "cli_upgrade"
+  | "app_update"
+  | "account_auth"
+  | "provider_route"
+  | "session_data_mode"
   | "error"
   | "cancelled"
   | "unknown";
@@ -20,6 +28,11 @@ export interface EndOfTurnChipModel {
     | "activity.cancelled"
     | "endOfTurn.stall"
     | "endOfTurn.permissionDenied"
+    | "endOfTurn.cliUpgrade"
+    | "endOfTurn.appUpdate"
+    | "endOfTurn.accountAuth"
+    | "endOfTurn.providerRoute"
+    | "endOfTurn.sessionDataMode"
     | "endOfTurn.error"
     | "endOfTurn.unknown";
   tone: "neutral" | "warning" | "error";
@@ -59,14 +72,51 @@ export function mapEndOfTurnReason(
   }
   if (
     r === "permission_denied" ||
+    r === "permission_rejected" ||
     r === "denied" ||
     r === "permission_deny" ||
-    r === "reject"
+    r === "reject" ||
+    r === "unknown_permission"
   ) {
     return {
       reason: "permission_denied",
       messageKey: "endOfTurn.permissionDenied",
       tone: "error",
+    };
+  }
+  if (r === "cli_upgrade") {
+    return {
+      reason: "cli_upgrade",
+      messageKey: "endOfTurn.cliUpgrade",
+      tone: "warning",
+    };
+  }
+  if (r === "app_update") {
+    return {
+      reason: "app_update",
+      messageKey: "endOfTurn.appUpdate",
+      tone: "warning",
+    };
+  }
+  if (r === "account_auth") {
+    return {
+      reason: "account_auth",
+      messageKey: "endOfTurn.accountAuth",
+      tone: "warning",
+    };
+  }
+  if (r === "provider_route" || r === "models_aux") {
+    return {
+      reason: "provider_route",
+      messageKey: "endOfTurn.providerRoute",
+      tone: "warning",
+    };
+  }
+  if (r === "session_data_mode") {
+    return {
+      reason: "session_data_mode",
+      messageKey: "endOfTurn.sessionDataMode",
+      tone: "warning",
     };
   }
   if (r === "error" || r === "failed" || r === "turn_error") {

@@ -14,6 +14,10 @@ import {
 } from "@/lib/attachments";
 import { hydrateDisplayContent } from "@/lib/draftDoc";
 import {
+  isEndOfTurnMarker,
+  parseEndOfTurnContent,
+} from "@/lib/endOfTurn";
+import {
   buildSegmentsFromLegacy,
   parseCompactContent,
   parseToolStepContent,
@@ -105,7 +109,13 @@ export function mapStoredMessageToChat(
     compactMeta: compactMeta ?? undefined,
     toolCallId: m.id.startsWith("tool-") ? m.id.slice(5) : undefined,
     toolKind: toolParsed?.kind,
-    toolStatus: toolParsed?.status,
+    // End-of-turn chips: keep reason in toolStatus so live applyTurnMarker and
+    // history reload paint the same EndOfTurnChip label (content is source of truth).
+    toolStatus:
+      toolParsed?.status ??
+      (isEndOfTurnMarker(marker)
+        ? (parseEndOfTurnContent(content) ?? undefined)
+        : undefined),
     toolDetail: toolParsed?.detail,
     toolPath: toolParsed?.path,
     toolInput: toolParsed?.input,

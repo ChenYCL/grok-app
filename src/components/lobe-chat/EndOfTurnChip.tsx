@@ -38,7 +38,14 @@ function EndOfTurnMark({ reason }: { reason: EndOfTurnReason }): ReactNode {
   if (reason === "permission_denied") {
     return <IconShield size={14} stroke={1.75} />;
   }
-  if (reason === "error") {
+  if (
+    reason === "error" ||
+    reason === "cli_upgrade" ||
+    reason === "app_update" ||
+    reason === "account_auth" ||
+    reason === "provider_route" ||
+    reason === "session_data_mode"
+  ) {
     return <IconAlertTriangle size={14} stroke={1.75} />;
   }
   // user_stop / cancelled / agent_exit / unknown — solid stop square

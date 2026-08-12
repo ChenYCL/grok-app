@@ -1144,6 +1144,13 @@ export function applyTurnMarker(
   const id = payload.messageId || `marker-${Date.now()}`;
   if (messages.some((m) => m.id === id)) return messages;
   const marker = payload.marker || "turn_cancelled";
+  const reason = (payload.reason || "cancelled").toLowerCase();
+  // Match Host journal: user_stop is a neutral stop chip (not an error row).
+  const isError =
+    marker === "turn_cancelled" &&
+    reason !== "user_stop" &&
+    reason !== "cancelled" &&
+    reason !== "canceled";
   return [
     ...messages.map((m) =>
       m.streaming ? { ...m, streaming: false } : m,
@@ -1155,7 +1162,7 @@ export function applyTurnMarker(
       marker,
       toolStatus: payload.reason || "cancelled",
       createdAt: new Date().toISOString(),
-      isError: marker === "turn_cancelled",
+      isError,
     },
   ];
 }

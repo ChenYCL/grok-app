@@ -865,33 +865,7 @@ impl SessionManager {
                                 SessionState::Streaming | SessionState::AwaitingPermission
                             );
                         if was_busy {
-                            // I04: flush partial assistant before cancel marker.
-                            Self::maybe_flush_stream_journal(s, true, false);
-                            let mid = Uuid::new_v4().to_string();
-                            let content = "turn_cancelled|agent_exit".to_string();
-                            let _ = store::append_message(
-                                &s.app_session_id,
-                                ChatMessageStored {
-                                    id: mid.clone(),
-                                    role: "tool".into(),
-                                    content: content.clone(),
-                                    thought: None,
-                                    created_at: chrono::Utc::now(),
-                                    is_error: true,
-                                    attachments: None,
-                                    marker: Some("turn_cancelled".into()),
-                                },
-                            );
-                            let _ = app.emit(
-                                "session://turn_marker",
-                                serde_json::json!({
-                                    "sessionId": s.app_session_id,
-                                    "messageId": mid,
-                                    "marker": "turn_cancelled",
-                                    "reason": "agent_exit",
-                                    "content": content,
-                                }),
-                            );
+                            Self::journal_turn_cancelled(s, Some(app), "agent_exit");
                         }
                         // Drop human gates so UI cannot Approve into a dead process.
                         if let Some(row) = Self::take_pending_gate_invalidation(s) {

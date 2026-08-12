@@ -350,6 +350,16 @@ impl SessionManager {
         Self::flush_pending_stream_emit_done(s, app);
         // Force-flush assistant turn (I04 end-of-turn path).
         Self::maybe_flush_stream_journal(s, true, false);
+        // Hard cancel (permission_rejected / CLI cancelled mid-tools) must leave
+        // a durable end-of-turn chip so live and history show the same reason —
+        // not a silent "half-done" assistant row.
+        if let Some(reason) = infer_hard_end_reason_from_stop(
+            &stop_reason,
+            &s.app_session_id,
+            journal_suggests_permission_reject,
+        ) {
+            Self::journal_turn_cancelled(s, app, &reason);
+        }
         s.stream_buf.clear();
         s.stream_thought.clear();
         s.stream_last_was_assistant = false;
@@ -372,6 +382,87 @@ impl SessionManager {
         s.saw_model_output = false;
         s.open_tool_seen_at.clear();
         Some(empty)
+    }
+
+    /// Persist + emit a `turn_cancelled|<reason>` row so the transcript shows
+    /// why the turn hard-stopped (user stop, CLI upgrade, permission, …).
+    /// Skips when this turn already has an end-of-turn marker (no double chips).
+    pub(super) fn journal_turn_cancelled(
+        s: &mut LiveSession,
+        app: Option<&AppHandle>,
+        reason: &str,
+    ) {
+        if has_turn_end_marker_after_last_user(&s.app_session_id) {
+            return;
+        }
+        Self::maybe_flush_stream_journal(s, true, false);
+        let reason = normalize_hard_end_reason(reason);
+        let mid = Uuid::new_v4().to_string();
+        let content = format!("turn_cancelled|{reason}");
+        // Neutral chips: user stop + generic mid-run cancel. Infra / permission
+        // hard ends stay is_error so history can highlight them if needed.
+        let is_error = !matches!(reason, "user_stop" | "cancelled");
+        let _ = store::append_message(
+            &s.app_session_id,
+            ChatMessageStored {
+                id: mid.clone(),
+                role: "tool".into(),
+                content: content.clone(),
+                thought: None,
+                created_at: chrono::Utc::now(),
+                is_error,
+                attachments: None,
+                marker: Some("turn_cancelled".into()),
+            },
+        );
+        s.meta.updated_at = chrono::Utc::now();
+        let _ = store::update_session_meta(&s.meta);
+        if let Some(app) = app {
+            let _ = app.emit(
+                "session://turn_marker",
+                serde_json::json!({
+                    "sessionId": s.app_session_id,
+                    "messageId": mid,
+                    "marker": "turn_cancelled",
+                    "reason": reason,
+                    "content": content,
+                }),
+            );
+        }
+    }
+
+    /// Journal hard-end chips for live + background sessions that are mid-turn
+    /// before recycle/kill (CLI upgrade, auth switch, provider route, …).
+    pub(super) fn journal_hard_end_for_busy_agents(&self, app: &AppHandle, reason: &str) {
+        let cancel = normalize_hard_end_reason(reason);
+        {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
+                let st = s.fsm.state();
+                let busy = Self::live_session_is_busy(s)
+                    || matches!(
+                        st,
+                        SessionState::Streaming | SessionState::AwaitingPermission
+                    );
+                if busy {
+                    Self::journal_turn_cancelled(s, Some(app), cancel);
+                }
+            }
+        }
+        {
+            let mut bg = self.background.lock();
+            for s in bg.values_mut() {
+                let st = s.fsm.state();
+                let busy = Self::live_session_is_busy(s)
+                    || matches!(
+                        st,
+                        SessionState::Streaming | SessionState::AwaitingPermission
+                    );
+                if busy {
+                    Self::journal_turn_cancelled(s, Some(app), cancel);
+                }
+            }
+        }
     }
 
     /// Tool call ids that already have a terminal journal row (`tool-{id}`).
@@ -979,5 +1070,122 @@ impl SessionManager {
         if s.streaming_message_id.is_none() {
             s.streaming_message_id = Some(message_id.unwrap_or_else(|| Uuid::new_v4().to_string()));
         }
+    }
+}
+
+/// Map host recycle / stop tokens to stable journal reason ids (FE i18n keys).
+pub(crate) fn normalize_hard_end_reason(raw: &str) -> &str {
+    let r = raw.trim();
+    if r.is_empty() {
+        return "cancelled";
+    }
+    match r {
+        "user_stop" | "user" | "cancelled_by_user" | "user_cancel" => "user_stop",
+        "agent_exit" | "agent" | "process_exit" => "agent_exit",
+        "permission_denied"
+        | "permission_rejected"
+        | "permission_deny"
+        | "denied"
+        | "reject"
+        | "unknown_permission" => "permission_denied",
+        "cli_upgrade" => "cli_upgrade",
+        "app_update" => "app_update",
+        "account_auth" => "account_auth",
+        "provider_route" | "models_aux" => "provider_route",
+        "session_data_mode" => "session_data_mode",
+        "stall" | "stream_stall" | "idle_timeout" => "stall",
+        "error" | "failed" | "turn_error" => "error",
+        "cancelled" | "canceled" | "turn_cancelled" | "stop" => "cancelled",
+        // Unknown recycle reasons still surface as a hard end, not silence.
+        other if other.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => other,
+        _ => "cancelled",
+    }
+}
+
+/// When ACP ends with `cancelled` / `stop`, map to a durable chip reason.
+/// Returns `None` for normal completions (`end_turn`, …).
+pub(crate) fn infer_hard_end_reason_from_stop(
+    stop_reason: &str,
+    app_session_id: &str,
+    permission_hint: impl FnOnce(&str) -> bool,
+) -> Option<String> {
+    let r = stop_reason.trim().to_ascii_lowercase();
+    match r.as_str() {
+        "cancelled" | "canceled" | "stop" => {
+            if permission_hint(app_session_id) {
+                Some("permission_denied".into())
+            } else {
+                Some("cancelled".into())
+            }
+        }
+        _ => None,
+    }
+}
+
+/// True when the journal already has an end-of-turn chip after the last user.
+pub(crate) fn has_turn_end_marker_after_last_user(app_session_id: &str) -> bool {
+    let msgs = store::load_messages(app_session_id);
+    let start = msgs
+        .iter()
+        .rposition(|m| m.role == "user")
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    msgs[start..].iter().any(|m| {
+        matches!(
+            m.marker.as_deref(),
+            Some("turn_cancelled") | Some("turn_end") | Some("end_of_turn")
+        ) || m.content.starts_with("turn_cancelled")
+            || m.content.starts_with("turn_end|")
+    })
+}
+
+/// Detect permission-reject style tool failures in the current turn journal
+/// (CLI: `unknown permission option` / `Failed to request permission`).
+pub(crate) fn journal_suggests_permission_reject(app_session_id: &str) -> bool {
+    let msgs = store::load_messages(app_session_id);
+    let start = msgs
+        .iter()
+        .rposition(|m| m.role == "user")
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    msgs[start..].iter().any(|m| {
+        let c = m.content.to_ascii_lowercase();
+        c.contains("unknown permission option")
+            || c.contains("failed to request permission")
+            || c.contains("permission_rejected")
+            || c.contains("permission denied")
+    })
+}
+
+#[cfg(test)]
+mod hard_end_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_maps_recycle_and_permission() {
+        assert_eq!(normalize_hard_end_reason("cli_upgrade"), "cli_upgrade");
+        assert_eq!(normalize_hard_end_reason("models_aux"), "provider_route");
+        assert_eq!(
+            normalize_hard_end_reason("permission_rejected"),
+            "permission_denied"
+        );
+        assert_eq!(normalize_hard_end_reason("user_stop"), "user_stop");
+        assert_eq!(normalize_hard_end_reason(""), "cancelled");
+    }
+
+    #[test]
+    fn infer_cancelled_uses_permission_hint() {
+        assert_eq!(
+            infer_hard_end_reason_from_stop("cancelled", "s", |_| true).as_deref(),
+            Some("permission_denied")
+        );
+        assert_eq!(
+            infer_hard_end_reason_from_stop("cancelled", "s", |_| false).as_deref(),
+            Some("cancelled")
+        );
+        assert_eq!(
+            infer_hard_end_reason_from_stop("end_turn", "s", |_| true),
+            None
+        );
     }
 }

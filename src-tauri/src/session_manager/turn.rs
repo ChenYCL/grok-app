@@ -760,43 +760,10 @@ impl SessionManager {
                     || s.prompt_in_flight
                     || pending_ask.is_some()
                     || pending_plan.is_some();
-                let partial = s.stream_buf.trim().to_string();
                 // Journal a cancel marker so UI history is not left as user-only silence.
                 if was_busy {
-                    // I04: force-flush partial assistant before cancel marker.
-                    Self::maybe_flush_stream_journal(s, true, false);
-                    let mid = Uuid::new_v4().to_string();
-                    let content = if partial.is_empty() {
-                        "turn_cancelled|user_stop".to_string()
-                    } else {
-                        format!(
-                            "turn_cancelled|user_stop|partial:{}",
-                            partial.chars().take(200).collect::<String>()
-                        )
-                    };
-                    let _ = store::append_message(
-                        &s.app_session_id,
-                        ChatMessageStored {
-                            id: mid.clone(),
-                            role: "tool".into(),
-                            content: content.clone(),
-                            thought: None,
-                            created_at: chrono::Utc::now(),
-                            is_error: false,
-                            attachments: None,
-                            marker: Some("turn_cancelled".into()),
-                        },
-                    );
-                    let _ = app.emit(
-                        "session://turn_marker",
-                        serde_json::json!({
-                            "sessionId": s.app_session_id,
-                            "messageId": mid,
-                            "marker": "turn_cancelled",
-                            "reason": "user_stop",
-                            "content": content,
-                        }),
-                    );
+                    // Shared helper: durable chip + live emit (history matches live).
+                    Self::journal_turn_cancelled(s, Some(&app), "user_stop");
                     if s.fsm.state() == SessionState::Streaming
                         || s.fsm.state() == SessionState::AwaitingPermission
                     {

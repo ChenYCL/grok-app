@@ -145,6 +145,10 @@ impl SessionManager {
         // Collect pending permission/plan/ask gates *before* draining so the
         // UI can drop stale bars that would write to a dead stdin (#524).
         let invalidated = self.collect_pending_gate_invalidations();
+        // Mid-turn hard kill (CLI upgrade, auth, provider route, …) must leave a
+        // durable end-of-turn chip so the user sees *why* the turn stopped —
+        // same row after reload as during the live hard end.
+        self.journal_hard_end_for_busy_agents(app, reason);
         let drained = self.drain_all_agent_slots();
         let total = drained.acps.len();
         for acp in drained.acps {

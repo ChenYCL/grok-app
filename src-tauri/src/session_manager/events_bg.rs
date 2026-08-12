@@ -532,32 +532,7 @@ impl SessionManager {
                             SessionState::Streaming | SessionState::AwaitingPermission
                         );
                     if busy {
-                        Self::maybe_flush_stream_journal(&mut s, true, false);
-                        let mid = Uuid::new_v4().to_string();
-                        let content = "turn_cancelled|agent_exit".to_string();
-                        let _ = store::append_message(
-                            &s.app_session_id,
-                            ChatMessageStored {
-                                id: mid.clone(),
-                                role: "tool".into(),
-                                content: content.clone(),
-                                thought: None,
-                                created_at: chrono::Utc::now(),
-                                is_error: true,
-                                attachments: None,
-                                marker: Some("turn_cancelled".into()),
-                            },
-                        );
-                        let _ = app.emit(
-                            "session://turn_marker",
-                            serde_json::json!({
-                                "sessionId": s.app_session_id,
-                                "messageId": mid,
-                                "marker": "turn_cancelled",
-                                "reason": "agent_exit",
-                                "content": content,
-                            }),
-                        );
+                        Self::journal_turn_cancelled(&mut s, Some(app), "agent_exit");
                         tracing::warn!(
                             "background agent process exited mid-turn sid={}",
                             s.app_session_id

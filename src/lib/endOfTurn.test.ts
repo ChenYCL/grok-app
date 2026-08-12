@@ -13,6 +13,34 @@ describe("endOfTurn", () => {
     expect(mapEndOfTurnReason("error").reason).toBe("error");
   });
 
+  it("maps hard-end recycle reasons (CLI upgrade / auth / route)", () => {
+    expect(mapEndOfTurnReason("cli_upgrade").messageKey).toBe(
+      "endOfTurn.cliUpgrade",
+    );
+    expect(mapEndOfTurnReason("app_update").messageKey).toBe(
+      "endOfTurn.appUpdate",
+    );
+    expect(mapEndOfTurnReason("account_auth").messageKey).toBe(
+      "endOfTurn.accountAuth",
+    );
+    expect(mapEndOfTurnReason("provider_route").messageKey).toBe(
+      "endOfTurn.providerRoute",
+    );
+    expect(mapEndOfTurnReason("models_aux").reason).toBe("provider_route");
+    expect(mapEndOfTurnReason("session_data_mode").messageKey).toBe(
+      "endOfTurn.sessionDataMode",
+    );
+  });
+
+  it("maps permission_rejected alias to permission_denied", () => {
+    expect(mapEndOfTurnReason("permission_rejected").reason).toBe(
+      "permission_denied",
+    );
+    expect(mapEndOfTurnReason("unknown_permission").messageKey).toBe(
+      "endOfTurn.permissionDenied",
+    );
+  });
+
   it("recognizes markers", () => {
     expect(isEndOfTurnMarker("turn_cancelled")).toBe(true);
     expect(isEndOfTurnMarker("turn_end")).toBe(true);
@@ -39,5 +67,23 @@ describe("endOfTurn", () => {
       "agent_exit",
     );
     expect(parseEndOfTurnContent("turn_end|stall")).toBe("stall");
+  });
+
+  it("history parses hard-end reasons same as live reasonOverride", () => {
+    const cases: Array<[string, string]> = [
+      ["turn_cancelled|cli_upgrade", "cli_upgrade"],
+      ["turn_cancelled|permission_denied", "permission_denied"],
+      ["turn_cancelled|cancelled", "cancelled"],
+      ["turn_cancelled|account_auth", "account_auth"],
+      ["turn_end|provider_route", "provider_route"],
+    ];
+    for (const [content, reason] of cases) {
+      const parsed = parseEndOfTurnContent(content);
+      expect(parsed).toBe(reason);
+      // Same chip model whether FE uses content or toolStatus/reasonOverride.
+      expect(mapEndOfTurnReason(parsed).reason).toBe(
+        mapEndOfTurnReason(reason).reason,
+      );
+    }
   });
 });

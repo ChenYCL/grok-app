@@ -109,4 +109,40 @@ describe("mapStoredMessages", () => {
     expect(msg.content.includes("hello\n\nworld\n\nend")).toBe(true);
     expect(msg.attachments?.map((a) => a.path)).toEqual(["/tmp/x.png"]);
   });
+
+  it("reloads hard-end chips with same reason as live turn_marker", () => {
+    const cases: Array<{ content: string; reason: string; marker?: string }> = [
+      {
+        content: "turn_cancelled|user_stop",
+        reason: "user_stop",
+        marker: "turn_cancelled",
+      },
+      {
+        content: "turn_cancelled|cli_upgrade",
+        reason: "cli_upgrade",
+        marker: "turn_cancelled",
+      },
+      {
+        content: "turn_cancelled|permission_denied",
+        reason: "permission_denied",
+        marker: "turn_cancelled",
+      },
+      {
+        content: "turn_cancelled|cancelled",
+        reason: "cancelled",
+      },
+    ];
+    for (const c of cases) {
+      const msg = mapStoredMessageToChat({
+        id: `m-${c.reason}`,
+        role: "tool",
+        content: c.content,
+        marker: c.marker ?? null,
+        createdAt: "2026-08-12T00:00:00.000Z",
+      });
+      expect(msg.marker).toBe("turn_cancelled");
+      expect(msg.content).toBe(c.content);
+      expect(msg.toolStatus).toBe(c.reason);
+    }
+  });
 });
