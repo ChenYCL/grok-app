@@ -13,9 +13,11 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 - **Appearance fonts (#553)**: Settings → Appearance can set UI font family and side-terminal font family/size (localStorage; terminal prefers Nerd Fonts for Starship glyphs).
+- **Preferred agent apply honesty (#564)**: Settings preferred-agent and Agents & Personas console document spawn-time `--agent` apply paths — live agent soft-respawns on change; idle waits for next connect. Soft-fail when the saved name is missing from the catalog or has invalid characters. Pure `preferredAgentApply` helpers + tests; en/zh/zh-TW.
 
 **中文 · 新增**
 - **外观字体 (#553)**：设置 → 外观 可配置界面字体与内置终端字体/字号（本机偏好；终端优先 Nerd Font 以显示 Starship 图标）。
+- **首选 agent 生效路径诚实 (#564)**：设置与 Agents & Personas 控制台标明 spawn `--agent` 路径 — 已连接 soft-respawn、空闲下次连接；目录缺失/非法名称 soft-fail。纯 helper + 测试；三语文案。
 
 ### Fixed
 - **CI baseline**: `cargo fmt` drift and ESLint non-null optional-chain in `session.test.ts`.
