@@ -19,15 +19,15 @@ See `docs/llm-wiki/release.md`.
 
 ### Fixed
 - **CI baseline**: `cargo fmt` drift and ESLint non-null optional-chain in `session.test.ts`.
-- **Custom providers without official login (#557)**: Activating a custom route forces `session_data_mode` independent so App agent-home `config.toml` is the live `GROK_HOME` (shared mode previously left third-party channels unreachable).
+- **Custom providers without official login (#557)**: Custom route always spawns with agent-home `GROK_HOME` (even in shared mode); activating custom also forces independent mode so session paths stay aligned.
 - **Post-turn journal retry (#554 / #555)**: After a successful prompt RPC, journal reconciliation retries over a short bounded window (0/125/375/750 ms) via `spawn_blocking`, with per-session locking against the next user append.
-- **Heatmap token honesty (#556)**: Account heatmap labels/hints clarify “context tokens from local session signals”, not billing or cumulative API spend.
+- **Heatmap token usage (#556)**: Prefer sum of `turn_completed` usage from session `updates.jsonl` (covers tool-loop spend); fall back to signals occupancy; scan both `~/.grok` and agent-home session roots.
 
 **中文 · 修复**
 - **CI 基线**：`cargo fmt` 漂移与 `session.test.ts` ESLint optional-chain 非空断言。
-- **无官方登录的第三方通道 (#557)**：激活自定义路由时强制独立会话数据模式，使 agent-home 配置对 agent 可见。
+- **无官方登录的第三方通道 (#557)**：自定义路由 spawn 强制 agent-home；激活时亦切换独立模式以对齐会话路径。
 - **回合后 journal 延迟对账 (#554 / #555)**：prompt 成功后在有界窗口内重试对账，并与下一次用户写入互斥。
-- **热力图 Token 口径 (#556)**：文案标明为本地 signals 的上下文 Token，而非账单/累计消耗。
+- **热力图 Token 用量 (#556)**：优先汇总 `turn_completed` usage；回退 signals 上下文占用；同时扫描 `~/.grok` 与 agent-home 会话根。
 
 ## [0.2.15] - 2026-08-12
 

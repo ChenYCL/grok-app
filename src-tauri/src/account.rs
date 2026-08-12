@@ -7,6 +7,7 @@
 #![allow(dead_code)] // residual-clippy: billing helpers not yet wired in UI path
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
@@ -330,12 +331,25 @@ fn sessions_root() -> PathBuf {
     grok_home().join("sessions")
 }
 
+/// Canonical CLI sessions (`~/.grok/sessions`), ignoring process `GROK_HOME`.
+fn cli_default_sessions_root() -> PathBuf {
+    crate::process_util::user_home()
+        .join(".grok")
+        .join("sessions")
+}
+
 fn session_roots() -> Vec<PathBuf> {
-    let mut roots = vec![sessions_root()];
-    let agent_sessions = paths::agent_home_dir().join("sessions");
-    if !roots.contains(&agent_sessions) {
-        roots.push(agent_sessions);
-    }
+    // Always cover: process GROK_HOME, shared CLI home, and App agent-home.
+    // Independent mode must not hide `~/.grok/sessions` activity (#556).
+    let mut roots = Vec::with_capacity(3);
+    let push = |roots: &mut Vec<PathBuf>, p: PathBuf| {
+        if !roots.iter().any(|existing| existing == &p) {
+            roots.push(p);
+        }
+    };
+    push(&mut roots, sessions_root());
+    push(&mut roots, cli_default_sessions_root());
+    push(&mut roots, paths::agent_home_dir().join("sessions"));
     roots
 }
 
@@ -1183,6 +1197,9 @@ fn ingest_session(
         .get("contextTokensUsed")
         .and_then(|x| x.as_u64())
         .unwrap_or(0);
+    // Heatmap "tokens used": prefer sum of turn_completed billing usage.
+    // `contextTokensUsed` is occupancy only and severely under-counts agents (#556).
+    let usage_tokens = session_usage_tokens(session_dir, &v);
     let errors = v.get("errorCount").and_then(|x| x.as_u64()).unwrap_or(0);
     let duration_secs = v.get("sessionDurationSeconds").and_then(|x| x.as_u64());
     let model = v
@@ -1217,7 +1234,7 @@ fn ingest_session(
 
     let agg = day_map.entry(day).or_default();
     agg.turns = agg.turns.saturating_add(turns.max(1));
-    agg.tokens = agg.tokens.saturating_add(context_tokens);
+    agg.tokens = agg.tokens.saturating_add(usage_tokens);
     agg.sessions = agg.sessions.saturating_add(1);
 
     let started_at = DateTime::from_timestamp(meta_mtime, 0).map(|d| d.to_rfc3339());
@@ -1233,10 +1250,136 @@ fn ingest_session(
             duration_secs,
             turns,
             tool_calls,
+            // Call-log column is labeled "Context" — keep occupancy here.
             context_tokens,
             errors,
         },
     ));
+}
+
+/// Session token figure for heatmap totals (#556).
+///
+/// Prefer sum of `turn_completed.usage.totalTokens` from `updates.jsonl`
+/// (per-turn input+output billing aggregates, including tool loops).
+/// Fall back to signals occupancy (+ compaction lower bound).
+fn session_usage_tokens(session_dir: &Path, signals: &Value) -> u64 {
+    if let Some(sum) = sum_turn_completed_usage_tokens(session_dir) {
+        return sum;
+    }
+    signals_usage_tokens(signals)
+}
+
+/// Signals-only estimate. `contextTokensUsed` is context occupancy, not
+/// cumulative API usage. When `totalTokensBeforeCompaction` is present, add it
+/// as a lower bound of tokens flushed by compact events.
+fn signals_usage_tokens(signals: &Value) -> u64 {
+    let context = signals
+        .get("contextTokensUsed")
+        .and_then(|x| x.as_u64())
+        .unwrap_or(0);
+    let before = signals
+        .get("totalTokensBeforeCompaction")
+        .and_then(|x| x.as_u64())
+        .unwrap_or(0);
+    if before > 0 {
+        before.saturating_add(context)
+    } else {
+        context
+    }
+}
+
+/// Sum per-turn billing usage from CLI `updates.jsonl`.
+///
+/// Each `sessionUpdate: turn_completed` carries `usage.totalTokens` for that
+/// user prompt (all modelCalls / tool loops in the turn). Summing those is the
+/// closest local measure of tokens actually consumed.
+///
+/// Returns `None` when the file is missing or has no usable usage rows
+/// (caller falls back to signals).
+fn sum_turn_completed_usage_tokens(session_dir: &Path) -> Option<u64> {
+    let path = session_dir.join("updates.jsonl");
+    if !path.is_file() {
+        return None;
+    }
+    let file = fs::File::open(&path).ok()?;
+    let reader = BufReader::with_capacity(256 * 1024, file);
+    let mut sum = 0u64;
+    let mut found = false;
+
+    for line in reader.lines() {
+        let Ok(line) = line else {
+            continue;
+        };
+        // Fast reject — full JSON parse only for candidate turn_completed rows.
+        if !line.contains("turn_completed") {
+            continue;
+        }
+        if !line.contains("totalTokens")
+            && !line.contains("total_tokens")
+            && !line.contains("inputTokens")
+            && !line.contains("input_tokens")
+        {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let Some(update) = v.pointer("/params/update").or_else(|| v.get("update")) else {
+            continue;
+        };
+        let session_update = update
+            .get("sessionUpdate")
+            .or_else(|| update.get("session_update"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("");
+        if session_update != "turn_completed" {
+            continue;
+        }
+        let Some(usage) = update
+            .get("usage")
+            .or_else(|| update.get("tokenUsage"))
+            .or_else(|| update.get("token_usage"))
+        else {
+            continue;
+        };
+        if let Some(tokens) = usage_total_tokens(usage) {
+            sum = sum.saturating_add(tokens);
+            found = true;
+        }
+    }
+
+    if found {
+        Some(sum)
+    } else {
+        None
+    }
+}
+
+/// Extract a total token count from a turn usage object.
+/// Prefer `totalTokens`; else input + output (never invent zeros as known usage).
+fn usage_total_tokens(usage: &Value) -> Option<u64> {
+    if let Some(t) = usage
+        .get("totalTokens")
+        .or_else(|| usage.get("total_tokens"))
+        .and_then(|x| x.as_u64())
+    {
+        return Some(t);
+    }
+    let input = usage
+        .get("inputTokens")
+        .or_else(|| usage.get("input_tokens"))
+        .and_then(|x| x.as_u64())
+        .unwrap_or(0);
+    let output = usage
+        .get("outputTokens")
+        .or_else(|| usage.get("output_tokens"))
+        .and_then(|x| x.as_u64())
+        .unwrap_or(0);
+    if input > 0 || output > 0 {
+        Some(input.saturating_add(output))
+    } else {
+        None
+    }
 }
 
 fn empty_heatmap(days: u32) -> Vec<HeatmapDay> {
