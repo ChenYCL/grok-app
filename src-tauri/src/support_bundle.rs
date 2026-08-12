@@ -770,8 +770,13 @@ mod tests {
         let mut archive = zip::ZipArchive::new(file).expect("open zip");
         let mut meta_entry = archive.by_name("meta.json").expect("meta.json entry");
         let mut meta_body = String::new();
-        meta_entry.read_to_string(&mut meta_body).expect("read meta");
-        assert!(meta_body.contains("appVersion"), "meta must include appVersion");
+        meta_entry
+            .read_to_string(&mut meta_body)
+            .expect("read meta");
+        assert!(
+            meta_body.contains("appVersion"),
+            "meta must include appVersion"
+        );
         assert!(
             meta_body.contains("\"cli\""),
             "meta must include cli probe object: {meta_body}"

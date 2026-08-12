@@ -16,8 +16,7 @@ use crate::process_util::{self, user_home};
 
 /// Last ACP `agentVersion` observed from `initialize` / TCP probe.
 /// Soft cache for Doctor / Runtime honesty — never gates session open.
-static LAST_ACP_AGENT_VERSION: LazyLock<Mutex<Option<String>>> =
-    LazyLock::new(|| Mutex::new(None));
+static LAST_ACP_AGENT_VERSION: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Remember a live ACP agent version banner (best-effort).
 pub fn record_acp_agent_version(raw: Option<&str>) {
@@ -31,10 +30,7 @@ pub fn record_acp_agent_version(raw: Option<&str>) {
 
 /// Last recorded ACP agent version, if any session/probe has run this process.
 pub fn last_acp_agent_version() -> Option<String> {
-    LAST_ACP_AGENT_VERSION
-        .lock()
-        .ok()
-        .and_then(|g| g.clone())
+    LAST_ACP_AGENT_VERSION.lock().ok().and_then(|g| g.clone())
 }
 
 #[cfg(test)]
@@ -656,8 +652,7 @@ fn finish_probe_result(
     } else {
         (None, None)
     };
-    let agent_binary_skew =
-        version_tokens_skew(version.as_deref(), agent_version.as_deref());
+    let agent_binary_skew = version_tokens_skew(version.as_deref(), agent_version.as_deref());
     let acp_agent_version = last_acp_agent_version();
     let acp_agent_version_skew =
         version_tokens_skew(version.as_deref(), acp_agent_version.as_deref());
