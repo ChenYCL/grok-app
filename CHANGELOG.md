@@ -24,12 +24,14 @@ See `docs/llm-wiki/release.md`.
 - **Custom providers without official login (#557)**: Custom route always spawns with agent-home `GROK_HOME` (even in shared mode); activating custom also forces independent mode so session paths stay aligned.
 - **Post-turn journal retry (#554 / #555)**: After a successful prompt RPC, journal reconciliation retries over a short bounded window (0/125/375/750 ms) via `spawn_blocking`, with per-session locking against the next user append.
 - **Heatmap token usage (#556)**: Prefer sum of `turn_completed` usage from session `updates.jsonl` (covers tool-loop spend); fall back to signals occupancy; scan both `~/.grok` and agent-home session roots.
+- **Support zip honesty (#561)**: Restore redacted section checklist + soft-fail copy on Reliability/Doctor export (dropped during a multi-PR integrate). Host `meta.json` now includes a soft CLI probe (app + CLI versions) without inventing secrets or chat journals.
 
 **中文 · 修复**
 - **CI 基线**：`cargo fmt` 漂移与 `session.test.ts` ESLint optional-chain 非空断言。
 - **无官方登录的第三方通道 (#557)**：自定义路由 spawn 强制 agent-home；激活时亦切换独立模式以对齐会话路径。
 - **回合后 journal 延迟对账 (#554 / #555)**：prompt 成功后在有界窗口内重试对账，并与下一次用户写入互斥。
 - **热力图 Token 用量 (#556)**：优先汇总 `turn_completed` usage；回退 signals 上下文占用；同时扫描 `~/.grok` 与 agent-home 会话根。
+- **支持包诚实导出 (#561)**：恢复可靠性中心/Doctor 脱敏清单与软失败提示；`meta.json` 增加软探测 CLI 版本（不包含密钥或完整会话记录）。
 
 ## [0.2.15] - 2026-08-12
 
