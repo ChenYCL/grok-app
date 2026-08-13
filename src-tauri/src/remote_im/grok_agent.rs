@@ -2,10 +2,17 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
+#[cfg(unix)]
+use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::process::{Child, Command};
+use tokio::sync::oneshot;
 
 use super::context::{extract_context_signals, ContextCompactSnapshot, ContextUsageSnapshot};
+
+#[cfg(unix)]
+const PROCESS_TREE_GRACE: Duration = Duration::from_millis(200);
+type ConfigureCommand = fn(&mut Command);
 
 pub struct GrokTurnResult {
     pub text: String,
@@ -13,6 +20,114 @@ pub struct GrokTurnResult {
     pub error: Option<String>,
     pub usage: Option<ContextUsageSnapshot>,
     pub compact: Option<ContextCompactSnapshot>,
+    pub cancelled: bool,
+}
+
+fn cancelled_result() -> GrokTurnResult {
+    GrokTurnResult {
+        text: String::new(),
+        session_id: None,
+        error: None,
+        usage: None,
+        compact: None,
+        cancelled: true,
+    }
+}
+
+fn cancellation_requested(cancel: &mut Option<oneshot::Receiver<()>>) -> bool {
+    match cancel.as_mut() {
+        Some(cancel_rx) => cancellation_signaled(cancel_rx),
+        None => false,
+    }
+}
+
+/// True when `/stop` already fired this oneshot (or the sender was dropped).
+pub fn cancellation_signaled(cancel_rx: &mut oneshot::Receiver<()>) -> bool {
+    !matches!(
+        cancel_rx.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    )
+}
+
+async fn wait_for_cancellation(cancel: &mut Option<oneshot::Receiver<()>>) {
+    match cancel {
+        Some(cancel_rx) => {
+            let _ = cancel_rx.await;
+        }
+        None => std::future::pending::<()>().await,
+    }
+}
+
+fn configure_process_tree(cmd: &mut Command) {
+    #[cfg(unix)]
+    {
+        // SAFETY: pre_exec runs in the child before exec. setsid gives every
+        // Grok turn its own process group so `/stop` can terminate descendants.
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc_setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+}
+
+struct ProcessTree {
+    id: Option<u32>,
+}
+
+impl ProcessTree {
+    fn capture(child: &Child) -> Self {
+        Self { id: child.id() }
+    }
+}
+
+async fn terminate_and_reap(child: &mut Child, process_tree: &ProcessTree) {
+    #[cfg(unix)]
+    if let Some(pgid) = process_tree.id.map(|value| value as i32) {
+        let _ = libc_kill(-pgid, 15); // SIGTERM the turn's process group.
+        tokio::time::sleep(PROCESS_TREE_GRACE).await;
+        let _ = libc_kill(-pgid, 9); // SIGKILL descendants that ignored SIGTERM.
+    }
+
+    tracing::debug!(
+        pid = ?process_tree.id,
+        "remote_im: terminating grok leader"
+    );
+    if let Err(error) = child.start_kill() {
+        tracing::debug!(%error, "remote_im: child already exited before cancellation");
+    }
+    if let Err(error) = child.wait().await {
+        tracing::warn!(%error, "remote_im: failed to reap cancelled grok child");
+    }
+}
+
+/// Wait for a stdio reader. `/stop` can still unstick a hung pipe; a successful
+/// turn waits for EOF the same way as before this change.
+async fn await_stdio_or_cancel<T: Default>(
+    task: &mut tokio::task::JoinHandle<T>,
+    cancel: &mut Option<oneshot::Receiver<()>>,
+    child: &mut Child,
+    process_tree: &ProcessTree,
+) -> Result<T, GrokTurnResult> {
+    tokio::select! {
+        biased;
+        _ = wait_for_cancellation(cancel) => {
+            terminate_and_reap(child, process_tree).await;
+            task.abort();
+            let _ = task.await;
+            Err(cancelled_result())
+        }
+        result = &mut *task => Ok(result.unwrap_or_default()),
+    }
 }
 
 pub fn resolve_grok_binary() -> PathBuf {
@@ -78,12 +193,60 @@ pub async fn run_turn(
     prompt: &str,
     session_id: Option<&str>,
     always_approve: bool,
+    cancel: Option<oneshot::Receiver<()>>,
     on_delta: Option<tokio::sync::mpsc::Sender<String>>,
 ) -> GrokTurnResult {
     let binary = resolve_grok_binary();
+    run_turn_with_binary(
+        &binary,
+        work_dir,
+        prompt,
+        session_id,
+        always_approve,
+        cancel,
+        on_delta,
+    )
+    .await
+}
+
+async fn run_turn_with_binary(
+    binary: &Path,
+    work_dir: &Path,
+    prompt: &str,
+    session_id: Option<&str>,
+    always_approve: bool,
+    cancel: Option<oneshot::Receiver<()>>,
+    on_delta: Option<tokio::sync::mpsc::Sender<String>>,
+) -> GrokTurnResult {
+    run_turn_with_binary_and_env(
+        binary,
+        work_dir,
+        prompt,
+        session_id,
+        always_approve,
+        cancel,
+        on_delta,
+        apply_agent_env,
+    )
+    .await
+}
+
+async fn run_turn_with_binary_and_env(
+    binary: &Path,
+    work_dir: &Path,
+    prompt: &str,
+    session_id: Option<&str>,
+    always_approve: bool,
+    mut cancel: Option<oneshot::Receiver<()>>,
+    on_delta: Option<tokio::sync::mpsc::Sender<String>>,
+    configure_command: ConfigureCommand,
+) -> GrokTurnResult {
+    if cancellation_requested(&mut cancel) {
+        return cancelled_result();
+    }
     // Soft-fail older CLIs for bg-wait flags and partial stream format upgrade.
     let settings = crate::store::load_settings();
-    let cli_ver = crate::cli_probe::read_version_of(&binary);
+    let cli_ver = crate::cli_probe::read_version_of(binary);
     let bg_wait =
         crate::acp_client::background_wait_spawn_flags_from_settings(&settings, cli_ver.as_deref());
     let (fmt, partial) =
@@ -97,19 +260,18 @@ pub async fn run_turn(
         &bg_wait,
     );
 
-    let mut cmd = Command::new(&binary);
+    if cancellation_requested(&mut cancel) {
+        return cancelled_result();
+    }
+
+    let mut cmd = Command::new(binary);
     cmd.args(&args)
         .current_dir(work_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    apply_agent_env(&mut cmd);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
+    configure_command(&mut cmd);
+    configure_process_tree(&mut cmd);
 
     tracing::info!(
         binary = %binary.display(),
@@ -128,9 +290,11 @@ pub async fn run_turn(
                 error: Some(format!("spawn grok failed: {e}")),
                 usage: None,
                 compact: None,
+                cancelled: false,
             };
         }
     };
+    let process_tree = ProcessTree::capture(&child);
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -141,7 +305,7 @@ pub async fn run_turn(
     let mut context_compact: Option<ContextCompactSnapshot> = None;
 
     // Drain stderr concurrently so the child cannot block on a full pipe.
-    let stderr_task = tokio::spawn(async move {
+    let mut stderr_task = tokio::spawn(async move {
         let mut buf = String::new();
         if let Some(err) = stderr {
             let mut lines = BufReader::new(err).lines();
@@ -155,9 +319,21 @@ pub async fn run_turn(
         buf
     });
 
+    let mut cancelled = false;
     if let Some(out) = stdout {
         let mut lines = BufReader::new(out).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
+        loop {
+            let next_line = tokio::select! {
+                biased;
+                _ = wait_for_cancellation(&mut cancel) => {
+                    cancelled = true;
+                    None
+                }
+                line = lines.next_line() => Some(line),
+            };
+            let Some(Ok(Some(line))) = next_line else {
+                break;
+            };
             if line.trim().is_empty() {
                 continue;
             }
@@ -215,9 +391,36 @@ pub async fn run_turn(
         }
     }
 
-    let status = child.wait().await;
-    let stderr_text = stderr_task.await.unwrap_or_default();
-    if let Ok(st) = status {
+    let status = if cancelled {
+        terminate_and_reap(&mut child, &process_tree).await;
+        None
+    } else {
+        let wait_result = tokio::select! {
+            biased;
+            _ = wait_for_cancellation(&mut cancel) => None,
+            wait = child.wait() => Some(wait),
+        };
+        match wait_result {
+            Some(wait) => Some(wait),
+            None => {
+                cancelled = true;
+                terminate_and_reap(&mut child, &process_tree).await;
+                None
+            }
+        }
+    };
+    if cancelled {
+        stderr_task.abort();
+        let _ = stderr_task.await;
+        return cancelled_result();
+    }
+    let stderr_text =
+        match await_stdio_or_cancel(&mut stderr_task, &mut cancel, &mut child, &process_tree).await
+        {
+            Ok(text) => text,
+            Err(cancelled) => return cancelled,
+        };
+    if let Some(Ok(st)) = status {
         if !st.success() && acc.trim().is_empty() {
             let se = stderr_text.trim();
             err_msg = Some(if se.is_empty() {
@@ -248,7 +451,19 @@ pub async fn run_turn(
             grok_home = %resolve_remote_grok_home().display(),
             "remote_im: --resume failed; retrying without resume (new turn in same workdir)"
         );
-        let mut fresh = run_turn_simple(work_dir, prompt, None, always_approve).await;
+        let mut fresh = run_turn_simple(
+            binary,
+            work_dir,
+            prompt,
+            None,
+            always_approve,
+            &mut cancel,
+            configure_command,
+        )
+        .await;
+        if fresh.cancelled {
+            return fresh;
+        }
         if fresh.text.trim().is_empty() && fresh.error.is_none() {
             fresh.error = Some(format!(
                 "无法恢复会话 `{}`（本地 agent-home 未命中）。已尝试新开一轮但无输出。",
@@ -274,7 +489,16 @@ pub async fn run_turn(
             .map(|e| e.contains("exit") || e.contains("spawn"))
             .unwrap_or(true)
     {
-        let mut simple = run_turn_simple(work_dir, prompt, session_id, always_approve).await;
+        let mut simple = run_turn_simple(
+            binary,
+            work_dir,
+            prompt,
+            session_id,
+            always_approve,
+            &mut cancel,
+            configure_command,
+        )
+        .await;
         // Prefer stream-path session id; else keep requested resume id for continuity.
         if simple.session_id.is_none() {
             simple.session_id = session_id
@@ -301,16 +525,22 @@ pub async fn run_turn(
         error: err_msg,
         usage: context_usage,
         compact: context_compact,
+        cancelled: false,
     }
 }
 
 async fn run_turn_simple(
+    binary: &Path,
     work_dir: &Path,
     prompt: &str,
     session_id: Option<&str>,
     always_approve: bool,
+    cancel: &mut Option<oneshot::Receiver<()>>,
+    configure_command: ConfigureCommand,
 ) -> GrokTurnResult {
-    let binary = resolve_grok_binary();
+    if cancellation_requested(cancel) {
+        return cancelled_result();
+    }
     // Plain -p path; still pass --resume when bound (AC1/AC5 multi-turn).
     let mut args = vec!["-p".to_string(), prompt.to_string()];
     if always_approve {
@@ -320,26 +550,77 @@ async fn run_turn_simple(
         args.push("--resume".into());
         args.push(sid.to_string());
     }
-    let mut cmd = Command::new(&binary);
+    let mut cmd = Command::new(binary);
     cmd.args(&args)
         .current_dir(work_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    apply_agent_env(&mut cmd);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    match cmd.output().await {
-        Ok(out) => {
-            let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            let err = if !out.status.success() && text.is_empty() {
+    configure_command(&mut cmd);
+    configure_process_tree(&mut cmd);
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            return GrokTurnResult {
+                text: String::new(),
+                session_id: session_id
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
+                error: Some(e.to_string()),
+                usage: None,
+                compact: None,
+                cancelled: false,
+            };
+        }
+    };
+    let process_tree = ProcessTree::capture(&child);
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let mut output_task = tokio::spawn(async move {
+        let stdout = async move {
+            let mut bytes = Vec::new();
+            if let Some(mut stdout) = stdout {
+                let _ = stdout.read_to_end(&mut bytes).await;
+            }
+            bytes
+        };
+        let stderr = async move {
+            let mut bytes = Vec::new();
+            if let Some(mut stderr) = stderr {
+                let _ = stderr.read_to_end(&mut bytes).await;
+            }
+            bytes
+        };
+        tokio::join!(stdout, stderr)
+    });
+
+    let wait_result = tokio::select! {
+        biased;
+        _ = wait_for_cancellation(cancel) => None,
+        status = child.wait() => Some(status),
+    };
+    let status = match wait_result {
+        Some(status) => status,
+        None => {
+            terminate_and_reap(&mut child, &process_tree).await;
+            output_task.abort();
+            let _ = output_task.await;
+            return cancelled_result();
+        }
+    };
+    let (stdout, stderr) =
+        match await_stdio_or_cancel(&mut output_task, cancel, &mut child, &process_tree).await {
+            Ok(pair) => pair,
+            Err(cancelled) => return cancelled,
+        };
+
+    match status {
+        Ok(status) => {
+            let text = String::from_utf8_lossy(&stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&stderr).trim().to_string();
+            let err = if !status.success() && text.is_empty() {
                 Some(if stderr.is_empty() {
-                    format!("grok exit {:?}", out.status.code())
+                    format!("grok exit {:?}", status.code())
                 } else {
                     stderr
                 })
@@ -355,6 +636,7 @@ async fn run_turn_simple(
                 error: err,
                 usage: None,
                 compact: None,
+                cancelled: false,
             }
         }
         Err(e) => GrokTurnResult {
@@ -365,8 +647,25 @@ async fn run_turn_simple(
             error: Some(e.to_string()),
             usage: None,
             compact: None,
+            cancelled: false,
         },
     }
+}
+
+#[cfg(unix)]
+fn libc_setsid() -> i32 {
+    extern "C" {
+        fn setsid() -> i32;
+    }
+    unsafe { setsid() }
+}
+
+#[cfg(unix)]
+fn libc_kill(pid: i32, signal: i32) -> i32 {
+    extern "C" {
+        fn kill(pid: i32, signal: i32) -> i32;
+    }
+    unsafe { kill(pid, signal) }
 }
 
 /// Exposed for unit tests: simple-path argv must include resume.
@@ -390,6 +689,25 @@ pub fn simple_turn_cli_args(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    fn process_exists(pid: u32) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("probe process-tree pid")
+            .success()
+    }
+
+    #[test]
+    fn cancellation_signaled_after_stop() {
+        let (tx, mut rx) = oneshot::channel();
+        assert!(!cancellation_signaled(&mut rx));
+        tx.send(()).expect("receiver still alive");
+        assert!(cancellation_signaled(&mut rx));
+    }
 
     #[test]
     fn simple_fallback_keeps_resume_flag() {
@@ -417,5 +735,174 @@ mod tests {
                 home.display()
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancellation_kills_and_reaps_the_grok_child() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let test_dir = std::env::temp_dir().join(format!(
+            "grok-app-remote-im-cancel-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir(&test_dir).expect("create cancellation test directory");
+        let fake_grok = test_dir.join("grok");
+        let parent_pid_file = test_dir.join("grok.pid");
+        let descendant_pid_file = test_dir.join("descendant.pid");
+        std::fs::write(
+            &fake_grok,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo 'grok 1.0.0'\n  exit 0\nfi\nprintf '%s' \"$$\" > \"$(dirname \"$0\")/grok.pid\"\nsleep 600 &\ndescendant=$!\nprintf '%s' \"$descendant\" > \"$(dirname \"$0\")/descendant.pid\"\nwait \"$descendant\"\n",
+        )
+        .expect("write fake grok executable");
+        let mut permissions = std::fs::metadata(&fake_grok)
+            .expect("stat fake grok executable")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&fake_grok, permissions).expect("make fake grok executable");
+
+        let (cancel_tx, cancel_rx) = oneshot::channel();
+        let fake_grok_for_turn = fake_grok.clone();
+        let work_dir = test_dir.clone();
+        let turn = tokio::spawn(async move {
+            run_turn_with_binary_and_env(
+                &fake_grok_for_turn,
+                &work_dir,
+                "hang",
+                None,
+                false,
+                Some(cancel_rx),
+                None,
+                |_| {},
+            )
+            .await
+        });
+
+        let (parent_pid, descendant_pid) =
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    if let (Ok(parent), Ok(descendant)) = (
+                        std::fs::read_to_string(&parent_pid_file),
+                        std::fs::read_to_string(&descendant_pid_file),
+                    ) {
+                        if let (Ok(parent), Ok(descendant)) = (
+                            parent.trim().parse::<u32>(),
+                            descendant.trim().parse::<u32>(),
+                        ) {
+                            break (parent, descendant);
+                        }
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("fake grok process tree did not start");
+
+        cancel_tx
+            .send(())
+            .expect("turn dropped its cancellation receiver");
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), turn)
+            .await
+            .expect("cancelled turn did not return")
+            .expect("turn task panicked");
+        assert!(result.cancelled, "turn did not report cancellation");
+
+        for pid in [parent_pid, descendant_pid] {
+            assert!(
+                !process_exists(pid),
+                "cancelled grok process {pid} survived"
+            );
+        }
+
+        let _ = std::fs::remove_file(parent_pid_file);
+        let _ = std::fs::remove_file(descendant_pid_file);
+        let _ = std::fs::remove_file(fake_grok);
+        let _ = std::fs::remove_dir(test_dir);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancellation_kills_descendants_holding_pipes_after_the_leader_exits() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let test_dir = std::env::temp_dir().join(format!(
+            "grok-app-remote-im-pipe-cancel-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir(&test_dir).expect("create pipe cancellation test directory");
+        let fake_grok = test_dir.join("grok");
+        let parent_pid_file = test_dir.join("grok.pid");
+        let descendant_pid_file = test_dir.join("descendant.pid");
+        std::fs::write(
+            &fake_grok,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo 'grok 1.0.0'\n  exit 0\nfi\nprintf '%s' \"$$\" > \"$(dirname \"$0\")/grok.pid\"\nsleep 600 >&2 &\ndescendant=$!\nprintf '%s' \"$descendant\" > \"$(dirname \"$0\")/descendant.pid\"\nexit 0\n",
+        )
+        .expect("write fake grok executable");
+        let mut permissions = std::fs::metadata(&fake_grok)
+            .expect("stat fake grok executable")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&fake_grok, permissions).expect("make fake grok executable");
+
+        let (cancel_tx, cancel_rx) = oneshot::channel();
+        let fake_grok_for_turn = fake_grok.clone();
+        let work_dir = test_dir.clone();
+        let turn = tokio::spawn(async move {
+            run_turn_with_binary_and_env(
+                &fake_grok_for_turn,
+                &work_dir,
+                "hang through inherited stderr",
+                None,
+                false,
+                Some(cancel_rx),
+                None,
+                |_| {},
+            )
+            .await
+        });
+
+        let (parent_pid, descendant_pid) =
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    if let (Ok(parent), Ok(descendant)) = (
+                        std::fs::read_to_string(&parent_pid_file),
+                        std::fs::read_to_string(&descendant_pid_file),
+                    ) {
+                        if let (Ok(parent), Ok(descendant)) = (
+                            parent.trim().parse::<u32>(),
+                            descendant.trim().parse::<u32>(),
+                        ) {
+                            if !process_exists(parent) && process_exists(descendant) {
+                                break (parent, descendant);
+                            }
+                        }
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("leader did not exit while its descendant kept stderr open");
+
+        cancel_tx
+            .send(())
+            .expect("turn dropped its cancellation receiver");
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), turn)
+            .await
+            .expect("pipe-blocked turn did not return after cancellation")
+            .expect("turn task panicked");
+        assert!(result.cancelled, "turn did not report cancellation");
+        assert!(
+            !process_exists(parent_pid),
+            "grok leader unexpectedly returned"
+        );
+        assert!(
+            !process_exists(descendant_pid),
+            "descendant holding stderr survived cancellation"
+        );
+
+        let _ = std::fs::remove_file(parent_pid_file);
+        let _ = std::fs::remove_file(descendant_pid_file);
+        let _ = std::fs::remove_file(fake_grok);
+        let _ = std::fs::remove_dir(test_dir);
     }
 }
