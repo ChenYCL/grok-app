@@ -12,6 +12,7 @@ See `docs/llm-wiki/release.md`.
 ## [Unreleased]
 
 ### Added
+- **Per-provider appended prompt**: The provider editor gains an **Appended prompt** box for relays that need specific instructions. It rides the CLI's `--rules` flag, so the text is *appended* to the agent's system prompt rather than replacing it (`--system-prompt-override` would drop the built-in prompt). Stored per channel in agent-home `config.toml` as `app_append_prompt` (ignored by Grok Build), merged at connect alongside session rules. Empty by default.
 - **X evidence citation honesty (wallpaper lite)**: Wallpaper X gallery shows **X post** (canonical `x.com/…/status/…` open-in-browser) or **Unverified** when no status URL; empty search soft-fails with honest summary; applying an X wallpaper records a small local evidence ring (`localStorage` path + url meta, no cloud / no full MCP SaaS). Pure `xEvidenceCitation` helpers + tests; Host normalizes `postUrl`; en/zh/zh-TW.
 - **Bridge resilience overview honesty**: Settings → Remote control → IM overview surfaces recovery reconnect, always-on rate-limit/backoff policy notes (8/chat · 40 global / 60s · cap 60s), sanitized last-error, and soft-fail empty states for channels/timeline during crash recovery (never invents links or events). Pure helpers in `resilience.ts` + tests; i18n en/zh/zh-TW.
 - **Resources multi-tab + split tree polish**: Files workbench keeps preview | tree simultaneous when the tree is open (no stack flip on open). Multi-file tabs: close-active, dirty discard honesty (side-tab markers + confirm), max-tab soft-fail (prefer drop clean LRU; i18n notice). Tree filter / expand persist / width persist residual fixes. Pure helpers + vitest (`resourceTabs`, `resourceTree`).
@@ -28,6 +29,7 @@ See `docs/llm-wiki/release.md`.
 - **Memory clear scopes + dream honesty**: Memory ops center GlassModal clear for host scopes **workspace / global / all** (real `grok memory clear` flags; no `window.confirm`). Dream/watcher chips remain config-presence only — never a live “running” status. Experimental memory stays **off** by default with `--no-memory` force-disable honesty.
 
 **中文 · 新增**
+- **按提供商追加提示词**：编辑提供商表单新增**追加提示词**输入框，用于某些中转需要的针对性指令。它走 CLI 的 `--rules` 参数，因此是**追加**到系统提示词末尾，而不是替换。按渠道存在 agent-home 的 `config.toml` 里（键名 `app_append_prompt`），连接时与会话规则一并合并。默认为空。
 - **沙箱产品路径诚实说明**：设置标明 App 默认 Workspace 严于 CLI Off；打开沙箱指南；Off 空态 soft 说明；Linux userns 提示；leader 与非 Off 沙箱互斥；信任项目后/项目菜单可再次打开向导。
 - **导出路径诚实徽章**：导出会话菜单显示格式名+扩展名，并标注 **会话记录 / CLI 导出**。完整 Markdown 下载在已关联 agent 时优先 `grok export`（失败回退本地记录）；其他格式与复制仅用会话记录。纯路径解析 + 测试；中英繁。
 - **实时语音委派会话诚实**：叠加层恢复委派/活动会话芯片（真实标题 + liveMap 进度）；结束后默认保留 Agent（关闭则取消回合）。麦克风/鉴权/网络/CLI 软失败额外 toast 分类文案。Host 不记录空委派 id。纯 helper + 测试；沿用三语 `voice.err.*` / `voice.center.*`。
@@ -43,13 +45,19 @@ See `docs/llm-wiki/release.md`.
 - **记忆清除范围 + Dream 诚实**：操作中心 GlassModal 清除 host 作用域 **workspace / global / all**（真实 CLI 参数，不用 `window.confirm`）。Dream/Watcher 仅表示配置存在性，绝不伪造「运行中」。跨会话记忆默认关闭并强制 `--no-memory`。
 
 ### Changed
+- **Bulk select is findable**: Right-click any chat → **Select** enters multi-select with that chat already ticked (and anchored for Shift-range). The **Other chats** group header gains the same hover action the **Projects** header already had.
 - **Goal session chrome menu**: Chat Goal chip (active on real `goal_updated`, dashed waiting when `/goal` is on with no harness events) opens a solid menu — Open Reliability · Copy summary · Clear local timeline (in-app confirm). Extracted `GoalOrchSessionChip`; still never invents progress.
 
 **中文 · 变更**
+- **批量选择变得找得到**：右键任意会话 → **选择**，直接进入多选并勾选该会话。**其他会话**分组标题补上与**项目**标题一致的悬停操作。
 - **远程 IM 国内渠道诚实态**：钉钉 / 企微 / 微信个人 缺字段 soft-fail，未关联 Bridge 不显示「已连接」；微信强制文本菜单；无在线断言提示 + §6 字段帮助。WPS 协作/数字员工保持退役。
 - **Goal 会话指示菜单**：有真实 `goal_updated` 显示阶段 chip，仅 `/goal` 无事件时虚线等待态；点击打开菜单（可靠性中心 / 复制摘要 / 清除本机时间线）。仍不虚构进度。
 
 ### Fixed
+- **“Thinking for N” no longer restarts on every chat switch**: The turn clock is kept per chat instead of one global value. Opening a chat now resumes its own clock.
+- **Reasoning effort is remembered per chat**: Effort cascades session → project → global like permission. `settings.effort` is only the seed for chats that never picked one.
+- **A draft chat no longer retunes the live one**: Changing effort before the first message keeps `sessionId: null` and does not write into the running session.
+- **Permission auto-deny countdown no longer restarts**: The clock is keyed to the request (`sessionId:rpcId`), so leaving and returning resumes the countdown.
 - **Remote IM Feishu/Lark MVP product loop**: host `test_connection` soft-fails restore (`missing_feishu_*` / invalid App ID / custom domain) before live tenant token; success is `feishu_tenant_token_ok` (token only, never claims WS online). Engine `/p` menus and card/text picks honor GUI project_scope whitelist (`"all_trusted"` | `{ allow: [] }`, plus legacy mode/projectIds). ACL require-@ syncs `group_reply_all` / `require_mention` on save; §6.1 `mention_map` advanced field + pure parser. Pure project-scope filter tests + feishu soft-fail unit tests.
 - **App update channel honesty**: Settings → About restores full path honesty after the settings split — signed in-app vs GitHub download vs unsupported package type (Linux non-AppImage note), soft-fail error classes, idle/empty and check-failed copy. Never claims silent update on unsigned builds. Host `updater_status` reports `unsupported` when the plugin is on but the package cannot auto-update.
 - **CI baseline**: `cargo fmt` drift and ESLint non-null optional-chain in `session.test.ts`.
@@ -62,6 +70,10 @@ See `docs/llm-wiki/release.md`.
 - **Remote IM status lights**: Sidebar `deriveStatus` no longer treats Bridge running alone as connected (requires `connectedChannels` link). Incomplete drafts (any channel) cannot show Connected.
 
 **中文 · 修复**
+- **「思考中 N 秒」不再因切换会话归零**：回合计时按会话保存；打开会话恢复它自己的计时。
+- **思考等级改为按会话记忆**：effort 按 会话 → 项目 → 全局 级联；`settings.effort` 只作为从未选过的会话的初始值。
+- **草稿会话不再改动正在运行的会话**：首次发送前改思考等级不再写进当前活跃会话。
+- **权限自动拒绝倒计时不再重置**：计时归属于请求（`sessionId:rpcId`），离开再返回接着倒数。
 - **应用更新通道诚实**：设置 → 关于 在设置拆分后恢复完整路径说明 — 已签名应用内 / GitHub 下载 / 不支持的安装包类型（Linux 非 AppImage 提示）、软失败错误分类、空闲与检查失败文案；未签名构建不宣称静默更新。Host `updater_status` 在插件开启但包类型不可自动更新时返回 `unsupported`。
 - **远程 IM 飞书/Lark MVP 产品闭环**：恢复测试连接 soft-fail；`/p` 与卡片选项目遵守 GUI 项目白名单；ACL 群聊需要 @ 与 `group_reply_all` 同步；§6.1 `mention_map` 高级字段；纯 helper + 单测。
 - **CI 基线**：`cargo fmt` 漂移与 `session.test.ts` ESLint optional-chain 非空断言。
